@@ -14,6 +14,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 1
     steps:
       - name: Trigger 50webs deploy endpoint
         env:
@@ -22,7 +23,9 @@ jobs:
           set -euo pipefail
           test -n "$DEPLOY_TOKEN"
           curl --fail --show-error --silent \
-            --retry 3 \
+            --connect-timeout 10 \
+            --max-time 30 \
+            --retry 1 \
             --retry-delay 2 \
             --get \
             --data-urlencode "token=$DEPLOY_TOKEN" \
