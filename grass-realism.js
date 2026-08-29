@@ -57,7 +57,7 @@
       skyMat.backFaceCulling=false;
       skyMat.disableLighting=true;
       skyMat.fogEnabled=false;
-      var skyTex=new BABYLON.Texture(A+'skytex.png',scene,false,false,BABYLON.Texture.BILINEAR_SAMPLINGMODE);
+      var skyTex=new BABYLON.Texture(A+'skytex.png',scene,false,true,BABYLON.Texture.BILINEAR_SAMPLINGMODE);
       skyTex.coordinatesMode=BABYLON.Texture.FIXED_EQUIRECTANGULAR_MODE;
       skyMat.reflectionTexture=skyTex;
       sky.material=skyMat;
