@@ -1,4 +1,4 @@
-/* v33 projected grass-image shadows, anchored at the grass base */
+/* v34 projected grass-image shadows, pivoted from the real grass base */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||typeof engine==='undefined'||typeof generateChunk==='undefined'||typeof perChunkCount==='undefined'||typeof V==='undefined'||typeof A==='undefined')return;
 
@@ -36,15 +36,19 @@ void main(){
 }`;
 
   function makeShadowType(def,i){
-    var p=BABYLON.MeshBuilder.CreatePlane('grassImageShadow'+i,{width:def.width,height:def.height,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-    /* Move the image so one edge is exactly at the clump origin, then lay it down
-       and stretch it away from the base in one consistent sun direction. */
-    p.position.y=def.height*.5;
-    p.scaling.y=1.55;
-    p.rotation.x=Math.PI/2;
-    p.rotation.y=SUN_YAW;
+    /* Build the shadow from the exact same card geometry/origin convention as
+       the real grass. First bake the grass card's ground-line offset into the
+       vertices. That makes the grass contact point y=0. Then stretch and rotate
+       around that origin so the shadow can only project away from the base. */
+    var p=BABYLON.MeshBuilder.CreatePlane('grassImageShadow'+i,{width:def.width,height:-def.height,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
+    p.position.y=def.height*(def.ground-.5);
     p.bakeCurrentTransformIntoVertices();
-    p.position.set(0,0,0);p.rotation.set(0,0,0);p.scaling.set(1,1,1);
+    p.position.set(0,0,0);
+
+    p.scaling.y=1.55;
+    p.rotationQuaternion=BABYLON.Quaternion.RotationYawPitchRoll(SUN_YAW,Math.PI/2,0);
+    p.bakeCurrentTransformIntoVertices();
+    p.position.set(0,0,0);p.rotation.set(0,0,0);p.rotationQuaternion=null;p.scaling.set(1,1,1);
     p.isPickable=false;p.alwaysSelectAsActiveMesh=true;
 
     var m=new BABYLON.ShaderMaterial('grassImageShadowMat'+i,scene,{vertex:'grassImageShadow',fragment:'grassImageShadow'},{
