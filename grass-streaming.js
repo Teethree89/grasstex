@@ -1,4 +1,4 @@
-/* v48 amortized world streaming.
+/* v52 amortized world streaming.
    Replaces the synchronous rebuildWorld() so crossing a chunk boundary no longer
    builds ~50k-450k clump matrices in a single frame.
 
@@ -10,6 +10,9 @@
    - medium keeps FULL clump coverage in all near-capable chunks, then drops to
      half density only farther out; this guarantees every clump approaching the
      30m near boundary already has a medium representation instead of popping in
+   - fill patch footprint is derived from the owning grass variant width and the
+     exact clump scale, so it matches the crossed-card footprint instead of using
+     a generic oversized scale
    - the restream trigger uses travel distance, not floor(x/CHUNK), so walking
      along a chunk seam can't thrash
 
@@ -132,7 +135,10 @@
         nearN[v] = o + 16;
         nearS[v][seedN[v]++] = seed;
 
-        var ps = .85 + gs * .18, q = patchN;
+        /* nearPatch is a .65m square. Scale it so its final world-space width is
+           exactly the same as this grass variant's card width at this clump scale. */
+        var pw = (typeof V !== 'undefined' && V[v] && V[v].width) ? V[v].width : .71;
+        var ps = gs * pw / .65, q = patchN;
         patchM[q] = c * ps;  patchM[q + 1] = 0;  patchM[q + 2] = -sn * ps; patchM[q + 3] = 0;
         patchM[q + 4] = 0;   patchM[q + 5] = ps; patchM[q + 6] = 0;        patchM[q + 7] = 0;
         patchM[q + 8] = sn * ps; patchM[q + 9] = 0; patchM[q + 10] = c * ps; patchM[q + 11] = 0;
