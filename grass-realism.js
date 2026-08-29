@@ -19,9 +19,9 @@
     if(typeof sun!=='undefined'){
       sun.intensity=1.05;
       sun.diffuse=new BABYLON.Color3(1.0,.74,.50);
-      /* Low, near-horizon sun matching the sunset in skytex.png (azimuth measured from the texture's sun disc;
-         elevation kept a little higher than the photo's grazing angle so the ground isn't lit edge-on to black). */
-      sun.direction=new BABYLON.Vector3(.52,-.18,.85);
+      /* Bearing 153 deg / elevation +15 deg - found in-game with the reticle and bearing/elevation
+         readout, matched to where the warm band actually sits post SKY_V_BIAS below. */
+      sun.direction=new BABYLON.Vector3(-.4385,-.2588,.8606);
     }
     scene.fogDensity=.00345;
     scene.fogColor=new BABYLON.Color3(ATMO_R,ATMO_G,ATMO_B);
@@ -48,18 +48,24 @@
     }
   }catch(_){ }
 
-  /* Sky: skytex.png as a fixed equirectangular dome, always centered on the camera. */
+  /* Sky: skytex.png as a fixed equirectangular dome, always centered on the camera. Custom shader
+     (same s/t formula Babylon's own FIXED_EQUIRECTANGULAR_MODE uses internally, verified against it
+     directly - note this plain sampler2D needs invertY=false, unlike the reflectionTexture pipeline
+     which wanted true) so the warm sunset band can be nudged up off the horizon with SKY_V_BIAS: the
+     photo's color sits right at the true horizon line, easy to miss behind the ground plane and fog.
+     .12 puts the peak around elevation +15 deg, matched by sun.direction/sunH below. */
   try{
     if(typeof A!=='undefined'){
+      var SKY_V_BIAS=.12;
+      BABYLON.Effect.ShadersStore.skyDomeVertexShader='precision highp float;attribute vec3 position;uniform mat4 worldViewProjection;varying vec3 vDir;void main(){vDir=position;gl_Position=worldViewProjection*vec4(position,1.0);}';
+      BABYLON.Effect.ShadersStore.skyDomeFragmentShader='precision highp float;varying vec3 vDir;uniform sampler2D skyTexture;uniform float uVBias;void main(){vec3 d=normalize(vDir);float lon=atan(d.z,d.x);float lat=acos(clamp(d.y,-1.0,1.0));float s=lon/(2.0*3.14159265359)+0.5;float t=clamp(lat/3.14159265359+uVBias,0.0,1.0);gl_FragColor=vec4(texture2D(skyTexture,vec2(s,t)).rgb,1.0);}';
       var sky=BABYLON.MeshBuilder.CreateSphere('skyDome',{diameter:1000,segments:24},scene);
       sky.infiniteDistance=true;sky.isPickable=false;sky.applyFog=false;
-      var skyMat=new BABYLON.StandardMaterial('skyDomeMat',scene);
-      skyMat.backFaceCulling=false;
-      skyMat.disableLighting=true;
-      skyMat.fogEnabled=false;
-      var skyTex=new BABYLON.Texture(A+'skytex.png',scene,false,true,BABYLON.Texture.BILINEAR_SAMPLINGMODE);
-      skyTex.coordinatesMode=BABYLON.Texture.FIXED_EQUIRECTANGULAR_MODE;
-      skyMat.reflectionTexture=skyTex;
+      var skyMat=new BABYLON.ShaderMaterial('skyDomeMat',scene,{vertex:'skyDome',fragment:'skyDome'},{attributes:['position'],uniforms:['worldViewProjection','uVBias'],samplers:['skyTexture']});
+      skyMat.backFaceCulling=false;skyMat.disableDepthWrite=true;
+      var skyTex=new BABYLON.Texture(A+'skytex.png',scene,false,false,BABYLON.Texture.BILINEAR_SAMPLINGMODE);
+      skyMat.setTexture('skyTexture',skyTex);
+      skyMat.setFloat('uVBias',SKY_V_BIAS);
       sky.material=skyMat;
     }
   }catch(_){ }
@@ -90,7 +96,7 @@ void main(){
   vUV=uv;
   vDry=step(.96,h2(floor(c*.31)+4.7));
   vec3 cardN=normalize(vec3(world2.x,0.,world2.z));
-  vec3 sunH=normalize(vec3(-.52,0.,-.85));
+  vec3 sunH=normalize(vec3(.4385,0.,-.8606));
   float side=.84+.16*abs(dot(cardN,sunH));
   float back=.07*max(0.,-dot(cardN,sunH));
   vShade=side+back;
@@ -130,7 +136,7 @@ void main(){
   vec2 bend=(dir*(.020+.050*gust+.027*(sin(ph)*.58+turb*.23))+vec2(-dir.y,dir.x)*turb*.010)*uWind*stiff*ht;
   vec3 p=c+r*(position.x*sx)+vec3(0.,1.,0.)*(position.y*sy);p.xz+=bend;
   vUV=uv;vDry=step(.96,h2(floor(c.xz*.31)+4.7));vBase=1.0-uv.y;
-  vec3 sunH=normalize(vec3(-.52,0.,-.85));vShade=.88+.12*abs(dot(r,sunH))+.05*max(0.,-dot(r,sunH));
+  vec3 sunH=normalize(vec3(.4385,0.,-.8606));vShade=.88+.12*abs(dot(r,sunH))+.05*max(0.,-dot(r,sunH));
   gl_Position=viewProjection*vec4(p,1.);
 }`;
 
@@ -155,7 +161,7 @@ float h2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 void main(){
   vec3 c=world3.xyz;vec3 t=cameraPosition-c;vD=length(t);t.y=0.;vec3 f=t/max(length(t),.0001);vec3 r=normalize(vec3(f.z,0.,-f.x));
   float sx=length(world0.xyz),sy=length(world1.xyz);vec3 p=c+r*(position.x*sx)+vec3(0.,1.,0.)*(position.y*sy);
-  vUV=uv;vDry=step(.96,h2(floor(c.xz*.31)+4.7));vec3 sunH=normalize(vec3(-.52,0.,-.85));vShade=.90+.10*abs(dot(r,sunH));
+  vUV=uv;vDry=step(.96,h2(floor(c.xz*.31)+4.7));vec3 sunH=normalize(vec3(.4385,0.,-.8606));vShade=.90+.10*abs(dot(r,sunH));
   gl_Position=viewProjection*vec4(p,1.);
 }`;
 
