@@ -1,4 +1,4 @@
-/* v34 projected grass-image shadows, pivoted from the real grass base */
+/* v35 projected grass-image shadows, pivoted from the real grass base; balanced across all six grass variants */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||typeof engine==='undefined'||typeof generateChunk==='undefined'||typeof perChunkCount==='undefined'||typeof V==='undefined'||typeof A==='undefined')return;
 
@@ -36,10 +36,9 @@ void main(){
 }`;
 
   function makeShadowType(def,i){
-    /* Build the shadow from the exact same card geometry/origin convention as
-       the real grass. First bake the grass card's ground-line offset into the
-       vertices. That makes the grass contact point y=0. Then stretch and rotate
-       around that origin so the shadow can only project away from the base. */
+    /* Build from the exact same card geometry/origin convention as the real grass.
+       Bake the grass card's ground-line offset first so the contact point is y=0,
+       then lay/stretch the card outward from that origin in one sun direction. */
     var p=BABYLON.MeshBuilder.CreatePlane('grassImageShadow'+i,{width:def.width,height:-def.height,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
     p.position.y=def.height*(def.ground-.5);
     p.bakeCurrentTransformIntoVertices();
@@ -79,7 +78,11 @@ void main(){
         var centerX=(x+.5)*CHUNK,centerZ=(z+.5)*CHUNK,dx=centerX-camera.position.x,dz=centerZ-camera.position.z;
         if(Math.hypot(dx,dz)>SHADOW_END+CHUNK*.75)continue;
         var chunk=generateChunk(x,z,count);
-        for(var i=0;i<chunk.length;i+=2){
+        for(var i=0;i<chunk.length;i++){
+          /* generateChunk assigns variants by i % 6. Stepping i += 2 only ever
+             selected variants 0, 2 and 4. Keep every other GROUP of six instead,
+             which preserves ~50% shadow density while including 0-5 equally. */
+          if((Math.floor(i/6)&1)!==0)continue;
           var g=chunk[i];
           S2.set(g.s,g.s*g.h,g.s);
           BABYLON.Quaternion.RotationYawPitchRollToRef(0,0,0,Q2);
