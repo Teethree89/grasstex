@@ -1,12 +1,21 @@
-/* v45 grass/lighting/world realism: physical sky-dome vertical offset equivalent to the old equirectangular UV shift,
-   golden-hour sun matched to the equirectangular sky, world-locked dirt ground, directional gust fields,
-   stiffness/rest-lean variation, LOD-continuous dry clumps, base darkening, backlight, distance integration,
-   and a shared atmosphere tint used everywhere something fades into the haze. */
+/* v46 grass/lighting/world realism: one measured sun model drives directional light and grass lighting,
+   physical sky-dome vertical offset equivalent to the old equirectangular UV shift, world-locked dirt ground,
+   directional gust fields, stiffness/rest-lean variation, LOD-continuous dry clumps, base darkening, backlight,
+   distance integration, and a shared atmosphere tint used everywhere something fades into the haze. */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined')return;
 
   var ATMO_R=.60,ATMO_G=.53,ATMO_B=.48;
   var ATMO_GLSL='vec3('+ATMO_R+','+ATMO_G+','+ATMO_B+')';
+
+  /* Single source of truth: visible sun center measured in-game after the physical sky-dome move. */
+  var SUN_BEARING_DEG=151.8,SUN_ELEVATION_DEG=5.7;
+  var sb=SUN_BEARING_DEG*Math.PI/180,se=SUN_ELEVATION_DEG*Math.PI/180,ce=Math.cos(se);
+  /* Babylon DirectionalLight.direction is the direction the light rays travel, from sun toward ground. */
+  var SUN_LIGHT_DIR=new BABYLON.Vector3(-Math.sin(sb)*ce,-Math.sin(se),-Math.cos(sb)*ce).normalize();
+  var SUN_TO_SOURCE_H=new BABYLON.Vector3(-SUN_LIGHT_DIR.x,0,-SUN_LIGHT_DIR.z).normalize();
+  window.SunModel={bearingDeg:SUN_BEARING_DEG,elevationDeg:SUN_ELEVATION_DEG,lightDir:SUN_LIGHT_DIR.clone(),toSunH:SUN_TO_SOURCE_H.clone()};
+  var SUN_H_GLSL='vec3('+SUN_TO_SOURCE_H.x.toFixed(7)+',0.,'+SUN_TO_SOURCE_H.z.toFixed(7)+')';
 
   try{
     if(typeof hemi!=='undefined'){
@@ -17,7 +26,7 @@
     if(typeof sun!=='undefined'){
       sun.intensity=1.05;
       sun.diffuse=new BABYLON.Color3(1.0,.74,.50);
-      sun.direction=new BABYLON.Vector3(-.4701,-.1011,.8768);
+      sun.direction=SUN_LIGHT_DIR.clone();
     }
     scene.fogDensity=.00345;
     scene.fogColor=new BABYLON.Color3(ATMO_R,ATMO_G,ATMO_B);
@@ -97,7 +106,7 @@ void main(){
   vUV=uv;
   vDry=step(.96,h2(floor(c*.31)+4.7));
   vec3 cardN=normalize(vec3(world2.x,0.,world2.z));
-  vec3 sunH=normalize(vec3(.4701,0.,-.8768));
+  vec3 sunH=normalize(${SUN_H_GLSL});
   float side=.84+.16*abs(dot(cardN,sunH));
   float back=.07*max(0.,-dot(cardN,sunH));
   vShade=side+back;
@@ -137,7 +146,7 @@ void main(){
   vec2 bend=(dir*(.020+.050*gust+.027*(sin(ph)*.58+turb*.23))+vec2(-dir.y,dir.x)*turb*.010)*uWind*stiff*ht;
   vec3 p=c+r*(position.x*sx)+vec3(0.,1.,0.)*(position.y*sy);p.xz+=bend;
   vUV=uv;vDry=step(.96,h2(floor(c.xz*.31)+4.7));vBase=1.0-uv.y;
-  vec3 sunH=normalize(vec3(.4701,0.,-.8768));vShade=.88+.12*abs(dot(r,sunH))+.05*max(0.,-dot(r,sunH));
+  vec3 sunH=normalize(${SUN_H_GLSL});vShade=.88+.12*abs(dot(r,sunH))+.05*max(0.,-dot(r,sunH));
   gl_Position=viewProjection*vec4(p,1.);
 }`;
 
@@ -162,7 +171,7 @@ float h2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 void main(){
   vec3 c=world3.xyz;vec3 t=cameraPosition-c;vD=length(t);t.y=0.;vec3 f=t/max(length(t),.0001);vec3 r=normalize(vec3(f.z,0.,-f.x));
   float sx=length(world0.xyz),sy=length(world1.xyz);vec3 p=c+r*(position.x*sx)+vec3(0.,1.,0.)*(position.y*sy);
-  vUV=uv;vDry=step(.96,h2(floor(c.xz*.31)+4.7));vec3 sunH=normalize(vec3(.4701,0.,-.8768));vShade=.90+.10*abs(dot(r,sunH));
+  vUV=uv;vDry=step(.96,h2(floor(c.xz*.31)+4.7));vec3 sunH=normalize(${SUN_H_GLSL});vShade=.90+.10*abs(dot(r,sunH));
   gl_Position=viewProjection*vec4(p,1.);
 }`;
 
