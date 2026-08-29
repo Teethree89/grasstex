@@ -1,17 +1,15 @@
-/* v46 grass/lighting/world realism: one measured sun model drives directional light and grass lighting,
-   physical sky-dome vertical offset equivalent to the old equirectangular UV shift, world-locked dirt ground,
-   directional gust fields, stiffness/rest-lean variation, LOD-continuous dry clumps, base darkening, backlight,
-   distance integration, and a shared atmosphere tint used everywhere something fades into the haze. */
+/* v47 grass/lighting/world realism: brighter ground/grass illumination while preserving sky-dome appearance,
+   one measured sun model drives directional light and grass lighting, physical sky-dome vertical offset equivalent
+   to the old equirectangular UV shift, world-locked dirt ground, directional gust fields, stiffness/rest-lean variation,
+   LOD-continuous dry clumps, base darkening, backlight, distance integration, and shared atmosphere tint. */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined')return;
 
   var ATMO_R=.60,ATMO_G=.53,ATMO_B=.48;
   var ATMO_GLSL='vec3('+ATMO_R+','+ATMO_G+','+ATMO_B+')';
 
-  /* Single source of truth: visible sun center measured in-game after the physical sky-dome move. */
   var SUN_BEARING_DEG=151.8,SUN_ELEVATION_DEG=5.7;
   var sb=SUN_BEARING_DEG*Math.PI/180,se=SUN_ELEVATION_DEG*Math.PI/180,ce=Math.cos(se);
-  /* Babylon DirectionalLight.direction is the direction the light rays travel, from sun toward ground. */
   var SUN_LIGHT_DIR=new BABYLON.Vector3(-Math.sin(sb)*ce,-Math.sin(se),-Math.cos(sb)*ce).normalize();
   var SUN_TO_SOURCE_H=new BABYLON.Vector3(-SUN_LIGHT_DIR.x,0,-SUN_LIGHT_DIR.z).normalize();
   window.SunModel={bearingDeg:SUN_BEARING_DEG,elevationDeg:SUN_ELEVATION_DEG,lightDir:SUN_LIGHT_DIR.clone(),toSunH:SUN_TO_SOURCE_H.clone()};
@@ -19,13 +17,13 @@
 
   try{
     if(typeof hemi!=='undefined'){
-      hemi.intensity=.68;
-      hemi.diffuse=new BABYLON.Color3(.62,.70,.82);
-      hemi.groundColor=new BABYLON.Color3(.40,.31,.20);
+      hemi.intensity=.82;
+      hemi.diffuse=new BABYLON.Color3(.66,.74,.85);
+      hemi.groundColor=new BABYLON.Color3(.44,.35,.23);
     }
     if(typeof sun!=='undefined'){
-      sun.intensity=1.05;
-      sun.diffuse=new BABYLON.Color3(1.0,.74,.50);
+      sun.intensity=1.18;
+      sun.diffuse=new BABYLON.Color3(1.0,.78,.54);
       sun.direction=SUN_LIGHT_DIR.clone();
     }
     scene.fogDensity=.00345;
@@ -41,7 +39,8 @@
       dirt.uScale=dirt.vScale=GROUND_TILE;
       dirt.anisotropicFilteringLevel=4;
       gm.diffuseTexture=dirt;
-      gm.diffuseColor=new BABYLON.Color3(1,1,1);
+      gm.diffuseColor=new BABYLON.Color3(1.10,1.08,1.04);
+      gm.ambientColor=new BABYLON.Color3(.16,.14,.11);
       gm.specularColor=BABYLON.Color3.Black();
       var texelsPerTile=GROUND_SIZE/GROUND_TILE;
       scene.onBeforeRenderObservable.add(function(){
@@ -51,10 +50,6 @@
     }
   }catch(_){ }
 
-  /* Sky: keep the equirectangular image sampling geometrically correct and move the entire 1000-unit
-     sphere upward instead. At the horizon, a UV shift b corresponds to angular shift PI*b, so the
-     sphere-center translation that produces the same horizon displacement is R*sin(PI*b).
-     For the previous 0.110 bias on a radius-500 dome this is ~169.37 world units upward. */
   try{
     if(typeof A!=='undefined'){
       var SKY_OFFSET_UV=.110,SKY_RADIUS=500;
@@ -107,8 +102,8 @@ void main(){
   vDry=step(.96,h2(floor(c*.31)+4.7));
   vec3 cardN=normalize(vec3(world2.x,0.,world2.z));
   vec3 sunH=normalize(${SUN_H_GLSL});
-  float side=.84+.16*abs(dot(cardN,sunH));
-  float back=.07*max(0.,-dot(cardN,sunH));
+  float side=.91+.17*abs(dot(cardN,sunH));
+  float back=.09*max(0.,-dot(cardN,sunH));
   vShade=side+back;
   vBase=1.0-uv.y;
   gl_Position=viewProjection*wp;
@@ -119,11 +114,11 @@ varying vec2 vUV;varying float vD;varying float vShade;varying float vDry;varyin
 void main(){
   if(vD>30.0)discard;
   vec4 c=texture2D(grassTexture,vUV);if(c.a<.12)discard;
-  float root=mix(.72,1.0,smoothstep(.02,.36,vBase));
-  vec3 col=c.rgb*root*vShade;
+  float root=mix(.78,1.06,smoothstep(.02,.36,vBase));
+  vec3 col=c.rgb*root*vShade*1.08;
   vec3 dry=vec3(.58,.49,.25);
-  col=mix(col,mix(col,dry,.32),vDry);
-  float dTint=smoothstep(12.0,30.0,vD)*.12;
+  col=mix(col,mix(col,dry,.28),vDry);
+  float dTint=smoothstep(12.0,30.0,vD)*.10;
   col=mix(col,${ATMO_GLSL},dTint);
   gl_FragColor=vec4(col,1.);
 }`;
@@ -146,7 +141,7 @@ void main(){
   vec2 bend=(dir*(.020+.050*gust+.027*(sin(ph)*.58+turb*.23))+vec2(-dir.y,dir.x)*turb*.010)*uWind*stiff*ht;
   vec3 p=c+r*(position.x*sx)+vec3(0.,1.,0.)*(position.y*sy);p.xz+=bend;
   vUV=uv;vDry=step(.96,h2(floor(c.xz*.31)+4.7));vBase=1.0-uv.y;
-  vec3 sunH=normalize(${SUN_H_GLSL});vShade=.88+.12*abs(dot(r,sunH))+.05*max(0.,-dot(r,sunH));
+  vec3 sunH=normalize(${SUN_H_GLSL});vShade=.94+.14*abs(dot(r,sunH))+.07*max(0.,-dot(r,sunH));
   gl_Position=viewProjection*vec4(p,1.);
 }`;
 
@@ -155,10 +150,10 @@ varying vec2 vUV;varying float vD;varying float vShade;varying float vDry;varyin
 void main(){
   if(vD<30.0||vD>165.0)discard;
   vec4 c=texture2D(grassTexture,vUV);if(c.a<.12)discard;
-  float root=mix(.76,1.0,smoothstep(.02,.34,vBase));
-  vec3 col=c.rgb*root*vShade;
-  col=mix(col,mix(col,vec3(.58,.49,.25),.28),vDry);
-  float haze=smoothstep(55.0,165.0,vD)*.30;
+  float root=mix(.81,1.05,smoothstep(.02,.34,vBase));
+  vec3 col=c.rgb*root*vShade*1.06;
+  col=mix(col,mix(col,vec3(.58,.49,.25),.24),vDry);
+  float haze=smoothstep(55.0,165.0,vD)*.26;
   col=mix(col,${ATMO_GLSL},haze);
   gl_FragColor=vec4(col,1.);
 }`;
@@ -171,7 +166,7 @@ float h2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 void main(){
   vec3 c=world3.xyz;vec3 t=cameraPosition-c;vD=length(t);t.y=0.;vec3 f=t/max(length(t),.0001);vec3 r=normalize(vec3(f.z,0.,-f.x));
   float sx=length(world0.xyz),sy=length(world1.xyz);vec3 p=c+r*(position.x*sx)+vec3(0.,1.,0.)*(position.y*sy);
-  vUV=uv;vDry=step(.96,h2(floor(c.xz*.31)+4.7));vec3 sunH=normalize(${SUN_H_GLSL});vShade=.90+.10*abs(dot(r,sunH));
+  vUV=uv;vDry=step(.96,h2(floor(c.xz*.31)+4.7));vec3 sunH=normalize(${SUN_H_GLSL});vShade=.95+.12*abs(dot(r,sunH));
   gl_Position=viewProjection*vec4(p,1.);
 }`;
 
@@ -180,8 +175,8 @@ varying vec2 vUV;varying float vD;varying float vShade;varying float vDry;unifor
 void main(){
   if(vD<150.0||vD>242.0)discard;
   vec4 c=texture2D(grassTexture,vUV);if(c.a<.10)discard;
-  vec3 col=c.rgb*vShade;col=mix(col,mix(col,vec3(.58,.49,.25),.22),vDry);
-  float haze=smoothstep(150.0,242.0,vD)*.48+.22;
+  vec3 col=c.rgb*vShade*1.04;col=mix(col,mix(col,vec3(.58,.49,.25),.18),vDry);
+  float haze=smoothstep(150.0,242.0,vD)*.44+.18;
   col=mix(col,${ATMO_GLSL},haze);
   gl_FragColor=vec4(col,1.);
 }`;
@@ -191,7 +186,7 @@ varying vec2 vUV;varying float vD;uniform sampler2D fillTexture;
 void main(){
   if(vD>30.0)discard;vec2 p=vUV-.5;float fade=1.-smoothstep(.42,1.,length(p)*2.);
   vec4 c=texture2D(fillTexture,vUV);float a=fade*.82;if(a<.025)discard;
-  vec3 col=c.rgb*(.96+.04*fade);col=mix(col,${ATMO_GLSL},smoothstep(18.0,30.0,vD)*.10);
+  vec3 col=c.rgb*1.08*(.98+.04*fade);col=mix(col,${ATMO_GLSL},smoothstep(18.0,30.0,vD)*.08);
   gl_FragColor=vec4(col,a);
 }`;
 })();
