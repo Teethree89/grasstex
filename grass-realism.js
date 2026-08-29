@@ -1,14 +1,15 @@
-/* v52 grass/lighting/world realism: restored v46 world/grass lighting while preserving the fixed world-locked dirt UV compensation,
+/* v53 grass/lighting/world realism: restored v46 world/grass lighting while preserving the fixed world-locked dirt UV compensation,
    one measured sun model drives directional light and grass lighting, physical sky-dome vertical offset equivalent
    to the old equirectangular UV shift, world-locked dirt ground, directional gust fields, stiffness/rest-lean variation,
-   LOD-continuous dry clumps, base darkening, backlight, distance integration, shared atmosphere tint, and 75% fill opacity. */
+   LOD-continuous dry clumps, base darkening, backlight, distance integration, shared atmosphere tint, 75% fill opacity,
+   and a broad 65% radial fill feather for softer clump-to-ground blending. */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined')return;
 
   try{
-    document.title='Grass Game v52';
+    document.title='Grass Game v53';
     var rows=document.querySelectorAll('#ui .row');
-    for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v52';break;}
+    for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v53';break;}
   }catch(_){ }
 
   var ATMO_R=.60,ATMO_G=.53,ATMO_B=.48;
@@ -190,7 +191,7 @@ void main(){
   BABYLON.Effect.ShadersStore.patchFragmentShader=`precision highp float;
 varying vec2 vUV;varying float vD;uniform sampler2D fillTexture;
 void main(){
-  if(vD>30.0)discard;vec2 p=vUV-.5;float fade=1.-smoothstep(.42,1.,length(p)*2.);
+  if(vD>30.0)discard;vec2 p=vUV-.5;float fade=1.-smoothstep(.35,1.,length(p)*2.);
   vec4 c=texture2D(fillTexture,vUV);float a=fade*.75;if(a<.025)discard;
   vec3 col=c.rgb*(.96+.04*fade);col=mix(col,${ATMO_GLSL},smoothstep(18.0,30.0,vD)*.10);
   gl_FragColor=vec4(col,a);
