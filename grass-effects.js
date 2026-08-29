@@ -1,11 +1,22 @@
-/* v43 projected grass-image shadows; directional gust sway matching v43 grass, shadows above filltex, budgeted streaming, independent near/medium visibility */
+/* v44 projected grass-image shadows; directional gust sway matching v44 grass, shadow yaw/length now follow the
+   actual sun direction (so a low golden-hour sun casts long shadows instead of the old fixed-angle stub),
+   shadows above filltex, budgeted streaming, independent near/medium visibility */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||typeof engine==='undefined'||typeof generateChunk==='undefined'||typeof perChunkCount==='undefined'||typeof V==='undefined'||typeof A==='undefined')return;
 
   var SHADOW_END=165;
   var NEAR_SHADOW_END=30;
-  var SUN_YAW=.52;
   var SHADOW_Y=.0125;
+
+  /* SUN_YAW=.52 was hand-tuned against the original sun.direction=(-.5,-1,.25). Rather than hardcode a new
+     magic angle every time the light moves, re-derive it as the same tuned offset applied to whatever the
+     current sun azimuth is, and stretch the shadow card further for a lower sun (real shadows lengthen as
+     the light drops toward the horizon; the old code always used a fixed 1.55x regardless of sun angle). */
+  var BASE_YAW=.52,BASE_DIR_AZ=Math.atan2(.25,-.5);
+  var sunDir=(typeof sun!=='undefined'&&sun.direction)?sun.direction:new BABYLON.Vector3(-.5,-1,.25);
+  var SUN_YAW=BASE_YAW+(Math.atan2(sunDir.z,sunDir.x)-BASE_DIR_AZ);
+  var sunElev=Math.atan2(-sunDir.y,Math.max(.0001,Math.hypot(sunDir.x,sunDir.z)));
+  var SHADOW_STRETCH=BABYLON.Scalar.Clamp(1/Math.tan(Math.max(sunElev,.09)),1.4,4.2);
 
   BABYLON.Effect.ShadersStore.grassImageShadowVertexShader=`precision highp float;
 attribute vec3 position;attribute vec2 uv;attribute vec4 world0;attribute vec4 world1;attribute vec4 world2;attribute vec4 world3;attribute float instanceSeed;
@@ -46,13 +57,14 @@ void main(){
   vec4 g=texture2D(grassTexture,vUV);if(g.a<.10)discard;
   float distanceFade=1.0-smoothstep(55.0,${SHADOW_END.toFixed(1)},vD);
   float a=g.a*(.19+.17*distanceFade);if(a<.018)discard;
-  gl_FragColor=vec4(.043,.040,.029,a);
+  /* Cooler than neutral: skylight fill dominates in shadow under a warm low sun. */
+  gl_FragColor=vec4(.036,.039,.049,a);
 }`;
 
   function makeShadowType(def,i){
     var p=BABYLON.MeshBuilder.CreatePlane('grassImageShadow'+i,{width:def.width,height:-def.height,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
     p.position.y=def.height*(def.ground-.5);p.bakeCurrentTransformIntoVertices();p.position.set(0,0,0);
-    p.scaling.y=1.55;p.rotationQuaternion=BABYLON.Quaternion.RotationYawPitchRoll(SUN_YAW,Math.PI/2,0);
+    p.scaling.y=SHADOW_STRETCH;p.rotationQuaternion=BABYLON.Quaternion.RotationYawPitchRoll(SUN_YAW,Math.PI/2,0);
     p.bakeCurrentTransformIntoVertices();p.position.set(0,0,0);p.rotation.set(0,0,0);p.rotationQuaternion=null;p.scaling.set(1,1,1);
     p.isPickable=false;p.alwaysSelectAsActiveMesh=true;p.alphaIndex=10;
     var m=new BABYLON.ShaderMaterial('grassImageShadowMat'+i,scene,{vertex:'grassImageShadow',fragment:'grassImageShadow'},{attributes:['position','uv','world0','world1','world2','world3','instanceSeed'],uniforms:['viewProjection','cameraPosition','uTime','uWind','uDrawNear','uDrawMedium'],samplers:['grassTexture'],needAlphaBlending:true});
