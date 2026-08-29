@@ -9,12 +9,14 @@
   var ATMO_R=.60,ATMO_G=.53,ATMO_B=.48;
   var ATMO_GLSL='vec3('+ATMO_R+','+ATMO_G+','+ATMO_B+')';
 
-  /* Coherent golden-hour outdoor lighting: low warm sun, cool sky fill, warm ground bounce. */
+  /* Coherent golden-hour outdoor lighting: low warm sun, warm sky fill (brightened and pushed toward
+     orange/yellow - a straight cool-blue fill read as too dark/flat against the golden-hour key light),
+     warm ground bounce. */
   try{
     if(typeof hemi!=='undefined'){
-      hemi.intensity=.68;
-      hemi.diffuse=new BABYLON.Color3(.62,.70,.82);
-      hemi.groundColor=new BABYLON.Color3(.40,.31,.20);
+      hemi.intensity=.82;
+      hemi.diffuse=new BABYLON.Color3(.78,.68,.56);
+      hemi.groundColor=new BABYLON.Color3(.46,.36,.24);
     }
     if(typeof sun!=='undefined'){
       sun.intensity=1.05;
