@@ -48,18 +48,22 @@
     }
   }catch(_){ }
 
-  /* Sky: skytex.png as a fixed equirectangular dome, always centered on the camera. */
+  /* Sky: skytex.png as a fixed equirectangular dome, always centered on the camera. Custom shader
+     (same s/t formula Babylon's own FIXED_EQUIRECTANGULAR_MODE uses internally) so the warm sunset
+     band can be nudged up off the horizon with SKY_V_BIAS - the photo's color sits close enough to
+     the true horizon that the ground plane was hiding most of it. */
   try{
     if(typeof A!=='undefined'){
+      var SKY_V_BIAS=.135;
+      BABYLON.Effect.ShadersStore.skyDomeVertexShader='precision highp float;attribute vec3 position;uniform mat4 worldViewProjection;varying vec3 vDir;void main(){vDir=position;gl_Position=worldViewProjection*vec4(position,1.0);}';
+      BABYLON.Effect.ShadersStore.skyDomeFragmentShader='precision highp float;varying vec3 vDir;uniform sampler2D skyTexture;uniform float uVBias;void main(){vec3 d=normalize(vDir);float lon=atan(d.z,d.x);float lat=acos(clamp(d.y,-1.0,1.0));float s=lon/(2.0*3.14159265359)+0.5;float t=clamp(lat/3.14159265359+uVBias,0.0,1.0);gl_FragColor=vec4(texture2D(skyTexture,vec2(s,t)).rgb,1.0);}';
       var sky=BABYLON.MeshBuilder.CreateSphere('skyDome',{diameter:1000,segments:24},scene);
       sky.infiniteDistance=true;sky.isPickable=false;sky.applyFog=false;
-      var skyMat=new BABYLON.StandardMaterial('skyDomeMat',scene);
-      skyMat.backFaceCulling=false;
-      skyMat.disableLighting=true;
-      skyMat.fogEnabled=false;
+      var skyMat=new BABYLON.ShaderMaterial('skyDomeMat',scene,{vertex:'skyDome',fragment:'skyDome'},{attributes:['position'],uniforms:['worldViewProjection','uVBias'],samplers:['skyTexture']});
+      skyMat.backFaceCulling=false;skyMat.disableDepthWrite=true;
       var skyTex=new BABYLON.Texture(A+'skytex.png',scene,false,true,BABYLON.Texture.BILINEAR_SAMPLINGMODE);
-      skyTex.coordinatesMode=BABYLON.Texture.FIXED_EQUIRECTANGULAR_MODE;
-      skyMat.reflectionTexture=skyTex;
+      skyMat.setTexture('skyTexture',skyTex);
+      skyMat.setFloat('uVBias',SKY_V_BIAS);
       sky.material=skyMat;
     }
   }catch(_){ }
