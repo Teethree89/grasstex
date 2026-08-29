@@ -1,4 +1,4 @@
-/* v52 amortized world streaming.
+/* v54 amortized world streaming.
    Replaces the synchronous rebuildWorld() so crossing a chunk boundary no longer
    builds ~50k-450k clump matrices in a single frame.
 
@@ -13,10 +13,12 @@
    - fill patch footprint is derived from the owning grass variant width and the
      exact clump scale, so it matches the crossed-card footprint instead of using
      a generic oversized scale
+   - optional window.GrassAPI masks reject candidate clumps before any LOD/fill
+     instance is written, preserving deterministic RNG sequence across clients
    - the restream trigger uses travel distance, not floor(x/CHUNK), so walking
      along a chunk seam can't thrash
 
-   Load after the base game script, before grass-effects.js. */
+   Load after the base game script and grass-api.js, before grass-effects.js. */
 (function () {
   if (typeof BABYLON === 'undefined' || typeof scene === 'undefined' ||
       typeof camera === 'undefined' || typeof engine === 'undefined') return;
@@ -116,6 +118,10 @@
     for (var i = 0; i < count; i++) {
       var x = ox + r() * CHUNK, z = oz + r() * CHUNK;
       var yaw = r() * Math.PI * 2, s = .70 + r() * .48, h = .82 + r() * .30, seed = r();
+      /* Consume the full deterministic random sequence before filtering. That way the
+         same chunk produces the same remaining clumps on every client given the same mask. */
+      if (window.GrassAPI && typeof window.GrassAPI.isAllowed === 'function' &&
+          !window.GrassAPI.isAllowed(x, z, {chunkX:cx, chunkZ:cz, index:i, seed:seed})) continue;
       sink(i, x, z, yaw, s, h, seed);
     }
   }
@@ -135,8 +141,6 @@
         nearN[v] = o + 16;
         nearS[v][seedN[v]++] = seed;
 
-        /* nearPatch is a .65m square. Scale it so its final world-space width is
-           exactly the same as this grass variant's card width at this clump scale. */
         var pw = (typeof V !== 'undefined' && V[v] && V[v].width) ? V[v].width : .71;
         var ps = gs * pw / .65, q = patchN;
         patchM[q] = c * ps;  patchM[q + 1] = 0;  patchM[q + 2] = -sn * ps; patchM[q + 3] = 0;
@@ -146,9 +150,6 @@
         patchN = q + 16;
       }
 
-      /* Full medium density wherever this chunk is also near-capable. Because a clump
-         crossing 30m must live in one of these chunks, its medium billboard already exists
-         before the crossed-card near representation takes over. Farther chunks remain 1/2. */
       if (wm && (wn || (Math.floor(i / 6) & 1) === 0)) {
         a = medM[v]; o = medN[v];
         a[o] = c * s;  a[o + 1] = 0;   a[o + 2] = -sn * s; a[o + 3] = 0;
