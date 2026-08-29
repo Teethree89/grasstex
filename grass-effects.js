@@ -1,4 +1,4 @@
-/* v42 projected grass-image shadows; corrected lateral sway, shadows above filltex, budgeted streaming, and independent near/medium visibility */
+/* v43 projected grass-image shadows; directional gust sway matching v43 grass, shadows above filltex, budgeted streaming, independent near/medium visibility */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||typeof engine==='undefined'||typeof generateChunk==='undefined'||typeof perChunkCount==='undefined'||typeof V==='undefined'||typeof A==='undefined')return;
 
@@ -11,26 +11,29 @@
 attribute vec3 position;attribute vec2 uv;attribute vec4 world0;attribute vec4 world1;attribute vec4 world2;attribute vec4 world3;attribute float instanceSeed;
 uniform mat4 viewProjection;uniform vec3 cameraPosition;uniform float uTime;uniform float uWind;
 varying vec2 vUV;varying float vD;
+float hsh(float n){return fract(sin(n)*43758.5453123);}float h2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 void main(){
   vec3 c=world3.xyz;
   vec4 wp=mat4(world0,world1,world2,world3)*vec4(position,1.);
   vD=distance(c,cameraPosition);
-  float h=1.0-smoothstep(0.,1.,uv.y);h*=h;
-  vec2 windOffset=vec2(0.);
+  float ht=1.0-smoothstep(0.,1.,uv.y);ht*=ht;
+  vec2 dir=normalize(vec2(.82,.57));
+  float gust=.72+.22*sin(c.x*.034+c.z*.022-uTime*.58)+.10*sin(c.x*.071-c.z*.047-uTime*1.07);
+  vec2 bend=vec2(0.);
   if(vD<${NEAR_SHADOW_END.toFixed(1)}){
-    float ph=uTime*1.2+instanceSeed*6.283;
-    float f=sin(ph*1.71+instanceSeed*9.7);
-    windOffset.x=-((sin(ph)*.72+f*.28)*.07*uWind*h);
-    windOffset.y=f*.018*uWind*h;
+    float stiff=mix(.72,1.18,hsh(instanceSeed*91.17+3.1));
+    float ph=uTime*1.28+instanceSeed*6.283+c.x*.010+c.z*.006;
+    float turb=sin(ph*1.73+instanceSeed*9.7);
+    float pulse=sin(ph)*.58+turb*.23;
+    bend=(dir*(.020+.052*gust+.030*pulse)+vec2(-dir.y,dir.x)*turb*.012)*uWind*stiff*ht;
   }else{
-    vec3 toCam=cameraPosition-c;toCam.y=0.;
-    vec3 fw=toCam/max(length(toCam),.0001);
-    vec3 r=normalize(vec3(fw.z,0.,-fw.x));
-    float ph=uTime*1.05+c.x*.37+c.z*.21;
-    float sway=(sin(ph)+sin(ph*1.73)*.35)*.055*uWind*h;
-    windOffset=vec2(-r.x,r.z)*sway;
+    float sd=h2(floor(c.xz*.17));float stiff=mix(.74,1.16,sd);
+    float ph=uTime*1.12+c.x*.37+c.z*.21;
+    float turb=sin(ph*1.73+sd*7.1);
+    bend=(dir*(.020+.050*gust+.027*(sin(ph)*.58+turb*.23))+vec2(-dir.y,dir.x)*turb*.010)*uWind*stiff*ht;
   }
-  wp.x+=windOffset.x;wp.z+=windOffset.y;wp.y=${SHADOW_Y.toFixed(4)};
+  /* Projected card handedness is reversed on X; preserve the v39 lateral correction. */
+  wp.x-=bend.x;wp.z+=bend.y;wp.y=${SHADOW_Y.toFixed(4)};
   gl_Position=viewProjection*wp;vUV=uv;
 }`;
 
@@ -42,8 +45,8 @@ void main(){
   if(vD>=${NEAR_SHADOW_END.toFixed(1)}&&uDrawMedium<0.5)discard;
   vec4 g=texture2D(grassTexture,vUV);if(g.a<.10)discard;
   float distanceFade=1.0-smoothstep(55.0,${SHADOW_END.toFixed(1)},vD);
-  float a=g.a*(.20+.18*distanceFade);if(a<.018)discard;
-  gl_FragColor=vec4(.045,.041,.029,a);
+  float a=g.a*(.19+.17*distanceFade);if(a<.018)discard;
+  gl_FragColor=vec4(.043,.040,.029,a);
 }`;
 
   function makeShadowType(def,i){
