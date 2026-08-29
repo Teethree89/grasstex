@@ -1,23 +1,46 @@
-/* v36 projected grass-image shadows, pivoted from the real grass base; every clump receives a shadow */
+/* v37 projected grass-image shadows; every clump receives a shadow and shadow sway matches the rendered grass LOD */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||typeof engine==='undefined'||typeof generateChunk==='undefined'||typeof perChunkCount==='undefined'||typeof V==='undefined'||typeof A==='undefined')return;
 
   var SHADOW_END=165;
+  var NEAR_SHADOW_END=30;
   var SUN_YAW=.52;
 
   BABYLON.Effect.ShadersStore.grassImageShadowVertexShader=`precision highp float;
-attribute vec3 position;attribute vec2 uv;attribute vec4 world0;attribute vec4 world1;attribute vec4 world2;attribute vec4 world3;
+attribute vec3 position;attribute vec2 uv;attribute vec4 world0;attribute vec4 world1;attribute vec4 world2;attribute vec4 world3;attribute float instanceSeed;
 uniform mat4 viewProjection;uniform vec3 cameraPosition;uniform float uTime;uniform float uWind;
 varying vec2 vUV;varying float vD;
 void main(){
+  vec3 c=world3.xyz;
   vec4 wp=mat4(world0,world1,world2,world3)*vec4(position,1.);
-  float ph=uTime*.95+world3.x*.31+world3.z*.23;
-  float reach=smoothstep(0.,1.,uv.y);
-  float sway=(sin(ph)+sin(ph*1.67)*.32)*.040*uWind*reach;
-  wp.x+=sway;
-  wp.z+=sway*.35;
+  vD=distance(c,cameraPosition);
+
+  /* Use the same height falloff as the grass cards: base stays planted,
+     upper/tip pixels receive the full wind displacement. */
+  float h=smoothstep(0.,1.,uv.y);
+  h*=h;
+
+  vec2 windOffset=vec2(0.);
+  if(vD<${NEAR_SHADOW_END.toFixed(1)}){
+    /* Exact phase/amplitude used by the near crossed-card grass shader. */
+    float ph=uTime*1.2+instanceSeed*6.283;
+    float f=sin(ph*1.71+instanceSeed*9.7);
+    windOffset.x=(sin(ph)*.72+f*.28)*.07*uWind*h;
+    windOffset.y=f*.018*uWind*h;
+  }else{
+    /* Exact phase/amplitude used by the medium camera-facing billboard shader. */
+    vec3 toCam=cameraPosition-c;
+    toCam.y=0.;
+    vec3 fw=toCam/max(length(toCam),.0001);
+    vec3 r=normalize(vec3(fw.z,0.,-fw.x));
+    float ph=uTime*1.05+c.x*.37+c.z*.21;
+    float sway=(sin(ph)+sin(ph*1.73)*.35)*.055*uWind*h;
+    windOffset=vec2(r.x,r.z)*sway;
+  }
+
+  wp.x+=windOffset.x;
+  wp.z+=windOffset.y;
   wp.y=.009;
-  vD=distance(wp.xyz,cameraPosition);
   gl_Position=viewProjection*wp;
   vUV=uv;
 }`;
@@ -37,6 +60,7 @@ void main(){
 
   function makeShadowType(def,i){
     var p=BABYLON.MeshBuilder.CreatePlane('grassImageShadow'+i,{width:def.width,height:-def.height,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
+    /* Match the real grass card's ground-line offset before projecting it flat. */
     p.position.y=def.height*(def.ground-.5);
     p.bakeCurrentTransformIntoVertices();
     p.position.set(0,0,0);
@@ -48,7 +72,7 @@ void main(){
     p.isPickable=false;p.alwaysSelectAsActiveMesh=true;
 
     var m=new BABYLON.ShaderMaterial('grassImageShadowMat'+i,scene,{vertex:'grassImageShadow',fragment:'grassImageShadow'},{
-      attributes:['position','uv','world0','world1','world2','world3'],
+      attributes:['position','uv','world0','world1','world2','world3','instanceSeed'],
       uniforms:['viewProjection','cameraPosition','uTime','uWind'],
       samplers:['grassTexture'],needAlphaBlending:true
     });
@@ -69,7 +93,7 @@ void main(){
     var cx=Math.floor(camera.position.x/CHUNK),cz=Math.floor(camera.position.z/CHUNK),den=+density.value;
     if(!force&&cx===lastCx&&cz===lastCz&&den===lastDen)return;
     lastCx=cx;lastCz=cz;lastDen=den;
-    var count=perChunkCount(),range=Math.ceil((SHADOW_END+CHUNK*1.5)/CHUNK),arr=Array.from({length:6},function(){return[]});
+    var count=perChunkCount(),range=Math.ceil((SHADOW_END+CHUNK*1.5)/CHUNK),arr=Array.from({length:6},function(){return[]}),seedArr=Array.from({length:6},function(){return[]});
     for(var z=cz-range;z<=cz+range;z++){
       for(var x=cx-range;x<=cx+range;x++){
         var centerX=(x+.5)*CHUNK,centerZ=(z+.5)*CHUNK,dx=centerX-camera.position.x,dz=centerZ-camera.position.z;
@@ -82,10 +106,14 @@ void main(){
           P2.set(g.x,.009,g.z);
           BABYLON.Matrix.ComposeToRef(S2,Q2,P2,M2);
           for(var k=0;k<16;k++)arr[g.v].push(M2.m[k]);
+          seedArr[g.v].push(g.seed);
         }
       }
     }
-    for(var v=0;v<6;v++)shadowTypes[v].mesh.thinInstanceSetBuffer('matrix',new Float32Array(arr[v]),16,true);
+    for(var v=0;v<6;v++){
+      shadowTypes[v].mesh.thinInstanceSetBuffer('matrix',new Float32Array(arr[v]),16,true);
+      shadowTypes[v].mesh.thinInstanceSetBuffer('instanceSeed',new Float32Array(seedArr[v]),1,true);
+    }
   }
 
   var t=0;
