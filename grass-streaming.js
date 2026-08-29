@@ -1,4 +1,4 @@
-/* v41 amortized world streaming.
+/* v48 amortized world streaming.
    Replaces the synchronous rebuildWorld() so crossing a chunk boundary no longer
    builds ~50k-450k clump matrices in a single frame.
 
@@ -7,6 +7,9 @@
    - GPU uploads are spread one grass type per frame
    - near/patch instances are limited to chunks that can actually pass the
      NEAR_END distance test instead of the whole 242m ring
+   - medium keeps FULL clump coverage in all near-capable chunks, then drops to
+     half density only farther out; this guarantees every clump approaching the
+     30m near boundary already has a medium representation instead of popping in
    - the restream trigger uses travel distance, not floor(x/CHUNK), so walking
      along a chunk seam can't thrash
 
@@ -63,7 +66,7 @@
     var range = Math.ceil(RING / CHUNK) + 1;
     var cx = Math.floor(ox / CHUNK), cz = Math.floor(oz / CHUNK);
 
-    var list = [], nearC = 0, medC = 0, farC = 0;
+    var list = [], nearC = 0, medFullC = 0, medHalfC = 0, farC = 0;
     for (var z = cz - range; z <= cz + range; z++) {
       for (var x = cx - range; x <= cx + range; x++) {
         var dx = (x + .5) * CHUNK - ox, dz = (z + .5) * CHUNK - oz;
@@ -72,7 +75,10 @@
         var wn = d <= NEAR_D, wm = d <= MED_D, wf = d >= FAR_LO && d <= FAR_HI;
         if (!wn && !wm && !wf) continue;
         if (wn) nearC++;
-        if (wm) medC++;
+        if (wm) {
+          if (wn) medFullC++;
+          else medHalfC++;
+        }
         if (wf) farC++;
         list.push({ x: x, z: z, d: d, n: wn, m: wm, f: wf });
       }
@@ -89,7 +95,7 @@
     for (var t = 0; t < 6; t++) {
       fit(nearM, t, nearC * c6[t] * 16);
       fit(nearS, t, nearC * c6[t]);
-      fit(medM, t, medC * cm[t] * 16);
+      fit(medM, t, (medFullC * c6[t] + medHalfC * cm[t]) * 16);
       fit(farM, t, farC * cf[t] * 16);
       nearN[t] = seedN[t] = medN[t] = farN[t] = 0;
     }
@@ -134,7 +140,10 @@
         patchN = q + 16;
       }
 
-      if (wm && (Math.floor(i / 6) & 1) === 0) {
+      /* Full medium density wherever this chunk is also near-capable. Because a clump
+         crossing 30m must live in one of these chunks, its medium billboard already exists
+         before the crossed-card near representation takes over. Farther chunks remain 1/2. */
+      if (wm && (wn || (Math.floor(i / 6) & 1) === 0)) {
         a = medM[v]; o = medN[v];
         a[o] = c * s;  a[o + 1] = 0;   a[o + 2] = -sn * s; a[o + 3] = 0;
         a[o + 4] = 0;  a[o + 5] = sy;  a[o + 6] = 0;       a[o + 7] = 0;
