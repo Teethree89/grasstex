@@ -1,9 +1,16 @@
-/* v48 grass/lighting/world realism: fixed world-locked dirt UV compensation plus brighter ground/grass illumination while preserving sky-dome appearance,
+/* v50 grass/lighting/world realism: restored v46 world/grass lighting while preserving the fixed world-locked dirt UV compensation,
    one measured sun model drives directional light and grass lighting, physical sky-dome vertical offset equivalent
    to the old equirectangular UV shift, world-locked dirt ground, directional gust fields, stiffness/rest-lean variation,
    LOD-continuous dry clumps, base darkening, backlight, distance integration, and shared atmosphere tint. */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined')return;
+
+  /* v50 is intentionally a lighting-only rollback from the brighter v47 values. Keep later dirt/LOD/near-pair fixes intact. */
+  try{
+    document.title='Grass Game v50';
+    var rows=document.querySelectorAll('#ui .row');
+    for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v50';break;}
+  }catch(_){ }
 
   var ATMO_R=.60,ATMO_G=.53,ATMO_B=.48;
   var ATMO_GLSL='vec3('+ATMO_R+','+ATMO_G+','+ATMO_B+')';
@@ -17,13 +24,13 @@
 
   try{
     if(typeof hemi!=='undefined'){
-      hemi.intensity=.82;
-      hemi.diffuse=new BABYLON.Color3(.66,.74,.85);
-      hemi.groundColor=new BABYLON.Color3(.44,.35,.23);
+      hemi.intensity=.68;
+      hemi.diffuse=new BABYLON.Color3(.62,.70,.82);
+      hemi.groundColor=new BABYLON.Color3(.40,.31,.20);
     }
     if(typeof sun!=='undefined'){
-      sun.intensity=1.18;
-      sun.diffuse=new BABYLON.Color3(1.0,.78,.54);
+      sun.intensity=1.05;
+      sun.diffuse=new BABYLON.Color3(1.0,.74,.50);
       sun.direction=SUN_LIGHT_DIR.clone();
     }
     scene.fogDensity=.00345;
@@ -39,13 +46,12 @@
       dirt.uScale=dirt.vScale=GROUND_TILE;
       dirt.anisotropicFilteringLevel=4;
       gm.diffuseTexture=dirt;
-      gm.diffuseColor=new BABYLON.Color3(1.10,1.08,1.04);
-      gm.ambientColor=new BABYLON.Color3(.16,.14,.11);
+      gm.diffuseColor=new BABYLON.Color3(1,1,1);
+      gm.ambientColor=BABYLON.Color3.Black();
       gm.specularColor=BABYLON.Color3.Black();
       var texelsPerTile=GROUND_SIZE/GROUND_TILE;
       scene.onBeforeRenderObservable.add(function(){
-        /* The ground quad follows the camera. Counter that mesh translation in UV space so
-           a dirt feature stays at the same WORLD coordinate instead of sliding with/away from us. */
+        /* Ground follows the camera; compensate in UV space so dirt remains fixed in world coordinates. */
         var u=ground.position.x/texelsPerTile,v=ground.position.z/texelsPerTile;
         dirt.uOffset=u-Math.floor(u);dirt.vOffset=v-Math.floor(v);
       });
@@ -104,8 +110,8 @@ void main(){
   vDry=step(.96,h2(floor(c*.31)+4.7));
   vec3 cardN=normalize(vec3(world2.x,0.,world2.z));
   vec3 sunH=normalize(${SUN_H_GLSL});
-  float side=.91+.17*abs(dot(cardN,sunH));
-  float back=.09*max(0.,-dot(cardN,sunH));
+  float side=.84+.16*abs(dot(cardN,sunH));
+  float back=.07*max(0.,-dot(cardN,sunH));
   vShade=side+back;
   vBase=1.0-uv.y;
   gl_Position=viewProjection*wp;
@@ -116,11 +122,11 @@ varying vec2 vUV;varying float vD;varying float vShade;varying float vDry;varyin
 void main(){
   if(vD>30.0)discard;
   vec4 c=texture2D(grassTexture,vUV);if(c.a<.12)discard;
-  float root=mix(.78,1.06,smoothstep(.02,.36,vBase));
-  vec3 col=c.rgb*root*vShade*1.08;
+  float root=mix(.72,1.0,smoothstep(.02,.36,vBase));
+  vec3 col=c.rgb*root*vShade;
   vec3 dry=vec3(.58,.49,.25);
-  col=mix(col,mix(col,dry,.28),vDry);
-  float dTint=smoothstep(12.0,30.0,vD)*.10;
+  col=mix(col,mix(col,dry,.32),vDry);
+  float dTint=smoothstep(12.0,30.0,vD)*.12;
   col=mix(col,${ATMO_GLSL},dTint);
   gl_FragColor=vec4(col,1.);
 }`;
@@ -143,7 +149,7 @@ void main(){
   vec2 bend=(dir*(.020+.050*gust+.027*(sin(ph)*.58+turb*.23))+vec2(-dir.y,dir.x)*turb*.010)*uWind*stiff*ht;
   vec3 p=c+r*(position.x*sx)+vec3(0.,1.,0.)*(position.y*sy);p.xz+=bend;
   vUV=uv;vDry=step(.96,h2(floor(c.xz*.31)+4.7));vBase=1.0-uv.y;
-  vec3 sunH=normalize(${SUN_H_GLSL});vShade=.94+.14*abs(dot(r,sunH))+.07*max(0.,-dot(r,sunH));
+  vec3 sunH=normalize(${SUN_H_GLSL});vShade=.88+.12*abs(dot(r,sunH))+.05*max(0.,-dot(r,sunH));
   gl_Position=viewProjection*vec4(p,1.);
 }`;
 
@@ -152,10 +158,10 @@ varying vec2 vUV;varying float vD;varying float vShade;varying float vDry;varyin
 void main(){
   if(vD<30.0||vD>165.0)discard;
   vec4 c=texture2D(grassTexture,vUV);if(c.a<.12)discard;
-  float root=mix(.81,1.05,smoothstep(.02,.34,vBase));
-  vec3 col=c.rgb*root*vShade*1.06;
-  col=mix(col,mix(col,vec3(.58,.49,.25),.24),vDry);
-  float haze=smoothstep(55.0,165.0,vD)*.26;
+  float root=mix(.76,1.0,smoothstep(.02,.34,vBase));
+  vec3 col=c.rgb*root*vShade;
+  col=mix(col,mix(col,vec3(.58,.49,.25),.28),vDry);
+  float haze=smoothstep(55.0,165.0,vD)*.30;
   col=mix(col,${ATMO_GLSL},haze);
   gl_FragColor=vec4(col,1.);
 }`;
@@ -168,7 +174,7 @@ float h2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 void main(){
   vec3 c=world3.xyz;vec3 t=cameraPosition-c;vD=length(t);t.y=0.;vec3 f=t/max(length(t),.0001);vec3 r=normalize(vec3(f.z,0.,-f.x));
   float sx=length(world0.xyz),sy=length(world1.xyz);vec3 p=c+r*(position.x*sx)+vec3(0.,1.,0.)*(position.y*sy);
-  vUV=uv;vDry=step(.96,h2(floor(c.xz*.31)+4.7));vec3 sunH=normalize(${SUN_H_GLSL});vShade=.95+.12*abs(dot(r,sunH));
+  vUV=uv;vDry=step(.96,h2(floor(c.xz*.31)+4.7));vec3 sunH=normalize(${SUN_H_GLSL});vShade=.90+.10*abs(dot(r,sunH));
   gl_Position=viewProjection*vec4(p,1.);
 }`;
 
@@ -177,8 +183,8 @@ varying vec2 vUV;varying float vD;varying float vShade;varying float vDry;unifor
 void main(){
   if(vD<150.0||vD>242.0)discard;
   vec4 c=texture2D(grassTexture,vUV);if(c.a<.10)discard;
-  vec3 col=c.rgb*vShade*1.04;col=mix(col,mix(col,vec3(.58,.49,.25),.18),vDry);
-  float haze=smoothstep(150.0,242.0,vD)*.44+.18;
+  vec3 col=c.rgb*vShade;col=mix(col,mix(col,vec3(.58,.49,.25),.22),vDry);
+  float haze=smoothstep(150.0,242.0,vD)*.48+.22;
   col=mix(col,${ATMO_GLSL},haze);
   gl_FragColor=vec4(col,1.);
 }`;
@@ -188,7 +194,7 @@ varying vec2 vUV;varying float vD;uniform sampler2D fillTexture;
 void main(){
   if(vD>30.0)discard;vec2 p=vUV-.5;float fade=1.-smoothstep(.42,1.,length(p)*2.);
   vec4 c=texture2D(fillTexture,vUV);float a=fade*.82;if(a<.025)discard;
-  vec3 col=c.rgb*1.08*(.98+.04*fade);col=mix(col,${ATMO_GLSL},smoothstep(18.0,30.0,vD)*.08);
+  vec3 col=c.rgb*(.96+.04*fade);col=mix(col,${ATMO_GLSL},smoothstep(18.0,30.0,vD)*.10);
   gl_FragColor=vec4(col,a);
 }`;
 })();
