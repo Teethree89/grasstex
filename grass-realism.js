@@ -1,4 +1,4 @@
-/* v47 grass/lighting/world realism: brighter ground/grass illumination while preserving sky-dome appearance,
+/* v48 grass/lighting/world realism: fixed world-locked dirt UV compensation plus brighter ground/grass illumination while preserving sky-dome appearance,
    one measured sun model drives directional light and grass lighting, physical sky-dome vertical offset equivalent
    to the old equirectangular UV shift, world-locked dirt ground, directional gust fields, stiffness/rest-lean variation,
    LOD-continuous dry clumps, base darkening, backlight, distance integration, and shared atmosphere tint. */
@@ -44,7 +44,9 @@
       gm.specularColor=BABYLON.Color3.Black();
       var texelsPerTile=GROUND_SIZE/GROUND_TILE;
       scene.onBeforeRenderObservable.add(function(){
-        var u=-(ground.position.x/texelsPerTile),v=-(ground.position.z/texelsPerTile);
+        /* The ground quad follows the camera. Counter that mesh translation in UV space so
+           a dirt feature stays at the same WORLD coordinate instead of sliding with/away from us. */
+        var u=ground.position.x/texelsPerTile,v=ground.position.z/texelsPerTile;
         dirt.uOffset=u-Math.floor(u);dirt.vOffset=v-Math.floor(v);
       });
     }
