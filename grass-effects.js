@@ -1,4 +1,4 @@
-/* v37 projected grass-image shadows; every clump receives a shadow and shadow sway matches the rendered grass LOD */
+/* v38 projected grass-image shadows; every clump receives a shadow and shadow sway bends from the planted base toward the tip */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||typeof engine==='undefined'||typeof generateChunk==='undefined'||typeof perChunkCount==='undefined'||typeof V==='undefined'||typeof A==='undefined')return;
 
@@ -15,20 +15,19 @@ void main(){
   vec4 wp=mat4(world0,world1,world2,world3)*vec4(position,1.);
   vD=distance(c,cameraPosition);
 
-  /* Use the same height falloff as the grass cards: base stays planted,
-     upper/tip pixels receive the full wind displacement. */
-  float h=smoothstep(0.,1.,uv.y);
+  /* The projected card uses the opposite UV orientation from the upright grass
+     because the source plane has negative height and is then laid flat. UV.y=1
+     is the planted/base edge here, so invert the weight: base=0, tip=1. */
+  float h=1.0-smoothstep(0.,1.,uv.y);
   h*=h;
 
   vec2 windOffset=vec2(0.);
   if(vD<${NEAR_SHADOW_END.toFixed(1)}){
-    /* Exact phase/amplitude used by the near crossed-card grass shader. */
     float ph=uTime*1.2+instanceSeed*6.283;
     float f=sin(ph*1.71+instanceSeed*9.7);
     windOffset.x=(sin(ph)*.72+f*.28)*.07*uWind*h;
     windOffset.y=f*.018*uWind*h;
   }else{
-    /* Exact phase/amplitude used by the medium camera-facing billboard shader. */
     vec3 toCam=cameraPosition-c;
     toCam.y=0.;
     vec3 fw=toCam/max(length(toCam),.0001);
@@ -60,7 +59,6 @@ void main(){
 
   function makeShadowType(def,i){
     var p=BABYLON.MeshBuilder.CreatePlane('grassImageShadow'+i,{width:def.width,height:-def.height,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-    /* Match the real grass card's ground-line offset before projecting it flat. */
     p.position.y=def.height*(def.ground-.5);
     p.bakeCurrentTransformIntoVertices();
     p.position.set(0,0,0);
