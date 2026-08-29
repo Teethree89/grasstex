@@ -1,4 +1,4 @@
-/* v41 projected grass-image shadows; corrected lateral sway, shadows above filltex, and budgeted (non-hitching) shadow streaming */
+/* v42 projected grass-image shadows; corrected lateral sway, shadows above filltex, budgeted streaming, and independent near/medium visibility */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||typeof engine==='undefined'||typeof generateChunk==='undefined'||typeof perChunkCount==='undefined'||typeof V==='undefined'||typeof A==='undefined')return;
 
@@ -35,9 +35,11 @@ void main(){
 }`;
 
   BABYLON.Effect.ShadersStore.grassImageShadowFragmentShader=`precision highp float;
-varying vec2 vUV;varying float vD;uniform sampler2D grassTexture;
+varying vec2 vUV;varying float vD;uniform sampler2D grassTexture;uniform float uDrawNear;uniform float uDrawMedium;
 void main(){
   if(vD>${SHADOW_END.toFixed(1)})discard;
+  if(vD<${NEAR_SHADOW_END.toFixed(1)}&&uDrawNear<0.5)discard;
+  if(vD>=${NEAR_SHADOW_END.toFixed(1)}&&uDrawMedium<0.5)discard;
   vec4 g=texture2D(grassTexture,vUV);if(g.a<.10)discard;
   float distanceFade=1.0-smoothstep(55.0,${SHADOW_END.toFixed(1)},vD);
   float a=g.a*(.20+.18*distanceFade);if(a<.018)discard;
@@ -50,7 +52,7 @@ void main(){
     p.scaling.y=1.55;p.rotationQuaternion=BABYLON.Quaternion.RotationYawPitchRoll(SUN_YAW,Math.PI/2,0);
     p.bakeCurrentTransformIntoVertices();p.position.set(0,0,0);p.rotation.set(0,0,0);p.rotationQuaternion=null;p.scaling.set(1,1,1);
     p.isPickable=false;p.alwaysSelectAsActiveMesh=true;p.alphaIndex=10;
-    var m=new BABYLON.ShaderMaterial('grassImageShadowMat'+i,scene,{vertex:'grassImageShadow',fragment:'grassImageShadow'},{attributes:['position','uv','world0','world1','world2','world3','instanceSeed'],uniforms:['viewProjection','cameraPosition','uTime','uWind'],samplers:['grassTexture'],needAlphaBlending:true});
+    var m=new BABYLON.ShaderMaterial('grassImageShadowMat'+i,scene,{vertex:'grassImageShadow',fragment:'grassImageShadow'},{attributes:['position','uv','world0','world1','world2','world3','instanceSeed'],uniforms:['viewProjection','cameraPosition','uTime','uWind','uDrawNear','uDrawMedium'],samplers:['grassTexture'],needAlphaBlending:true});
     m.backFaceCulling=false;m.disableDepthWrite=true;
     var t=new BABYLON.Texture(A+def.file,scene,true,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
     t.hasAlpha=true;t.wrapU=t.wrapV=BABYLON.Texture.CLAMP_ADDRESSMODE;t.anisotropicFilteringLevel=4;
@@ -112,10 +114,12 @@ void main(){
   var t=0;
   scene.onBeforeRenderObservable.add(function(){
     var dt=Math.min(engine.getDeltaTime()/1000,.05);t+=dt;
+    var showNear=drawNear.checked?1:0,showMedium=drawMedium.checked?1:0,showAny=!!(showNear||showMedium);
     for(var i=0;i<6;i++){
       shadowTypes[i].mat.setVector3('cameraPosition',camera.globalPosition);
       shadowTypes[i].mat.setFloat('uTime',t);shadowTypes[i].mat.setFloat('uWind',+wind.value);
-      shadowTypes[i].mesh.setEnabled(drawNear.checked||drawMedium.checked);
+      shadowTypes[i].mat.setFloat('uDrawNear',showNear);shadowTypes[i].mat.setFloat('uDrawMedium',showMedium);
+      shadowTypes[i].mesh.setEnabled(showAny);
     }
     pumpShadows();
   });
