@@ -1,15 +1,14 @@
-/* v50 grass/lighting/world realism: restored v46 world/grass lighting while preserving the fixed world-locked dirt UV compensation,
+/* v52 grass/lighting/world realism: restored v46 world/grass lighting while preserving the fixed world-locked dirt UV compensation,
    one measured sun model drives directional light and grass lighting, physical sky-dome vertical offset equivalent
    to the old equirectangular UV shift, world-locked dirt ground, directional gust fields, stiffness/rest-lean variation,
-   LOD-continuous dry clumps, base darkening, backlight, distance integration, and shared atmosphere tint. */
+   LOD-continuous dry clumps, base darkening, backlight, distance integration, shared atmosphere tint, and 75% fill opacity. */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined')return;
 
-  /* v50 is intentionally a lighting-only rollback from the brighter v47 values. Keep later dirt/LOD/near-pair fixes intact. */
   try{
-    document.title='Grass Game v50';
+    document.title='Grass Game v52';
     var rows=document.querySelectorAll('#ui .row');
-    for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v50';break;}
+    for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v52';break;}
   }catch(_){ }
 
   var ATMO_R=.60,ATMO_G=.53,ATMO_B=.48;
@@ -51,7 +50,6 @@
       gm.specularColor=BABYLON.Color3.Black();
       var texelsPerTile=GROUND_SIZE/GROUND_TILE;
       scene.onBeforeRenderObservable.add(function(){
-        /* Ground follows the camera; compensate in UV space so dirt remains fixed in world coordinates. */
         var u=ground.position.x/texelsPerTile,v=ground.position.z/texelsPerTile;
         dirt.uOffset=u-Math.floor(u);dirt.vOffset=v-Math.floor(v);
       });
@@ -193,7 +191,7 @@ void main(){
 varying vec2 vUV;varying float vD;uniform sampler2D fillTexture;
 void main(){
   if(vD>30.0)discard;vec2 p=vUV-.5;float fade=1.-smoothstep(.42,1.,length(p)*2.);
-  vec4 c=texture2D(fillTexture,vUV);float a=fade*.82;if(a<.025)discard;
+  vec4 c=texture2D(fillTexture,vUV);float a=fade*.75;if(a<.025)discard;
   vec3 col=c.rgb*(.96+.04*fade);col=mix(col,${ATMO_GLSL},smoothstep(18.0,30.0,vD)*.10);
   gl_FragColor=vec4(col,a);
 }`;
