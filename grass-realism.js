@@ -1,15 +1,13 @@
-/* v44 grass/lighting/world realism: golden-hour sun matched to the equirectangular sky, world-locked dirt ground,
-   directional gust fields, stiffness/rest-lean variation, LOD-continuous dry clumps, base darkening, backlight,
-   distance integration, and a shared atmosphere tint used everywhere something fades into the haze. */
+/* v45 grass/lighting/world realism: physical sky-dome vertical offset equivalent to the old equirectangular UV shift,
+   golden-hour sun matched to the equirectangular sky, world-locked dirt ground, directional gust fields,
+   stiffness/rest-lean variation, LOD-continuous dry clumps, base darkening, backlight, distance integration,
+   and a shared atmosphere tint used everywhere something fades into the haze. */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined')return;
 
-  /* Single source of truth for the haze/fog/horizon tint so grass, ground and fog always agree.
-     Sampled from the actual skytex.png horizon band so the fade target matches the sky dome. */
   var ATMO_R=.60,ATMO_G=.53,ATMO_B=.48;
   var ATMO_GLSL='vec3('+ATMO_R+','+ATMO_G+','+ATMO_B+')';
 
-  /* Coherent golden-hour outdoor lighting: low warm sun, cool sky fill, warm ground bounce. */
   try{
     if(typeof hemi!=='undefined'){
       hemi.intensity=.68;
@@ -19,8 +17,6 @@
     if(typeof sun!=='undefined'){
       sun.intensity=1.05;
       sun.diffuse=new BABYLON.Color3(1.0,.74,.50);
-      /* Bearing 151.8 deg / elevation +5.8 deg - found in-game with the reticle and bearing/elevation
-         readout at SKY_V_BIAS=.110, matched to where the warm band actually sits at that offset. */
       sun.direction=new BABYLON.Vector3(-.4701,-.1011,.8768);
     }
     scene.fogDensity=.00345;
@@ -28,8 +24,6 @@
     scene.clearColor=new BABYLON.Color4(ATMO_R,ATMO_G,ATMO_B,1);
   }catch(_){ }
 
-  /* Ground: replace the flat color with dirttex.png, world-locked so the tiling doesn't swim
-     as the ground quad keeps re-centering under the camera. */
   try{
     if(typeof ground!=='undefined'&&typeof gm!=='undefined'&&typeof A!=='undefined'){
       var GROUND_SIZE=560,GROUND_TILE=64;
@@ -48,31 +42,37 @@
     }
   }catch(_){ }
 
-  /* Sky: skytex.png as a fixed equirectangular dome, always centered on the camera. Custom shader
-     (same s/t formula Babylon's own FIXED_EQUIRECTANGULAR_MODE uses internally, verified against it
-     directly - note this plain sampler2D needs invertY=false, unlike the reflectionTexture pipeline
-     which wanted true) so the warm sunset band can be nudged up off the horizon with SKY_V_BIAS: the
-     photo's color sits right at the true horizon line, easy to miss behind the ground plane and fog.
-     .110 puts the peak around bearing 151.8/elevation +5.8, matched by sun.direction/sunH below -
-     also live-tunable from the options panel's Skybox Offset slider, which drives this same uniform. */
+  /* Sky: keep the equirectangular image sampling geometrically correct and move the entire 1000-unit
+     sphere upward instead. At the horizon, a UV shift b corresponds to angular shift PI*b, so the
+     sphere-center translation that produces the same horizon displacement is R*sin(PI*b).
+     For the previous 0.110 bias on a radius-500 dome this is ~169.37 world units upward. */
   try{
     if(typeof A!=='undefined'){
-      var SKY_V_BIAS=.110;
+      var SKY_OFFSET_UV=.110,SKY_RADIUS=500;
       BABYLON.Effect.ShadersStore.skyDomeVertexShader='precision highp float;attribute vec3 position;uniform mat4 worldViewProjection;varying vec3 vDir;void main(){vDir=position;gl_Position=worldViewProjection*vec4(position,1.0);}';
-      BABYLON.Effect.ShadersStore.skyDomeFragmentShader='precision highp float;varying vec3 vDir;uniform sampler2D skyTexture;uniform float uVBias;void main(){vec3 d=normalize(vDir);float lon=atan(d.z,d.x);float lat=acos(clamp(d.y,-1.0,1.0));float s=lon/(2.0*3.14159265359)+0.5;float t=clamp(lat/3.14159265359+uVBias,0.0,1.0);gl_FragColor=vec4(texture2D(skyTexture,vec2(s,t)).rgb,1.0);}';
-      var sky=BABYLON.MeshBuilder.CreateSphere('skyDome',{diameter:1000,segments:24},scene);
+      BABYLON.Effect.ShadersStore.skyDomeFragmentShader='precision highp float;varying vec3 vDir;uniform sampler2D skyTexture;void main(){vec3 d=normalize(vDir);float lon=atan(d.z,d.x);float lat=acos(clamp(d.y,-1.0,1.0));float s=lon/(2.0*3.14159265359)+0.5;float t=lat/3.14159265359;gl_FragColor=vec4(texture2D(skyTexture,vec2(s,t)).rgb,1.0);}';
+      var sky=BABYLON.MeshBuilder.CreateSphere('skyDome',{diameter:SKY_RADIUS*2,segments:24},scene);
       sky.infiniteDistance=true;sky.isPickable=false;sky.applyFog=false;
-      var skyMat=new BABYLON.ShaderMaterial('skyDomeMat',scene,{vertex:'skyDome',fragment:'skyDome'},{attributes:['position'],uniforms:['worldViewProjection','uVBias'],samplers:['skyTexture']});
+      var skyMat=new BABYLON.ShaderMaterial('skyDomeMat',scene,{vertex:'skyDome',fragment:'skyDome'},{attributes:['position'],uniforms:['worldViewProjection'],samplers:['skyTexture']});
       skyMat.backFaceCulling=false;skyMat.disableDepthWrite=true;
       var skyTex=new BABYLON.Texture(A+'skytex.png',scene,false,false,BABYLON.Texture.BILINEAR_SAMPLINGMODE);
       skyMat.setTexture('skyTexture',skyTex);
-      skyMat.setFloat('uVBias',SKY_V_BIAS);
       sky.material=skyMat;
+
+      function setSkyPhysicalOffset(bias){
+        var b=+bias||0;
+        sky.position.y=SKY_RADIUS*Math.sin(Math.PI*b);
+        sky.metadata=sky.metadata||{};
+        sky.metadata.uvEquivalentOffset=b;
+        sky.metadata.worldYOffset=sky.position.y;
+        return sky.position.y;
+      }
+      window.setSkyPhysicalOffset=setSkyPhysicalOffset;
+      window.skyUvToWorldY=function(bias){return SKY_RADIUS*Math.sin(Math.PI*(+bias||0));};
+      setSkyPhysicalOffset(SKY_OFFSET_UV);
     }
   }catch(_){ }
 
-  /* The main wind direction is world-space and gusts travel across the field.
-     Each clump gets its own stiffness from deterministic seed/position. */
   BABYLON.Effect.ShadersStore.nearVertexShader=`precision highp float;
 attribute vec3 position;attribute vec2 uv;attribute vec4 world0;attribute vec4 world1;attribute vec4 world2;attribute vec4 world3;attribute float instanceSeed;
 uniform mat4 viewProjection;uniform vec3 cameraPosition;uniform float uTime;uniform float uWind;
@@ -177,7 +177,6 @@ void main(){
   gl_FragColor=vec4(col,1.);
 }`;
 
-  /* Fill texture gets subtle distance integration instead of reading as a flat decal. */
   BABYLON.Effect.ShadersStore.patchFragmentShader=`precision highp float;
 varying vec2 vUV;varying float vD;uniform sampler2D fillTexture;
 void main(){
