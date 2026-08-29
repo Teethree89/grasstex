@@ -1,4 +1,4 @@
-/* v39 projected grass-image shadows; corrected lateral sway, filltex layering, and staggered/coarser shadow streaming */
+/* v40 projected grass-image shadows; corrected lateral sway, shadows above filltex, and staggered/coarser shadow streaming */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||typeof engine==='undefined'||typeof generateChunk==='undefined'||typeof perChunkCount==='undefined'||typeof V==='undefined'||typeof A==='undefined')return;
 
@@ -6,7 +6,7 @@
   var NEAR_SHADOW_END=30;
   var SUN_YAW=.52;
   var STREAM_STEP=2;
-  var SHADOW_Y=.0025;
+  var SHADOW_Y=.0125;
 
   BABYLON.Effect.ShadersStore.grassImageShadowVertexShader=`precision highp float;
 attribute vec3 position;attribute vec2 uv;attribute vec4 world0;attribute vec4 world1;attribute vec4 world2;attribute vec4 world3;attribute float instanceSeed;
@@ -17,8 +17,6 @@ void main(){
   vec4 wp=mat4(world0,world1,world2,world3)*vec4(position,1.);
   vD=distance(c,cameraPosition);
 
-  /* Negative-height source plane flips the projected UV direction. Keep the
-     planted edge fixed and ramp deformation only toward the projected tip. */
   float h=1.0-smoothstep(0.,1.,uv.y);
   h*=h;
 
@@ -26,8 +24,6 @@ void main(){
   if(vD<${NEAR_SHADOW_END.toFixed(1)}){
     float ph=uTime*1.2+instanceSeed*6.283;
     float f=sin(ph*1.71+instanceSeed*9.7);
-    /* Projection flips the horizontal handedness, so invert X only. Z already
-       matches the grass' forward/back motion. */
     windOffset.x=-((sin(ph)*.72+f*.28)*.07*uWind*h);
     windOffset.y=f*.018*uWind*h;
   }else{
@@ -70,7 +66,7 @@ void main(){
     p.rotationQuaternion=BABYLON.Quaternion.RotationYawPitchRoll(SUN_YAW,Math.PI/2,0);
     p.bakeCurrentTransformIntoVertices();
     p.position.set(0,0,0);p.rotation.set(0,0,0);p.rotationQuaternion=null;p.scaling.set(1,1,1);
-    p.isPickable=false;p.alwaysSelectAsActiveMesh=true;p.alphaIndex=0;
+    p.isPickable=false;p.alwaysSelectAsActiveMesh=true;p.alphaIndex=10;
 
     var m=new BABYLON.ShaderMaterial('grassImageShadowMat'+i,scene,{vertex:'grassImageShadow',fragment:'grassImageShadow'},{
       attributes:['position','uv','world0','world1','world2','world3','instanceSeed'],
@@ -87,8 +83,8 @@ void main(){
   }
 
   var shadowTypes=V.map(makeShadowType);
-  /* Keep the fill patch visually above the fake shadow layer. */
-  try{if(typeof nearPatch!=='undefined')nearPatch.alphaIndex=10}catch(_){ }
+  /* Filltex stays below the fake shadow layer. */
+  try{if(typeof nearPatch!=='undefined')nearPatch.alphaIndex=0}catch(_){ }
 
   var M2=new BABYLON.Matrix(),S2=new BABYLON.Vector3(),Q2=new BABYLON.Quaternion(),P2=new BABYLON.Vector3();
   var lastCx=999999,lastCz=999999,lastDen=-1,pending=false;
