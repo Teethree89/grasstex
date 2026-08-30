@@ -1,8 +1,8 @@
-/* v61 demo terrain adapter.
+/* v62 demo terrain adapter.
    Rolling 1200m terrain with a horizon-to-horizon painted road through spawn.
-   Grass shadows are sampled from an amortized world-space directional splat. The terrain
-   shader now treats that splat at full strength, so the v61 blob painter's .85 alpha is
-   visually 85% opaque at the shadow core. */
+   Grass shadows are projected decal planes again (see grass-effects.js), so the terrain
+   shader no longer samples a world-space shadow splat - that texture fetch and its 512^2
+   dynamic texture are gone from the terrain material. */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||!window.GrassAPI)return;
 
@@ -28,18 +28,14 @@
     for(var i=0;i<pos.length;i+=3)pos[i+1]=heightAt(pos[i],pos[i+2]);
     BABYLON.VertexData.ComputeNormals(pos,ind,nor);terrain.updateVerticesData(BABYLON.VertexBuffer.PositionKind,pos,false,false);terrain.updateVerticesData(BABYLON.VertexBuffer.NormalKind,nor,false,false);terrain.refreshBoundingInfo();terrain.isPickable=true;terrain.receiveShadows=true;
 
-    var shadowSize=512,grassShadowTex=new BABYLON.DynamicTexture('grassWorldShadowSplat',{width:shadowSize,height:shadowSize},scene,false),shadowCtx=grassShadowTex.getContext();
-    shadowCtx.fillStyle='#fff';shadowCtx.fillRect(0,0,shadowSize,shadowSize);grassShadowTex.update(false);grassShadowTex.wrapU=grassShadowTex.wrapV=BABYLON.Texture.CLAMP_ADDRESSMODE;grassShadowTex.updateSamplingMode(BABYLON.Texture.BILINEAR_SAMPLINGMODE);
-    var grassShadowState={texture:grassShadowTex,context:shadowCtx,size:shadowSize,centerX:0,centerZ:0,span:360,strength:1.0,revision:0};
-
     var mat=new BABYLON.CustomMaterial('demoTerrainRoadPaintMat',scene);mat.diffuseColor=new BABYLON.Color3(1.06,1.04,1.01);mat.specularColor=BABYLON.Color3.Black();mat.ambientColor=new BABYLON.Color3(.15,.125,.09);
     var dirt=null,roadTex=null;
     if(typeof A!=='undefined'){
       dirt=new BABYLON.Texture(A+'dirttex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE,null,function(){console.warn('dirttex.png failed to load from '+A+'dirttex.png');mat.diffuseTexture=null;});dirt.wrapU=dirt.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;dirt.uScale=dirt.vScale=128;dirt.anisotropicFilteringLevel=4;mat.diffuseTexture=dirt;
       roadTex=new BABYLON.Texture(A+'roadtex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE,function(){roadTex.level=1.16;},function(){console.warn('roadtex.png failed to load from '+A+'roadtex.png');});roadTex.wrapU=BABYLON.Texture.CLAMP_ADDRESSMODE;roadTex.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;roadTex.anisotropicFilteringLevel=8;roadTex.level=1.16;
-      mat.AddUniform('roadSampler','sampler2D');mat.AddUniform('roadHalfWidth','float',ROAD_HALF);mat.AddUniform('roadRepeatM','float',ROAD_REPEAT_M);mat.AddUniform('grassShadowSampler','sampler2D');mat.AddUniform('grassShadowCenter','vec2');mat.AddUniform('grassShadowSpan','float',grassShadowState.span);mat.AddUniform('grassShadowStrength','float',grassShadowState.strength);
-      mat.Fragment_Custom_Diffuse('vec2 roadUV=vec2(clamp(vPositionW.x/(roadHalfWidth*2.0)+0.5,0.0,1.0),vPositionW.z/roadRepeatM);vec3 roadCol=texture2D(roadSampler,roadUV).rgb;roadCol=min(vec3(1.0),roadCol*1.38+vec3(.060,.052,.040));float ax=abs(vPositionW.x);float roadMask=1.0-smoothstep(roadHalfWidth-0.35,roadHalfWidth+0.35,ax);diffuseColor=mix(diffuseColor,roadCol,roadMask);vec2 gsUV=(vPositionW.xz-grassShadowCenter)/grassShadowSpan+vec2(.5);float gsIn=step(0.0,gsUV.x)*step(0.0,gsUV.y)*step(gsUV.x,1.0)*step(gsUV.y,1.0);float gs=gsIn*(1.0-texture2D(grassShadowSampler,gsUV).r);diffuseColor*=1.0-gs*grassShadowStrength;');
-      mat.onBindObservable.add(function(){var ef=mat.getEffect();if(!ef)return;ef.setTexture('roadSampler',roadTex);ef.setFloat('roadHalfWidth',ROAD_HALF);ef.setFloat('roadRepeatM',ROAD_REPEAT_M);ef.setTexture('grassShadowSampler',grassShadowState.texture);ef.setFloat2('grassShadowCenter',grassShadowState.centerX,grassShadowState.centerZ);ef.setFloat('grassShadowSpan',grassShadowState.span);ef.setFloat('grassShadowStrength',grassShadowState.strength);});
+      mat.AddUniform('roadSampler','sampler2D');mat.AddUniform('roadHalfWidth','float',ROAD_HALF);mat.AddUniform('roadRepeatM','float',ROAD_REPEAT_M);
+      mat.Fragment_Custom_Diffuse('vec2 roadUV=vec2(clamp(vPositionW.x/(roadHalfWidth*2.0)+0.5,0.0,1.0),vPositionW.z/roadRepeatM);vec3 roadCol=texture2D(roadSampler,roadUV).rgb;roadCol=min(vec3(1.0),roadCol*1.38+vec3(.060,.052,.040));float ax=abs(vPositionW.x);float roadMask=1.0-smoothstep(roadHalfWidth-0.35,roadHalfWidth+0.35,ax);diffuseColor=mix(diffuseColor,roadCol,roadMask);');
+      mat.onBindObservable.add(function(){var ef=mat.getEffect();if(!ef)return;ef.setTexture('roadSampler',roadTex);ef.setFloat('roadHalfWidth',ROAD_HALF);ef.setFloat('roadRepeatM',ROAD_REPEAT_M);});
     }
     terrain.material=mat;try{if(typeof ground!=='undefined')ground.setEnabled(false);}catch(_){ }
 
@@ -47,9 +43,9 @@
 
     window.GrassAPI.autoRebuild=false;window.GrassAPI.setTerrainSampler(sampleAt);window.GrassAPI.setMaxSlope(38);window.GrassAPI.excludeCorridor([{x:0,z:-5000},{x:0,z:5000}],ROAD_CLEAR_WIDTH);window.GrassAPI.autoRebuild=true;setTimeout(function(){try{window.GrassAPI.requestRebuild();}catch(_){ }},0);
 
-    setTimeout(function(){scene.onBeforeRenderObservable.add(function(){var s=sampleAt(camera.position.x,camera.position.z);camera.position.y+=s.height;});try{document.title='Grass Game v61';var rows=document.querySelectorAll('#ui .row');for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v61';break;}}catch(_){ }},0);
+    setTimeout(function(){scene.onBeforeRenderObservable.add(function(){var s=sampleAt(camera.position.x,camera.position.z);camera.position.y+=s.height;});try{document.title='Grass Game v62';var rows=document.querySelectorAll('#ui .row');for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v62';break;}}catch(_){ }},0);
 
-    window.GrassTerrainDemo={mesh:terrain,heightAt:heightAt,landscapeHeight:landscapeHeight,sampleAt:sampleAt,size:SIZE,maxSlope:38,eyeHeight:EYE,shadows:terrainShadows,grassShadow:grassShadowState,road:{mesh:null,material:mat,texture:roadTex,width:ROAD_WIDTH,clearWidth:ROAD_CLEAR_WIDTH,deformRadius:ROAD_DEFORM_RADIUS,profileOffset:roadProfileOffset,blend:roadBlend,paintMask:roadPaintMask}};
+    window.GrassTerrainDemo={mesh:terrain,heightAt:heightAt,landscapeHeight:landscapeHeight,sampleAt:sampleAt,size:SIZE,maxSlope:38,eyeHeight:EYE,shadows:terrainShadows,road:{mesh:null,material:mat,texture:roadTex,width:ROAD_WIDTH,clearWidth:ROAD_CLEAR_WIDTH,deformRadius:ROAD_DEFORM_RADIUS,profileOffset:roadProfileOffset,blend:roadBlend,paintMask:roadPaintMask}};
   }
 
   if(typeof BABYLON.CustomMaterial==='function'){boot();}else{var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/babylonjs-materials@8.26.0/babylonjs.materials.min.js';s.onload=function(){if(typeof BABYLON.CustomMaterial==='function')boot();else console.error('CustomMaterial library loaded but BABYLON.CustomMaterial is unavailable');};s.onerror=function(){console.error('Failed to load Babylon materials library; road paint cannot initialize');};document.head.appendChild(s);}

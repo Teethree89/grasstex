@@ -2,7 +2,7 @@
 
 Reusable Babylon.js grass rendering prototype with deterministic chunk generation, near/medium/far LOD, streamed thin instances, wind, fill patches, image-based shadows, placement/masking, rough-terrain sampling, and a deformed horizon-road demo.
 
-Current demo build: **v57**.
+Current demo build: **v62**.
 
 ## Main files
 
@@ -11,7 +11,7 @@ Current demo build: **v57**.
 - `grass-streaming.js` — deterministic chunk streaming and LOD instance generation.
 - `grass-realism.js` — grass shaders, fill texture shader, lighting integration, sky setup, and world-locked dirt.
 - `grass-effects.js` — projected grass shadows/effects.
-- `terrain-demo.js` — rolling terrain demo, road deformation brush, `roadtex.png` road mesh, camera terrain following, and terrain/road shadow setup.
+- `terrain-demo.js` — rolling terrain demo, road deformation brush, `roadtex.png` painted into the terrain material, camera terrain following, and terrain shadow setup.
 - `bodycam.js` — optional camera/post-processing layer used by the demo.
 - `Assets/` on the hosted demo — grass/fill/sky/dirt/road textures.
 
@@ -138,6 +138,8 @@ wp.y = clumpY + SHADOW_Y + dot(wp.xz - clumpXZ, instanceGrad);
 
 This is exact to first order and needs no extra terrain sampling — the normal is already computed for slope rejection and fill patches. Measured against the demo's own `heightAt` over a 4.4 m shadow, mean vertical error drops from 4.5 cm to 0.4 cm and worst case from 28.6 cm to 2.3 cm, which is what keeps the quad above `SHADOW_Y` (3 cm) instead of clipping through hillsides.
 
+The bake is deferred until `GrassAPI.snapshot().hasTerrainSampler` is true and re-runs whenever the API `revision` changes. `terrain-demo.js` boots asynchronously (it waits on the `CustomMaterial` CDN script), so without that the first bake would run with no terrain sampler — flattening every shadow to y=0 — and would leave shadows painted across the road until movement hysteresis happened to trip a rebuild.
+
 Shadow alpha must reach zero at `SHADOW_END`. If it is still non-zero where the fragment shader discards, every streaming rebuild pops a whole ring of shadows in and out at that opacity as you cross chunks. `SHADOW_END`, `SHADOW_FADE_START`, `HYST`, and `PAD` are the cost knobs: shadow range and rebuild hysteresis together dominate streaming cost, since each clump bake runs a mask test plus a terrain sample (five `heightAt` evaluations).
 
 ## Far LOD on hills
@@ -173,13 +175,13 @@ v57 enables standard Babylon lighting on both the terrain and `roadtex.png` road
 
 ```js
 terrain.receiveShadows = true;
-road.receiveShadows = true;
 
 const shadows = new BABYLON.CascadedShadowGenerator(1024, sun);
 shadows.numCascades = 3;
 shadows.addShadowCaster(terrain, true);
-shadows.addShadowCaster(road, true);
 ```
+
+Since v58 the road is painted into the terrain material rather than being its own mesh, so there is no separate road mesh to register — the terrain carries the road and its shadowing together.
 
 This lets rolling terrain cast long sunset shadows onto itself and onto the road. Cascades preserve substantially more near-camera shadow resolution than one giant orthographic shadow map covering the entire 1200 m terrain.
 
