@@ -1,8 +1,10 @@
-/* v56 demo terrain adapter.
+/* v57 demo terrain adapter.
    Rolling 1200m terrain plus a horizon-to-horizon road through spawn. The road uses
    a deterministic cross-section brush (crown -> shoulders -> drainage ditches -> recovery)
    to deform the actual terrain, roadtex.png is draped over the deformed surface, and a
    generated edge-opacity splat softly blends the road/ditch texture back into dirt.
+   v57 adds directional-light cascaded terrain/road shadows and brighter physically-lit
+   road material response so roadtex detail remains readable at the low sunset angle.
    The same analytic height sampler drives grass placement and first-person camera height. */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||!window.GrassAPI)return;
@@ -77,9 +79,10 @@
   terrain.updateVerticesData(BABYLON.VertexBuffer.NormalKind,nor,false,false);
   terrain.refreshBoundingInfo();
   terrain.isPickable=true;
+  terrain.receiveShadows=true;
 
   var mat=new BABYLON.StandardMaterial('demoBumpyTerrainMat',scene);
-  mat.diffuseColor=new BABYLON.Color3(1,1,1);mat.specularColor=BABYLON.Color3.Black();mat.ambientColor=BABYLON.Color3.Black();
+  mat.diffuseColor=new BABYLON.Color3(1,1,1);mat.specularColor=BABYLON.Color3.Black();mat.ambientColor=new BABYLON.Color3(.08,.07,.055);
   if(typeof A!=='undefined'){
     var dirt=new BABYLON.Texture(A+'dirttex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
     dirt.wrapU=dirt.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;dirt.uScale=dirt.vScale=128;dirt.anisotropicFilteringLevel=4;
@@ -93,7 +96,7 @@
     var z=-ROAD_Z_EXTENT+(iz/longSeg)*SIZE;
     for(var ix=0;ix<=cross;ix++){
       var u=ix/cross,x=-ROAD_HALF+u*ROAD_WIDTH;
-      rPos.push(x,heightAt(x,z)+.018,z);
+      rPos.push(x,heightAt(x,z)+.022,z);
       rUV.push(u,(z+ROAD_Z_EXTENT)/ROAD_REPEAT_M);
     }
   }
@@ -105,25 +108,49 @@
   var rNor=new Array(rPos.length).fill(0);
   BABYLON.VertexData.ComputeNormals(rPos,rInd,rNor);
   var vd=new BABYLON.VertexData();vd.positions=rPos;vd.indices=rInd;vd.normals=rNor;vd.uvs=rUV;
-  var road=new BABYLON.Mesh('demoRoad',scene);vd.applyToMesh(road,true);road.isPickable=true;
+  var road=new BABYLON.Mesh('demoRoad',scene);vd.applyToMesh(road,true);road.isPickable=true;road.receiveShadows=true;
 
   var roadMat=new BABYLON.StandardMaterial('demoRoadMat',scene);
-  roadMat.diffuseColor=new BABYLON.Color3(1,1,1);roadMat.specularColor=BABYLON.Color3.Black();
+  roadMat.diffuseColor=new BABYLON.Color3(1.16,1.12,1.06);
+  roadMat.ambientColor=new BABYLON.Color3(.18,.155,.12);
+  roadMat.specularColor=new BABYLON.Color3(.035,.03,.024);roadMat.specularPower=20;
   if(typeof A!=='undefined'){
-    var roadTex=new BABYLON.Texture(A+'roadtex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
+    var roadTex=new BABYLON.Texture(A+'roadtex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE,function(){
+      roadTex.level=1.18;
+    },function(){
+      console.warn('roadtex.png failed to load from '+A+'roadtex.png');
+    });
     roadTex.wrapU=BABYLON.Texture.CLAMP_ADDRESSMODE;roadTex.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;
-    roadTex.anisotropicFilteringLevel=8;roadMat.diffuseTexture=roadTex;
+    roadTex.anisotropicFilteringLevel=8;roadTex.level=1.18;roadMat.diffuseTexture=roadTex;
 
     var splat=new BABYLON.DynamicTexture('roadEdgeSplat',{width:256,height:4},scene,false);
     var ctx=splat.getContext(),g=ctx.createLinearGradient(0,0,256,0);
-    g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(.055,'rgba(255,255,255,1)');
-    g.addColorStop(.945,'rgba(255,255,255,1)');g.addColorStop(1,'rgba(255,255,255,0)');
+    g.addColorStop(0,'rgba(0,0,0,1)');g.addColorStop(.055,'rgba(255,255,255,1)');
+    g.addColorStop(.945,'rgba(255,255,255,1)');g.addColorStop(1,'rgba(0,0,0,1)');
     ctx.clearRect(0,0,256,4);ctx.fillStyle=g;ctx.fillRect(0,0,256,4);splat.update(false);
     splat.wrapU=BABYLON.Texture.CLAMP_ADDRESSMODE;splat.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;
-    splat.hasAlpha=true;roadMat.opacityTexture=splat;
+    roadMat.opacityTexture=splat;
     roadMat.useAlphaFromDiffuseTexture=false;
   }
   roadMat.backFaceCulling=true;road.material=roadMat;
+
+  /* Large outdoor directional shadows. CascadedShadowGenerator keeps useful resolution
+     near the player while still allowing rolling terrain to shadow itself farther away. */
+  var terrainShadows=null;
+  try{
+    if(typeof sun!=='undefined'&&BABYLON.CascadedShadowGenerator){
+      terrainShadows=new BABYLON.CascadedShadowGenerator(1024,sun);
+      terrainShadows.numCascades=3;
+      terrainShadows.lambda=.72;
+      terrainShadows.bias=.0008;
+      terrainShadows.normalBias=.035;
+      terrainShadows.darkness=.30;
+      terrainShadows.stabilizeCascades=true;
+      terrainShadows.autoCalcDepthBounds=true;
+      terrainShadows.addShadowCaster(terrain,true);
+      terrainShadows.addShadowCaster(road,true);
+    }
+  }catch(e){console.warn('Terrain shadow setup failed',e);terrainShadows=null;}
 
   window.GrassAPI.autoRebuild=false;
   window.GrassAPI.setTerrainSampler(sampleAt);
@@ -137,14 +164,15 @@
       camera.position.y+=s.height;
     });
     try{
-      document.title='Grass Game v56';
+      document.title='Grass Game v57';
       var rows=document.querySelectorAll('#ui .row');
-      for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v56';break;}
+      for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v57';break;}
     }catch(_){ }
   },0);
 
   window.GrassTerrainDemo={
     mesh:terrain,heightAt:heightAt,landscapeHeight:landscapeHeight,sampleAt:sampleAt,size:SIZE,maxSlope:38,eyeHeight:EYE,
-    road:{mesh:road,width:ROAD_WIDTH,clearWidth:ROAD_CLEAR_WIDTH,deformRadius:ROAD_DEFORM_RADIUS,profileOffset:roadProfileOffset,blend:roadBlend}
+    shadows:terrainShadows,
+    road:{mesh:road,material:roadMat,texture:roadTex,width:ROAD_WIDTH,clearWidth:ROAD_CLEAR_WIDTH,deformRadius:ROAD_DEFORM_RADIUS,profileOffset:roadProfileOffset,blend:roadBlend}
   };
 })();
