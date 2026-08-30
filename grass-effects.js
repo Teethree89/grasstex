@@ -1,62 +1,117 @@
-/* v59 projected grass-image shadows with per-vertex terrain projection. */
+/* v60 grass shadows: world-space directional blob splat sampled by the terrain shader.
+   No shadow geometry is rendered. This eliminates floating/intersecting decal cards on rough
+   terrain and removes asynchronous shadow-instance leftovers when crossing masked areas. */
 (function(){
-  if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||typeof engine==='undefined'||typeof generateChunk==='undefined'||typeof perChunkCount==='undefined'||typeof V==='undefined'||typeof A==='undefined')return;
+  if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||typeof generateChunk==='undefined'||typeof perChunkCount==='undefined'||typeof V==='undefined')return;
 
-  var SHADOW_END=165,NEAR_SHADOW_END=30,SHADOW_Y=.0085;
+  var SHADOW_END=165;
+  var REBUILD_MOVE=8.0;
   var shared=window.SunModel;
   var sunDir=(shared&&shared.lightDir)?shared.lightDir:((typeof sun!=='undefined'&&sun.direction)?sun.direction:new BABYLON.Vector3(-.4705,-.0993,.8767));
-  var SUN_YAW=Math.atan2(sunDir.x,sunDir.z);
+  var hx=sunDir.x,hz=sunDir.z,hlen=Math.hypot(hx,hz)||1;hx/=hlen;hz/=hlen;
   var sunElev=Math.atan2(-sunDir.y,Math.max(.0001,Math.hypot(sunDir.x,sunDir.z)));
   var SHADOW_STRETCH=BABYLON.Scalar.Clamp(1/Math.tan(Math.max(sunElev,.09)),1.4,4.2);
 
-  var terrainHeightGLSL=window.GrassShadowTerrainGLSL||
-    (window.GrassTerrainDemo&&window.GrassTerrainDemo.shadowHeightGLSL)||
-    'float grassShadowTerrainY(vec2 xz,float fallbackY){return fallbackY;}';
+  var lastX=1e9,lastZ=1e9,lastDen=-1,lastRevision=-1,lastNear=-1,lastMedium=-1;
 
-  BABYLON.Effect.ShadersStore.grassImageShadowVertexShader=`precision highp float;
-attribute vec3 position;attribute vec2 uv;attribute vec4 world0;attribute vec4 world1;attribute vec4 world2;attribute vec4 world3;attribute float instanceSeed;
-uniform mat4 viewProjection;uniform vec3 cameraPosition;uniform float uTime;uniform float uWind;
-varying vec2 vUV;varying float vD;
-float hsh(float n){return fract(sin(n)*43758.5453123);}float h2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-${terrainHeightGLSL}
-void main(){
-  vec3 c=world3.xyz;vec4 wp=mat4(world0,world1,world2,world3)*vec4(position,1.);vD=length(c.xz-cameraPosition.xz);
-  float ht=1.0-smoothstep(0.,1.,uv.y);ht*=ht;vec2 dir=normalize(vec2(.82,.57));
-  float gust=.72+.22*sin(c.x*.034+c.z*.022-uTime*.58)+.10*sin(c.x*.071-c.z*.047-uTime*1.07);vec2 bend=vec2(0.);
-  if(vD<${NEAR_SHADOW_END.toFixed(1)}){float stiff=mix(.72,1.18,hsh(instanceSeed*91.17+3.1));float ph=uTime*1.28+instanceSeed*6.283+c.x*.010+c.z*.006;float turb=sin(ph*1.73+instanceSeed*9.7);float pulse=sin(ph)*.58+turb*.23;bend=(dir*(.020+.052*gust+.030*pulse)+vec2(-dir.y,dir.x)*turb*.012)*uWind*stiff*ht;}
-  else{float sd=h2(floor(c.xz*.17));float stiff=mix(.74,1.16,sd);float ph=uTime*1.12+c.x*.37+c.z*.21;float turb=sin(ph*1.73+sd*7.1);bend=(dir*(.020+.050*gust+.027*(sin(ph)*.58+turb*.23))+vec2(-dir.y,dir.x)*turb*.010)*uWind*stiff*ht;}
-  wp.x-=bend.x;wp.z+=bend.y;wp.y=grassShadowTerrainY(wp.xz,c.y)+${SHADOW_Y.toFixed(4)};gl_Position=viewProjection*wp;vUV=uv;
-}`;
+  function getState(){return window.GrassTerrainDemo&&window.GrassTerrainDemo.grassShadow;}
 
-  BABYLON.Effect.ShadersStore.grassImageShadowFragmentShader=`precision highp float;
-varying vec2 vUV;varying float vD;uniform sampler2D grassTexture;uniform float uDrawNear;uniform float uDrawMedium;
-void main(){if(vD>${SHADOW_END.toFixed(1)})discard;if(vD<${NEAR_SHADOW_END.toFixed(1)}&&uDrawNear<0.5)discard;if(vD>=${NEAR_SHADOW_END.toFixed(1)}&&uDrawMedium<0.5)discard;vec4 g=texture2D(grassTexture,vUV);if(g.a<.10)discard;float distanceFade=1.0-smoothstep(55.0,${SHADOW_END.toFixed(1)},vD);float a=g.a*(.17+.14*distanceFade);if(a<.016)discard;gl_FragColor=vec4(.032,.034,.041,a);}`;
-
-  function makeShadowGrid(def,i){
-    var xs=3,ys=8,pos=[],uvs=[],idx=[];
-    for(var y=0;y<=ys;y++)for(var x=0;x<=xs;x++){var u=x/xs,v=y/ys;pos.push((u-.5)*def.width,(.5-v)*def.height,0);uvs.push(u,v);}
-    var row=xs+1;for(var yy=0;yy<ys;yy++)for(var xx=0;xx<xs;xx++){var a=yy*row+xx,b=a+1,c=a+row,d=c+1;idx.push(a,c,b,b,c,d);}
-    var vd=new BABYLON.VertexData();vd.positions=pos;vd.indices=idx;vd.uvs=uvs;vd.normals=new Array(pos.length).fill(0);BABYLON.VertexData.ComputeNormals(pos,idx,vd.normals);
-    var p=new BABYLON.Mesh('grassImageShadow'+i,scene);vd.applyToMesh(p,true);
-    p.position.y=def.height*(def.ground-.5);p.scaling.y=SHADOW_STRETCH;p.rotationQuaternion=BABYLON.Quaternion.RotationYawPitchRoll(SUN_YAW,Math.PI/2,0);p.bakeCurrentTransformIntoVertices();p.position.set(0,0,0);p.rotation.set(0,0,0);p.rotationQuaternion=null;p.scaling.set(1,1,1);return p;
+  function allowed(g,cx,cz,i){
+    if(!window.GrassAPI||!window.GrassAPI.isAllowed)return true;
+    return window.GrassAPI.isAllowed(g.x,g.z,{chunkX:cx,chunkZ:cz,index:i,seed:g.seed});
   }
 
-  function makeShadowType(def,i){
-    var p=makeShadowGrid(def,i);p.isPickable=false;p.alwaysSelectAsActiveMesh=true;p.alphaIndex=10;
-    var m=new BABYLON.ShaderMaterial('grassImageShadowMat'+i,scene,{vertex:'grassImageShadow',fragment:'grassImageShadow'},{attributes:['position','uv','world0','world1','world2','world3','instanceSeed'],uniforms:['viewProjection','cameraPosition','uTime','uWind','uDrawNear','uDrawMedium'],samplers:['grassTexture'],needAlphaBlending:true});
-    m.backFaceCulling=false;m.disableDepthWrite=true;var t=new BABYLON.Texture(A+def.file,scene,true,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE);t.hasAlpha=true;t.wrapU=t.wrapV=BABYLON.Texture.CLAMP_ADDRESSMODE;t.anisotropicFilteringLevel=4;m.setTexture('grassTexture',t);p.material=m;return{mesh:p,mat:m};
+  function apiRevision(){
+    try{var s=window.GrassAPI&&window.GrassAPI.snapshot&&window.GrassAPI.snapshot();return s&&Number.isFinite(+s.revision)?+s.revision:0;}catch(_){return 0;}
   }
-  var shadowTypes=V.map(makeShadowType);try{if(typeof nearPatch!=='undefined')nearPatch.alphaIndex=0;}catch(_){ }
 
-  var BUDGET_MS=1.2,HYST=CHUNK*.4,PAD=CHUNK*2,mats=[],seeds=[],matN=new Int32Array(6),seedN=new Int32Array(6),boundBuf=new WeakMap();
-  var job=null,haveShadows=false,builtX=1e9,builtZ=1e9,builtDen=-1;
-  function fit(list,i,need){var a=list[i];if(!a||a.length<need)list[i]=new Float32Array(Math.ceil(need*1.25)+16);return list[i];}
-  function push(mesh,kind,data,stride,instances){var b=boundBuf.get(mesh);if(!b){b={};boundBuf.set(mesh,b);}if(b[kind]!==data){mesh.thinInstanceSetBuffer(kind,data,stride,false);b[kind]=data;}else mesh.thinInstanceBufferUpdated(kind);if(instances>=0)mesh.thinInstanceCount=instances;}
-  function startShadowJob(den){var count=perChunkCount(),ox=camera.position.x,oz=camera.position.z,range=Math.ceil((SHADOW_END+PAD)/CHUNK)+1,list=[];for(var z=-range;z<=range;z++)for(var x=-range;x<=range;x++){var cx=Math.floor(ox/CHUNK)+x,cz=Math.floor(oz/CHUNK)+z,dx=(cx+.5)*CHUNK-ox,dz=(cz+.5)*CHUNK-oz,d=Math.sqrt(dx*dx+dz*dz);if(d>SHADOW_END+PAD)continue;list.push({x:cx,z:cz,d:d});}list.sort(function(a,b){return a.d-b.d;});var c6=new Int32Array(6);for(var i=0;i<count;i++)c6[i%6]++;for(var v=0;v<6;v++){fit(mats,v,list.length*c6[v]*16);fit(seeds,v,list.length*c6[v]);matN[v]=seedN[v]=0;}job={list:list,i:0,count:count,commit:0};builtX=ox;builtZ=oz;builtDen=den;}
-  var visit=(window.GrassStream&&window.GrassStream.visitChunk)||function(cx,cz,count,sink){var chunk=generateChunk(cx,cz,count);for(var i=0;i<chunk.length;i++){var g=chunk[i],terrain=window.GrassAPI&&window.GrassAPI.sampleTerrain?window.GrassAPI.sampleTerrain(g.x,g.z,{chunkX:cx,chunkZ:cz,index:i,seed:g.seed}):{height:0};sink(i,g.x,g.z,g.yaw,g.s,g.h,g.seed,terrain);}};
-  function bakeShadowChunk(e,count){visit(e.x,e.z,count,function(i,gx,gz,yaw,gs,gh,seed,terrain){var v=i%6,a=mats[v],o=matN[v],gy=terrain&&Number.isFinite(+terrain.height)?+terrain.height:0;a[o]=gs;a[o+1]=0;a[o+2]=0;a[o+3]=0;a[o+4]=0;a[o+5]=gs*gh;a[o+6]=0;a[o+7]=0;a[o+8]=0;a[o+9]=0;a[o+10]=gs;a[o+11]=0;a[o+12]=gx;a[o+13]=gy;a[o+14]=gz;a[o+15]=1;matN[v]=o+16;seeds[v][seedN[v]++]=seed;});}
-  function stepShadows(unlimited){if(!job)return;var t0=performance.now(),L=job.list;while(job.i<L.length){bakeShadowChunk(L[job.i],job.count);job.i++;if(!unlimited&&performance.now()-t0>BUDGET_MS)return;}while(job.commit<6){var v=job.commit;push(shadowTypes[v].mesh,'matrix',mats[v],16,matN[v]/16);push(shadowTypes[v].mesh,'instanceSeed',seeds[v],1,-1);job.commit++;if(!unlimited)return;}job=null;haveShadows=true;}
-  function pumpShadows(){if(!job&&window.__grassStreamBusy)return;var den=+density.value,dx=camera.position.x-builtX,dz=camera.position.z-builtZ,moved=Math.sqrt(dx*dx+dz*dz),jump=!haveShadows||moved>SHADOW_END;if(den!==builtDen)startShadowJob(den);else if(!job&&moved>HYST)startShadowJob(den);if(job)stepShadows(jump);}
-  var t=0;scene.onBeforeRenderObservable.add(function(){var dt=Math.min(engine.getDeltaTime()/1000,.05);t+=dt;var showNear=drawNear.checked?1:0,showMedium=drawMedium.checked?1:0,showAny=!!(showNear||showMedium);for(var i=0;i<6;i++){shadowTypes[i].mat.setVector3('cameraPosition',camera.globalPosition);shadowTypes[i].mat.setFloat('uTime',t);shadowTypes[i].mat.setFloat('uWind',+wind.value);shadowTypes[i].mat.setFloat('uDrawNear',showNear);shadowTypes[i].mat.setFloat('uDrawMedium',showMedium);shadowTypes[i].mesh.setEnabled(showAny);}pumpShadows();});
-  density.addEventListener('input',function(){builtDen=-1;});startShadowJob(+density.value);stepShadows(true);
+  function paintBlob(ctx,px,py,lengthPx,widthPx,angle,alpha){
+    if(lengthPx<.6||widthPx<.4||alpha<=0)return;
+    ctx.save();
+    ctx.translate(px,py);
+    ctx.rotate(angle);
+    ctx.scale(Math.max(.5,lengthPx*.5),Math.max(.35,widthPx*.5));
+    var g=ctx.createRadialGradient(-.18,0,.05,-.08,0,1.0);
+    g.addColorStop(0,'rgba(0,0,0,'+Math.min(.34,alpha*1.18)+')');
+    g.addColorStop(.42,'rgba(0,0,0,'+alpha+')');
+    g.addColorStop(.76,'rgba(0,0,0,'+(alpha*.46)+')');
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g;
+    ctx.beginPath();ctx.arc(0,0,1,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+
+  function rebuild(){
+    var state=getState();if(!state||!state.texture||!state.context)return false;
+    var ctx=state.context,size=state.size||512,span=state.span||360;
+    var cx0=camera.position.x,cz0=camera.position.z;
+    state.centerX=cx0;state.centerZ=cz0;
+
+    ctx.globalCompositeOperation='source-over';
+    ctx.globalAlpha=1;ctx.fillStyle='#fff';ctx.fillRect(0,0,size,size);
+
+    var count=perChunkCount(),range=Math.ceil((SHADOW_END+CHUNK*1.5)/CHUNK);
+    var baseCx=Math.floor(cx0/CHUNK),baseCz=Math.floor(cz0/CHUNK);
+    var showNear=typeof drawNear==='undefined'||drawNear.checked;
+    var showMedium=typeof drawMedium==='undefined'||drawMedium.checked;
+    var pxPerM=size/span;
+    var angle=Math.atan2(hz,hx);
+
+    for(var dz=-range;dz<=range;dz++)for(var dx=-range;dx<=range;dx++){
+      var ccx=baseCx+dx,ccz=baseCz+dz;
+      var centerX=(ccx+.5)*CHUNK,centerZ=(ccz+.5)*CHUNK;
+      if(Math.hypot(centerX-cx0,centerZ-cz0)>SHADOW_END+CHUNK*.9)continue;
+      var chunk=generateChunk(ccx,ccz,count);
+      for(var i=0;i<chunk.length;i++){
+        var g=chunk[i],ddx=g.x-cx0,ddz=g.z-cz0,d=Math.hypot(ddx,ddz);
+        if(d>SHADOW_END)continue;
+        if(d<30){if(!showNear||((i+ccx*3+ccz*5)&1))continue;}
+        else{if(!showMedium||((i+ccx*7+ccz*11)%7)!==0)continue;}
+        if(!allowed(g,ccx,ccz,i))continue;
+
+        var def=V[g.v]||V[0],h=(def.height||1)*g.s*g.h;
+        var len=Math.max(.7,h*SHADOW_STRETCH);
+        var wid=Math.max(.28,(def.width||.7)*g.s*.72);
+        var start=.12*h;
+        var mx=g.x+hx*(start+len*.42),mz=g.z+hz*(start+len*.42);
+        var u=(mx-(cx0-span*.5))/span,v=(mz-(cz0-span*.5))/span;
+        if(u<-.05||u>1.05||v<-.05||v>1.05)continue;
+        var px=u*size,py=v*size;
+        var fade=1-Math.max(0,Math.min(1,(d-35)/(SHADOW_END-35)));
+        var alpha=.12+.09*fade;
+        paintBlob(ctx,px,py,len*pxPerM,wid*pxPerM,angle,alpha);
+      }
+    }
+
+    state.texture.update(false);
+    state.revision=(state.revision||0)+1;
+    lastX=cx0;lastZ=cz0;lastDen=+density.value;lastRevision=apiRevision();lastNear=showNear?1:0;lastMedium=showMedium?1:0;
+    return true;
+  }
+
+  function needsRebuild(){
+    var state=getState();if(!state)return false;
+    var dx=camera.position.x-lastX,dz=camera.position.z-lastZ;
+    var showNear=typeof drawNear==='undefined'||drawNear.checked?1:0;
+    var showMedium=typeof drawMedium==='undefined'||drawMedium.checked?1:0;
+    return Math.hypot(dx,dz)>REBUILD_MOVE||+density.value!==lastDen||apiRevision()!==lastRevision||showNear!==lastNear||showMedium!==lastMedium;
+  }
+
+  var retry=0;
+  function ensureInitial(){
+    if(rebuild())return;
+    if(retry++<80)setTimeout(ensureInitial,50);
+  }
+  ensureInitial();
+
+  var nextCheck=0;
+  scene.onBeforeRenderObservable.add(function(){
+    var now=performance.now();if(now<nextCheck)return;nextCheck=now+180;
+    if(needsRebuild())rebuild();
+  });
+
+  try{density.addEventListener('input',function(){lastDen=-1;});}catch(_){ }
+  try{drawNear.addEventListener('change',function(){lastNear=-1;});}catch(_){ }
+  try{drawMedium.addEventListener('change',function(){lastMedium=-1;});}catch(_){ }
+  window.GrassShadowSplat={rebuild:rebuild,end:SHADOW_END,stretch:SHADOW_STRETCH};
 })();
