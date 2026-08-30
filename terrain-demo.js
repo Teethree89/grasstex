@@ -1,17 +1,17 @@
-/* v57 demo terrain adapter.
-   Rolling 1200m terrain plus a horizon-to-horizon road through spawn. The road uses
-   a deterministic cross-section brush (crown -> shoulders -> drainage ditches -> recovery)
-   to deform the actual terrain, roadtex.png is draped over the deformed surface, and a
-   generated edge-opacity splat softly blends the road/ditch texture back into dirt.
-   v57 adds directional-light cascaded terrain/road shadows and brighter physically-lit
-   road material response so roadtex detail remains readable at the low sunset angle.
-   The same analytic height sampler drives grass placement and first-person camera height. */
+/* v58 demo terrain adapter.
+   Rolling 1200m terrain plus a horizon-to-horizon road through spawn. The road is now
+   part of the terrain itself: one deterministic cross-section brush deforms the terrain
+   (crown -> shoulders -> drainage ditches -> recovery), and roadtex.png is painted into
+   the terrain's lit Standard/CustomMaterial using the same world-space road footprint.
+   There is no separate road surface mesh, so there is no overlay strip or z-fighting.
+   Terrain keeps Babylon lighting and cascaded shadow reception/casting, while the same
+   analytic height sampler drives grass placement and first-person camera height. */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||!window.GrassAPI)return;
 
   var SIZE=1200,SUBDIV=192,EYE=1.9;
   var ROAD_WIDTH=12.0,ROAD_HALF=ROAD_WIDTH*.5,ROAD_DEFORM_RADIUS=8.5;
-  var ROAD_CLEAR_WIDTH=13.5,ROAD_REPEAT_M=9.0,ROAD_Z_EXTENT=SIZE*.5;
+  var ROAD_CLEAR_WIDTH=13.5,ROAD_REPEAT_M=9.0;
 
   function smooth(a,b,x){
     var t=Math.max(0,Math.min(1,(x-a)/Math.max(.0001,b-a)));
@@ -53,6 +53,13 @@
     return 1-smooth(6.35,ROAD_DEFORM_RADIUS,a);
   }
 
+  function roadPaintMask(x){
+    var a=Math.abs(x);
+    if(a<=5.70)return 1;
+    if(a>=6.35)return 0;
+    return 1-smooth(5.70,6.35,a);
+  }
+
   function heightAt(x,z){
     var base=landscapeHeight(x,z),w=roadBlend(x);
     if(w<=0)return base;
@@ -81,70 +88,64 @@
   terrain.isPickable=true;
   terrain.receiveShadows=true;
 
-  var mat=new BABYLON.StandardMaterial('demoBumpyTerrainMat',scene);
-  mat.diffuseColor=new BABYLON.Color3(1,1,1);mat.specularColor=BABYLON.Color3.Black();mat.ambientColor=new BABYLON.Color3(.08,.07,.055);
+  var dirt=null,roadTex=null,mat=null;
+  if(typeof BABYLON.CustomMaterial==='function'){
+    mat=new BABYLON.CustomMaterial('demoTerrainRoadPaintMat',scene);
+  }else{
+    console.warn('BABYLON.CustomMaterial unavailable; terrain will use dirt fallback without road paint.');
+    mat=new BABYLON.StandardMaterial('demoTerrainFallbackMat',scene);
+  }
+  mat.diffuseColor=new BABYLON.Color3(1,1,1);
+  mat.specularColor=BABYLON.Color3.Black();
+  mat.ambientColor=new BABYLON.Color3(.08,.07,.055);
+
   if(typeof A!=='undefined'){
-    var dirt=new BABYLON.Texture(A+'dirttex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE,null,function(){
-      console.warn('dirttex.png failed to load from '+A+'dirttex.png'+' - falling back to flat terrain color so the terrain stays visible.');
+    dirt=new BABYLON.Texture(A+'dirttex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE,null,function(){
+      console.warn('dirttex.png failed to load from '+A+'dirttex.png');
       mat.diffuseTexture=null;
     });
-    dirt.wrapU=dirt.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;dirt.uScale=dirt.vScale=128;dirt.anisotropicFilteringLevel=4;
+    dirt.wrapU=dirt.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;
+    dirt.uScale=dirt.vScale=128;
+    dirt.anisotropicFilteringLevel=4;
     mat.diffuseTexture=dirt;
+
+    roadTex=new BABYLON.Texture(A+'roadtex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE,function(){
+      roadTex.level=1.08;
+    },function(){
+      console.warn('roadtex.png failed to load from '+A+'roadtex.png');
+    });
+    roadTex.wrapU=BABYLON.Texture.CLAMP_ADDRESSMODE;
+    roadTex.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;
+    roadTex.anisotropicFilteringLevel=8;
+    roadTex.level=1.08;
+
+    if(typeof BABYLON.CustomMaterial==='function'&&mat.AddUniform){
+      mat.AddUniform('roadSampler','sampler2D');
+      mat.AddUniform('roadHalfWidth','float',ROAD_HALF);
+      mat.AddUniform('roadRepeatM','float',ROAD_REPEAT_M);
+      mat.Fragment_Custom_Diffuse(
+        'vec2 roadUV=vec2(clamp(vPositionW.x/(roadHalfWidth*2.0)+0.5,0.0,1.0),vPositionW.z/roadRepeatM);'+
+        'vec3 roadCol=texture2D(roadSampler,roadUV).rgb;'+
+        'float ax=abs(vPositionW.x);'+
+        'float edge0=roadHalfWidth-0.30;'+
+        'float edge1=roadHalfWidth+0.35;'+
+        'float roadMask=1.0-smoothstep(edge0,edge1,ax);'+
+        'diffuseColor=mix(diffuseColor,roadCol,roadMask);'
+      );
+      mat.onBindObservable.add(function(){
+        var ef=mat.getEffect();if(!ef)return;
+        ef.setTexture('roadSampler',roadTex);
+        ef.setFloat('roadHalfWidth',ROAD_HALF);
+        ef.setFloat('roadRepeatM',ROAD_REPEAT_M);
+      });
+    }
   }
   terrain.material=mat;
   try{if(typeof ground!=='undefined')ground.setEnabled(false);}catch(_){ }
 
-  var cross=24,longSeg=Math.ceil(SIZE/4),rPos=[],rUV=[],rInd=[];
-  for(var iz=0;iz<=longSeg;iz++){
-    var z=-ROAD_Z_EXTENT+(iz/longSeg)*SIZE;
-    for(var ix=0;ix<=cross;ix++){
-      var u=ix/cross,x=-ROAD_HALF+u*ROAD_WIDTH;
-      rPos.push(x,heightAt(x,z)+.022,z);
-      rUV.push(u,(z+ROAD_Z_EXTENT)/ROAD_REPEAT_M);
-    }
-  }
-  var row=cross+1;
-  for(var zz=0;zz<longSeg;zz++)for(var xx=0;xx<cross;xx++){
-    var a=zz*row+xx,b=a+1,c=a+row,d=c+1;
-    rInd.push(a,c,b,b,c,d);
-  }
-  var rNor=new Array(rPos.length).fill(0);
-  BABYLON.VertexData.ComputeNormals(rPos,rInd,rNor);
-  var vd=new BABYLON.VertexData();vd.positions=rPos;vd.indices=rInd;vd.normals=rNor;vd.uvs=rUV;
-  var road=new BABYLON.Mesh('demoRoad',scene);vd.applyToMesh(road,true);road.isPickable=true;road.receiveShadows=true;
-
-  var roadMat=new BABYLON.StandardMaterial('demoRoadMat',scene);
-  roadMat.diffuseColor=new BABYLON.Color3(1.16,1.12,1.06);
-  roadMat.ambientColor=new BABYLON.Color3(.18,.155,.12);
-  roadMat.specularColor=new BABYLON.Color3(.035,.03,.024);roadMat.specularPower=20;
-  if(typeof A!=='undefined'){
-    var roadTex=new BABYLON.Texture(A+'roadtex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE,function(){
-      roadTex.level=1.18;
-    },function(){
-      console.warn('roadtex.png failed to load from '+A+'roadtex.png'+' - falling back to flat road color so the road stays visible.');
-      roadMat.diffuseTexture=null;
-    });
-    roadTex.wrapU=BABYLON.Texture.CLAMP_ADDRESSMODE;roadTex.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;
-    roadTex.anisotropicFilteringLevel=8;roadTex.level=1.18;roadMat.diffuseTexture=roadTex;
-
-    /* Opacity is read from this texture's ALPHA channel (Babylon's default,
-       unless opacityTexture.getAlphaFromRGB is set), not its RGB color - keep
-       the gradient encoded as transparent(0)->opaque(1)->opaque(1)->transparent(0)
-       alpha with a constant RGB, and mark hasAlpha so the edges actually fade
-       into dirt instead of hard-clipping. */
-    var splat=new BABYLON.DynamicTexture('roadEdgeSplat',{width:256,height:4},scene,false);
-    var ctx=splat.getContext(),g=ctx.createLinearGradient(0,0,256,0);
-    g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(.055,'rgba(255,255,255,1)');
-    g.addColorStop(.945,'rgba(255,255,255,1)');g.addColorStop(1,'rgba(255,255,255,0)');
-    ctx.clearRect(0,0,256,4);ctx.fillStyle=g;ctx.fillRect(0,0,256,4);splat.update(false);
-    splat.wrapU=BABYLON.Texture.CLAMP_ADDRESSMODE;splat.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;
-    splat.hasAlpha=true;roadMat.opacityTexture=splat;
-    roadMat.useAlphaFromDiffuseTexture=false;
-  }
-  roadMat.backFaceCulling=true;road.material=roadMat;
-
-  /* Large outdoor directional shadows. CascadedShadowGenerator keeps useful resolution
-     near the player while still allowing rolling terrain to shadow itself farther away. */
+  /* Terrain is now both the road surface and surrounding landscape. Keep it in the
+     directional CSM as receiver and caster so the road crown/ditches light exactly
+     like the rest of the deformed terrain instead of using a separate overlay mesh. */
   var terrainShadows=null;
   try{
     if(typeof sun!=='undefined'&&BABYLON.CascadedShadowGenerator){
@@ -153,17 +154,10 @@
       terrainShadows.lambda=.72;
       terrainShadows.bias=.0008;
       terrainShadows.normalBias=.035;
-      /* At the 5.7 deg sunset elevation set in grass-realism.js, direct sunlight on
-         near-flat ground is already only ~10% of full intensity (dot(N,L)~=sin(5.7deg)),
-         and the rolling terrain shadows itself heavily at that grazing angle. A low
-         darkness value here on top of that left shadowed ground/road near-black.
-         darkness is inverted from what it sounds like: 0 = darkest shadow, 1 = no
-         shadow at all. Raised so shadowed ground stays visibly lit. */
       terrainShadows.darkness=.55;
       terrainShadows.stabilizeCascades=true;
       terrainShadows.autoCalcDepthBounds=true;
       terrainShadows.addShadowCaster(terrain,true);
-      terrainShadows.addShadowCaster(road,true);
     }
   }catch(e){console.warn('Terrain shadow setup failed',e);terrainShadows=null;}
 
@@ -179,15 +173,15 @@
       camera.position.y+=s.height;
     });
     try{
-      document.title='Grass Game v57';
+      document.title='Grass Game v58';
       var rows=document.querySelectorAll('#ui .row');
-      for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v57';break;}
+      for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v58';break;}
     }catch(_){ }
   },0);
 
   window.GrassTerrainDemo={
     mesh:terrain,heightAt:heightAt,landscapeHeight:landscapeHeight,sampleAt:sampleAt,size:SIZE,maxSlope:38,eyeHeight:EYE,
     shadows:terrainShadows,
-    road:{mesh:road,material:roadMat,texture:roadTex,width:ROAD_WIDTH,clearWidth:ROAD_CLEAR_WIDTH,deformRadius:ROAD_DEFORM_RADIUS,profileOffset:roadProfileOffset,blend:roadBlend}
+    road:{mesh:null,material:mat,texture:roadTex,width:ROAD_WIDTH,clearWidth:ROAD_CLEAR_WIDTH,deformRadius:ROAD_DEFORM_RADIUS,profileOffset:roadProfileOffset,blend:roadBlend,paintMask:roadPaintMask}
   };
 })();
