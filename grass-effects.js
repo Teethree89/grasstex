@@ -1,37 +1,61 @@
-/* v55 projected grass-image shadows with terrain-height support. */
+/* v59 projected grass-image shadows with per-vertex terrain projection. */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||typeof engine==='undefined'||typeof generateChunk==='undefined'||typeof perChunkCount==='undefined'||typeof V==='undefined'||typeof A==='undefined')return;
 
-  var SHADOW_END=165,NEAR_SHADOW_END=30,SHADOW_Y=.0125;
+  var SHADOW_END=165,NEAR_SHADOW_END=30,SHADOW_Y=.0085;
   var shared=window.SunModel;
   var sunDir=(shared&&shared.lightDir)?shared.lightDir:((typeof sun!=='undefined'&&sun.direction)?sun.direction:new BABYLON.Vector3(-.4705,-.0993,.8767));
   var SUN_YAW=Math.atan2(sunDir.x,sunDir.z);
   var sunElev=Math.atan2(-sunDir.y,Math.max(.0001,Math.hypot(sunDir.x,sunDir.z)));
   var SHADOW_STRETCH=BABYLON.Scalar.Clamp(1/Math.tan(Math.max(sunElev,.09)),1.4,4.2);
 
+  /* terrain-demo.js can provide an exact GLSL height function. Other projects fall back
+     to the clump's sampled root height, preserving compatibility on flat/simple terrain. */
+  var terrainHeightGLSL=(window.GrassTerrainDemo&&window.GrassTerrainDemo.shadowHeightGLSL)||
+    'float grassShadowTerrainY(vec2 xz,float fallbackY){return fallbackY;}';
+
   BABYLON.Effect.ShadersStore.grassImageShadowVertexShader=`precision highp float;
 attribute vec3 position;attribute vec2 uv;attribute vec4 world0;attribute vec4 world1;attribute vec4 world2;attribute vec4 world3;attribute float instanceSeed;
 uniform mat4 viewProjection;uniform vec3 cameraPosition;uniform float uTime;uniform float uWind;
 varying vec2 vUV;varying float vD;
 float hsh(float n){return fract(sin(n)*43758.5453123);}float h2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+${terrainHeightGLSL}
 void main(){
   vec3 c=world3.xyz;vec4 wp=mat4(world0,world1,world2,world3)*vec4(position,1.);vD=length(c.xz-cameraPosition.xz);
   float ht=1.0-smoothstep(0.,1.,uv.y);ht*=ht;vec2 dir=normalize(vec2(.82,.57));
   float gust=.72+.22*sin(c.x*.034+c.z*.022-uTime*.58)+.10*sin(c.x*.071-c.z*.047-uTime*1.07);vec2 bend=vec2(0.);
   if(vD<${NEAR_SHADOW_END.toFixed(1)}){float stiff=mix(.72,1.18,hsh(instanceSeed*91.17+3.1));float ph=uTime*1.28+instanceSeed*6.283+c.x*.010+c.z*.006;float turb=sin(ph*1.73+instanceSeed*9.7);float pulse=sin(ph)*.58+turb*.23;bend=(dir*(.020+.052*gust+.030*pulse)+vec2(-dir.y,dir.x)*turb*.012)*uWind*stiff*ht;}
   else{float sd=h2(floor(c.xz*.17));float stiff=mix(.74,1.16,sd);float ph=uTime*1.12+c.x*.37+c.z*.21;float turb=sin(ph*1.73+sd*7.1);bend=(dir*(.020+.050*gust+.027*(sin(ph)*.58+turb*.23))+vec2(-dir.y,dir.x)*turb*.010)*uWind*stiff*ht;}
-  wp.x-=bend.x;wp.z+=bend.y;wp.y=c.y+${SHADOW_Y.toFixed(4)};gl_Position=viewProjection*wp;vUV=uv;
+  wp.x-=bend.x;wp.z+=bend.y;
+  wp.y=grassShadowTerrainY(wp.xz,c.y)+${SHADOW_Y.toFixed(4)};
+  gl_Position=viewProjection*wp;vUV=uv;
 }`;
 
   BABYLON.Effect.ShadersStore.grassImageShadowFragmentShader=`precision highp float;
 varying vec2 vUV;varying float vD;uniform sampler2D grassTexture;uniform float uDrawNear;uniform float uDrawMedium;
-void main(){if(vD>${SHADOW_END.toFixed(1)})discard;if(vD<${NEAR_SHADOW_END.toFixed(1)}&&uDrawNear<0.5)discard;if(vD>=${NEAR_SHADOW_END.toFixed(1)}&&uDrawMedium<0.5)discard;vec4 g=texture2D(grassTexture,vUV);if(g.a<.10)discard;float distanceFade=1.0-smoothstep(55.0,${SHADOW_END.toFixed(1)},vD);float a=g.a*(.19+.17*distanceFade);if(a<.018)discard;gl_FragColor=vec4(.036,.039,.049,a);}`;
+void main(){if(vD>${SHADOW_END.toFixed(1)})discard;if(vD<${NEAR_SHADOW_END.toFixed(1)}&&uDrawNear<0.5)discard;if(vD>=${NEAR_SHADOW_END.toFixed(1)}&&uDrawMedium<0.5)discard;vec4 g=texture2D(grassTexture,vUV);if(g.a<.10)discard;float distanceFade=1.0-smoothstep(55.0,${SHADOW_END.toFixed(1)},vD);float a=g.a*(.17+.14*distanceFade);if(a<.016)discard;gl_FragColor=vec4(.032,.034,.041,a);}`;
+
+  function makeShadowGrid(def,i){
+    /* More vertices than a four-corner plane so the projected shadow can actually bend
+       over crowns/ditches instead of bridging them as one flat quad. */
+    var xs=3,ys=8,pos=[],uvs=[],idx=[];
+    for(var y=0;y<=ys;y++)for(var x=0;x<=xs;x++){
+      var u=x/xs,v=y/ys;
+      pos.push((u-.5)*def.width,(.5-v)*def.height,0);uvs.push(u,v);
+    }
+    var row=xs+1;
+    for(var yy=0;yy<ys;yy++)for(var xx=0;xx<xs;xx++){
+      var a=yy*row+xx,b=a+1,c=a+row,d=c+1;idx.push(a,c,b,b,c,d);
+    }
+    var vd=new BABYLON.VertexData();vd.positions=pos;vd.indices=idx;vd.uvs=uvs;
+    vd.normals=new Array(pos.length).fill(0);BABYLON.VertexData.ComputeNormals(pos,idx,vd.normals);
+    var p=new BABYLON.Mesh('grassImageShadow'+i,scene);vd.applyToMesh(p,true);
+    p.position.y=def.height*(def.ground-.5);p.scaling.y=SHADOW_STRETCH;p.rotationQuaternion=BABYLON.Quaternion.RotationYawPitchRoll(SUN_YAW,Math.PI/2,0);p.bakeCurrentTransformIntoVertices();p.position.set(0,0,0);p.rotation.set(0,0,0);p.rotationQuaternion=null;p.scaling.set(1,1,1);
+    return p;
+  }
 
   function makeShadowType(def,i){
-    var p=BABYLON.MeshBuilder.CreatePlane('grassImageShadow'+i,{width:def.width,height:-def.height,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-    p.position.y=def.height*(def.ground-.5);p.bakeCurrentTransformIntoVertices();p.position.set(0,0,0);
-    p.scaling.y=SHADOW_STRETCH;p.rotationQuaternion=BABYLON.Quaternion.RotationYawPitchRoll(SUN_YAW,Math.PI/2,0);p.bakeCurrentTransformIntoVertices();p.position.set(0,0,0);p.rotation.set(0,0,0);p.rotationQuaternion=null;p.scaling.set(1,1,1);
-    p.isPickable=false;p.alwaysSelectAsActiveMesh=true;p.alphaIndex=10;
+    var p=makeShadowGrid(def,i);p.isPickable=false;p.alwaysSelectAsActiveMesh=true;p.alphaIndex=10;
     var m=new BABYLON.ShaderMaterial('grassImageShadowMat'+i,scene,{vertex:'grassImageShadow',fragment:'grassImageShadow'},{attributes:['position','uv','world0','world1','world2','world3','instanceSeed'],uniforms:['viewProjection','cameraPosition','uTime','uWind','uDrawNear','uDrawMedium'],samplers:['grassTexture'],needAlphaBlending:true});
     m.backFaceCulling=false;m.disableDepthWrite=true;var t=new BABYLON.Texture(A+def.file,scene,true,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE);t.hasAlpha=true;t.wrapU=t.wrapV=BABYLON.Texture.CLAMP_ADDRESSMODE;t.anisotropicFilteringLevel=4;m.setTexture('grassTexture',t);p.material=m;return{mesh:p,mat:m};
   }
