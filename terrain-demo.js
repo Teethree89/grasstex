@@ -1,4 +1,4 @@
-/* v63 demo terrain adapter.
+/* v64 demo terrain adapter.
    Rolling 1200m terrain with a horizon-to-horizon painted road through spawn.
    Grass shadows are projected decal planes again (see grass-effects.js), so the terrain
    shader no longer samples a world-space shadow splat - that texture fetch and its 512^2
@@ -10,7 +10,7 @@
     if(window.__grassTerrainV61Booted)return;
     window.__grassTerrainV61Booted=true;
 
-    var SIZE=1200,SUBDIV=256,EYE=1.9,GRID=SUBDIV+1,CELL=SIZE/SUBDIV,gridH=null;
+    var SIZE=1200,NZ=256,EYE=1.9,CELLZ=SIZE/NZ,gridH=null;
     var ROAD_WIDTH=12.0,ROAD_HALF=ROAD_WIDTH*.5,ROAD_DEFORM_RADIUS=8.5;
     var ROAD_CLEAR_WIDTH=13.5,ROAD_REPEAT_M=9.0;
 
@@ -21,31 +21,79 @@
     function roadBlend(x){var a=Math.abs(x);if(a<=6.35)return 1;if(a>=ROAD_DEFORM_RADIUS)return 0;return 1-smooth(6.35,ROAD_DEFORM_RADIUS,a);}
     function roadPaintMask(x){var a=Math.abs(x);if(a<=5.65)return 1;if(a>=6.35)return 0;return 1-smooth(5.65,6.35,a);}
     function heightAt(x,z){var base=landscapeHeight(x,z),w=roadBlend(x);if(w<=0)return base;return base*(1-w)+(roadCenterHeight(z)+roadProfileOffset(x))*w;}
+    /* The road runs straight along Z at x=0, so only X needs refining. Uniform 4.69 m
+       columns cannot show a 1.15 m ditch at all; these give 0.25 m across the corridor,
+       grade out to the old spacing, and coarsen past 150 m to pay for it - +4.7% triangles
+       for 5 columns across the ditch drop instead of 0-1. */
+    function colSpacing(a){
+      if(a<=9)return .25;
+      if(a<=35){var t=(a-9)/26;return .25+(4.6875-.25)*(t*t*(3-2*t));}
+      if(a<=150)return 4.6875;
+      return 9.375;
+    }
+    var colX=(function(){
+      var half=SIZE*.5,right=[0],last=0,out=[],i;
+      while(last<half){var nx=last+colSpacing(last);if(nx>half)nx=half;right.push(nx);last=nx;}
+      for(i=right.length-1;i>=1;i--)out.push(-right[i]);
+      for(i=0;i<right.length;i++)out.push(right[i]);
+      return Float64Array.from(out);
+    })();
+    var NX=colX.length-1,GRID=NX+1;
+
+    /* O(1) column lookup. Buckets are no wider than the finest column, so at most one
+       column boundary falls inside one - the while loop below then steps at most once,
+       and stays correct even if the spacing table is retuned. */
+    var LOOK=.25,LOOKN=Math.ceil(SIZE/LOOK)+1,colOf=new Int32Array(LOOKN);
+    (function(){var c=0;for(var b=0;b<LOOKN;b++){var x=b*LOOK-SIZE*.5;while(c<NX-1&&colX[c+1]<=x)c++;colOf[b]=c;}})();
+
     function build(h,gx,gz){var nx=-gx,ny=1,nz=-gz,len=Math.sqrt(nx*nx+1+nz*nz)||1;nx/=len;ny/=len;nz/=len;return {height:h,normal:{x:nx,y:ny,z:nz},slope:Math.acos(Math.max(-1,Math.min(1,ny)))*180/Math.PI};}
     function sampleAnalytic(x,z){var e=.30;return build(heightAt(x,z),(heightAt(x+e,z)-heightAt(x-e,z))/(2*e),(heightAt(x,z+e)-heightAt(x,z-e))/(2*e));}
 
     /* Sample the terrain triangle that is actually rendered, not the analytic surface.
-       CreateGround lays vertices out as col+row*(SUBDIV+1) with x rising along col and z
-       FALLING along row, and splits each cell into (A,B,C) where u>=v and (D,A,C) otherwise.
-       The analytic surface disagrees with what the GPU draws by up to ~0.4 m beside the road,
-       because the road's 1-2 m cross-section is finer than the 4.69 m vertex spacing - that
-       gap is what left grass floating above, or sunk into, the ground near the road. Reading
-       the baked vertex grid instead is both exact and cheaper than five heightAt() calls. */
+       Vertices are laid out col+row*GRID with x rising along col (non-uniform, see colX) and
+       z FALLING along row; each cell splits into (A,B,C) where u>=v and (D,A,C) otherwise.
+       Placing grass on the analytic surface instead left it floating above or sunk into the
+       drawn ground by up to 0.4 m near the road. Reading the baked vertex grid is exact at
+       any spacing, and cheaper than the five heightAt() calls it replaced. */
     function sampleAt(x,z){
       if(!gridH)return sampleAnalytic(x,z);
-      var fu=(x+SIZE*.5)/CELL,i=Math.floor(fu),u=fu-i;
-      var fj=SUBDIV-(z+SIZE*.5)/CELL,j=Math.floor(fj),v=fj-j;
-      if(i<0||i>=SUBDIV||j<0||j>=SUBDIV)return sampleAnalytic(x,z);
+      var b=Math.floor((x+SIZE*.5)/LOOK);
+      if(b<0||b>=LOOKN)return sampleAnalytic(x,z);
+      var i=colOf[b];while(i<NX-1&&x>=colX[i+1])i++;
+      if(x<colX[i]||x>colX[i+1])return sampleAnalytic(x,z);
+      var fj=NZ-(z+SIZE*.5)/CELLZ,j=Math.floor(fj),v=fj-j;
+      if(j<0||j>=NZ)return sampleAnalytic(x,z);
+      var wx=colX[i+1]-colX[i],u=(x-colX[i])/wx;
       var k=i+j*GRID,hC=gridH[k],hB=gridH[k+1],hD=gridH[k+GRID],hA=gridH[k+GRID+1];
-      if(u>=v)return build(hC+u*(hB-hC)+v*(hA-hB),(hB-hC)/CELL,-(hA-hB)/CELL);
-      return build(hC+v*(hD-hC)+u*(hA-hD),(hA-hD)/CELL,-(hD-hC)/CELL);
+      if(u>=v)return build(hC+u*(hB-hC)+v*(hA-hB),(hB-hC)/wx,-(hA-hB)/CELLZ);
+      return build(hC+v*(hD-hC)+u*(hA-hD),(hA-hD)/wx,-(hD-hC)/CELLZ);
     }
 
-    var terrain=BABYLON.MeshBuilder.CreateGround('demoBumpyTerrain',{width:SIZE,height:SIZE,subdivisions:SUBDIV,updatable:true},scene);
-    var pos=terrain.getVerticesData(BABYLON.VertexBuffer.PositionKind),ind=terrain.getIndices(),nor=terrain.getVerticesData(BABYLON.VertexBuffer.NormalKind)||new Array(pos.length).fill(0);
-    for(var i=0;i<pos.length;i+=3)pos[i+1]=heightAt(pos[i],pos[i+2]);
-    gridH=new Float32Array(GRID*GRID);for(var gi=0;gi<gridH.length;gi++)gridH[gi]=pos[gi*3+1];
-    BABYLON.VertexData.ComputeNormals(pos,ind,nor);terrain.updateVerticesData(BABYLON.VertexBuffer.PositionKind,pos,false,false);terrain.updateVerticesData(BABYLON.VertexBuffer.NormalKind,nor,false,false);terrain.refreshBoundingInfo();terrain.isPickable=true;terrain.receiveShadows=true;
+    /* Built by hand rather than CreateGround, but with CreateGround's exact vertex and
+       index layout (vertex = col+row*GRID, x rising with col, z falling with row, each cell
+       split (A,B,C)/(D,A,C)) so sampleAt above indexes the same triangles the GPU draws.
+       UVs stay world-linear in x, otherwise the narrow corridor columns would squeeze the
+       dirt tiling. */
+    var terrain=new BABYLON.Mesh('demoBumpyTerrain',scene);
+    var vcount=GRID*(NZ+1),pos=new Float32Array(vcount*3),uvs=new Float32Array(vcount*2),nor=new Float32Array(vcount*3),ind=new Uint32Array(NX*NZ*6);
+    gridH=new Float32Array(vcount);
+    for(var row=0;row<=NZ;row++){
+      var zc=(NZ-row)*CELLZ-SIZE*.5;
+      for(var col=0;col<GRID;col++){
+        var vi=col+row*GRID,xc=colX[col],hv=heightAt(xc,zc);
+        pos[vi*3]=xc;pos[vi*3+1]=hv;pos[vi*3+2]=zc;gridH[vi]=hv;
+        uvs[vi*2]=(xc+SIZE*.5)/SIZE;uvs[vi*2+1]=1-row/NZ;
+      }
+    }
+    var q=0;
+    for(var rr=0;rr<NZ;rr++)for(var cc=0;cc<NX;cc++){
+      ind[q++]=cc+1+(rr+1)*GRID;ind[q++]=cc+1+rr*GRID;ind[q++]=cc+rr*GRID;
+      ind[q++]=cc+(rr+1)*GRID;ind[q++]=cc+1+(rr+1)*GRID;ind[q++]=cc+rr*GRID;
+    }
+    BABYLON.VertexData.ComputeNormals(pos,ind,nor);
+    var vdata=new BABYLON.VertexData();vdata.positions=pos;vdata.indices=ind;vdata.normals=nor;vdata.uvs=uvs;
+    vdata.applyToMesh(terrain,true);
+    terrain.isPickable=true;terrain.receiveShadows=true;
 
     var mat=new BABYLON.CustomMaterial('demoTerrainRoadPaintMat',scene);mat.diffuseColor=new BABYLON.Color3(1.06,1.04,1.01);mat.specularColor=BABYLON.Color3.Black();mat.ambientColor=new BABYLON.Color3(.15,.125,.09);
     var dirt=null,roadTex=null;
@@ -62,7 +110,7 @@
 
     window.GrassAPI.autoRebuild=false;window.GrassAPI.setTerrainSampler(sampleAt);window.GrassAPI.setMaxSlope(38);window.GrassAPI.excludeCorridor([{x:0,z:-5000},{x:0,z:5000}],ROAD_CLEAR_WIDTH);window.GrassAPI.autoRebuild=true;setTimeout(function(){try{window.GrassAPI.requestRebuild();}catch(_){ }},0);
 
-    setTimeout(function(){scene.onBeforeRenderObservable.add(function(){var s=sampleAt(camera.position.x,camera.position.z);camera.position.y+=s.height;});try{document.title='Grass Game v63';var rows=document.querySelectorAll('#ui .row');for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v63';break;}}catch(_){ }},0);
+    setTimeout(function(){scene.onBeforeRenderObservable.add(function(){var s=sampleAt(camera.position.x,camera.position.z);camera.position.y+=s.height;});try{document.title='Grass Game v64';var rows=document.querySelectorAll('#ui .row');for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v64';break;}}catch(_){ }},0);
 
     window.GrassTerrainDemo={mesh:terrain,heightAt:heightAt,landscapeHeight:landscapeHeight,sampleAt:sampleAt,size:SIZE,maxSlope:38,eyeHeight:EYE,shadows:terrainShadows,road:{mesh:null,material:mat,texture:roadTex,width:ROAD_WIDTH,clearWidth:ROAD_CLEAR_WIDTH,deformRadius:ROAD_DEFORM_RADIUS,profileOffset:roadProfileOffset,blend:roadBlend,paintMask:roadPaintMask}};
   }

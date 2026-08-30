@@ -2,7 +2,7 @@
 
 Reusable Babylon.js grass rendering prototype with deterministic chunk generation, near/medium/far LOD, streamed thin instances, wind, fill patches, image-based shadows, placement/masking, rough-terrain sampling, and a deformed horizon-road demo.
 
-Current demo build: **v63**.
+Current demo build: **v64**.
 
 ## Main files
 
@@ -125,7 +125,7 @@ Near, medium, far, fill patches, and projected grass shadows all inherit the sam
 
 ### Sample the rendered mesh, not the analytic surface
 
-A height function and the mesh built from it are not the same surface. `CreateGround` at `SUBDIV = 256` over 1200 m puts vertices 4.69 m apart, and the GPU draws flat triangles between them — but the road's cross-section brush (crown, shoulders, ditches, recovery) varies over 1–2 m, and the blend back to open landscape happens across only 1.75 m. The mesh cannot represent any of that, so placing grass at `heightAt(x, z)` puts it on a surface that is not the one being drawn.
+A height function and the mesh built from it are not the same surface. The GPU draws flat triangles between vertices, so placing grass at `heightAt(x, z)` puts it on a surface that is not the one being drawn — at the old uniform 4.69 m spacing that gap reached 0.41 m beside the road.
 
 Measured against the real Babylon index buffer, that gap is 1.5 cm in open field but up to **0.41 m beside the road** — grass floating in the air on one side, sunk into the ground on the other, with decal shadows detached to match.
 
@@ -142,6 +142,28 @@ h = (u >= v) ? hC + u*(hB-hC) + v*(hA-hB)
 This is exact by construction at any subdivision — verified to 1e-14 m against ray-triangle intersection on the actual mesh — and it is also **~5.8× cheaper** than the analytic sampler, which spent five `heightAt` calls (twenty trig evaluations) per clump. Camera follow uses the same sampler, so the player walks on the drawn ground too.
 
 Keep the analytic path as the fallback for positions outside the mesh, and remember that grass, fill patches, shadows, and camera height must all agree on *one* definition of "the ground".
+
+### Grading the mesh around the corridor
+
+Sampling the drawn mesh puts grass on the ground, but it does not make a 1.15 m ditch visible when vertices are 4.69 m apart — the road profile simply is not in the geometry. Because the demo road is straight along Z, only X needs refining, so the terrain is built by hand from a non-uniform column table instead of `CreateGround`:
+
+```js
+function colSpacing(a){            // a = |x| from the road centreline
+  if (a <=   9) return 0.25;       // resolve crown, shoulders, ditch
+  if (a <=  35) return lerp(0.25, 4.6875, smoothstep(a));
+  if (a <= 150) return 4.6875;     // unchanged from before
+  return 9.375;                    // far field, heavily fogged - pays for the corridor
+}
+```
+
+Coarsening past 150 m funds the detail, so this costs **+4.7% triangles** (137,216 vs 131,072) while going from 0–1 columns across the ditch drop to five, and 13 across the crown. Rendered-vs-true profile error in the corridor falls from **0.429 m to 0.023 m**; the only regression is 1.6 cm → 4.2 cm beyond 150 m, under fog.
+
+Two things must move together with the table, or the floating-grass bug returns:
+
+- **`sampleAt` must use the real column width.** The triangle split (`u >= v`) is parametric and unaffected by cell aspect, but the X gradient becomes `(hB - hC) / (colX[i+1] - colX[i])`, not a constant. Column lookup is an O(1) bucket table plus a one-step correction, with buckets no wider than the finest column.
+- **UVs must stay world-linear in X** (`uv.x = (x + SIZE/2) / SIZE`). `CreateGround` uses `col / subdivisions`, which with non-uniform columns would squeeze the dirt tiling into the narrow corridor.
+
+The hand-built mesh keeps `CreateGround`'s exact vertex and index layout — vertex `col + row*GRID`, x rising with col, z *falling* with row, each cell split `(A,B,C)`/`(D,A,C)` — so the sampler indexes the same triangles the GPU rasterizes. Indices must be `Uint32Array`; the grid is well past 65,535 vertices.
 
 ## Projected grass shadows on rough terrain
 
