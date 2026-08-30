@@ -153,7 +153,13 @@
       terrainShadows.lambda=.72;
       terrainShadows.bias=.0008;
       terrainShadows.normalBias=.035;
-      terrainShadows.darkness=.30;
+      /* At the 5.7 deg sunset elevation set in grass-realism.js, direct sunlight on
+         near-flat ground is already only ~10% of full intensity (dot(N,L)~=sin(5.7deg)),
+         and the rolling terrain shadows itself heavily at that grazing angle. A low
+         darkness value here on top of that left shadowed ground/road near-black.
+         darkness is inverted from what it sounds like: 0 = darkest shadow, 1 = no
+         shadow at all. Raised so shadowed ground stays visibly lit. */
+      terrainShadows.darkness=.55;
       terrainShadows.stabilizeCascades=true;
       terrainShadows.autoCalcDepthBounds=true;
       terrainShadows.addShadowCaster(terrain,true);

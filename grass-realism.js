@@ -24,7 +24,10 @@
 
   try{
     if(typeof hemi!=='undefined'){
-      hemi.intensity=.68;
+      /* Sky fill is the only light that still reaches ground shadowed by the
+         5.7 deg sunset sun (see terrain-demo.js CSM darkness comment). Raised
+         from .68 so shadowed terrain/road don't read as near-black. */
+      hemi.intensity=.95;
       hemi.diffuse=new BABYLON.Color3(.62,.70,.82);
       hemi.groundColor=new BABYLON.Color3(.40,.31,.20);
     }
