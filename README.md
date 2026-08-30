@@ -1,154 +1,36 @@
 # grasstex
 
-Reusable Babylon.js grass rendering prototype with deterministic chunk generation, near/medium/far LOD, streamed thin instances, wind, fill patches, image-based shadows, placement masks, and terrain height/slope support.
+Reusable Babylon.js grass rendering prototype with deterministic chunk generation, near/medium/far LOD, streamed thin instances, wind, fill patches, image-based shadows, placement/masking, rough-terrain sampling, and a deformed horizon-road demo.
 
-Current demo build: **v55**.
+Current demo build: **v57**.
 
 ## Main files
 
 - `game.html` — current demo loader/build.
-- `grass-api.js` — placement, exclusion, surface, terrain-height, terrain-normal, and slope API.
-- `grass-streaming.js` — deterministic chunk streaming, terrain sampling, and LOD instance generation.
-- `grass-realism.js` — grass shaders, fill texture shader, lighting integration, sky setup, and dirt material.
-- `grass-effects.js` — projected grass shadows/effects; shadow roots follow sampled terrain height.
-- `terrain-demo.js` — v55 bumpy-terrain reference adapter used by the demo.
-- `bodycam.js` — optional camera/post-processing layer.
-- `Assets/` — grass/fill/sky/dirt textures.
+- `grass-api.js` — reusable placement, exclusion, terrain-height, normal, and slope API.
+- `grass-streaming.js` — deterministic chunk streaming and LOD instance generation.
+- `grass-realism.js` — grass shaders, fill texture shader, lighting integration, sky setup, and world-locked dirt.
+- `grass-effects.js` — projected grass shadows/effects.
+- `terrain-demo.js` — rolling terrain demo, road deformation brush, `roadtex.png` road mesh, camera terrain following, and terrain/road shadow setup.
+- `bodycam.js` — optional camera/post-processing layer used by the demo.
+- `Assets/` on the hosted demo — grass/fill/sky/dirt/road textures.
 
 ## Recommended load order
 
 ```html
 <script src="babylon.js"></script>
-
-<!-- Your base grass renderer / mesh setup -->
 <script src="grass-api.js"></script>
-
-<!-- Configure terrain sampling here, before grass-streaming.js -->
+<script src="terrain-demo.js"></script> <!-- demo only -->
 <script src="grass-streaming.js"></script>
 <script src="grass-realism.js"></script>
 <script src="grass-effects.js"></script>
 ```
 
-`grass-api.js` creates `window.GrassAPI` and exposes the constructor `window.GrassPlacementAPI`.
+`grass-api.js` creates `window.GrassAPI` and exposes `window.GrassPlacementAPI`.
 
-# Terrain / rough landscape support
+## Placement and exclusion API
 
-The engine no longer assumes grass is at `y = 0`. Each deterministic candidate can be sampled against the project's terrain **once when its chunk is built**. The resulting height is baked into the near, medium, and far thin-instance matrices, so there is no per-frame terrain raycast cost.
-
-The current v55 demo uses `terrain-demo.js`, which replaces the flat visual ground with a subdivided rolling landscape and registers an analytic terrain sampler with the grass API.
-
-## Custom terrain sampler
-
-The most general integration is:
-
-```js
-GrassAPI.setTerrainSampler((x, z, context) => {
-  return {
-    height: terrainHeightAt(x, z),
-    normal: terrainNormalAt(x, z)
-  };
-});
-```
-
-The sampler may return:
-
-```js
-{
-  height: 3.2,
-  normal: { x: -0.08, y: 0.99, z: 0.04 }
-}
-```
-
-It may also supply `slope` directly in degrees:
-
-```js
-{
-  height: 3.2,
-  normal: { x: -0.08, y: 0.99, z: 0.04 },
-  slope: 8.4
-}
-```
-
-If `slope` is omitted, the API derives it from the normal.
-
-A sampler may return only a number when only height is available:
-
-```js
-GrassAPI.setTerrainSampler((x, z) => terrainHeightAt(x, z));
-```
-
-In that case the normal defaults to straight up and slope filtering cannot distinguish steep terrain.
-
-## Babylon GroundMesh helper
-
-For a Babylon terrain mesh that implements `getHeightAtCoordinates()`:
-
-```js
-GrassAPI.setTerrainMesh(terrainMesh);
-```
-
-The API will use the mesh height method and, when available, its normal-at-coordinate method.
-
-For very large worlds or custom terrain engines, a direct sampler is usually preferable because it can use the same heightfield/terrain data that generated the mesh without doing raycasts.
-
-## Maximum slope
-
-Grass can be prevented from growing on cliffs, rock faces, steep embankments, etc.:
-
-```js
-GrassAPI.setMaxSlope(42); // degrees
-```
-
-The v55 demo uses:
-
-```js
-GrassAPI.setMaxSlope(38);
-```
-
-Candidates steeper than the configured limit are rejected before any near/medium/far/fill instance is written.
-
-To remove the terrain adapter:
-
-```js
-GrassAPI.clearTerrainSampler();
-```
-
-The engine then falls back to flat `y = 0` placement.
-
-## What follows the terrain
-
-In v55:
-
-- near crossed-card grass is translated to sampled terrain height;
-- medium billboards use the same sampled height;
-- far billboards use the same sampled height;
-- `filltex` patches use the same height and are oriented to the sampled terrain normal;
-- grass-shadow roots use the same sampled terrain height;
-- the demo camera follows the bumpy terrain while preserving bodycam bob/breathing.
-
-The grass blades themselves remain mostly upright instead of tilting fully to the ground normal. This is intentional: real grass generally grows upward even when rooted on a slope. The fill patch follows the surface because it represents low ground cover.
-
-## Far draw on rough terrain
-
-The streaming ring still uses horizontal **XZ ground distance**, so hills do not cause extra chunks to stream simply because they are higher or lower. Current distances remain:
-
-```text
-Near:   0–30 m
-Medium: 30–165 m
-Far:    150–242 m
-```
-
-Far grass therefore receives the same terrain height as near and medium grass and continues across hills instead of hovering at sea level.
-
-The shader-level LOD distance in the current realism shaders is still a 3D camera-to-clump distance. On ordinary rolling terrain the difference from XZ distance is tiny; for example, a 5 m elevation difference at roughly 240 m changes the effective distance by only about 0.05 m. For extreme mountainous maps, a future integration can switch those shader tests to XZ distance if strict horizontal LOD bands are desired.
-
-The far density behavior is unchanged: far LOD still uses the deterministic sparse representation rather than restoring full clump density.
-
-# Placement masks
-
-With no inclusion areas or exclusions defined, grass is allowed everywhere.
-
-To restrict grass to a particular region:
+With no inclusion areas or exclusions, grass is allowed everywhere. Once inclusion areas exist, grass is generated only inside them.
 
 ```js
 GrassAPI.addArea({
@@ -162,15 +44,7 @@ GrassAPI.addArea({
 });
 ```
 
-Once at least one inclusion exists, grass is generated only inside an included area.
-
-`includeArea()` is an alias for `addArea()`.
-
-# Excluding roads, buildings, walls, trenches, etc.
-
-Exclusions are tested before a candidate clump enters the thin-instance buffers. Excluded grass is never rendered.
-
-## Road / path / ditch
+Road/path exclusion:
 
 ```js
 GrassAPI.excludeCorridor([
@@ -181,111 +55,156 @@ GrassAPI.excludeCorridor([
 ], 6);
 ```
 
-## Rectangular building
+Other helpers:
 
 ```js
-GrassAPI.excludeBox(
-  40,              // center x
-  35,              // center z
-  12,              // width
-  18,              // depth
-  Math.PI / 8      // rotation radians
-);
+GrassAPI.excludeCircle(x, z, radius);
+GrassAPI.excludeBox(x, z, width, depth, rotationRadians);
+GrassAPI.excludePolygon(points);
+GrassAPI.excludeSegment(start, end, clearance);
 ```
 
-## Irregular footprint
+Supported shape types: `polygon`, `circle`, `box`, `corridor`, `segment`.
+
+## Surface filtering
 
 ```js
-GrassAPI.excludePolygon([
-  { x: 20, z: 20 },
-  { x: 31, z: 20 },
-  { x: 34, z: 29 },
-  { x: 25, z: 35 },
-  { x: 18, z: 29 }
-]);
-```
-
-## Wall footprint
-
-```js
-GrassAPI.excludeSegment(
-  { x: 10, z: 10 },
-  { x: 55, z: 10 },
-  0.5
-);
-```
-
-## Circular clearance
-
-```js
-GrassAPI.excludeCircle(25, 40, 3.5);
-```
-
-Supported shapes are `polygon`, `circle`, `box`, `corridor`, and `segment`.
-
-# Surface/material filtering
-
-```js
-GrassAPI.setSurfaceResolver((x, z) => {
-  return terrainSurfaceAt(x, z); // "terrain", "road", "concrete", etc.
-});
-
+GrassAPI.setSurfaceResolver((x, z) => terrainSurfaceAt(x, z));
 GrassAPI.excludeSurface("road");
 GrassAPI.excludeSurface("concrete");
 GrassAPI.excludeSurface("building");
 ```
 
-Or use an allow-list:
+Allow-list mode:
 
 ```js
 GrassAPI.allowSurface("terrain");
 GrassAPI.allowSurface("meadow");
 ```
 
-# Dynamic map editing
+## Rough terrain
 
-Mask, terrain, surface, or slope changes automatically request a grass rebuild unless `autoRebuild` is disabled.
+The grass system can sample arbitrary terrain once when clumps are generated. Height/normal values are baked into thin-instance matrices; there is no per-frame raycast for every clump.
+
+```js
+GrassAPI.setTerrainSampler((x, z) => ({
+  height: terrainHeightAt(x, z),
+  normal: terrainNormalAt(x, z)
+}));
+
+GrassAPI.setMaxSlope(42);
+```
+
+A sampler may return:
+
+```js
+{
+  height: 2.35,
+  normal: { x: -0.1, y: 0.98, z: 0.16 },
+  slope: 11.5 // optional degrees; derived from normal when omitted
+}
+```
+
+For Babylon terrain meshes:
+
+```js
+GrassAPI.setTerrainMesh(terrainMesh);
+```
+
+Useful methods:
+
+```js
+GrassAPI.sampleTerrain(x, z);
+GrassAPI.setTerrainSampler(fn);
+GrassAPI.clearTerrainSampler();
+GrassAPI.setTerrainMesh(mesh);
+GrassAPI.setMaxSlope(degrees);
+```
+
+Near, medium, far, fill patches, and projected grass shadows all inherit the sampled terrain Y position. Fill patches also use the terrain normal so they lie against slopes.
+
+## Far LOD on hills
+
+Streaming ranges remain based on horizontal X/Z distance, so hills do not cause extra chunks to load merely because terrain rises vertically. Far density remains 1/7. Terrain height only changes the instance Y coordinate.
+
+## Demo road deformation
+
+`terrain-demo.js` demonstrates a terrain-native road rather than a floating flat strip.
+
+The road:
+
+- passes through spawn and extends across the full 1200 m demo terrain;
+- uses `roadtex.png` mapped once across the full cross-section and repeated along road length;
+- deforms terrain with a cross-section brush containing a crowned center, shoulders, drainage ditches, and smooth recovery to the untouched landscape;
+- uses a generated edge opacity/splat texture to feather the textured road into surrounding dirt;
+- clears grass with an exclusion corridor so near/medium/far grass and fill patches are never generated through the road footprint.
+
+The important functions exposed by the demo are:
+
+```js
+GrassTerrainDemo.heightAt(x, z);
+GrassTerrainDemo.sampleAt(x, z);
+GrassTerrainDemo.road.profileOffset(crossRoadX);
+GrassTerrainDemo.road.blend(crossRoadX);
+```
+
+A production road spline can use the same idea by evaluating each terrain point in road-local coordinates: longitudinal distance along the spline plus signed cross-road distance. Feed the cross-road distance to the profile brush, blend the result into the native terrain, and use the same centerline for the grass exclusion corridor.
+
+## Terrain and road lighting / shadows
+
+v57 enables standard Babylon lighting on both the terrain and `roadtex.png` road material and adds a `CascadedShadowGenerator` driven by the existing directional sun.
+
+```js
+terrain.receiveShadows = true;
+road.receiveShadows = true;
+
+const shadows = new BABYLON.CascadedShadowGenerator(1024, sun);
+shadows.numCascades = 3;
+shadows.addShadowCaster(terrain, true);
+shadows.addShadowCaster(road, true);
+```
+
+This lets rolling terrain cast long sunset shadows onto itself and onto the road. Cascades preserve substantially more near-camera shadow resolution than one giant orthographic shadow map covering the entire 1200 m terrain.
+
+The road remains a normal lit `StandardMaterial`; `roadtex.png` is its diffuse texture. v57 slightly raises the material/texture response so the texture remains legible at the very low-angle sunset used by the demo instead of collapsing toward near-black.
+
+## Dynamic buildings or map editing
+
+Mask changes automatically request a rebuild when `autoRebuild` is enabled.
 
 For bulk setup:
 
 ```js
 GrassAPI.autoRebuild = false;
 
-GrassAPI.setTerrainSampler(sampleTerrain);
-GrassAPI.setMaxSlope(40);
 GrassAPI.excludeCorridor(roadA, 6);
 GrassAPI.excludePolygon(houseA);
-GrassAPI.excludeSegment(wall.start, wall.end, 0.5);
+GrassAPI.excludeSegment(wall.start, wall.end, wall.width * 0.5 + 0.25);
 
 GrassAPI.autoRebuild = true;
 GrassAPI.requestRebuild();
 ```
 
-# Clearing / querying
+## Clearing and querying masks
 
 ```js
 GrassAPI.clearExclusions();
 GrassAPI.clearIncludes();
 GrassAPI.clearAreas();
-GrassAPI.clearTerrainSampler();
 
 if (GrassAPI.isAllowed(worldX, worldZ)) {
-  // XZ placement masks permit grass here.
+  // valid grass position
 }
 
-const terrain = GrassAPI.sampleTerrain(worldX, worldZ);
-console.log(terrain.height, terrain.normal, terrain.slope);
+console.log(GrassAPI.snapshot());
 ```
 
-`test()` is an alias for `isAllowed()`.
-
-# API reference
+## API reference
 
 ```js
 GrassAPI.addArea(shape)
 GrassAPI.includeArea(shape)
 GrassAPI.excludeArea(shape)
-
 GrassAPI.excludeCircle(x, z, radius)
 GrassAPI.excludeBox(x, z, width, depth, rotationRadians)
 GrassAPI.excludePolygon(points)
@@ -299,15 +218,13 @@ GrassAPI.includeSurface(name)
 GrassAPI.setSurfaceResolver(fn)
 
 GrassAPI.setTerrainSampler(fn)
-GrassAPI.setTerrainMesh(mesh)
 GrassAPI.clearTerrainSampler()
-GrassAPI.sampleTerrain(x, z, context?)
+GrassAPI.setTerrainMesh(mesh)
+GrassAPI.sampleTerrain(x, z)
 GrassAPI.setMaxSlope(degrees)
-GrassAPI.isSlopeAllowed(sample)
 
 GrassAPI.isAllowed(x, z, context?)
 GrassAPI.test(x, z, context?)
-
 GrassAPI.clearIncludes()
 GrassAPI.clearExclusions()
 GrassAPI.clearAreas()
@@ -315,35 +232,10 @@ GrassAPI.requestRebuild()
 GrassAPI.snapshot()
 ```
 
-`snapshot()` now includes `maxSlope` and `hasTerrainSampler` in addition to the placement/surface rules.
+## Determinism
 
-# Determinism
+The streamer consumes the complete deterministic RNG sequence for each candidate before placement, terrain, slope, or exclusion filtering. Given the same world seed, terrain sampler, and mask data, clients generate the same surviving grass clumps without networking every blade.
 
-`grass-streaming.js` consumes the complete deterministic random sequence for a candidate before performing placement, terrain, and slope filtering. That means filtering does not shift the RNG sequence for later clumps in the same chunk.
+## Current integration boundary
 
-For deterministic multiplayer maps, every client should use the same world seed, inclusion/exclusion geometry, terrain sampler data, surface classifications, and maximum-slope rule. Individual grass clumps then do not need to be networked.
-
-# Larger-project integration
-
-A world generator should own authoritative roads/buildings/terrain and register them with the grass API while constructing the map:
-
-```js
-GrassAPI.autoRebuild = false;
-GrassAPI.setTerrainSampler(world.sampleTerrain);
-GrassAPI.setMaxSlope(40);
-GrassAPI.addArea({ type: "polygon", points: playableTerrainPolygon });
-
-for (const road of roads)
-  GrassAPI.excludeCorridor(road.centerline, road.width + 1.0);
-
-for (const building of buildings)
-  GrassAPI.excludePolygon(building.footprint);
-
-for (const wall of walls)
-  GrassAPI.excludeSegment(wall.start, wall.end, wall.width * 0.5 + 0.25);
-
-GrassAPI.autoRebuild = true;
-GrassAPI.requestRebuild();
-```
-
-The visual renderer is still partly coupled to demo globals such as `scene`, `camera`, `nearTypes`, `medTypes`, `farTypes`, `density`, and `CHUNK`. `grass-api.js` is the reusable world-placement boundary; the next packaging cleanup would be wrapping the remaining renderer/streamer pieces behind a `GrassSystem` class while keeping v55 as the visual reference build.
+The placement/terrain API is reusable, while the visual renderer still relies on demo globals such as `scene`, `camera`, `nearTypes`, `medTypes`, `farTypes`, `density`, and `CHUNK`. A future package cleanup can wrap those globals behind a `GrassSystem` class without changing the placement or terrain-sampling interface documented above.
