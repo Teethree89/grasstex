@@ -1,4 +1,4 @@
-/* v62 demo terrain adapter.
+/* v63 demo terrain adapter.
    Rolling 1200m terrain with a horizon-to-horizon painted road through spawn.
    Grass shadows are projected decal planes again (see grass-effects.js), so the terrain
    shader no longer samples a world-space shadow splat - that texture fetch and its 512^2
@@ -10,7 +10,7 @@
     if(window.__grassTerrainV61Booted)return;
     window.__grassTerrainV61Booted=true;
 
-    var SIZE=1200,SUBDIV=256,EYE=1.9;
+    var SIZE=1200,SUBDIV=256,EYE=1.9,GRID=SUBDIV+1,CELL=SIZE/SUBDIV,gridH=null;
     var ROAD_WIDTH=12.0,ROAD_HALF=ROAD_WIDTH*.5,ROAD_DEFORM_RADIUS=8.5;
     var ROAD_CLEAR_WIDTH=13.5,ROAD_REPEAT_M=9.0;
 
@@ -21,11 +21,30 @@
     function roadBlend(x){var a=Math.abs(x);if(a<=6.35)return 1;if(a>=ROAD_DEFORM_RADIUS)return 0;return 1-smooth(6.35,ROAD_DEFORM_RADIUS,a);}
     function roadPaintMask(x){var a=Math.abs(x);if(a<=5.65)return 1;if(a>=6.35)return 0;return 1-smooth(5.65,6.35,a);}
     function heightAt(x,z){var base=landscapeHeight(x,z),w=roadBlend(x);if(w<=0)return base;return base*(1-w)+(roadCenterHeight(z)+roadProfileOffset(x))*w;}
-    function sampleAt(x,z){var e=.30,h=heightAt(x,z),dx=(heightAt(x+e,z)-heightAt(x-e,z))/(2*e),dz=(heightAt(x,z+e)-heightAt(x,z-e))/(2*e),nx=-dx,ny=1,nz=-dz,len=Math.sqrt(nx*nx+ny*ny+nz*nz)||1;nx/=len;ny/=len;nz/=len;return {height:h,normal:{x:nx,y:ny,z:nz},slope:Math.acos(Math.max(-1,Math.min(1,ny)))*180/Math.PI};}
+    function build(h,gx,gz){var nx=-gx,ny=1,nz=-gz,len=Math.sqrt(nx*nx+1+nz*nz)||1;nx/=len;ny/=len;nz/=len;return {height:h,normal:{x:nx,y:ny,z:nz},slope:Math.acos(Math.max(-1,Math.min(1,ny)))*180/Math.PI};}
+    function sampleAnalytic(x,z){var e=.30;return build(heightAt(x,z),(heightAt(x+e,z)-heightAt(x-e,z))/(2*e),(heightAt(x,z+e)-heightAt(x,z-e))/(2*e));}
+
+    /* Sample the terrain triangle that is actually rendered, not the analytic surface.
+       CreateGround lays vertices out as col+row*(SUBDIV+1) with x rising along col and z
+       FALLING along row, and splits each cell into (A,B,C) where u>=v and (D,A,C) otherwise.
+       The analytic surface disagrees with what the GPU draws by up to ~0.4 m beside the road,
+       because the road's 1-2 m cross-section is finer than the 4.69 m vertex spacing - that
+       gap is what left grass floating above, or sunk into, the ground near the road. Reading
+       the baked vertex grid instead is both exact and cheaper than five heightAt() calls. */
+    function sampleAt(x,z){
+      if(!gridH)return sampleAnalytic(x,z);
+      var fu=(x+SIZE*.5)/CELL,i=Math.floor(fu),u=fu-i;
+      var fj=SUBDIV-(z+SIZE*.5)/CELL,j=Math.floor(fj),v=fj-j;
+      if(i<0||i>=SUBDIV||j<0||j>=SUBDIV)return sampleAnalytic(x,z);
+      var k=i+j*GRID,hC=gridH[k],hB=gridH[k+1],hD=gridH[k+GRID],hA=gridH[k+GRID+1];
+      if(u>=v)return build(hC+u*(hB-hC)+v*(hA-hB),(hB-hC)/CELL,-(hA-hB)/CELL);
+      return build(hC+v*(hD-hC)+u*(hA-hD),(hA-hD)/CELL,-(hD-hC)/CELL);
+    }
 
     var terrain=BABYLON.MeshBuilder.CreateGround('demoBumpyTerrain',{width:SIZE,height:SIZE,subdivisions:SUBDIV,updatable:true},scene);
     var pos=terrain.getVerticesData(BABYLON.VertexBuffer.PositionKind),ind=terrain.getIndices(),nor=terrain.getVerticesData(BABYLON.VertexBuffer.NormalKind)||new Array(pos.length).fill(0);
     for(var i=0;i<pos.length;i+=3)pos[i+1]=heightAt(pos[i],pos[i+2]);
+    gridH=new Float32Array(GRID*GRID);for(var gi=0;gi<gridH.length;gi++)gridH[gi]=pos[gi*3+1];
     BABYLON.VertexData.ComputeNormals(pos,ind,nor);terrain.updateVerticesData(BABYLON.VertexBuffer.PositionKind,pos,false,false);terrain.updateVerticesData(BABYLON.VertexBuffer.NormalKind,nor,false,false);terrain.refreshBoundingInfo();terrain.isPickable=true;terrain.receiveShadows=true;
 
     var mat=new BABYLON.CustomMaterial('demoTerrainRoadPaintMat',scene);mat.diffuseColor=new BABYLON.Color3(1.06,1.04,1.01);mat.specularColor=BABYLON.Color3.Black();mat.ambientColor=new BABYLON.Color3(.15,.125,.09);
@@ -43,7 +62,7 @@
 
     window.GrassAPI.autoRebuild=false;window.GrassAPI.setTerrainSampler(sampleAt);window.GrassAPI.setMaxSlope(38);window.GrassAPI.excludeCorridor([{x:0,z:-5000},{x:0,z:5000}],ROAD_CLEAR_WIDTH);window.GrassAPI.autoRebuild=true;setTimeout(function(){try{window.GrassAPI.requestRebuild();}catch(_){ }},0);
 
-    setTimeout(function(){scene.onBeforeRenderObservable.add(function(){var s=sampleAt(camera.position.x,camera.position.z);camera.position.y+=s.height;});try{document.title='Grass Game v62';var rows=document.querySelectorAll('#ui .row');for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v62';break;}}catch(_){ }},0);
+    setTimeout(function(){scene.onBeforeRenderObservable.add(function(){var s=sampleAt(camera.position.x,camera.position.z);camera.position.y+=s.height;});try{document.title='Grass Game v63';var rows=document.querySelectorAll('#ui .row');for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v63';break;}}catch(_){ }},0);
 
     window.GrassTerrainDemo={mesh:terrain,heightAt:heightAt,landscapeHeight:landscapeHeight,sampleAt:sampleAt,size:SIZE,maxSlope:38,eyeHeight:EYE,shadows:terrainShadows,road:{mesh:null,material:mat,texture:roadTex,width:ROAD_WIDTH,clearWidth:ROAD_CLEAR_WIDTH,deformRadius:ROAD_DEFORM_RADIUS,profileOffset:roadProfileOffset,blend:roadBlend,paintMask:roadPaintMask}};
   }
