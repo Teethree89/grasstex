@@ -1,52 +1,154 @@
 # grasstex
 
-Reusable Babylon.js grass rendering prototype with deterministic chunk generation, near/medium/far LOD, streamed thin instances, wind, fill patches, image-based shadows, and a placement/masking API for controlling exactly where grass may appear.
+Reusable Babylon.js grass rendering prototype with deterministic chunk generation, near/medium/far LOD, streamed thin instances, wind, fill patches, image-based shadows, placement masks, and terrain height/slope support.
 
-Current demo build: **v54**.
+Current demo build: **v55**.
 
 ## Main files
 
 - `game.html` — current demo loader/build.
-- `grass-api.js` — reusable placement and exclusion API.
-- `grass-streaming.js` — deterministic chunk streaming and LOD instance generation.
-- `grass-realism.js` — grass shaders, fill texture shader, lighting integration, sky setup, and world-locked dirt.
-- `grass-effects.js` — projected grass shadows/effects.
-- `bodycam.js` — optional camera/post-processing layer used by the demo. This is not required for the grass placement API itself.
-- `Assets/` — grass/fill/sky/dirt textures used by the demo.
+- `grass-api.js` — placement, exclusion, surface, terrain-height, terrain-normal, and slope API.
+- `grass-streaming.js` — deterministic chunk streaming, terrain sampling, and LOD instance generation.
+- `grass-realism.js` — grass shaders, fill texture shader, lighting integration, sky setup, and dirt material.
+- `grass-effects.js` — projected grass shadows/effects; shadow roots follow sampled terrain height.
+- `terrain-demo.js` — v55 bumpy-terrain reference adapter used by the demo.
+- `bodycam.js` — optional camera/post-processing layer.
+- `Assets/` — grass/fill/sky/dirt textures.
 
 ## Recommended load order
-
-The current engine is written as browser scripts and expects Babylon.js plus the base grass meshes/material setup to exist first.
 
 ```html
 <script src="babylon.js"></script>
 
 <!-- Your base grass renderer / mesh setup -->
 <script src="grass-api.js"></script>
+
+<!-- Configure terrain sampling here, before grass-streaming.js -->
 <script src="grass-streaming.js"></script>
 <script src="grass-realism.js"></script>
 <script src="grass-effects.js"></script>
 ```
 
-`grass-api.js` creates a global singleton:
+`grass-api.js` creates `window.GrassAPI` and exposes the constructor `window.GrassPlacementAPI`.
+
+# Terrain / rough landscape support
+
+The engine no longer assumes grass is at `y = 0`. Each deterministic candidate can be sampled against the project's terrain **once when its chunk is built**. The resulting height is baked into the near, medium, and far thin-instance matrices, so there is no per-frame terrain raycast cost.
+
+The current v55 demo uses `terrain-demo.js`, which replaces the flat visual ground with a subdivided rolling landscape and registers an analytic terrain sampler with the grass API.
+
+## Custom terrain sampler
+
+The most general integration is:
 
 ```js
-window.GrassAPI
+GrassAPI.setTerrainSampler((x, z, context) => {
+  return {
+    height: terrainHeightAt(x, z),
+    normal: terrainNormalAt(x, z)
+  };
+});
 ```
 
-It also exposes the constructor:
+The sampler may return:
 
 ```js
-window.GrassPlacementAPI
+{
+  height: 3.2,
+  normal: { x: -0.08, y: 0.99, z: 0.04 }
+}
 ```
 
-So another project can either use the default global API or create its own independent mask set.
+It may also supply `slope` directly in degrees:
 
-## Basic use
+```js
+{
+  height: 3.2,
+  normal: { x: -0.08, y: 0.99, z: 0.04 },
+  slope: 8.4
+}
+```
+
+If `slope` is omitted, the API derives it from the normal.
+
+A sampler may return only a number when only height is available:
+
+```js
+GrassAPI.setTerrainSampler((x, z) => terrainHeightAt(x, z));
+```
+
+In that case the normal defaults to straight up and slope filtering cannot distinguish steep terrain.
+
+## Babylon GroundMesh helper
+
+For a Babylon terrain mesh that implements `getHeightAtCoordinates()`:
+
+```js
+GrassAPI.setTerrainMesh(terrainMesh);
+```
+
+The API will use the mesh height method and, when available, its normal-at-coordinate method.
+
+For very large worlds or custom terrain engines, a direct sampler is usually preferable because it can use the same heightfield/terrain data that generated the mesh without doing raycasts.
+
+## Maximum slope
+
+Grass can be prevented from growing on cliffs, rock faces, steep embankments, etc.:
+
+```js
+GrassAPI.setMaxSlope(42); // degrees
+```
+
+The v55 demo uses:
+
+```js
+GrassAPI.setMaxSlope(38);
+```
+
+Candidates steeper than the configured limit are rejected before any near/medium/far/fill instance is written.
+
+To remove the terrain adapter:
+
+```js
+GrassAPI.clearTerrainSampler();
+```
+
+The engine then falls back to flat `y = 0` placement.
+
+## What follows the terrain
+
+In v55:
+
+- near crossed-card grass is translated to sampled terrain height;
+- medium billboards use the same sampled height;
+- far billboards use the same sampled height;
+- `filltex` patches use the same height and are oriented to the sampled terrain normal;
+- grass-shadow roots use the same sampled terrain height;
+- the demo camera follows the bumpy terrain while preserving bodycam bob/breathing.
+
+The grass blades themselves remain mostly upright instead of tilting fully to the ground normal. This is intentional: real grass generally grows upward even when rooted on a slope. The fill patch follows the surface because it represents low ground cover.
+
+## Far draw on rough terrain
+
+The streaming ring still uses horizontal **XZ ground distance**, so hills do not cause extra chunks to stream simply because they are higher or lower. Current distances remain:
+
+```text
+Near:   0–30 m
+Medium: 30–165 m
+Far:    150–242 m
+```
+
+Far grass therefore receives the same terrain height as near and medium grass and continues across hills instead of hovering at sea level.
+
+The shader-level LOD distance in the current realism shaders is still a 3D camera-to-clump distance. On ordinary rolling terrain the difference from XZ distance is tiny; for example, a 5 m elevation difference at roughly 240 m changes the effective distance by only about 0.05 m. For extreme mountainous maps, a future integration can switch those shader tests to XZ distance if strict horizontal LOD bands are desired.
+
+The far density behavior is unchanged: far LOD still uses the deterministic sparse representation rather than restoring full clump density.
+
+# Placement masks
 
 With no inclusion areas or exclusions defined, grass is allowed everywhere.
 
-To restrict grass to a specific field or terrain region, add one or more inclusion areas:
+To restrict grass to a particular region:
 
 ```js
 GrassAPI.addArea({
@@ -60,26 +162,15 @@ GrassAPI.addArea({
 });
 ```
 
-Once at least one inclusion area exists, grass is generated only inside one of the included areas.
+Once at least one inclusion exists, grass is generated only inside an included area.
 
-`includeArea()` is an alias for `addArea()`:
+`includeArea()` is an alias for `addArea()`.
 
-```js
-GrassAPI.includeArea({
-  type: "circle",
-  x: 50,
-  z: 30,
-  radius: 20
-});
-```
+# Excluding roads, buildings, walls, trenches, etc.
 
-## Excluding roads, houses, walls, trenches, etc.
+Exclusions are tested before a candidate clump enters the thin-instance buffers. Excluded grass is never rendered.
 
-Exclusions are tested before a candidate clump is written to the thin-instance buffers. Grass is not generated there at all, so excluded grass does not consume render-instance cost.
-
-### Road or path
-
-For a road defined by a centerline/polyline:
+## Road / path / ditch
 
 ```js
 GrassAPI.excludeCorridor([
@@ -87,26 +178,22 @@ GrassAPI.excludeCorridor([
   { x: 30, z: 12 },
   { x: 60, z: 18 },
   { x: 100, z: 20 }
-], 6); // total road-clearing width
+], 6);
 ```
 
-This is usually the easiest way to clear grass for roads, trails, ditches, and similar long features.
-
-### House footprint
-
-For an axis-aligned or rotated rectangular building:
+## Rectangular building
 
 ```js
 GrassAPI.excludeBox(
-  40,               // center x
-  35,               // center z
-  12,               // width
-  18,               // depth
-  Math.PI / 8       // rotation in radians
+  40,              // center x
+  35,              // center z
+  12,              // width
+  18,              // depth
+  Math.PI / 8      // rotation radians
 );
 ```
 
-For an irregular building footprint:
+## Irregular footprint
 
 ```js
 GrassAPI.excludePolygon([
@@ -118,54 +205,29 @@ GrassAPI.excludePolygon([
 ]);
 ```
 
-### Wall footprint
-
-For a wall segment:
+## Wall footprint
 
 ```js
 GrassAPI.excludeSegment(
   { x: 10, z: 10 },
   { x: 55, z: 10 },
-  0.5 // clearance radius around the wall centerline
+  0.5
 );
 ```
 
-Use a slightly larger clearance than the wall's physical half-width if you do not want grass touching the wall mesh.
-
-### Circular object / tree base / emplacement
+## Circular clearance
 
 ```js
 GrassAPI.excludeCircle(25, 40, 3.5);
 ```
 
-### Generic exclusion object
+Supported shapes are `polygon`, `circle`, `box`, `corridor`, and `segment`.
 
-All helpers ultimately call `excludeArea()`:
-
-```js
-GrassAPI.excludeArea({
-  type: "polygon",
-  points: footprint
-});
-```
-
-Supported shape types are:
-
-- `polygon`
-- `circle`
-- `box`
-- `corridor`
-- `segment`
-
-## Surface/material filtering
-
-A larger game can let the terrain/world system tell the grass API what type of surface exists at a world position.
-
-Example:
+# Surface/material filtering
 
 ```js
 GrassAPI.setSurfaceResolver((x, z) => {
-  return terrainSurfaceAt(x, z); // e.g. "terrain", "road", "concrete", "building"
+  return terrainSurfaceAt(x, z); // "terrain", "road", "concrete", etc.
 });
 
 GrassAPI.excludeSurface("road");
@@ -173,118 +235,51 @@ GrassAPI.excludeSurface("concrete");
 GrassAPI.excludeSurface("building");
 ```
 
-You can also use an allow-list:
+Or use an allow-list:
 
 ```js
 GrassAPI.allowSurface("terrain");
 GrassAPI.allowSurface("meadow");
 ```
 
-If the allow-list contains one or more surface names, a candidate must resolve to one of those surfaces to receive grass.
+# Dynamic map editing
 
-Useful methods:
+Mask, terrain, surface, or slope changes automatically request a grass rebuild unless `autoRebuild` is disabled.
 
-```js
-GrassAPI.allowSurface("terrain");
-GrassAPI.disallowSurface("terrain");
-GrassAPI.excludeSurface("road");
-GrassAPI.includeSurface("road"); // removes it from the excluded-surface set
-```
-
-## Dynamic buildings or map editing
-
-The API automatically requests a grass rebuild when a mask changes, provided `rebuildWorld()` exists and `autoRebuild` has not been disabled.
-
-That means a spawned house can clear its footprint immediately:
-
-```js
-function placeHouse(house) {
-  scene.addMesh(house.mesh);
-
-  GrassAPI.excludePolygon(house.footprint);
-}
-```
-
-Likewise, a road generator can register its exclusion as soon as the road spline is created.
-
-For bulk map setup, it is more efficient to turn automatic rebuilds off temporarily:
+For bulk setup:
 
 ```js
 GrassAPI.autoRebuild = false;
 
+GrassAPI.setTerrainSampler(sampleTerrain);
+GrassAPI.setMaxSlope(40);
 GrassAPI.excludeCorridor(roadA, 6);
-GrassAPI.excludeCorridor(roadB, 5);
 GrassAPI.excludePolygon(houseA);
-GrassAPI.excludePolygon(houseB);
+GrassAPI.excludeSegment(wall.start, wall.end, 0.5);
 
 GrassAPI.autoRebuild = true;
 GrassAPI.requestRebuild();
 ```
 
-## Clearing masks
+# Clearing / querying
 
 ```js
 GrassAPI.clearExclusions();
 GrassAPI.clearIncludes();
-GrassAPI.clearAreas(); // clears both includes and exclusions
-```
+GrassAPI.clearAreas();
+GrassAPI.clearTerrainSampler();
 
-## Querying the mask directly
-
-Other systems can use the same placement logic:
-
-```js
 if (GrassAPI.isAllowed(worldX, worldZ)) {
-  // this point is valid for grass
+  // XZ placement masks permit grass here.
 }
+
+const terrain = GrassAPI.sampleTerrain(worldX, worldZ);
+console.log(terrain.height, terrain.normal, terrain.slope);
 ```
 
 `test()` is an alias for `isAllowed()`.
 
-You can inspect the currently registered rules:
-
-```js
-console.log(GrassAPI.snapshot());
-```
-
-The snapshot contains:
-
-```js
-{
-  revision,
-  includes,
-  excludes,
-  allowedSurfaces,
-  excludedSurfaces
-}
-```
-
-## Creating an independent API instance
-
-If a project needs more than one vegetation mask system:
-
-```js
-const meadowMask = new GrassPlacementAPI({
-  autoRebuild: false,
-  allowedSurfaces: ["terrain", "meadow"],
-  excludedSurfaces: ["road", "building"]
-});
-
-meadowMask.excludeCircle(10, 20, 4);
-```
-
-Constructor options:
-
-```js
-new GrassPlacementAPI({
-  autoRebuild: true,
-  allowedSurfaces: [],
-  excludedSurfaces: [],
-  surfaceResolver: null
-});
-```
-
-## API reference
+# API reference
 
 ```js
 GrassAPI.addArea(shape)
@@ -303,6 +298,13 @@ GrassAPI.excludeSurface(name)
 GrassAPI.includeSurface(name)
 GrassAPI.setSurfaceResolver(fn)
 
+GrassAPI.setTerrainSampler(fn)
+GrassAPI.setTerrainMesh(mesh)
+GrassAPI.clearTerrainSampler()
+GrassAPI.sampleTerrain(x, z, context?)
+GrassAPI.setMaxSlope(degrees)
+GrassAPI.isSlopeAllowed(sample)
+
 GrassAPI.isAllowed(x, z, context?)
 GrassAPI.test(x, z, context?)
 
@@ -313,76 +315,35 @@ GrassAPI.requestRebuild()
 GrassAPI.snapshot()
 ```
 
-## How the streamer uses the API
+`snapshot()` now includes `maxSlope` and `hasTerrainSampler` in addition to the placement/surface rules.
 
-`grass-streaming.js` generates each deterministic candidate in the same order as before. After all random values for that candidate have been consumed, it performs this conceptual test:
+# Determinism
 
-```js
-if (!GrassAPI.isAllowed(x, z, context)) {
-  continue;
-}
-```
+`grass-streaming.js` consumes the complete deterministic random sequence for a candidate before performing placement, terrain, and slope filtering. That means filtering does not shift the RNG sequence for later clumps in the same chunk.
 
-Only accepted candidates are placed into near, medium, far, fill, and shadow-related grass data.
+For deterministic multiplayer maps, every client should use the same world seed, inclusion/exclusion geometry, terrain sampler data, surface classifications, and maximum-slope rule. Individual grass clumps then do not need to be networked.
 
-This is important for multiplayer or deterministic maps: masking does not alter the random-number sequence for later clumps in the chunk. If every client uses the same world seed and the same inclusion/exclusion data, the resulting grass layout remains deterministic without networking every grass clump.
+# Larger-project integration
 
-The optional `context` currently contains useful candidate metadata:
-
-```js
-{
-  chunkX,
-  chunkZ,
-  index,
-  seed
-}
-```
-
-A custom `surfaceResolver` can use this if needed.
-
-## Suggested integration pattern for a larger project
-
-A map/world generator should own authoritative world features and register them with the grass API as those features are built.
-
-For example:
+A world generator should own authoritative roads/buildings/terrain and register them with the grass API while constructing the map:
 
 ```js
 GrassAPI.autoRebuild = false;
+GrassAPI.setTerrainSampler(world.sampleTerrain);
+GrassAPI.setMaxSlope(40);
+GrassAPI.addArea({ type: "polygon", points: playableTerrainPolygon });
 
-// Only grow grass in the playable terrain region.
-GrassAPI.addArea({
-  type: "polygon",
-  points: playableTerrainPolygon
-});
-
-// Roads.
-for (const road of roads) {
+for (const road of roads)
   GrassAPI.excludeCorridor(road.centerline, road.width + 1.0);
-}
 
-// Buildings.
-for (const building of buildings) {
+for (const building of buildings)
   GrassAPI.excludePolygon(building.footprint);
-}
 
-// Walls.
-for (const wall of walls) {
+for (const wall of walls)
   GrassAPI.excludeSegment(wall.start, wall.end, wall.width * 0.5 + 0.25);
-}
-
-// Other no-grass features.
-for (const crater of craters) {
-  GrassAPI.excludeCircle(crater.x, crater.z, crater.radius);
-}
 
 GrassAPI.autoRebuild = true;
 GrassAPI.requestRebuild();
 ```
 
-This lets the grass renderer remain focused on rendering/LOD/streaming while the map generator decides where vegetation is physically valid.
-
-## Notes about the current demo engine
-
-The visual grass renderer is still partly coupled to the demo through globals such as `scene`, `camera`, `nearTypes`, `medTypes`, `farTypes`, `density`, `CHUNK`, and the existing base grass setup. `grass-api.js` is intentionally separated from that visual setup and is the first reusable boundary for importing the engine into a larger project.
-
-For a full package/module conversion, the next cleanup step would be to wrap the remaining renderer/streamer globals behind a `GrassSystem` class while keeping this masking API as the placement layer. The current v54 demo is kept as the visual reference implementation so the reusable version can be checked against a known-good result.
+The visual renderer is still partly coupled to demo globals such as `scene`, `camera`, `nearTypes`, `medTypes`, `farTypes`, `density`, and `CHUNK`. `grass-api.js` is the reusable world-placement boundary; the next packaging cleanup would be wrapping the remaining renderer/streamer pieces behind a `GrassSystem` class while keeping v55 as the visual reference build.
