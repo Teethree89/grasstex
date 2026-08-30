@@ -1,15 +1,63 @@
-/* v55 demo terrain adapter.
-   Creates a static bumpy 560m terrain, exposes the same analytic sampler to GrassAPI,
-   and keeps the first-person camera at terrain height + the existing bodycam offset. */
+/* v56 demo terrain adapter.
+   Rolling 1200m terrain plus a horizon-to-horizon road through spawn. The road uses
+   a deterministic cross-section brush (crown -> shoulders -> drainage ditches -> recovery)
+   to deform the actual terrain, roadtex.png is draped over the deformed surface, and a
+   generated edge-opacity splat softly blends the road/ditch texture back into dirt.
+   The same analytic height sampler drives grass placement and first-person camera height. */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||!window.GrassAPI)return;
 
-  var SIZE=560,SUBDIV=128,EYE=1.9;
+  var SIZE=1200,SUBDIV=192,EYE=1.9;
+  var ROAD_WIDTH=12.0,ROAD_HALF=ROAD_WIDTH*.5,ROAD_DEFORM_RADIUS=8.5;
+  var ROAD_CLEAR_WIDTH=13.5,ROAD_REPEAT_M=9.0,ROAD_Z_EXTENT=SIZE*.5;
 
-  function heightAt(x,z){
+  function smooth(a,b,x){
+    var t=Math.max(0,Math.min(1,(x-a)/Math.max(.0001,b-a)));
+    return t*t*(3-2*t);
+  }
+
+  function landscapeHeight(x,z){
     return Math.sin(x*.024)*1.55 + Math.cos(z*.021)*1.10 +
       Math.sin((x+z)*.041)*.62 + Math.sin(x*.072-z*.057)*.28;
   }
+
+  function roadCenterHeight(z){ return landscapeHeight(0,z); }
+
+  function roadProfileOffset(x){
+    var a=Math.abs(x),t;
+    if(a<=3.15){
+      t=a/3.15;
+      return .18*(1-t*t);
+    }
+    if(a<=4.15){
+      t=smooth(3.15,4.15,a);
+      return .02*(1-t);
+    }
+    if(a<=5.30){
+      t=smooth(4.15,5.30,a);
+      return .02+(-.52-.02)*t;
+    }
+    if(a<=6.35){
+      t=smooth(5.30,6.35,a);
+      return -.52*(1-t);
+    }
+    return 0;
+  }
+
+  function roadBlend(x){
+    var a=Math.abs(x);
+    if(a<=6.35)return 1;
+    if(a>=ROAD_DEFORM_RADIUS)return 0;
+    return 1-smooth(6.35,ROAD_DEFORM_RADIUS,a);
+  }
+
+  function heightAt(x,z){
+    var base=landscapeHeight(x,z),w=roadBlend(x);
+    if(w<=0)return base;
+    var target=roadCenterHeight(z)+roadProfileOffset(x);
+    return base*(1-w)+target*w;
+  }
+
   function sampleAt(x,z){
     var e=.35,h=heightAt(x,z);
     var dx=(heightAt(x+e,z)-heightAt(x-e,z))/(2*e);
@@ -19,7 +67,7 @@
     return {height:h,normal:{x:nx,y:ny,z:nz},slope:Math.acos(Math.max(-1,Math.min(1,ny)))*180/Math.PI};
   }
 
-  var terrain=BABYLON.MeshBuilder.CreateGround('demoBumpyTerrain',{width:SIZE,height:SIZE,subdivisions:SUBDIV,updatable:true},scene);
+  var terrain=BABYLON.MeshBuilder.CreateGround('demoBumpyTerrain',{width:SIZE,height:SIZE,subdivisions:SUBDIV,updatable:false},scene);
   var pos=terrain.getVerticesData(BABYLON.VertexBuffer.PositionKind);
   var ind=terrain.getIndices();
   var nor=terrain.getVerticesData(BABYLON.VertexBuffer.NormalKind)||new Array(pos.length).fill(0);
@@ -34,15 +82,53 @@
   mat.diffuseColor=new BABYLON.Color3(1,1,1);mat.specularColor=BABYLON.Color3.Black();mat.ambientColor=BABYLON.Color3.Black();
   if(typeof A!=='undefined'){
     var dirt=new BABYLON.Texture(A+'dirttex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
-    dirt.wrapU=dirt.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;dirt.uScale=dirt.vScale=64;dirt.anisotropicFilteringLevel=4;
+    dirt.wrapU=dirt.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;dirt.uScale=dirt.vScale=128;dirt.anisotropicFilteringLevel=4;
     mat.diffuseTexture=dirt;
   }
   terrain.material=mat;
   try{if(typeof ground!=='undefined')ground.setEnabled(false);}catch(_){ }
 
+  var cross=24,longSeg=Math.ceil(SIZE/4),rPos=[],rUV=[],rInd=[];
+  for(var iz=0;iz<=longSeg;iz++){
+    var z=-ROAD_Z_EXTENT+(iz/longSeg)*SIZE;
+    for(var ix=0;ix<=cross;ix++){
+      var u=ix/cross,x=-ROAD_HALF+u*ROAD_WIDTH;
+      rPos.push(x,heightAt(x,z)+.018,z);
+      rUV.push(u,(z+ROAD_Z_EXTENT)/ROAD_REPEAT_M);
+    }
+  }
+  var row=cross+1;
+  for(var zz=0;zz<longSeg;zz++)for(var xx=0;xx<cross;xx++){
+    var a=zz*row+xx,b=a+1,c=a+row,d=c+1;
+    rInd.push(a,c,b,b,c,d);
+  }
+  var rNor=new Array(rPos.length).fill(0);
+  BABYLON.VertexData.ComputeNormals(rPos,rInd,rNor);
+  var vd=new BABYLON.VertexData();vd.positions=rPos;vd.indices=rInd;vd.normals=rNor;vd.uvs=rUV;
+  var road=new BABYLON.Mesh('demoRoad',scene);vd.applyToMesh(road,true);road.isPickable=true;
+
+  var roadMat=new BABYLON.StandardMaterial('demoRoadMat',scene);
+  roadMat.diffuseColor=new BABYLON.Color3(1,1,1);roadMat.specularColor=BABYLON.Color3.Black();
+  if(typeof A!=='undefined'){
+    var roadTex=new BABYLON.Texture(A+'roadtex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
+    roadTex.wrapU=BABYLON.Texture.CLAMP_ADDRESSMODE;roadTex.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;
+    roadTex.anisotropicFilteringLevel=8;roadMat.diffuseTexture=roadTex;
+
+    var splat=new BABYLON.DynamicTexture('roadEdgeSplat',{width:256,height:4},scene,false);
+    var ctx=splat.getContext(),g=ctx.createLinearGradient(0,0,256,0);
+    g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(.055,'rgba(255,255,255,1)');
+    g.addColorStop(.945,'rgba(255,255,255,1)');g.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.clearRect(0,0,256,4);ctx.fillStyle=g;ctx.fillRect(0,0,256,4);splat.update(false);
+    splat.wrapU=BABYLON.Texture.CLAMP_ADDRESSMODE;splat.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;
+    splat.hasAlpha=true;roadMat.opacityTexture=splat;
+    roadMat.useAlphaFromDiffuseTexture=false;
+  }
+  roadMat.backFaceCulling=true;road.material=roadMat;
+
   window.GrassAPI.autoRebuild=false;
   window.GrassAPI.setTerrainSampler(sampleAt);
   window.GrassAPI.setMaxSlope(38);
+  window.GrassAPI.excludeCorridor([{x:0,z:-5000},{x:0,z:5000}],ROAD_CLEAR_WIDTH);
   window.GrassAPI.autoRebuild=true;
 
   setTimeout(function(){
@@ -50,7 +136,15 @@
       var s=sampleAt(camera.position.x,camera.position.z);
       camera.position.y+=s.height;
     });
+    try{
+      document.title='Grass Game v56';
+      var rows=document.querySelectorAll('#ui .row');
+      for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v56';break;}
+    }catch(_){ }
   },0);
 
-  window.GrassTerrainDemo={mesh:terrain,heightAt:heightAt,sampleAt:sampleAt,size:SIZE,maxSlope:38,eyeHeight:EYE};
+  window.GrassTerrainDemo={
+    mesh:terrain,heightAt:heightAt,landscapeHeight:landscapeHeight,sampleAt:sampleAt,size:SIZE,maxSlope:38,eyeHeight:EYE,
+    road:{mesh:road,width:ROAD_WIDTH,clearWidth:ROAD_CLEAR_WIDTH,deformRadius:ROAD_DEFORM_RADIUS,profileOffset:roadProfileOffset,blend:roadBlend}
+  };
 })();
