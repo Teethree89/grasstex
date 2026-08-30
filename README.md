@@ -2,7 +2,7 @@
 
 Reusable Babylon.js grass rendering prototype with deterministic chunk generation, near/medium/far LOD, streamed thin instances, wind, fill patches, image-based shadows, placement/masking, rough-terrain sampling, and a deformed horizon-road demo.
 
-Current demo build: **v62**.
+Current demo build: **v63**.
 
 ## Main files
 
@@ -123,6 +123,26 @@ GrassAPI.setMaxSlope(degrees);
 
 Near, medium, far, fill patches, and projected grass shadows all inherit the sampled terrain Y position. Fill patches also use the terrain normal so they lie against slopes.
 
+### Sample the rendered mesh, not the analytic surface
+
+A height function and the mesh built from it are not the same surface. `CreateGround` at `SUBDIV = 256` over 1200 m puts vertices 4.69 m apart, and the GPU draws flat triangles between them — but the road's cross-section brush (crown, shoulders, ditches, recovery) varies over 1–2 m, and the blend back to open landscape happens across only 1.75 m. The mesh cannot represent any of that, so placing grass at `heightAt(x, z)` puts it on a surface that is not the one being drawn.
+
+Measured against the real Babylon index buffer, that gap is 1.5 cm in open field but up to **0.41 m beside the road** — grass floating in the air on one side, sunk into the ground on the other, with decal shadows detached to match.
+
+`sampleAt` therefore reads the baked vertex grid and interpolates the same triangle the GPU rasterizes, returning that triangle's face normal:
+
+```js
+// CreateGround: vertex = col + row*(SUBDIV+1), x rises with col, z FALLS with row.
+// Each cell splits into (A,B,C) where u >= v, and (D,A,C) otherwise.
+var k = i + j*GRID, hC = gridH[k], hB = gridH[k+1], hD = gridH[k+GRID], hA = gridH[k+GRID+1];
+h = (u >= v) ? hC + u*(hB-hC) + v*(hA-hB)
+             : hC + v*(hD-hC) + u*(hA-hD);
+```
+
+This is exact by construction at any subdivision — verified to 1e-14 m against ray-triangle intersection on the actual mesh — and it is also **~5.8× cheaper** than the analytic sampler, which spent five `heightAt` calls (twenty trig evaluations) per clump. Camera follow uses the same sampler, so the player walks on the drawn ground too.
+
+Keep the analytic path as the fallback for positions outside the mesh, and remember that grass, fill patches, shadows, and camera height must all agree on *one* definition of "the ground".
+
 ## Projected grass shadows on rough terrain
 
 A projected shadow is a grass card flattened onto the ground and stretched by `1/tan(sunElevation)` (clamped to 4.2), so at the demo's low sun it spans roughly 4.5 m. Anchoring that whole quad to a single Y buried its far tip in rising ground, so `grass-effects.js` instead tilts each shadow into the terrain's tangent plane at its clump:
@@ -136,11 +156,13 @@ grad = [-normal.x / normal.y, -normal.z / normal.y];
 wp.y = clumpY + SHADOW_Y + dot(wp.xz - clumpXZ, instanceGrad);
 ```
 
-This is exact to first order and needs no extra terrain sampling — the normal is already computed for slope rejection and fill patches. Measured against the demo's own `heightAt` over a 4.4 m shadow, mean vertical error drops from 4.5 cm to 0.4 cm and worst case from 28.6 cm to 2.3 cm, which is what keeps the quad above `SHADOW_Y` (3 cm) instead of clipping through hillsides.
+This is exact to first order and needs no extra terrain sampling — the normal is already computed for slope rejection and fill patches. Measured over a 4.4 m shadow, mean vertical error drops from 4.5 cm to 0.4 cm and worst case from 28.6 cm to 2.3 cm, which is what keeps the quad above `SHADOW_Y` (3 cm) instead of clipping through hillsides.
+
+Since the sampler returns the rendered triangle's face normal, the gradient is that triangle's own plane — so within a triangle the shadow lies exactly in the surface being drawn, not merely close to it.
 
 The bake is deferred until `GrassAPI.snapshot().hasTerrainSampler` is true and re-runs whenever the API `revision` changes. `terrain-demo.js` boots asynchronously (it waits on the `CustomMaterial` CDN script), so without that the first bake would run with no terrain sampler — flattening every shadow to y=0 — and would leave shadows painted across the road until movement hysteresis happened to trip a rebuild.
 
-Shadow alpha must reach zero at `SHADOW_END`. If it is still non-zero where the fragment shader discards, every streaming rebuild pops a whole ring of shadows in and out at that opacity as you cross chunks. `SHADOW_END`, `SHADOW_FADE_START`, `HYST`, and `PAD` are the cost knobs: shadow range and rebuild hysteresis together dominate streaming cost, since each clump bake runs a mask test plus a terrain sample (five `heightAt` evaluations).
+Shadow alpha must reach zero at `SHADOW_END`. If it is still non-zero where the fragment shader discards, every streaming rebuild pops a whole ring of shadows in and out at that opacity as you cross chunks. `SHADOW_END`, `SHADOW_FADE_START`, `HYST`, and `PAD` are the cost knobs: shadow range and rebuild hysteresis together dominate streaming cost, since each clump bake runs a mask test plus a terrain sample.
 
 ## Far LOD on hills
 
