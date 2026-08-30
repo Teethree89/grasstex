@@ -84,7 +84,10 @@
   var mat=new BABYLON.StandardMaterial('demoBumpyTerrainMat',scene);
   mat.diffuseColor=new BABYLON.Color3(1,1,1);mat.specularColor=BABYLON.Color3.Black();mat.ambientColor=new BABYLON.Color3(.08,.07,.055);
   if(typeof A!=='undefined'){
-    var dirt=new BABYLON.Texture(A+'dirttex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
+    var dirt=new BABYLON.Texture(A+'dirttex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE,null,function(){
+      console.warn('dirttex.png failed to load from '+A+'dirttex.png'+' - falling back to flat terrain color so the terrain stays visible.');
+      mat.diffuseTexture=null;
+    });
     dirt.wrapU=dirt.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;dirt.uScale=dirt.vScale=128;dirt.anisotropicFilteringLevel=4;
     mat.diffuseTexture=dirt;
   }
@@ -118,18 +121,24 @@
     var roadTex=new BABYLON.Texture(A+'roadtex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE,function(){
       roadTex.level=1.18;
     },function(){
-      console.warn('roadtex.png failed to load from '+A+'roadtex.png');
+      console.warn('roadtex.png failed to load from '+A+'roadtex.png'+' - falling back to flat road color so the road stays visible.');
+      roadMat.diffuseTexture=null;
     });
     roadTex.wrapU=BABYLON.Texture.CLAMP_ADDRESSMODE;roadTex.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;
     roadTex.anisotropicFilteringLevel=8;roadTex.level=1.18;roadMat.diffuseTexture=roadTex;
 
+    /* Opacity is read from this texture's ALPHA channel (Babylon's default,
+       unless opacityTexture.getAlphaFromRGB is set), not its RGB color - keep
+       the gradient encoded as transparent(0)->opaque(1)->opaque(1)->transparent(0)
+       alpha with a constant RGB, and mark hasAlpha so the edges actually fade
+       into dirt instead of hard-clipping. */
     var splat=new BABYLON.DynamicTexture('roadEdgeSplat',{width:256,height:4},scene,false);
     var ctx=splat.getContext(),g=ctx.createLinearGradient(0,0,256,0);
-    g.addColorStop(0,'rgba(0,0,0,1)');g.addColorStop(.055,'rgba(255,255,255,1)');
-    g.addColorStop(.945,'rgba(255,255,255,1)');g.addColorStop(1,'rgba(0,0,0,1)');
+    g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(.055,'rgba(255,255,255,1)');
+    g.addColorStop(.945,'rgba(255,255,255,1)');g.addColorStop(1,'rgba(255,255,255,0)');
     ctx.clearRect(0,0,256,4);ctx.fillStyle=g;ctx.fillRect(0,0,256,4);splat.update(false);
     splat.wrapU=BABYLON.Texture.CLAMP_ADDRESSMODE;splat.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;
-    roadMat.opacityTexture=splat;
+    splat.hasAlpha=true;roadMat.opacityTexture=splat;
     roadMat.useAlphaFromDiffuseTexture=false;
   }
   roadMat.backFaceCulling=true;road.material=roadMat;
