@@ -123,6 +123,23 @@ GrassAPI.setMaxSlope(degrees);
 
 Near, medium, far, fill patches, and projected grass shadows all inherit the sampled terrain Y position. Fill patches also use the terrain normal so they lie against slopes.
 
+## Projected grass shadows on rough terrain
+
+A projected shadow is a grass card flattened onto the ground and stretched by `1/tan(sunElevation)` (clamped to 4.2), so at the demo's low sun it spans roughly 4.5 m. Anchoring that whole quad to a single Y buried its far tip in rising ground, so `grass-effects.js` instead tilts each shadow into the terrain's tangent plane at its clump:
+
+```js
+// per instance, from the normal the terrain sampler already returned
+grad = [-normal.x / normal.y, -normal.z / normal.y];
+```
+
+```glsl
+wp.y = clumpY + SHADOW_Y + dot(wp.xz - clumpXZ, instanceGrad);
+```
+
+This is exact to first order and needs no extra terrain sampling — the normal is already computed for slope rejection and fill patches. Measured against the demo's own `heightAt` over a 4.4 m shadow, mean vertical error drops from 4.5 cm to 0.4 cm and worst case from 28.6 cm to 2.3 cm, which is what keeps the quad above `SHADOW_Y` (3 cm) instead of clipping through hillsides.
+
+Shadow alpha must reach zero at `SHADOW_END`. If it is still non-zero where the fragment shader discards, every streaming rebuild pops a whole ring of shadows in and out at that opacity as you cross chunks. `SHADOW_END`, `SHADOW_FADE_START`, `HYST`, and `PAD` are the cost knobs: shadow range and rebuild hysteresis together dominate streaming cost, since each clump bake runs a mask test plus a terrain sample (five `heightAt` evaluations).
+
 ## Far LOD on hills
 
 Streaming ranges remain based on horizontal X/Z distance, so hills do not cause extra chunks to load merely because terrain rises vertically. Far density remains 1/7. Terrain height only changes the instance Y coordinate.
