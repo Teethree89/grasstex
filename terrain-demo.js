@@ -1,23 +1,14 @@
-/* v59 demo terrain adapter.
+/* v60 demo terrain adapter.
    Rolling 1200m terrain with a horizon-to-horizon painted road through spawn.
-   v59 also exposes the exact terrain/deformer height function to the grass-shadow shader,
-   and lifts the road paint/terrain shadow response for the low sunset lighting. */
+   v60 removes floating grass-shadow geometry entirely. Grass shadows are now a world-space
+   dynamic splat texture sampled by the terrain material, so they always intersect the actual
+   deformed terrain/road surface and cannot hover over crowns, ditches, or hills. */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||!window.GrassAPI)return;
 
-  /* Available immediately, even while CustomMaterial is loading asynchronously. grass-effects.js
-     consumes this function so every shadow-grid vertex is projected onto the exact same rolling
-     terrain + road crown/ditch heightfield rather than sitting on a flat root-height plane. */
-  window.GrassShadowTerrainGLSL=
-    'float gstSmooth(float a,float b,float x){float t=clamp((x-a)/max(.0001,b-a),0.0,1.0);return t*t*(3.0-2.0*t);}'+
-    'float gstLandscape(float x,float z){return sin(x*.024)*1.55+cos(z*.021)*1.10+sin((x+z)*.041)*.62+sin(x*.072-z*.057)*.28;}'+
-    'float gstRoadProfile(float x){float a=abs(x);float t;if(a<=3.15){t=a/3.15;return .18*(1.0-t*t);}if(a<=4.15){t=gstSmooth(3.15,4.15,a);return .02*(1.0-t);}if(a<=5.30){t=gstSmooth(4.15,5.30,a);return .02+(-.54)*t;}if(a<=6.35){t=gstSmooth(5.30,6.35,a);return -.52*(1.0-t);}return 0.0;}'+
-    'float gstRoadBlend(float x){float a=abs(x);if(a<=6.35)return 1.0;if(a>=8.5)return 0.0;return 1.0-gstSmooth(6.35,8.5,a);}'+
-    'float grassShadowTerrainY(vec2 xz,float fallbackY){float base=gstLandscape(xz.x,xz.y);float w=gstRoadBlend(xz.x);if(w<=0.0)return base;float center=gstLandscape(0.0,xz.y);return mix(base,center+gstRoadProfile(xz.x),w);}';
-
   function boot(){
-    if(window.__grassTerrainV59Booted)return;
-    window.__grassTerrainV59Booted=true;
+    if(window.__grassTerrainV60Booted)return;
+    window.__grassTerrainV60Booted=true;
 
     var SIZE=1200,SUBDIV=256,EYE=1.9;
     var ROAD_WIDTH=12.0,ROAD_HALF=ROAD_WIDTH*.5,ROAD_DEFORM_RADIUS=8.5;
@@ -78,10 +69,21 @@
     terrain.isPickable=true;
     terrain.receiveShadows=true;
 
+    /* White = no grass shadow. grass-effects.js paints soft black directional blobs into
+       this world-space window. Because the terrain shader samples it per fragment, the
+       resulting shadow conforms perfectly to every terrain deformation. */
+    var shadowSize=512;
+    var grassShadowTex=new BABYLON.DynamicTexture('grassWorldShadowSplat',{width:shadowSize,height:shadowSize},scene,false);
+    var shadowCtx=grassShadowTex.getContext();
+    shadowCtx.fillStyle='#fff';shadowCtx.fillRect(0,0,shadowSize,shadowSize);grassShadowTex.update(false);
+    grassShadowTex.wrapU=grassShadowTex.wrapV=BABYLON.Texture.CLAMP_ADDRESSMODE;
+    grassShadowTex.updateSamplingMode(BABYLON.Texture.BILINEAR_SAMPLINGMODE);
+    var grassShadowState={texture:grassShadowTex,context:shadowCtx,size:shadowSize,centerX:0,centerZ:0,span:360,strength:.22,revision:0};
+
     var mat=new BABYLON.CustomMaterial('demoTerrainRoadPaintMat',scene);
     mat.diffuseColor=new BABYLON.Color3(1.06,1.04,1.01);
     mat.specularColor=BABYLON.Color3.Black();
-    mat.ambientColor=new BABYLON.Color3(.14,.115,.08);
+    mat.ambientColor=new BABYLON.Color3(.15,.125,.09);
 
     var dirt=null,roadTex=null;
     if(typeof A!=='undefined'){
@@ -105,20 +107,31 @@
       mat.AddUniform('roadSampler','sampler2D');
       mat.AddUniform('roadHalfWidth','float',ROAD_HALF);
       mat.AddUniform('roadRepeatM','float',ROAD_REPEAT_M);
+      mat.AddUniform('grassShadowSampler','sampler2D');
+      mat.AddUniform('grassShadowCenter','vec2');
+      mat.AddUniform('grassShadowSpan','float',grassShadowState.span);
+      mat.AddUniform('grassShadowStrength','float',grassShadowState.strength);
       mat.Fragment_Custom_Diffuse(
         'vec2 roadUV=vec2(clamp(vPositionW.x/(roadHalfWidth*2.0)+0.5,0.0,1.0),vPositionW.z/roadRepeatM);'+
         'vec3 roadCol=texture2D(roadSampler,roadUV).rgb;'+
-        /* lift the very dark source texture without flattening its gravel/track detail */
-        'roadCol=min(vec3(1.0),roadCol*1.28+vec3(.045,.038,.028));'+
+        'roadCol=min(vec3(1.0),roadCol*1.38+vec3(.060,.052,.040));'+
         'float ax=abs(vPositionW.x);'+
         'float roadMask=1.0-smoothstep(roadHalfWidth-0.35,roadHalfWidth+0.35,ax);'+
-        'diffuseColor=mix(diffuseColor,roadCol,roadMask);'
+        'diffuseColor=mix(diffuseColor,roadCol,roadMask);'+
+        'vec2 gsUV=(vPositionW.xz-grassShadowCenter)/grassShadowSpan+vec2(.5);'+
+        'float gsIn=step(0.0,gsUV.x)*step(0.0,gsUV.y)*step(gsUV.x,1.0)*step(gsUV.y,1.0);'+
+        'float gs=gsIn*(1.0-texture2D(grassShadowSampler,gsUV).r);'+
+        'diffuseColor*=1.0-gs*grassShadowStrength;'
       );
       mat.onBindObservable.add(function(){
         var ef=mat.getEffect();if(!ef)return;
         ef.setTexture('roadSampler',roadTex);
         ef.setFloat('roadHalfWidth',ROAD_HALF);
         ef.setFloat('roadRepeatM',ROAD_REPEAT_M);
+        ef.setTexture('grassShadowSampler',grassShadowState.texture);
+        ef.setFloat2('grassShadowCenter',grassShadowState.centerX,grassShadowState.centerZ);
+        ef.setFloat('grassShadowSpan',grassShadowState.span);
+        ef.setFloat('grassShadowStrength',grassShadowState.strength);
       });
     }
     terrain.material=mat;
@@ -132,9 +145,7 @@
         terrainShadows.lambda=.72;
         terrainShadows.bias=.0008;
         terrainShadows.normalBias=.035;
-        /* 0 is deepest shadow and 1 disables shadow darkening; lift from .55 so the
-           5.7-degree sunset still models shape without crushing the road to black. */
-        terrainShadows.darkness=.72;
+        terrainShadows.darkness=.78;
         terrainShadows.stabilizeCascades=true;
         terrainShadows.autoCalcDepthBounds=true;
         terrainShadows.addShadowCaster(terrain,true);
@@ -154,16 +165,15 @@
         camera.position.y+=s.height;
       });
       try{
-        document.title='Grass Game v59';
+        document.title='Grass Game v60';
         var rows=document.querySelectorAll('#ui .row');
-        for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v59';break;}
+        for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v60';break;}
       }catch(_){ }
     },0);
 
     window.GrassTerrainDemo={
       mesh:terrain,heightAt:heightAt,landscapeHeight:landscapeHeight,sampleAt:sampleAt,size:SIZE,maxSlope:38,eyeHeight:EYE,
-      shadowHeightGLSL:window.GrassShadowTerrainGLSL,
-      shadows:terrainShadows,
+      shadows:terrainShadows,grassShadow:grassShadowState,
       road:{mesh:null,material:mat,texture:roadTex,width:ROAD_WIDTH,clearWidth:ROAD_CLEAR_WIDTH,deformRadius:ROAD_DEFORM_RADIUS,profileOffset:roadProfileOffset,blend:roadBlend,paintMask:roadPaintMask}
     };
   }
