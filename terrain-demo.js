@@ -1,4 +1,4 @@
-/* v64 demo terrain adapter.
+/* v65 demo terrain adapter.
    Rolling 1200m terrain with a horizon-to-horizon painted road through spawn.
    Grass shadows are projected decal planes again (see grass-effects.js), so the terrain
    shader no longer samples a world-space shadow splat - that texture fetch and its 512^2
@@ -55,6 +55,21 @@
        Placing grass on the analytic surface instead left it floating above or sunk into the
        drawn ground by up to 0.4 m near the road. Reading the baked vertex grid is exact at
        any spacing, and cheaper than the five heightAt() calls it replaced. */
+    /* Height-only form of sampleAt: same triangle, but no allocation, no normal and no
+       acos. The shadow bake probes this several times per clump, so it stays off that path. */
+    function heightOnMesh(x,z){
+      if(!gridH)return heightAt(x,z);
+      var b=Math.floor((x+SIZE*.5)/LOOK);
+      if(b<0||b>=LOOKN)return heightAt(x,z);
+      var i=colOf[b];while(i<NX-1&&x>=colX[i+1])i++;
+      if(x<colX[i]||x>colX[i+1])return heightAt(x,z);
+      var fj=NZ-(z+SIZE*.5)/CELLZ,j=Math.floor(fj),v=fj-j;
+      if(j<0||j>=NZ)return heightAt(x,z);
+      var u=(x-colX[i])/(colX[i+1]-colX[i]),k=i+j*GRID;
+      var hC=gridH[k],hB=gridH[k+1],hD=gridH[k+GRID],hA=gridH[k+GRID+1];
+      return (u>=v)?hC+u*(hB-hC)+v*(hA-hB):hC+v*(hD-hC)+u*(hA-hD);
+    }
+
     function sampleAt(x,z){
       if(!gridH)return sampleAnalytic(x,z);
       var b=Math.floor((x+SIZE*.5)/LOOK);
@@ -110,9 +125,9 @@
 
     window.GrassAPI.autoRebuild=false;window.GrassAPI.setTerrainSampler(sampleAt);window.GrassAPI.setMaxSlope(38);window.GrassAPI.excludeCorridor([{x:0,z:-5000},{x:0,z:5000}],ROAD_CLEAR_WIDTH);window.GrassAPI.autoRebuild=true;setTimeout(function(){try{window.GrassAPI.requestRebuild();}catch(_){ }},0);
 
-    setTimeout(function(){scene.onBeforeRenderObservable.add(function(){var s=sampleAt(camera.position.x,camera.position.z);camera.position.y+=s.height;});try{document.title='Grass Game v64';var rows=document.querySelectorAll('#ui .row');for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v64';break;}}catch(_){ }},0);
+    setTimeout(function(){scene.onBeforeRenderObservable.add(function(){var s=sampleAt(camera.position.x,camera.position.z);camera.position.y+=s.height;});try{document.title='Grass Game v65';var rows=document.querySelectorAll('#ui .row');for(var ri=0;ri<rows.length;ri++)if(rows[ri].textContent.indexOf('Version:')>=0){rows[ri].innerHTML='<strong>Version:</strong> v65';break;}}catch(_){ }},0);
 
-    window.GrassTerrainDemo={mesh:terrain,heightAt:heightAt,landscapeHeight:landscapeHeight,sampleAt:sampleAt,size:SIZE,maxSlope:38,eyeHeight:EYE,shadows:terrainShadows,road:{mesh:null,material:mat,texture:roadTex,width:ROAD_WIDTH,clearWidth:ROAD_CLEAR_WIDTH,deformRadius:ROAD_DEFORM_RADIUS,profileOffset:roadProfileOffset,blend:roadBlend,paintMask:roadPaintMask}};
+    window.GrassTerrainDemo={mesh:terrain,heightAt:heightAt,meshHeightAt:heightOnMesh,landscapeHeight:landscapeHeight,sampleAt:sampleAt,size:SIZE,maxSlope:38,eyeHeight:EYE,shadows:terrainShadows,road:{mesh:null,material:mat,texture:roadTex,width:ROAD_WIDTH,clearWidth:ROAD_CLEAR_WIDTH,deformRadius:ROAD_DEFORM_RADIUS,profileOffset:roadProfileOffset,blend:roadBlend,paintMask:roadPaintMask}};
   }
 
   if(typeof BABYLON.CustomMaterial==='function'){boot();}else{var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/babylonjs-materials@8.26.0/babylonjs.materials.min.js';s.onload=function(){if(typeof BABYLON.CustomMaterial==='function')boot();else console.error('CustomMaterial library loaded but BABYLON.CustomMaterial is unavailable');};s.onerror=function(){console.error('Failed to load Babylon materials library; road paint cannot initialize');};document.head.appendChild(s);}

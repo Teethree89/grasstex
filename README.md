@@ -2,7 +2,7 @@
 
 Reusable Babylon.js grass rendering prototype with deterministic chunk generation, near/medium/far LOD, streamed thin instances, wind, fill patches, image-based shadows, placement/masking, rough-terrain sampling, and a deformed horizon-road demo.
 
-Current demo build: **v64**.
+Current demo build: **v65**.
 
 ## Main files
 
@@ -167,24 +167,25 @@ The hand-built mesh keeps `CreateGround`'s exact vertex and index layout — ver
 
 ## Projected grass shadows on rough terrain
 
-A projected shadow is a grass card flattened onto the ground and stretched by `1/tan(sunElevation)` (clamped to 4.2), so at the demo's low sun it spans roughly 4.5 m. Anchoring that whole quad to a single Y buried its far tip in rising ground, so `grass-effects.js` instead tilts each shadow into the terrain's tangent plane at its clump:
+A projected shadow is a grass card flattened onto the ground and stretched by `1/tan(sunElevation)` (clamped to 4.2), so at the demo's low sun it spans roughly 4.4 m — long enough that the ground under it is not a plane.
 
-```js
-// per instance, from the normal the terrain sampler already returned
-grad = [-normal.x / normal.y, -normal.z / normal.y];
-```
+Decals are drawn with `disableDepthWrite`, but depth *testing* stays on, so any part of the quad below the terrain is discarded. A single flat quad — even one tilted to the clump's tangent plane — sank up to **0.61 m** through the ground beside the road, where the sun points shadows straight into the ditch: **51%** of clumps in the first grass strip lost part of their shadow, on average past 42% of its length.
+
+So the decal is a strip subdivided along its length, with every row pinned to the ground beneath it. Each instance carries four ground heights relative to its clump, and each *vertex* carries a one-hot `knotSel` picking its row's value:
 
 ```glsl
-wp.y = clumpY + SHADOW_Y + dot(wp.xz - clumpXZ, instanceGrad);
+wp.y = clumpY + SHADOW_Y + dot(knotSel, instanceProfile);   // row 0 is all zeros
 ```
 
-This is exact to first order and needs no extra terrain sampling — the normal is already computed for slope rejection and fill patches. Measured over a 4.4 m shadow, mean vertical error drops from 4.5 cm to 0.4 cm and worst case from 28.6 cm to 2.3 cm, which is what keeps the quad above `SHADOW_Y` (3 cm) instead of clipping through hillsides.
+The rasterizer interpolates between rows, so the strip is a piecewise-linear fit to the real ground rather than a plane extrapolated off the clump. Four segments (the four knots fit one `vec4`) plus an 8 cm lift measured out at **zero clipping**; fewer segments or a smaller lift still clip, and simply *shortening* shadows barely helps — even at 1.6× stretch, 27.7% still clip.
 
-Since the sampler returns the rendered triangle's face normal, the gradient is that triangle's own plane — so within a triangle the shadow lies exactly in the surface being drawn, not merely close to it.
+Probing four extra ground heights per clump is affordable only because the sampler is a grid lookup; it uses `GrassTerrainDemo.meshHeightAt`, a height-only form that skips the allocation, normal and `acos`.
+
+**Shadow maps are not the cheaper alternative here.** Putting near+medium grass into the existing 3-cascade CSM is ~325k vertices across three extra alpha-tested passes, against ~149k in one pass for the decals — 2.2× the vertex work plus the passes. It also looks worse: at 1024² the cascades land near 3.7 / 6.1 / 32.4 cm per texel, against ~1–3 cm grass blades and ~70 cm clumps, so the far cascade is about two texels per clump.
 
 The bake is deferred until `GrassAPI.snapshot().hasTerrainSampler` is true and re-runs whenever the API `revision` changes. `terrain-demo.js` boots asynchronously (it waits on the `CustomMaterial` CDN script), so without that the first bake would run with no terrain sampler — flattening every shadow to y=0 — and would leave shadows painted across the road until movement hysteresis happened to trip a rebuild.
 
-Shadow alpha must reach zero at `SHADOW_END`. If it is still non-zero where the fragment shader discards, every streaming rebuild pops a whole ring of shadows in and out at that opacity as you cross chunks. `SHADOW_END`, `SHADOW_FADE_START`, `HYST`, and `PAD` are the cost knobs: shadow range and rebuild hysteresis together dominate streaming cost, since each clump bake runs a mask test plus a terrain sample.
+`SHADOW_Y` is clearance, not decoration: it is what absorbs the residual error between the strip and the ground between knots. Shadow alpha must reach zero at `SHADOW_END`. If it is still non-zero where the fragment shader discards, every streaming rebuild pops a whole ring of shadows in and out at that opacity as you cross chunks. `SHADOW_END`, `SHADOW_FADE_START`, `HYST`, and `PAD` are the cost knobs: shadow range and rebuild hysteresis together dominate streaming cost, since each clump bake runs a mask test plus a terrain sample.
 
 ## Far LOD on hills
 
