@@ -5,92 +5,101 @@
     "grid": 2400
   },
   "base": {
-    "quantStepM": 0.2157,
-    "quantErrRmsMm": 72.2,
-    "bandingPlainRmsMm": 59.28,
-    "bandingDitherRmsMm": 4.93
+    "quantStepM": 0.3724,
+    "quantErrRmsMm": 94.6,
+    "bandingPlainRmsMm": 39.76,
+    "bandingDitherRmsMm": 7.6
   },
   "heightRange": {
-    "min": -21.2,
-    "max": 35.37,
-    "u16StepMm": 0.863
+    "min": -45.14,
+    "max": 49.46,
+    "u16StepMm": 1.444
   },
   "junctions": [
     {
-      "road": "spur",
-      "host": "main",
+      "road": "r1",
+      "host": "r0",
       "end": 0,
-      "s": 203.0815466607875,
-      "snap": 0.03580855833204709,
-      "x": 213.93494062275755,
-      "y": 419.3921638190976
+      "s": 18,
+      "snap": 0,
+      "x": 0,
+      "y": 478
     },
     {
-      "road": "lane",
-      "host": "main",
+      "road": "r1",
+      "host": "r0",
+      "end": 1,
+      "s": 272,
+      "snap": 0,
+      "x": 0,
+      "y": 224
+    },
+    {
+      "road": "r2",
+      "host": "r0",
       "end": 0,
-      "s": 446.6015160989962,
-      "snap": 0.03621455149435107,
-      "x": 343.43224745251507,
-      "y": 229.5164801561347
+      "s": 160,
+      "snap": 0,
+      "x": 0,
+      "y": 336
     }
   ],
   "grade": [
     {
-      "road": "main",
-      "len": 679.2,
-      "maxGrade": 2.89,
+      "road": "r0",
+      "len": 1157.2,
+      "maxGrade": 3,
       "pinDrift": 0,
-      "meanCut": 0.15,
-      "meanFill": 0.16
-    },
-    {
-      "road": "spur",
-      "len": 173.5,
-      "maxGrade": 1.27,
-      "pinDrift": 0,
-      "meanCut": 0.11,
+      "meanCut": 0.14,
       "meanFill": 0.13
     },
     {
-      "road": "lane",
-      "len": 198.3,
-      "maxGrade": 1.19,
+      "road": "r1",
+      "len": 254,
+      "maxGrade": 2.79,
       "pinDrift": 0,
-      "meanCut": 0.14,
-      "meanFill": 0.07
+      "meanCut": 0.19,
+      "meanFill": 0.22
+    },
+    {
+      "road": "r2",
+      "len": 1173.1,
+      "maxGrade": 3,
+      "pinDrift": 0,
+      "meanCut": 0.11,
+      "meanFill": 0.13
     }
   ],
   "junctions_": {
-    "cells": 48664,
-    "p999": 3.223,
-    "mean": 0.1811
+    "cells": 36516,
+    "p999": 2.159,
+    "mean": 0.1512
   },
   "daylight": {
-    "samples": 525,
-    "min": 0.01,
-    "median": 0.95,
-    "p95": 11.01,
-    "max": 35,
-    "cappedCells": 56,
-    "cappedPct": 0.004,
+    "samples": 954,
+    "min": 0,
+    "median": 0.59,
+    "p95": 2.58,
+    "max": 34.96,
+    "cappedCells": 186,
+    "cappedPct": 0.013,
     "capM": 35
   },
   "sharpness": {
     "road": {
-      "slopeP50": 0.065,
-      "slopeP999": 0.666,
-      "curvP999": 3.029
+      "slopeP50": 0.056,
+      "slopeP999": 0.693,
+      "curvP999": 3.28
     },
     "offRoad": {
-      "slopeP50": 0.063,
-      "slopeP999": 0.798,
-      "curvP999": 0.125
+      "slopeP50": 0.155,
+      "slopeP999": 1.372,
+      "curvP999": 0.244
     }
   },
   "bytes": {
     "uniformU16": 11520000,
-    "splatPng": 101451
+    "splatPng": 92455
   },
   "tiling": {
     "uniformMB": 10.99,
@@ -100,90 +109,90 @@
     "sweep": [
       {
         "TILE": 8,
-        "fineTiles": 445,
+        "fineTiles": 586,
         "totalTiles": 5625,
-        "finePct": 7.9,
-        "bytes": 1691612,
-        "MB": 1.61,
+        "finePct": 10.4,
+        "bytes": 1998710,
+        "MB": 1.91,
         "seam": {
-          "samples": 129924,
-          "maxMismatch": 0.0000012343373274603664
+          "samples": 162004,
+          "maxMismatch": 6.958113702992819e-7
         },
         "errOnPrismMm": {
           "p50": 0,
           "p99": 19,
-          "max": 42
+          "max": 36
         },
         "errOffPrismMm": {
           "p50": 1,
-          "p99": 7,
-          "max": 162
+          "p99": 9,
+          "max": 892
         }
       },
       {
         "TILE": 16,
-        "fineTiles": 150,
+        "fineTiles": 179,
         "totalTiles": 1444,
-        "finePct": 10.4,
-        "bytes": 2009262,
-        "MB": 1.92,
+        "finePct": 12.4,
+        "bytes": 2254312,
+        "MB": 2.15,
         "seam": {
-          "samples": 64160,
-          "maxMismatch": 0.0000012247627054762233
+          "samples": 58947,
+          "maxMismatch": 0.0000014362550135871288
         },
         "errOnPrismMm": {
           "p50": 0,
-          "p99": 20,
-          "max": 43
+          "p99": 19,
+          "max": 38
         },
         "errOffPrismMm": {
           "p50": 1,
-          "p99": 7,
-          "max": 161
+          "p99": 9,
+          "max": 973
         }
       },
       {
         "TILE": 32,
-        "fineTiles": 59,
+        "fineTiles": 66,
         "totalTiles": 361,
-        "finePct": 16.3,
-        "bytes": 2705400,
-        "MB": 2.58,
+        "finePct": 18.3,
+        "bytes": 2938374,
+        "MB": 2.8,
         "seam": {
-          "samples": 31679,
-          "maxMismatch": 0.0000014631865674630262
+          "samples": 28070,
+          "maxMismatch": 0.0000019319984385646194
         },
         "errOnPrismMm": {
           "p50": 0,
-          "p99": 21,
-          "max": 89
+          "p99": 19,
+          "max": 35
         },
         "errOffPrismMm": {
           "p50": 1,
-          "p99": 7,
-          "max": 88
+          "p99": 9,
+          "max": 875
         }
       },
       {
         "TILE": 64,
-        "fineTiles": 24,
+        "fineTiles": 33,
         "totalTiles": 81,
-        "finePct": 29.6,
-        "bytes": 3992114,
-        "MB": 3.81,
+        "finePct": 40.7,
+        "bytes": 5180996,
+        "MB": 4.94,
         "seam": {
-          "samples": 14837,
-          "maxMismatch": 0.0000017494325987854609
+          "samples": 13634,
+          "maxMismatch": 0.0000020525642341340244
         },
         "errOnPrismMm": {
           "p50": 0,
-          "p99": 24,
-          "max": 183
+          "p99": 21,
+          "max": 79
         },
         "errOffPrismMm": {
           "p50": 0,
-          "p99": 7,
-          "max": 135
+          "p99": 8,
+          "max": 324
         }
       }
     ]
@@ -206,94 +215,94 @@
       240
     ],
     "cam": [
-      267.1,
-      302.7
+      0,
+      156
     ],
-    "chunks": 301,
-    "vertices": 273661,
-    "triangles": 521600,
-    "edgeSnaps": 2488,
+    "chunks": 128,
+    "vertices": 125632,
+    "triangles": 239872,
+    "edgeSnaps": 1104,
     "perLevel": {
-      "L4 @4m": {
-        "chunks": 87,
-        "verts": 7047
+      "L2 @1m": {
+        "chunks": 20,
+        "verts": 21780
       },
       "L3 @2m": {
-        "chunks": 149,
-        "verts": 43061
+        "chunks": 59,
+        "verts": 17051
       },
-      "L2 @1m": {
-        "chunks": 44,
-        "verts": 47916
+      "L4 @4m": {
+        "chunks": 38,
+        "verts": 3078
       },
       "L1 @0.5m": {
-        "chunks": 14,
-        "verts": 59150
+        "chunks": 8,
+        "verts": 33800
       },
       "L0 @0.25m": {
-        "chunks": 7,
-        "verts": 116487
+        "chunks": 3,
+        "verts": 49923
       }
     },
     "uniformVertices": 5764801,
     "shippedTodayVertices": 69133,
     "crack": {
-      "samples": 39431,
-      "maxMismatchM": 0.00000255
+      "samples": 16254,
+      "maxMismatchM": 0.00000148
     },
     "grassClear": 6.75,
-    "onRoadSkipped": 19771,
+    "onRoadSkipped": 8941,
     "agreement": [
       {
         "band": "0-30 m",
-        "n": 2936,
-        "p99mm": 4,
-        "maxMm": 11.3,
-        "p99px": 0.252,
-        "maxPx": 0.937
+        "n": 1487,
+        "p99mm": 0.4,
+        "maxMm": 1,
+        "p99px": 0.023,
+        "maxPx": 0.088
       },
       {
         "band": "30-60 m",
-        "n": 10985,
-        "p99mm": 1.7,
-        "maxMm": 22.6,
-        "p99px": 0.042,
-        "maxPx": 0.408
+        "n": 5157,
+        "p99mm": 1.3,
+        "maxMm": 21.5,
+        "p99px": 0.028,
+        "maxPx": 0.474
       },
       {
         "band": "60-120 m",
-        "n": 45375,
-        "p99mm": 5,
-        "maxMm": 139.3,
-        "p99px": 0.054,
-        "maxPx": 1.234
+        "n": 22355,
+        "p99mm": 4.8,
+        "maxMm": 96.1,
+        "p99px": 0.053,
+        "maxPx": 1.235
       },
       {
         "band": "120-240 m",
-        "n": 180421,
-        "p99mm": 29.2,
-        "maxMm": 449,
-        "p99px": 0.166,
-        "maxPx": 3.016
+        "n": 77640,
+        "p99mm": 26.1,
+        "maxMm": 341.6,
+        "p99px": 0.142,
+        "maxPx": 2.661
       },
       {
         "band": "240-300 m",
-        "n": 131847,
-        "p99mm": 76.3,
-        "maxMm": 513.8,
-        "p99px": 0.282,
-        "maxPx": 2.106
+        "n": 47163,
+        "p99mm": 106.8,
+        "maxMm": 438,
+        "p99px": 0.396,
+        "maxPx": 1.541
       }
     ]
   },
   "asset": {
     "tile": 8,
-    "binBytes": 1691612,
-    "splatBytes": 101451,
-    "totalMB": 1.71,
-    "quantStepMm": 0.863,
-    "roundTripMaxErrM": 0.000427,
-    "fineTiles": 445
+    "binBytes": 1998710,
+    "splatBytes": 92455,
+    "totalMB": 1.99,
+    "quantStepMm": 1.443,
+    "roundTripMaxErrM": 0.000717,
+    "fineTiles": 586
   },
   "streaming": {
     "steps": 4000,
@@ -311,26 +320,26 @@
       "note": "hyst 0 vs cold lod.build at the final camera position"
     },
     "cracksAfterWalk": {
-      "max": 0.00000255,
-      "samples": 24118
+      "max": 0.00000127,
+      "samples": 11256
     },
     "hysteresis": {
-      "walkNoHyst": 1599,
-      "walkHyst6": 159,
-      "standStillJitterNoHyst": 132,
+      "walkNoHyst": 941,
+      "walkHyst6": 80,
+      "standStillJitterNoHyst": 162,
       "standStillJitterHyst6": 0
     },
     "work": {
-      "ticksWithWork": 951,
-      "ticksIdle": 3048,
-      "chunksRebuiltSteady": 2618,
-      "vertsRebuiltSteady": 1477002,
-      "vertsIfFullRebuildEachTick": 1094644000,
-      "saving": 741,
-      "coldStartQueue": 234,
+      "ticksWithWork": 631,
+      "ticksIdle": 3368,
+      "chunksRebuiltSteady": 1640,
+      "vertsRebuiltSteady": 617352,
+      "vertsIfFullRebuildEachTick": 502528000,
+      "saving": 814,
+      "coldStartQueue": 154,
       "ticksToCameraChunk": 1,
-      "maxSteadyQueue": 11,
-      "maxLatencyTicks": 6
+      "maxSteadyQueue": 5,
+      "maxLatencyTicks": 2
     }
   }
 }

@@ -6,6 +6,52 @@ No dependencies; `node run.js` then `node render.js`.
     node --max-old-space-size=4096 run.js       # -> out/height.u16.bin, out/splat.png, out/stats.json
     node --max-old-space-size=4096 render.js    # -> out/fig1..fig4 .svg
 
+## The map is generated (`genmap.js`)
+
+    node genmap.js --seed 7            # -> map.svg, reproducible from the seed in its header
+
+`map.svg` is an artifact, not source. Hills are random ellipses; roads are **routed, not
+drawn** - a grade-penalised Dijkstra over a coarse lattice, then Douglas-Peucker,
+resampling, min-radius relaxation and a centripetal Catmull-Rom fit.
+
+Two cost terms, and both were found by measuring the bake rather than by taste:
+
+- **Grade**, which the grade solver pays for. Measured over seed 7:
+
+      weight   road m   max grade   mean cut   daylight p95   asset MB   route on slope
+      naive      2048       6.70 %     0.267 m        20.7 m      2.36            58 %
+         4       3083       3.42 %     0.147 m        13.1 m      2.32            21 %
+        12       3259       3.01 %     0.117 m         1.8 m      2.46             0 %
+
+  Past ~12 the router saturates - it always buys the flat detour and roads stop touching
+  terrain at all, which is cheap and looks wrong. Default 5.
+
+- **Cross-slope**, which the *daylight* solve pays for, and which penalising grade alone
+  ignores entirely: a contour road cut into a steep face grades beautifully and daylights
+  ruinously, because width goes as 1/(batter - cross). Adding it was worth:
+
+      cross weight   road m   daylight p95   capped cells   asset MB   junction curv
+                 0     2155         34.9 m            426       1.79           8.85
+                12     2584          2.6 m            186       1.99           2.16
+
+  p95 daylight 34.9 m means the corridor was pinned at its cap almost everywhere. The
+  junction curvature falling with it was the surprise: what looked like a junction defect
+  was two over-wide daylight cones meeting, not the junction geometry at all.
+
+### The guard that matters
+
+After writing the SVG, genmap reads it **back**, flattens the beziers exactly as
+`readMap` does, and checks every road's turning radius against its own prism half-width.
+Below that ratio the offset prism folds through itself and nothing downstream can save it.
+
+This caught a real defect: relaxing the control polyline to a 30 m radius still produced a
+**0.2 m** radius once fitted, because uniform Catmull-Rom overshoots on uneven spans. The
+centripetal parameterisation (alpha = 0.5) is what actually admits no cusps. Even then,
+3 of 5 seeds still failed until the fit was re-checked and globally smoothed in a loop -
+a hairpin out of a lattice router cannot be removed by local relaxation. Across 8 seeds
+the tightest turn is now 2.2-3.0x the prism half-width, and the generator exits non-zero
+if any road falls under 1.2x.
+
 ## The split
 
 | Layer | Authored? | Why |
