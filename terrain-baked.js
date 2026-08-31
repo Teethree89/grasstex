@@ -180,13 +180,43 @@
     /* hand the field to grass BEFORE the first rebuild, then let it build */
     try{if(typeof ground!=='undefined')ground.setEnabled(false);}catch(_){}
     try{if(window.GrassTerrainDemo&&window.GrassTerrainDemo.mesh)window.GrassTerrainDemo.mesh.setEnabled(false);}catch(_){}
-    window.GrassAPI.autoRebuild=false;
-    window.GrassAPI.setTerrainSampler(sampleAt);
-    window.GrassAPI.setMaxSlope(38);
-    window.GrassAPI.clearExclusions();
-    window.GrassAPI.autoRebuild=true;
+    /* Road exclusion. terrain-demo.js used excludeCorridor() down x=0, which only works
+       for a straight road; curved and branching roads cannot be expressed as a shape,
+       and a per-candidate polyline test would be O(segments) on every clump anyway.
+       roaduv.png is already an exact prism mask - it is written only where a road prism
+       is, and a written texel can never be (0,_,0) because R and B hold sin and cos of
+       the same angle. So decode it once into a bitmask and answer in O(1). */
+    var mask=null,maskN=0;
+    function buildMask(img,n){
+      var c=document.createElement('canvas');c.width=c.height=n;
+      var g=c.getContext('2d',{willReadFrequently:true});
+      g.drawImage(img,0,0,n,n);                     /* box-filtered: dilates the mask a
+                                                       little, which is the safe direction */
+      var d=g.getImageData(0,0,n,n).data,m=new Uint8Array(n*n);
+      for(var i=0;i<n*n;i++)m[i]=(d[i*4]>0||d[i*4+2]>0)?1:0;
+      mask=m;maskN=n;
+    }
+    function onRoad(x,z){
+      if(!mask)return false;
+      var i=Math.floor(bx(x)/W*maskN),j=Math.floor(by(z)/W*maskN);
+      if(i<0||j<0||i>=maskN||j>=maskN)return false;
+      return mask[j*maskN+i]===1;
+    }
+    function armGrass(){
+      window.GrassAPI.autoRebuild=false;
+      window.GrassAPI.setTerrainSampler(sampleAt);
+      window.GrassAPI.setMaxSlope(38);
+      window.GrassAPI.clearExclusions();
+      window.GrassAPI.setSurfaceResolver(function(x,z){return onRoad(x,z)?'road':'ground';});
+      window.GrassAPI.excludeSurface('road');
+      window.GrassAPI.autoRebuild=true;
+      try{window.GrassAPI.requestRebuild();}catch(_){}
+    }
     pump();
-    setTimeout(function(){try{window.GrassAPI.requestRebuild();}catch(_){}},0);
+    var mi=new Image();mi.crossOrigin='anonymous';
+    mi.onload=function(){try{buildMask(mi,1024);}catch(e){console.warn('terrain-baked: road mask failed',e);}armGrass();};
+    mi.onerror=function(){console.warn('terrain-baked: roaduv.png missing, grass will grow on roads');armGrass();};
+    mi.src=BASE+'roaduv.png';
 
     scene.onBeforeRenderObservable.add(function(){
       pump();
@@ -196,7 +226,8 @@
     });
 
     window.GrassTerrainBaked={tiles:T,manifest:man,sampleAt:sampleAt,heightAt:heightAt,rig:rig,relight:lightRig,
-      stream:st,meshes:meshes,material:mat,size:W,eyeHeight:EYE,
+      stream:st,meshes:meshes,material:mat,size:W,eyeHeight:EYE,onRoad:onRoad,
+      maskReady:function(){return !!mask;},
       stats:function(){var v=0;st.chunks.forEach(function(c){if(c.g)v+=(c.n+1)*(c.n+1);});
         return {chunks:st.chunks.size,vertices:v,queued:st.dirty.size};}};
     console.log('terrain-baked: '+W+' m world, '+T.fine.size+' fine tiles, '+st.chunks.size+' chunks');
