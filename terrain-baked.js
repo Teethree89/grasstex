@@ -92,10 +92,27 @@
     mat.setTexture('splatTex',splatT);mat.setTexture('roadUvTex',roadUvT);
     mat.setTexture('dirtTex',dirtT);mat.setTexture('roadTex',roadT);
     mat.setFloat('uDirtScale',DIRT_SCALE);mat.setFloat('uRoadRepeat',man.roadRepeatM||9);
-    var sd=(typeof sun!=='undefined'&&sun.direction)?sun.direction:new BABYLON.Vector3(-.47,-.10,.88);
-    mat.setVector3('uSunDir',sd.normalizeToNew());
-    mat.setVector3('uSunCol',new BABYLON.Vector3(.92,.88,.80));
-    mat.setVector3('uAmb',new BABYLON.Vector3(.30,.30,.34));
+    /* Take the lighting from the scene's own lights rather than constants. Hardcoding
+       a neutral sun made the terrain read cold and flat against grass lit by the actual
+       golden-hour rig - the post-processing grade applies to both, so the mismatch was
+       entirely in these three vectors. */
+    function lightRig(){
+      var dl=null,hem=null;
+      for(var i=0;i<scene.lights.length;i++){var L=scene.lights[i];
+        if(!dl&&L.getClassName&&L.getClassName()==='DirectionalLight')dl=L;
+        if(!hem&&L.getClassName&&L.getClassName()==='HemisphericLight')hem=L;}
+      if(!dl&&typeof sun!=='undefined')dl=sun;
+      var sd=(dl&&dl.direction)?dl.direction.normalizeToNew():new BABYLON.Vector3(-.47,-.10,.88);
+      var sc=dl?dl.diffuse.scale(dl.intensity===undefined?1:dl.intensity):new BABYLON.Color3(.92,.88,.80);
+      var am=hem?hem.diffuse.scale((hem.intensity===undefined?1:hem.intensity)*0.6)
+                 .add(hem.groundColor?hem.groundColor.scale(0.25):new BABYLON.Color3(0,0,0))
+               :new BABYLON.Color3(.30,.30,.34);
+      mat.setVector3('uSunDir',sd);
+      mat.setVector3('uSunCol',new BABYLON.Vector3(sc.r,sc.g,sc.b));
+      mat.setVector3('uAmb',new BABYLON.Vector3(am.r,am.g,am.b));
+      return {dir:sd,sun:sc,amb:am};
+    }
+    var rig=lightRig();
 
     /* ---- streaming LOD mesh over the same field ---- */
     var tPC=CHUNK_M/T.TILE;
@@ -144,6 +161,13 @@
 
     var ready=false;
     function pump(){
+      /* The 4-chunks-per-tick budget is for steady state, where a walking step dirties
+         about ten. The FIRST fill is 300+ chunks, and metering that at 4 a frame means
+         the ground arrives over seconds - worse the slower the device, which is exactly
+         backwards. grass-streaming.js already makes this distinction with its `jump`
+         flag; this did not. Fill fast until the first drain, then throttle, with a
+         middle gear so a teleport catches up without stalling the frame. */
+      st.budget = ready ? (st.dirty.size>48?16:BUDGET) : 96;
       var cam=[bx(camera.position.x),by(camera.position.z)];
       window.TerrainStream.update(st,cam);
       for(var e of st.chunks){var k=e[0],c=e[1];if(c.g)syncChunk(k,c);}
@@ -171,7 +195,7 @@
       if(isFinite(h))camera.position.y=h+EYE;
     });
 
-    window.GrassTerrainBaked={tiles:T,manifest:man,sampleAt:sampleAt,heightAt:heightAt,
+    window.GrassTerrainBaked={tiles:T,manifest:man,sampleAt:sampleAt,heightAt:heightAt,rig:rig,relight:lightRig,
       stream:st,meshes:meshes,material:mat,size:W,eyeHeight:EYE,
       stats:function(){var v=0;st.chunks.forEach(function(c){if(c.g)v+=(c.n+1)*(c.n+1);});
         return {chunks:st.chunks.size,vertices:v,queued:st.dirty.size};}};
