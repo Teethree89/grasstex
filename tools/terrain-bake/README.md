@@ -137,6 +137,46 @@ disagree by less than anyone can see. The half-metre maxima are daylight break l
 the crease where a cut or fill cone meets natural ground - crossed by a 2 m mesh at
 120 m+, which is a real feature the coarse level cannot resolve and nothing stands on.
 
+## Streaming (`stream.js`)
+
+Rebuilds only what the camera's move actually changed. Two things make this more than
+calling `lod.build()` per frame:
+
+- **Neighbour invalidation.** A chunk's edge vertices are snapped to its *coarser*
+  neighbours, so when chunk A changes level, A's four neighbours hold stale snaps even
+  though their own level did not change. Miss it and cracks reopen as you walk. Edges
+  are re-sampled from the field before re-snapping rather than stored, so a re-snap can
+  never compound a previous one.
+- **Hysteresis.** Refining needs `d < BAND - H`, coarsening `d >= BAND + H`, so the two
+  thresholds never coincide and a chunk on a band edge cannot flip on camera jitter.
+
+Measured over a 4000-frame walk (1.5 m/s at 60 fps, ~100 m, +/-0.4 m lateral jitter),
+32 m chunks, budget 4 chunks per tick:
+
+| | |
+|---|---|
+| equivalence vs cold `lod.build` | **0 level mismatches, max grid diff 0 m** |
+| cracks after the walk | 2.6e-6 m over 24 k samples |
+| level changes, walking | 1599 -> **159** with H = 6 m |
+| level changes, standing still + jitter | 132 -> **0** |
+| idle ticks | 3048 / 3999 (76 %) |
+| vertices touched | 1.48 M vs 1095 M rebuilding every tick (**741x**) |
+| steady-state queue | peak 11 chunks, worst backlog 6 ticks (0.10 s) |
+| cold start | 234 chunks; ground under the camera ready after **1 tick** |
+
+The equivalence check is the one that matters: incremental state is bit-identical to a
+cold build at the same position, so streaming cannot drift. It only holds with H = 0 -
+with hysteresis the level set legitimately depends on how the camera got there, which
+is the point.
+
+The stand-still row is what hysteresis is actually for. Walking numbers flatter it
+(most of those 1599 changes are real band crossings); a camera standing still with
+footstep jitter does 132 completely pointless rebuilds without it and zero with it.
+
+Drain order is nearest-first. In steady state the ~10 chunks a step dirties make this
+irrelevant, but on a cold start or a teleport, scan order would fill the far field
+while the ground under the camera was still missing.
+
 ## Known limitations
 
 - Uniform 0.25 m grid (11.5 MB for 600 m). Tiling — coarse base plus corridor tiles —

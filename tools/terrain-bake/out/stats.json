@@ -111,13 +111,13 @@
         },
         "errOnPrismMm": {
           "p50": 0,
-          "p99": 21,
-          "max": 44
+          "p99": 20,
+          "max": 73
         },
         "errOffPrismMm": {
           "p50": 1,
           "p99": 7,
-          "max": 81
+          "max": 215
         }
       },
       {
@@ -134,12 +134,12 @@
         "errOnPrismMm": {
           "p50": 0,
           "p99": 20,
-          "max": 42
+          "max": 38
         },
         "errOffPrismMm": {
           "p50": 1,
           "p99": 7,
-          "max": 115
+          "max": 110
         }
       },
       {
@@ -155,13 +155,13 @@
         },
         "errOnPrismMm": {
           "p50": 0,
-          "p99": 19,
-          "max": 39
+          "p99": 20,
+          "max": 38
         },
         "errOffPrismMm": {
           "p50": 1,
           "p99": 7,
-          "max": 145
+          "max": 207
         }
       },
       {
@@ -177,13 +177,13 @@
         },
         "errOnPrismMm": {
           "p50": 0,
-          "p99": 33,
-          "max": 175
+          "p99": 26,
+          "max": 177
         },
         "errOffPrismMm": {
           "p50": 0,
           "p99": 7,
-          "max": 143
+          "max": 177
         }
       }
     ]
@@ -242,48 +242,86 @@
       "maxMismatchM": 0.00000255
     },
     "grassClear": 6.75,
-    "onRoadSkipped": 19939,
+    "onRoadSkipped": 19731,
     "agreement": [
       {
         "band": "0-30 m",
-        "n": 2909,
-        "p99mm": 4.2,
-        "maxMm": 12.6,
-        "p99px": 0.26,
-        "maxPx": 1.536
+        "n": 2919,
+        "p99mm": 3.8,
+        "maxMm": 11.2,
+        "p99px": 0.305,
+        "maxPx": 1.287
       },
       {
         "band": "30-60 m",
-        "n": 10881,
-        "p99mm": 1.7,
-        "maxMm": 15.3,
-        "p99px": 0.039,
-        "maxPx": 0.426
+        "n": 10906,
+        "p99mm": 1.4,
+        "maxMm": 11.2,
+        "p99px": 0.035,
+        "maxPx": 0.279
       },
       {
         "band": "60-120 m",
-        "n": 45442,
-        "p99mm": 5.1,
-        "maxMm": 108.1,
+        "n": 45151,
+        "p99mm": 5.2,
+        "maxMm": 149.4,
         "p99px": 0.056,
-        "maxPx": 1.15
+        "maxPx": 1.326
       },
       {
         "band": "120-240 m",
-        "n": 179528,
-        "p99mm": 29.4,
-        "maxMm": 462.2,
-        "p99px": 0.167,
-        "maxPx": 3.097
+        "n": 180564,
+        "p99mm": 28.5,
+        "maxMm": 431.7,
+        "p99px": 0.161,
+        "maxPx": 2.543
       },
       {
         "band": "240-300 m",
-        "n": 132394,
-        "p99mm": 77.4,
-        "maxMm": 528.9,
-        "p99px": 0.285,
-        "maxPx": 2.16
+        "n": 131960,
+        "p99mm": 76.7,
+        "maxMm": 556.2,
+        "p99px": 0.284,
+        "maxPx": 2.265
       }
     ]
+  },
+  "streaming": {
+    "steps": 4000,
+    "speedMps": 1.5,
+    "fps": 60,
+    "stepM": 0.025,
+    "jitterM": 0.8,
+    "chunk": 32,
+    "budgetChunksPerTick": 4,
+    "hystM": 6,
+    "equivalence": {
+      "levelMismatches": 0,
+      "missingChunks": 0,
+      "maxGridDiffM": 0,
+      "note": "hyst 0 vs cold lod.build at the final camera position"
+    },
+    "cracksAfterWalk": {
+      "max": 0.00000255,
+      "samples": 24118
+    },
+    "hysteresis": {
+      "walkNoHyst": 1599,
+      "walkHyst6": 159,
+      "standStillJitterNoHyst": 132,
+      "standStillJitterHyst6": 0
+    },
+    "work": {
+      "ticksWithWork": 951,
+      "ticksIdle": 3048,
+      "chunksRebuiltSteady": 2618,
+      "vertsRebuiltSteady": 1477002,
+      "vertsIfFullRebuildEachTick": 1094644000,
+      "saving": 741,
+      "coldStartQueue": 234,
+      "ticksToCameraChunk": 1,
+      "maxSteadyQueue": 11,
+      "maxLatencyTicks": 6
+    }
   }
 }

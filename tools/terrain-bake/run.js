@@ -296,6 +296,99 @@ const LODM=require('./lod.js');
   log(`mesh LOD: ${M.chunks.size} chunks, ${(M.verts/1000).toFixed(0)}k verts, ${(M.tris/1000).toFixed(0)}k tris, ${M.snaps} edge snaps, crack max ${crack.toExponential(1)} m`);
   for(const b of bandStat)log(`   ${b.band.padEnd(10)} grass-vs-mesh p99 ${String(b.p99mm).padStart(6)} mm  max ${String(b.maxMm).padStart(7)} mm   |  p99 ${String(b.p99px).padStart(6)} px  max ${String(b.maxPx).padStart(6)} px`);
 }
+/* ---------- 9. incremental streaming ---------- */
+const STR=require('./stream.js');
+{
+  const TILE=8,{nT,flag}=tileClassifier(TILE);
+  const T=TL.buildTiles(H,{WORLD,TILE,COARSE:1.0,FINE:RES,isFine:(a,b)=>!!flag[b*nT+a]});
+  const CH=32,tPC=CH/TILE;
+  const floorLevel=(ci,cj)=>{for(let b=0;b<tPC;b++)for(let a=0;a<tPC;a++){
+      const ti=ci*tPC+a,tj=cj*tPC+b;if(ti<nT&&tj<nT&&flag[tj*nT+ti])return 0;}return 1;};
+  const r0=map.roads[0];
+  /* walk the main road with lateral jitter - this camera has footstep kicks, and
+     sub-metre jitter is exactly what makes an unhysteresed chunk flip levels */
+  const SPEED=1.5,FPS=60,STEP=SPEED/FPS;              /* 1.5 m/s on foot, per frame */
+  function path(steps){const out=[];let seed=12345;
+    const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff-0.5;};
+    for(let i=0;i<steps;i++){const sArc=200+i*STEP;if(sArc>r0.len-10)break;
+      const [x,y]=xyAt(r0,sArc),[ax,ay]=xyAt(r0,Math.max(0,sArc-1)),[bx,by]=xyAt(r0,Math.min(r0.len,sArc+1));
+      const tl=Math.hypot(bx-ax,by-ay)||1,nx=-(by-ay)/tl,ny=(bx-ax)/tl,jit=rnd()*0.8;
+      out.push([x+nx*jit,y+ny*jit]);}
+    return out;}
+  const walk=path(4000);       /* ~100 m, 66 s */
+
+  function run(HYST,budget){
+    const st=STR.create(T,{chunk:CH,range:300,hyst:HYST,budget,floorLevel});
+    /* cold start is one big build; exclude it so the numbers describe steady state */
+    STR.update(st,walk[0]);const coldQueue=st.dirty.size+1;STR.drain(st);
+    const before={...st.stat};
+    let perTick=[],queued=0,latency=0,run_=0;
+    for(let i=1;i<walk.length;i++){const r=STR.update(st,walk[i]);
+      perTick.push(r.rebuilt);if(r.queued>queued)queued=r.queued;
+      run_=r.queued>0?run_+1:0;if(run_>latency)latency=run_;}
+    STR.drain(st);
+    return {st,perTick,maxQueued:queued,coldQueue,maxLatencyTicks:latency,
+      steady:{rebuilds:st.stat.rebuilds-before.rebuilds,verts:st.stat.vertsRebuilt-before.vertsRebuilt,
+        levelChanges:st.stat.levelChanges-before.levelChanges}};
+  }
+    const A=run(0,999), Bh=run(6,4);
+  /* cold start: how many ticks until the chunk under the camera exists? */
+  const coldFill=(()=>{const st=STR.create(T,{chunk:CH,range:300,hyst:6,budget:4,floorLevel});
+    const cam=walk[0],ci=Math.floor(cam[0]/CH),cj=Math.floor(cam[1]/CH);
+    for(let t=1;t<=400;t++){STR.update(st,cam);
+      const c=st.chunks.get(cj*st.nC+ci);if(c&&c.g)return t;}
+    return -1;})();
+  /* isolate what hysteresis is actually for: a camera standing still and jittering */
+  function jitterOnly(HYST){const st=STR.create(T,{chunk:CH,range:300,hyst:HYST,budget:999,floorLevel});
+    let seed=999;const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff-0.5;};
+    const [bx,by]=xyAt(r0,BAND_PROBE);
+    STR.update(st,[bx,by]);STR.drain(st);const base=st.stat.levelChanges;
+    for(let i=0;i<600;i++){STR.update(st,[bx+rnd()*0.8,by+rnd()*0.8]);STR.drain(st);}
+    return st.stat.levelChanges-base;}
+  const BAND_PROBE=260;
+  const jitNo=jitterOnly(0),jitYes=jitterOnly(6);
+
+  /* A: with no hysteresis the streamed state must be identical to a cold build */
+  const cold=LODM.build(T,walk[walk.length-1],{chunk:CH,range:300,floorLevel});
+  let lvlDiff=0,gridMax=0,missing=0;
+  for(const [k,c] of cold.chunks){const sc=A.st.chunks.get(k);
+    if(!sc){missing++;continue;}
+    if(sc.L!==c.L){lvlDiff++;continue;}
+    for(let i=0;i<c.g.length;i++){const d=Math.abs(c.g[i]-sc.g[i]);if(d>gridMax)gridMax=d;}}
+
+  /* B: cracks after streaming - the neighbour-invalidation test */
+  function cracks(st){let mx=0,n=0;const M={chunks:st.chunks,nC:st.nC,CH:st.CH};
+    for(const c of st.chunks.values())for(const [dx,dy] of [[1,0],[0,1]]){
+      const nb=st.chunks.get((c.cj+dy)*st.nC+(c.ci+dx));if(!nb||nb.L===c.L)continue;
+      for(let k=0;k<=200;k++){const u=k/200*st.CH,e=1e-6;
+        const x=dx?(c.ci+1)*st.CH:c.ci*st.CH+u,y=dy?(c.cj+1)*st.CH:c.cj*st.CH+u;
+        const a=LODM.meshHeight(M,x-dx*e,y-dy*e),b=LODM.meshHeight(M,x+dx*e,y+dy*e);
+        if(a===null||b===null)continue;const d=Math.abs(a-b);if(d>mx)mx=d;n++;}}
+    return {samples:n,max:mx};}
+
+  const fullVerts=stats.meshLod.vertices*walk.length;
+  const nz=Bh.perTick.filter(v=>v>0).length;
+  stats.streaming={
+    steps:walk.length,speedMps:SPEED,fps:FPS,stepM:+STEP.toFixed(4),jitterM:0.8,chunk:CH,budgetChunksPerTick:4,hystM:6,
+    equivalence:{levelMismatches:lvlDiff,missingChunks:missing,maxGridDiffM:+gridMax.toExponential(2),
+      note:'hyst 0 vs cold lod.build at the final camera position'},
+    cracksAfterWalk:{max:+cracks(Bh.st).max.toExponential(2),samples:cracks(Bh.st).samples},
+    hysteresis:{walkNoHyst:A.steady.levelChanges,walkHyst6:Bh.steady.levelChanges,
+      standStillJitterNoHyst:jitNo,standStillJitterHyst6:jitYes},
+    work:{ticksWithWork:nz,ticksIdle:walk.length-1-nz,chunksRebuiltSteady:Bh.steady.rebuilds,
+      vertsRebuiltSteady:Bh.steady.verts,vertsIfFullRebuildEachTick:fullVerts,
+      saving:+(fullVerts/Math.max(1,Bh.steady.verts)).toFixed(0),
+      coldStartQueue:Bh.coldQueue,ticksToCameraChunk:coldFill,maxSteadyQueue:Bh.maxQueued,maxLatencyTicks:Bh.maxLatencyTicks}};
+  const S=stats.streaming;
+  log(`streaming: ${S.steps} steps x ${S.stepM} m, budget ${S.budgetChunksPerTick} chunks/tick`);
+  log(`   equivalence vs cold build: ${S.equivalence.levelMismatches} level mismatches, max grid diff ${S.equivalence.maxGridDiffM} m`);
+  log(`   cracks after the walk: ${S.cracksAfterWalk.max} m over ${S.cracksAfterWalk.samples} samples`);
+  log(`   hysteresis, walking: ${S.hysteresis.walkNoHyst} level changes -> ${S.hysteresis.walkHyst6} with 6 m`);
+  log(`   hysteresis, standing still + jitter: ${S.hysteresis.standStillJitterNoHyst} -> ${S.hysteresis.standStillJitterHyst6}`);
+  log(`   work: ${S.work.ticksIdle}/${S.steps-1} ticks idle, ${(S.work.vertsRebuiltSteady/1e6).toFixed(2)} M verts vs ${(S.work.vertsIfFullRebuildEachTick/1e6).toFixed(0)} M rebuilding every tick (${S.work.saving}x)`);
+  log(`   queue: cold start ${S.work.coldStartQueue} chunks, steady peak ${S.work.maxSteadyQueue}, worst backlog ${S.work.maxLatencyTicks} ticks (${(S.work.maxLatencyTicks/60).toFixed(2)} s)`);
+  log(`   cold start: ground under the camera ready after ${S.work.ticksToCameraChunk} tick(s)`);
+}
 fs.writeFileSync(P.join(OUT,'stats.json'),JSON.stringify(stats,null,2));
 
 if(require.main===module)console.log(JSON.stringify({tiling:stats.tiling.sweep.map(r=>({TILE:r.TILE,MB:r.MB})),meshLod:stats.meshLod},null,2));
