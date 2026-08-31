@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Authored terrain map. SVG user units ARE metres; viewBox origin is the
+     north-west corner of the world, so world x = svgX - 600/2 and z = 600/2 - svgY.
+
+     #terrain  low-frequency intent only. Ellipses carry data-height in metres
+               (signed) and an optional data-falloff (0..1, fraction of the radius
+               that stays flat before the smoothstep shoulder starts). The bake
+               rasterises this layer, QUANTISES IT TO 8 BIT, blurs it, and adds
+               fBm detail - banding does not survive the blur, which is the whole
+               reason painting the base at 8 bit is safe.
+
+     #roads    centrelines. class picks the material (surface texture AND
+               cross-section geometry); stroke-width is the paved width in metres.
+               Nothing about height is drawn here - grading is solved. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+  <g id="terrain">
+    <ellipse cx="150" cy="180" rx="105" ry="82"  data-height="34"  data-falloff="0.22"/>
+    <ellipse cx="430" cy="150" rx="82"  ry="104" data-height="24"  data-falloff="0.16"/>
+    <ellipse cx="470" cy="450" rx="118" ry="88"  data-height="-21" data-falloff="0.18"/>
+    <ellipse cx="120" cy="470" rx="115" ry="95"  data-height="10"  data-falloff="0.20"/>
+    <ellipse cx="300" cy="330" rx="75"  ry="62"  data-height="-8"  data-falloff="0.15"/>
+    <ellipse cx="560" cy="60"  rx="90"  ry="80"  data-height="21"  data-falloff="0.20"/>
+  </g>
+  <g id="roads">
+    <path id="main" class="asphalt" stroke-width="7.0"
+          d="M 300 600 C 300 512 202 474 212 382 C 222 300 342 282 352 202 C 360 132 332 80 332 0"/>
+    <path id="spur" class="dirt" stroke-width="4.6"
+          d="M 213.9 419.4 C 170 392 118 366 58 344"/>
+    <path id="lane" class="cobble" stroke-width="3.6"
+          d="M 343.4 229.5 C 420 244 462 300 528 296"/>
+  </g>
+</svg>
