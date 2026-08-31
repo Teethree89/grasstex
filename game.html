@@ -1,42 +1,57 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Grass Game v65</title></head><body><div id="boot" style="font-family:Arial,sans-serif;color:#fff;background:#0f141c;position:fixed;inset:0;display:flex;align-items:center;justify-content:center">Loading game v65…</div><script>(async()=>{
 /* v65. Same loader shape as v64: fetch the pinned v59 page and patch it.
 
-   New: the terrain source is chosen at load time. If the baked terrain pack is
-   reachable we swap terrain-demo.js for the tiled/streamed pipeline; if it is not, we
-   leave terrain-demo.js in place and the game runs exactly as it did in v64. That
-   fallback is the point - this file can merge to main before the assets are uploaded
-   without taking the live demo down. Check the console line to see which path ran. */
+   The terrain source is chosen at load time. If the baked pack is reachable we swap
+   terrain-demo.js for the tiled/streamed pipeline; if it is not, terrain-demo.js stays
+   and the game runs exactly as v64 did. That fallback lets this file merge to main
+   before the assets are uploaded without taking the live demo down.
+
+   REF is the ref the four new files are fetched from. It is tried first and 'main' is
+   tried second, so this survives the branch being deleted after a merge without anyone
+   remembering to edit it - and if BOTH refs fail we fall back to terrain-demo.js rather
+   than shipping a page that throws. The console line says which path and which ref ran. */
 const REPO='https://raw.githubusercontent.com/Teethree89/grasstex/';
 const PINNED='237c02bc54ed48774d10207e602b08a2d31f2419';
-/* TODO flip to 'main' once this branch is merged. ?ref= overrides for testing. */
 const REF=new URLSearchParams(location.search).get('ref')||'claude/grass-terrain-placement-2qy4c4';
 const ASSETS='https://test.ivandpopov.com/grasstex/Assets/terrain/';
 const BAKED=['tools/terrain-bake/tile.js','tools/terrain-bake/lod.js','tools/terrain-bake/stream.js','terrain-baked.js'];
 const OLD_TERRAIN="const terrain=await grab('"+REPO+"main/terrain-demo.js?ts='+Date.now());";
+const get=async(u)=>{const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw new Error(u+' -> '+r.status);return r.text();};
 try{
   let haveAssets=false;
   try{const p=await fetch(ASSETS+'terrain.json',{cache:'no-store'});haveAssets=p.ok;}catch(_){}
 
-  const r=await fetch(REPO+PINNED+'/game.html?ts='+Date.now(),{cache:'no-store'});
-  if(!r.ok)throw new Error('HTTP '+r.status);
-  let html=await r.text();
+  let html=await get(REPO+PINNED+'/game.html?ts='+Date.now());
   if(html.indexOf(OLD_TERRAIN)<0&&haveAssets)
     throw new Error('pinned loader changed shape; refusing to inject baked terrain');
 
+  /* Fetch the code HERE rather than injecting a fetch expression into the inner loader:
+     the fallback and the error handling belong where they can be acted on. */
+  let terrainSrc=null,usedRef=null;
+  if(haveAssets){
+    for(const ref of [REF,'main']){
+      try{ const parts=await Promise.all(BAKED.map(f=>get(REPO+ref+'/'+f+'?ts='+Date.now())));
+           terrainSrc=parts.join(';\n');usedRef=ref;break; }catch(_){}
+    }
+    if(!terrainSrc)haveAssets=false;
+  }
+
   html=html.replaceAll('v59','v65');
-  const tags=haveAssets
+  const tags=terrainSrc
     ?'svg-authored-terrain-bake + tiled-heightfield + union-offset-roads + solved-grading-and-daylight + camera-lod-streaming + splat-road-material + '
     :'';
   html=html.replace('image-shadows +',tags+'mesh-accurate-terrain-sampling + corridor-graded-terrain-subdivision + terrain-tangent-projected-grass-shadow-decals + shadow-fade-to-zero-at-range + wind-synced-shadow-bend + deferred-shadow-bake + image-shadows +');
 
-  if(haveAssets){
-    /* tile/lod/stream must precede terrain-baked; each file is an IIFE that publishes
-       a global, so plain concatenation in order is enough. */
-    html=html.replace(OLD_TERRAIN,
-      "window.TERRAIN_ASSET_BASE='"+ASSETS+"';const terrain=(await Promise.all("+JSON.stringify(BAKED)+
-      ".map(f=>grab('"+REPO+REF+"/'+f+'?ts='+Date.now())))).join(';');");
+  if(terrainSrc){
+    /* tile/lod/stream must precede terrain-baked; each is an IIFE publishing a global,
+       so ordered concatenation is enough. Escape every '</' so an embedded closing
+       script tag cannot terminate the tag document.write is building - the HTML parser
+       ends a script element at that byte sequence even inside a JS comment or string,
+       which is exactly what this very comment tripped over when it spelled it out. */
+    html=html.replace(OLD_TERRAIN,'window.TERRAIN_ASSET_BASE='+JSON.stringify(ASSETS)+
+      ';const terrain='+JSON.stringify(terrainSrc).replace(/<\//g,'<\\/')+';');
   }
-  console.log('game v65: terrain = '+(haveAssets?('baked pack @ '+ASSETS+', code @ '+REF):'terrain-demo.js (no baked pack found)'));
+  console.log('game v65: terrain = '+(terrainSrc?('baked pack @ '+ASSETS+', code @ '+usedRef):'terrain-demo.js'));
   document.open();document.write(html);document.close();
 }catch(e){document.getElementById('boot').textContent='Game v65 load failed: '+(e.message||e)}
 })();</script></body></html>
