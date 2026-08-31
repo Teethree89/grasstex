@@ -1,1 +1,42 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Grass Game v64</title></head><body><div id="boot" style="font-family:Arial,sans-serif;color:#fff;background:#0f141c;position:fixed;inset:0;display:flex;align-items:center;justify-content:center">Loading game v64…</div><script>(async()=>{try{const r=await fetch('https://raw.githubusercontent.com/Teethree89/grasstex/237c02bc54ed48774d10207e602b08a2d31f2419/game.html?ts='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);let html=await r.text();html=html.replaceAll('v59','v64');html=html.replace('image-shadows +','mesh-accurate-terrain-sampling + corridor-graded-terrain-subdivision + terrain-tangent-projected-grass-shadow-decals + shadow-fade-to-zero-at-range + wind-synced-shadow-bend + deferred-shadow-bake + image-shadows +');document.open();document.write(html);document.close()}catch(e){document.getElementById('boot').textContent='Game v64 load failed: '+(e.message||e)}})();</script></body></html>
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Grass Game v65</title></head><body><div id="boot" style="font-family:Arial,sans-serif;color:#fff;background:#0f141c;position:fixed;inset:0;display:flex;align-items:center;justify-content:center">Loading game v65…</div><script>(async()=>{
+/* v65. Same loader shape as v64: fetch the pinned v59 page and patch it.
+
+   New: the terrain source is chosen at load time. If the baked terrain pack is
+   reachable we swap terrain-demo.js for the tiled/streamed pipeline; if it is not, we
+   leave terrain-demo.js in place and the game runs exactly as it did in v64. That
+   fallback is the point - this file can merge to main before the assets are uploaded
+   without taking the live demo down. Check the console line to see which path ran. */
+const REPO='https://raw.githubusercontent.com/Teethree89/grasstex/';
+const PINNED='237c02bc54ed48774d10207e602b08a2d31f2419';
+/* TODO flip to 'main' once this branch is merged. ?ref= overrides for testing. */
+const REF=new URLSearchParams(location.search).get('ref')||'claude/grass-terrain-placement-2qy4c4';
+const ASSETS='https://test.ivandpopov.com/grasstex/Assets/terrain/';
+const BAKED=['tools/terrain-bake/tile.js','tools/terrain-bake/lod.js','tools/terrain-bake/stream.js','terrain-baked.js'];
+const OLD_TERRAIN="const terrain=await grab('"+REPO+"main/terrain-demo.js?ts='+Date.now());";
+try{
+  let haveAssets=false;
+  try{const p=await fetch(ASSETS+'terrain.json',{cache:'no-store'});haveAssets=p.ok;}catch(_){}
+
+  const r=await fetch(REPO+PINNED+'/game.html?ts='+Date.now(),{cache:'no-store'});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  let html=await r.text();
+  if(html.indexOf(OLD_TERRAIN)<0&&haveAssets)
+    throw new Error('pinned loader changed shape; refusing to inject baked terrain');
+
+  html=html.replaceAll('v59','v65');
+  const tags=haveAssets
+    ?'svg-authored-terrain-bake + tiled-heightfield + union-offset-roads + solved-grading-and-daylight + camera-lod-streaming + splat-road-material + '
+    :'';
+  html=html.replace('image-shadows +',tags+'mesh-accurate-terrain-sampling + corridor-graded-terrain-subdivision + terrain-tangent-projected-grass-shadow-decals + shadow-fade-to-zero-at-range + wind-synced-shadow-bend + deferred-shadow-bake + image-shadows +');
+
+  if(haveAssets){
+    /* tile/lod/stream must precede terrain-baked; each file is an IIFE that publishes
+       a global, so plain concatenation in order is enough. */
+    html=html.replace(OLD_TERRAIN,
+      "window.TERRAIN_ASSET_BASE='"+ASSETS+"';const terrain=(await Promise.all("+JSON.stringify(BAKED)+
+      ".map(f=>grab('"+REPO+REF+"/'+f+'?ts='+Date.now())))).join(';');");
+  }
+  console.log('game v65: terrain = '+(haveAssets?('baked pack @ '+ASSETS+', code @ '+REF):'terrain-demo.js (no baked pack found)'));
+  document.open();document.write(html);document.close();
+}catch(e){document.getElementById('boot').textContent='Game v65 load failed: '+(e.message||e)}
+})();</script></body></html>
