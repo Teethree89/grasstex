@@ -207,6 +207,12 @@
       window.GrassAPI.setTerrainSampler(sampleAt);
       window.GrassAPI.setMaxSlope(38);
       window.GrassAPI.clearExclusions();
+      /* The world is finite; the grass ring is not. It streams to FAR_END+PAD = 306 m
+         regardless, so standing near an edge puts 44 % of instances outside the map and
+         a corner 69 % - and lod.js only builds chunks inside the world, so every one of
+         those is drawn over nothing at all. An include area is checked before the
+         terrain sample, so this skips the expensive part as well as the draw. */
+      window.GrassAPI.addArea({type:'box',x:0,z:0,width:W,depth:W});
       window.GrassAPI.setSurfaceResolver(function(x,z){return onRoad(x,z)?'road':'ground';});
       window.GrassAPI.excludeSurface('road');
       window.GrassAPI.autoRebuild=true;
