@@ -40,16 +40,48 @@ function makeHills(rnd,W,n){
   }
   return out;
 }
+/* Hills are summed, so raising --hills raises the whole world rather than just
+   populating it: 30 ellipses stacked to 149 m of relief over 1200 m, which put slopes
+   near the batter everywhere and drove road curvature p99.9 from 3.3 to 53.7. Measure
+   the peak-to-peak the ellipse set actually produces and rescale to the target, so
+   hill COUNT controls texture and --relief alone controls amplitude. */
+function normalizeRelief(hills,W,target){
+  let lo=Infinity,hi=-Infinity;
+  for(let y=0;y<=W;y+=W/120)for(let x=0;x<=W;x+=W/120){
+    const h=fieldAt(hills,x,y);if(h<lo)lo=h;if(h>hi)hi=h;}
+  const span=hi-lo;if(!(span>0.01))return hills;
+  const k=target/span;
+  for(const e of hills)e.h=+(e.h*k).toFixed(2);
+  return hills;
+}
 const fieldAt=(hills,x,y)=>{let h=0;
   for(const e of hills){const d=Math.hypot((x-e.cx)/e.rx,(y-e.cy)/e.ry);
     if(d<1)h+=e.h*(1-ss((d-e.fo)/(1-e.fo)));}
   return h;};
 
 /* --- grade-penalised Dijkstra over a coarse lattice --- */
+/* Distance from each lattice node to any road already placed. Without this the
+   cross-slope penalty funnels every road down the same valleys, and at 1200 m two of
+   them ended up parallel 11 m apart with their ditches interleaved - 100 % of the
+   high-curvature cells in that bake had a second road within 45 m. A road either
+   joins a corridor at a junction or keeps well clear of it. */
+function occupancy(roads,W,C,n){
+  const occ=new Float64Array(n*n).fill(Infinity);
+  for(const r of roads)for(let s=1;s<r.pts.length;s++){
+    const A=r.pts[s-1],Bp=r.pts[s],vx=Bp[0]-A[0],vy=Bp[1]-A[1],vv=vx*vx+vy*vy;
+    for(let j=0;j<n;j++)for(let i=0;i<n;i++){
+      const x=i*C,y=j*C;
+      let u=vv>1e-12?((x-A[0])*vx+(y-A[1])*vy)/vv:0;u=u<0?0:u>1?1:u;
+      const d=Math.hypot(x-(A[0]+vx*u),y-(A[1]+vy*u)),o=j*n+i;
+      if(d<occ[o])occ[o]=d;}
+  }
+  return occ;
+}
 function route(hills,W,a,b,opt){
   const C=opt.cell,n=Math.round(W/C)+1,idx=(i,j)=>j*n+i;
   const H=new Float64Array(n*n);
   for(let j=0;j<n;j++)for(let i=0;i<n;i++)H[idx(i,j)]=fieldAt(hills,i*C,j*C);
+  const occ=opt.occ||null, AR=opt.avoidR||0;
   const NB=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
   const dist=new Float64Array(n*n).fill(Infinity),prev=new Int32Array(n*n).fill(-1);
   const s=idx(Math.round(a[0]/C),Math.round(a[1]/C)),g=idx(Math.round(b[0]/C),Math.round(b[1]/C));
@@ -79,8 +111,16 @@ function route(hills,W,a,b,opt){
       const px=(dx||1e-9),py=(dy||0),pl=Math.hypot(px,py);
       const nx=-py/pl,ny=px/pl;                          /* unit normal to travel */
       const cross=Math.abs(fieldAt(hills,mx+nx*e,my+ny*e)-fieldAt(hills,mx-nx*e,my-ny*e))/(2*e);
-      const cost=len*(1+opt.gradeWeight*Math.pow(grade/opt.maxGrade,2)
-                       +opt.crossWeight*Math.pow(Math.min(cross,opt.batter*0.98)/opt.batter,2));
+      let cost=len*(1+opt.gradeWeight*Math.pow(grade/opt.maxGrade,2)
+                     +opt.crossWeight*Math.pow(Math.min(cross,opt.batter*0.98)/opt.batter,2));
+      if(occ&&AR>0){
+        /* exempt the neighbourhood of the start so a branch can leave its host */
+        const sx=vi*C-a[0],sy=vj*C-a[1];
+        if(Math.hypot(sx,sy)>AR){
+          const d=occ[v];
+          if(d<AR)cost+=len*opt.avoidWeight*Math.pow(1-d/AR,2);
+        }
+      }
       if(d+cost<dist[v]){dist[v]=d+cost;prev[v]=u;push([d+cost,v]);}
     }
   }
@@ -201,7 +241,7 @@ function edgePoint(rnd,W){const s=Math.floor(rnd()*4),t=W*(0.15+rnd()*0.7);
 const CLASS=[['asphalt',7.0],['dirt',4.6],['cobble',3.6]];
 
 function generate(o){
-  const rnd=rng(o.seed),W=o.world,hills=makeHills(rnd,W,o.hills);
+  const rnd=rng(o.seed),W=o.world,hills=normalizeRelief(makeHills(rnd,W,o.hills),W,o.relief);
   const opt={cell:o.cell,maxGrade:o.maxGrade,gradeWeight:o.naive?0:o.gradeWeight,
     crossWeight:o.naive?0:o.crossWeight,batter:o.batter};
   const roads=[];
@@ -220,7 +260,8 @@ function generate(o){
       const hi=1+Math.floor(rnd()*(host.pts.length-2));
       const a=host.pts[hi],b=edgePoint(rnd,W);
       if(Math.hypot(b[0]-a[0],b[1]-a[1])<W*0.25)continue;
-      const p=route(hills,W,a,b,opt);
+      const nn=Math.round(W/opt.cell)+1;
+      const p=route(hills,W,a,b,Object.assign({},opt,{occ:occupancy(roads,W,opt.cell,nn),avoidR:o.avoidR,avoidWeight:o.avoidWeight}));
       if(!p||p.length<4)continue;
       const dep=Math.min(CLASS.length-1,host.depth+1);
       const ph=bake.prismHalf(bake.MATERIALS[CLASS[dep][0]],CLASS[dep][1]/2);
@@ -250,6 +291,8 @@ if(require.main===module){
     hills:+get('--hills',12),cell:+get('--cell',8),maxGrade:+get('--max-grade',0.10),
     gradeWeight:+get('--grade-weight',5),eps:+get('--eps',7),minR:+get('--min-radius',30),step:+get('--step',18),
     crossWeight:+get('--cross-weight',12),batter:+get('--batter',0.5),
+    avoidR:+get('--avoid-radius',45),avoidWeight:+get('--avoid-weight',30),
+    relief:+get('--relief',60),
     naive:a.indexOf('--naive')>=0,out:get('--out',__dirname+'/map.svg')};
   const m=generate(o);
   if(!m){console.error('genmap: no route found for seed '+o.seed);process.exit(1);}

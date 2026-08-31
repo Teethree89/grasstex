@@ -439,4 +439,4 @@ fs.writeFileSync(P.join(OUT,'stats.json'),JSON.stringify(stats,null,2));
 
 if(require.main===module)console.log(JSON.stringify({tiling:stats.tiling.sweep.map(r=>({TILE:r.TILE,MB:r.MB})),meshLod:stats.meshLod},null,2));
 log('done');
-module.exports={map,natural,dist,rid,sarc,height,splat,stats,elevAt,xyAt,nat,base};
+module.exports={map,natural,dist,rid,sarc,dist1,rid1,sarc1,height,splat,stats,elevAt,xyAt,nat,base};

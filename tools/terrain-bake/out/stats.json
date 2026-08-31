@@ -5,15 +5,15 @@
     "grid": 2400
   },
   "base": {
-    "quantStepM": 0.3724,
-    "quantErrRmsMm": 94.6,
-    "bandingPlainRmsMm": 39.76,
-    "bandingDitherRmsMm": 7.6
+    "quantStepM": 0.2357,
+    "quantErrRmsMm": 59.7,
+    "bandingPlainRmsMm": 24.79,
+    "bandingDitherRmsMm": 4.8
   },
   "heightRange": {
-    "min": -45.14,
-    "max": 49.46,
-    "u16StepMm": 1.444
+    "min": -28.83,
+    "max": 31.54,
+    "u16StepMm": 0.921
   },
   "junctions": [
     {
@@ -36,70 +36,70 @@
     },
     {
       "road": "r2",
-      "host": "r0",
+      "host": "r1",
       "end": 0,
-      "s": 160,
+      "s": 159.00413187631932,
       "snap": 0,
-      "x": 0,
-      "y": 336
+      "x": 40,
+      "y": 334.57
     }
   ],
   "grade": [
     {
       "road": "r0",
-      "len": 1157.2,
-      "maxGrade": 3,
+      "len": 1144.9,
+      "maxGrade": 2.74,
       "pinDrift": 0,
       "meanCut": 0.14,
-      "meanFill": 0.13
+      "meanFill": 0.14
     },
     {
       "road": "r1",
-      "len": 254,
-      "maxGrade": 2.79,
+      "len": 300.2,
+      "maxGrade": 6.29,
       "pinDrift": 0,
-      "meanCut": 0.19,
-      "meanFill": 0.22
+      "meanCut": 0.22,
+      "meanFill": 0.42
     },
     {
       "road": "r2",
-      "len": 1173.1,
-      "maxGrade": 3,
+      "len": 690.6,
+      "maxGrade": 7.32,
       "pinDrift": 0,
-      "meanCut": 0.11,
-      "meanFill": 0.13
+      "meanCut": 0.27,
+      "meanFill": 0.18
     }
   ],
   "junctions_": {
-    "cells": 36516,
-    "p999": 2.159,
-    "mean": 0.1512
+    "cells": 48676,
+    "p999": 2.72,
+    "mean": 0.1711
   },
   "daylight": {
-    "samples": 954,
-    "min": 0,
-    "median": 0.59,
-    "p95": 2.58,
-    "max": 34.96,
-    "cappedCells": 186,
-    "cappedPct": 0.013,
+    "samples": 1049,
+    "min": 0.02,
+    "median": 1.11,
+    "p95": 4.37,
+    "max": 8.47,
+    "cappedCells": 0,
+    "cappedPct": 0,
     "capM": 35
   },
   "sharpness": {
     "road": {
-      "slopeP50": 0.056,
-      "slopeP999": 0.693,
-      "curvP999": 3.28
+      "slopeP50": 0.07,
+      "slopeP999": 0.667,
+      "curvP999": 3.076
     },
     "offRoad": {
-      "slopeP50": 0.155,
-      "slopeP999": 1.372,
-      "curvP999": 0.244
+      "slopeP50": 0.103,
+      "slopeP999": 0.874,
+      "curvP999": 0.189
     }
   },
   "bytes": {
     "uniformU16": 11520000,
-    "splatPng": 92455
+    "splatPng": 107640
   },
   "tiling": {
     "uniformMB": 10.99,
@@ -109,90 +109,90 @@
     "sweep": [
       {
         "TILE": 8,
-        "fineTiles": 586,
+        "fineTiles": 770,
         "totalTiles": 5625,
-        "finePct": 10.4,
-        "bytes": 1998710,
-        "MB": 1.91,
+        "finePct": 13.7,
+        "bytes": 2399462,
+        "MB": 2.29,
         "seam": {
-          "samples": 162004,
-          "maxMismatch": 6.958113702992819e-7
+          "samples": 222555,
+          "maxMismatch": 0.0000011046314596363516
         },
         "errOnPrismMm": {
           "p50": 0,
           "p99": 19,
-          "max": 36
+          "max": 40
         },
         "errOffPrismMm": {
           "p50": 1,
-          "p99": 9,
-          "max": 892
+          "p99": 7,
+          "max": 58
         }
       },
       {
         "TILE": 16,
-        "fineTiles": 179,
+        "fineTiles": 270,
         "totalTiles": 1444,
-        "finePct": 12.4,
-        "bytes": 2254312,
-        "MB": 2.15,
+        "finePct": 18.7,
+        "bytes": 3023262,
+        "MB": 2.88,
         "seam": {
-          "samples": 58947,
-          "maxMismatch": 0.0000014362550135871288
+          "samples": 106666,
+          "maxMismatch": 0.0000013004440297947895
         },
         "errOnPrismMm": {
           "p50": 0,
           "p99": 19,
-          "max": 38
+          "max": 40
         },
         "errOffPrismMm": {
           "p50": 1,
-          "p99": 9,
-          "max": 973
+          "p99": 7,
+          "max": 47
         }
       },
       {
         "TILE": 32,
-        "fineTiles": 66,
+        "fineTiles": 103,
         "totalTiles": 361,
-        "finePct": 18.3,
-        "bytes": 2938374,
-        "MB": 2.8,
+        "finePct": 28.5,
+        "bytes": 4169808,
+        "MB": 3.98,
         "seam": {
-          "samples": 28070,
-          "maxMismatch": 0.0000019319984385646194
+          "samples": 46516,
+          "maxMismatch": 0.0000014812791402363246
         },
         "errOnPrismMm": {
           "p50": 0,
-          "p99": 19,
-          "max": 35
+          "p99": 20,
+          "max": 42
         },
         "errOffPrismMm": {
-          "p50": 1,
-          "p99": 9,
-          "max": 875
+          "p50": 0,
+          "p99": 7,
+          "max": 39
         }
       },
       {
         "TILE": 64,
-        "fineTiles": 33,
+        "fineTiles": 45,
         "totalTiles": 81,
-        "finePct": 40.7,
-        "bytes": 5180996,
-        "MB": 4.94,
+        "finePct": 55.6,
+        "bytes": 6766172,
+        "MB": 6.45,
         "seam": {
-          "samples": 13634,
-          "maxMismatch": 0.0000020525642341340244
+          "samples": 19649,
+          "maxMismatch": 0.0000018116904589859928
         },
         "errOnPrismMm": {
           "p50": 0,
           "p99": 21,
-          "max": 79
+          "max": 97
         },
         "errOffPrismMm": {
           "p50": 0,
-          "p99": 8,
-          "max": 324
+          "p99": 7,
+          "max": 83
         }
       }
     ]
@@ -248,61 +248,61 @@
     "shippedTodayVertices": 69133,
     "crack": {
       "samples": 16254,
-      "maxMismatchM": 0.00000148
+      "maxMismatchM": 8.91e-7
     },
     "grassClear": 6.75,
-    "onRoadSkipped": 8941,
+    "onRoadSkipped": 19620,
     "agreement": [
       {
         "band": "0-30 m",
-        "n": 1487,
-        "p99mm": 0.4,
-        "maxMm": 1,
-        "p99px": 0.023,
-        "maxPx": 0.088
+        "n": 1468,
+        "p99mm": 0.5,
+        "maxMm": 1.3,
+        "p99px": 0.028,
+        "maxPx": 0.092
       },
       {
         "band": "30-60 m",
-        "n": 5157,
-        "p99mm": 1.3,
-        "maxMm": 21.5,
-        "p99px": 0.028,
-        "maxPx": 0.474
+        "n": 5084,
+        "p99mm": 3,
+        "maxMm": 44.1,
+        "p99px": 0.077,
+        "maxPx": 1.079
       },
       {
         "band": "60-120 m",
-        "n": 22355,
-        "p99mm": 4.8,
-        "maxMm": 96.1,
-        "p99px": 0.053,
-        "maxPx": 1.235
+        "n": 20968,
+        "p99mm": 20.5,
+        "maxMm": 143.9,
+        "p99px": 0.232,
+        "maxPx": 1.944
       },
       {
         "band": "120-240 m",
-        "n": 77640,
-        "p99mm": 26.1,
-        "maxMm": 341.6,
-        "p99px": 0.142,
-        "maxPx": 2.661
+        "n": 71370,
+        "p99mm": 43.2,
+        "maxMm": 352.9,
+        "p99px": 0.26,
+        "maxPx": 2.705
       },
       {
         "band": "240-300 m",
-        "n": 47163,
-        "p99mm": 106.8,
-        "maxMm": 438,
-        "p99px": 0.396,
-        "maxPx": 1.541
+        "n": 44764,
+        "p99mm": 142.6,
+        "maxMm": 493.5,
+        "p99px": 0.537,
+        "maxPx": 1.869
       }
     ]
   },
   "asset": {
     "tile": 8,
-    "binBytes": 1998710,
-    "splatBytes": 92455,
-    "totalMB": 1.99,
-    "quantStepMm": 1.443,
-    "roundTripMaxErrM": 0.000717,
-    "fineTiles": 586
+    "binBytes": 2399462,
+    "splatBytes": 107640,
+    "totalMB": 2.39,
+    "quantStepMm": 0.921,
+    "roundTripMaxErrM": 0.000458,
+    "fineTiles": 770
   },
   "streaming": {
     "steps": 4000,
@@ -320,25 +320,25 @@
       "note": "hyst 0 vs cold lod.build at the final camera position"
     },
     "cracksAfterWalk": {
-      "max": 0.00000127,
+      "max": 9.94e-7,
       "samples": 11256
     },
     "hysteresis": {
-      "walkNoHyst": 941,
-      "walkHyst6": 80,
+      "walkNoHyst": 1087,
+      "walkHyst6": 81,
       "standStillJitterNoHyst": 162,
       "standStillJitterHyst6": 0
     },
     "work": {
-      "ticksWithWork": 631,
-      "ticksIdle": 3368,
-      "chunksRebuiltSteady": 1640,
-      "vertsRebuiltSteady": 617352,
+      "ticksWithWork": 632,
+      "ticksIdle": 3367,
+      "chunksRebuiltSteady": 1645,
+      "vertsRebuiltSteady": 650893,
       "vertsIfFullRebuildEachTick": 502528000,
-      "saving": 814,
+      "saving": 772,
       "coldStartQueue": 154,
       "ticksToCameraChunk": 1,
-      "maxSteadyQueue": 5,
+      "maxSteadyQueue": 6,
       "maxLatencyTicks": 2
     }
   }
