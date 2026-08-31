@@ -198,6 +198,44 @@ const stats={
 };
 fs.writeFileSync(P.join(OUT,'stats.json'),JSON.stringify(stats,null,2));
 fs.writeFileSync(P.join(OUT,'height.meta.json'),JSON.stringify({grid:N,res:RES,world:WORLD,min:hlo,max:hhi,format:'uint16-le'},null,2));
-if(require.main===module)console.log(JSON.stringify(stats,null,2));
+/* ---------- 7. two-level tiling ---------- */
+const TL=require('./tile.js');
+const H=TL.makeSampler(height,N,RES);
+const PRISM_MARGIN=3.0;
+function tileClassifier(TILE){
+  const nT=Math.round(WORLD/TILE),flag=new Uint8Array(nT*nT);
+  for(let o=0;o<N*N;o++){const k=rid[o];if(k===255)continue;
+    const r=map.roads[k];if(dist[o]>prismHalf(r.mat,r.hw)+PRISM_MARGIN)continue;
+    const i=o%N,j=(o/N)|0;
+    flag[Math.min(nT-1,Math.floor((j+0.5)*RES/TILE))*nT+Math.min(nT-1,Math.floor((i+0.5)*RES/TILE))]=1;}
+  return {nT,flag};
+}
+function evalTiling(TILE,COARSE,FINE){
+  const {nT,flag}=tileClassifier(TILE);
+  const T=TL.buildTiles(H,{WORLD,TILE,COARSE,FINE,isFine:(ti,tj)=>!!flag[tj*nT+ti]});
+  const nFine=T.fine.size, bytes=(T.GC*T.GC+nFine*T.GF*T.GF)*2;
+  /* error against the uniform 0.25 m bake, split by whether we are on a prism */
+  const on=[],off=[];
+  for(let n=0;n<300000;n++){
+    const x=Math.random()*WORLD,y=Math.random()*WORLD;
+    const i=Math.min(N-1,Math.floor(x/RES)),j=Math.min(N-1,Math.floor(y/RES)),o=j*N+i;
+    const e=Math.abs(TL.sampleTiled(T,x,y)-H(x,y));
+    const k=rid[o],pr=k!==255&&dist[o]<=prismHalf(map.roads[k].mat,map.roads[k].hw);
+    (pr?on:off).push(e);
+  }
+  const q=(A,f)=>{A.sort((a,b)=>a-b);return +A[Math.floor(A.length*f)].toFixed(4);};
+  return {TILE,fineTiles:nFine,totalTiles:nT*nT,finePct:+(100*nFine/(nT*nT)).toFixed(1),
+    bytes,MB:+(bytes/1048576).toFixed(2),
+    seam:TL.seamError(T),
+    errOnPrismMm:{p50:q(on,.5)*1000|0,p99:q(on,.99)*1000|0,max:+(on[on.length-1]*1000).toFixed(0)},
+    errOffPrismMm:{p50:q(off,.5)*1000|0,p99:q(off,.99)*1000|0,max:+(off[off.length-1]*1000).toFixed(0)}};
+}
+const uniformMB=+(N*N*2/1048576).toFixed(2);
+const sweep=[8,16,32,64].map(t=>evalTiling(t,1.0,RES));
+for(const r of sweep)log(`tile ${String(r.TILE).padStart(2)} m: ${String(r.fineTiles).padStart(4)}/${r.totalTiles} fine (${r.finePct}%)  ${String(r.MB).padStart(5)} MB (${(uniformMB/r.MB).toFixed(1)}x vs uniform ${uniformMB} MB)  seam max ${r.seam.maxMismatch.toExponential(1)} m  off-prism err p99 ${r.errOffPrismMm.p99} mm`);
+stats.tiling={uniformMB,coarseRes:1.0,fineRes:RES,prismMargin:PRISM_MARGIN,sweep};
+fs.writeFileSync(P.join(OUT,'stats.json'),JSON.stringify(stats,null,2));
+
+if(require.main===module)console.log(JSON.stringify(stats.tiling,null,2));
 log('done');
 module.exports={map,natural,dist,rid,sarc,height,splat,stats,elevAt,xyAt,nat,base};

@@ -59,6 +59,44 @@ the road's own 3.0 /m. Nearest-road was 19.8; an earlier blend-disc version reac
 3.0 on p99.9 but still spiked to 8.8 locally, and needed ~40 lines of disc radius,
 1/sin(theta) scaling, ditch fading and cone intersection that this replaces.
 
+## Tiling — and what it does not solve
+
+Coarse 1 m everywhere, fine 0.25 m only over road prisms (+3 m margin). Node-centred,
+so a 4:1 refinement nests exactly; where a fine tile meets a coarse one its extra edge
+nodes are snapped onto the coarse edge's linear interpolation, so both sides render the
+same curve. Measured seam mismatch is 1.2e-6 m, i.e. the probe epsilon.
+
+    TILE   fine/total     raw     gzip   off-prism err p99
+      8    445/5625   1.61 MB  1.53 MB       7 mm
+     32      59/361   2.58 MB  2.44 MB       7 mm
+  uniform              10.99 MB  8.88 MB        —
+
+Gzip does **not** close the gap on its own - only 19 % off the uniform file, because
+the low byte of a Uint16 height is near-random. So the storage win is real: 5.8x on
+the wire at 8 m tiles.
+
+**But storage was never the binding constraint.** Because grass must agree with the
+drawn mesh, mesh resolution is locked to sampling resolution, and that is the number
+that decides the architecture:
+
+    uniform 0.25 m over 600 m ....... 5.76 M vertices
+    tiled 8 m ....................... 0.85 M
+    shipped terrain-demo.js today ...  69 k   (over 1200 m, 4x the area)
+
+Even the best tiling is ~50x today's vertex budget once scaled to 1200 m. Tiling
+cannot fix that, because these tiles are fine where the *roads* are, permanently,
+while a mesh needs to be fine where the *camera* is, dynamically. Orthogonal axes.
+
+The way out is to relax the invariant from "grass samples the mesh's grid" to "grass
+and the mesh sample the same field": displace the terrain mesh in its vertex shader
+from the same heightfield grass reads. Tessellation then becomes a free camera-LOD
+choice and the two agree by construction, with the residual being the mesh's chord
+error at the current LOD - negligible near the camera, which is the only place it is
+visible. Within NEAR_END (30 m) a 0.5 m mesh is 14.6 k vertices.
+
+So the tiled heightfield is the right *storage* format, and camera-relative mesh LOD
+is a separate piece that is still missing. Neither replaces the other.
+
 ## Known limitations
 
 - Uniform 0.25 m grid (11.5 MB for 600 m). Tiling — coarse base plus corridor tiles —

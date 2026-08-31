@@ -91,5 +91,101 @@
   "bytes": {
     "uniformU16": 11520000,
     "splatPng": 101451
+  },
+  "tiling": {
+    "uniformMB": 10.99,
+    "coarseRes": 1,
+    "fineRes": 0.25,
+    "prismMargin": 3,
+    "sweep": [
+      {
+        "TILE": 8,
+        "fineTiles": 445,
+        "totalTiles": 5625,
+        "finePct": 7.9,
+        "bytes": 1691612,
+        "MB": 1.61,
+        "seam": {
+          "samples": 129924,
+          "maxMismatch": 0.0000012343373274603664
+        },
+        "errOnPrismMm": {
+          "p50": 0,
+          "p99": 20,
+          "max": 80
+        },
+        "errOffPrismMm": {
+          "p50": 1,
+          "p99": 7,
+          "max": 216
+        }
+      },
+      {
+        "TILE": 16,
+        "fineTiles": 150,
+        "totalTiles": 1444,
+        "finePct": 10.4,
+        "bytes": 2009262,
+        "MB": 1.92,
+        "seam": {
+          "samples": 64160,
+          "maxMismatch": 0.0000012247627054762233
+        },
+        "errOnPrismMm": {
+          "p50": 0,
+          "p99": 19,
+          "max": 40
+        },
+        "errOffPrismMm": {
+          "p50": 1,
+          "p99": 7,
+          "max": 111
+        }
+      },
+      {
+        "TILE": 32,
+        "fineTiles": 59,
+        "totalTiles": 361,
+        "finePct": 16.3,
+        "bytes": 2705400,
+        "MB": 2.58,
+        "seam": {
+          "samples": 31679,
+          "maxMismatch": 0.0000014631865674630262
+        },
+        "errOnPrismMm": {
+          "p50": 0,
+          "p99": 20,
+          "max": 55
+        },
+        "errOffPrismMm": {
+          "p50": 1,
+          "p99": 7,
+          "max": 117
+        }
+      },
+      {
+        "TILE": 64,
+        "fineTiles": 24,
+        "totalTiles": 81,
+        "finePct": 29.6,
+        "bytes": 3992114,
+        "MB": 3.81,
+        "seam": {
+          "samples": 14837,
+          "maxMismatch": 0.0000017494325987854609
+        },
+        "errOnPrismMm": {
+          "p50": 0,
+          "p99": 26,
+          "max": 169
+        },
+        "errOffPrismMm": {
+          "p50": 0,
+          "p99": 7,
+          "max": 234
+        }
+      }
+    ]
   }
 }
