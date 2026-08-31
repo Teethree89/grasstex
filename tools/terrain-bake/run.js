@@ -296,6 +296,52 @@ const LODM=require('./lod.js');
   log(`mesh LOD: ${M.chunks.size} chunks, ${(M.verts/1000).toFixed(0)}k verts, ${(M.tris/1000).toFixed(0)}k tris, ${M.snaps} edge snaps, crack max ${crack.toExponential(1)} m`);
   for(const b of bandStat)log(`   ${b.band.padEnd(10)} grass-vs-mesh p99 ${String(b.p99mm).padStart(6)} mm  max ${String(b.maxMm).padStart(7)} mm   |  p99 ${String(b.p99px).padStart(6)} px  max ${String(b.maxPx).padStart(6)} px`);
 }
+/* ---------- 8b. emit the shipping asset pack ---------- */
+{
+  const TILE=8,{nT,flag}=tileClassifier(TILE);
+  const T=TL.buildTiles(H,{WORLD,TILE,COARSE:1.0,FINE:RES,isFine:(a,b)=>!!flag[b*nT+a]});
+  const {buffer,manifest}=TL.packTiles(T);
+  fs.mkdirSync(P.join(OUT,'asset'),{recursive:true});
+  fs.writeFileSync(P.join(OUT,'asset','terrain.bin'),buffer);
+  fs.writeFileSync(P.join(OUT,'asset','terrain.json'),JSON.stringify(manifest));
+  fs.copyFileSync(P.join(OUT,'splat.png'),P.join(OUT,'asset','splat.png'));
+  /* Road-space UVs. The shipped material paints the road from vPositionW.x, which is a
+     straight-road assumption baked into GLSL; a curved or branching road needs (s,t)
+     carried as data. R = arc length wrapped to the texture repeat, G = SIGNED offset
+     across the road, so lane markings stay put through curves and at junctions. */
+  const REPEAT=9.0,ruv=new Uint8Array(N*N*3);
+  for(let o=0;o<N*N;o++){
+    const k=rid[o];if(k===255)continue;
+    const r=map.roads[k],hw=r.hw,t=dist[o];if(t>prismHalf(r.mat,hw)+1)continue;
+    const sa=sarc[o],[px,py]=xyAt(r,sa),[ax,ay]=xyAt(r,Math.max(0,sa-1)),[bx,by]=xyAt(r,Math.min(r.len,sa+1));
+    const tl=Math.hypot(bx-ax,by-ay)||1,tx=(bx-ax)/tl,ty=(by-ay)/tl;
+    const i=o%N,j=(o/N)|0,wx=(i+0.5)*RES-px,wy=(j+0.5)*RES-py;
+    const sgn=(tx*wy-ty*wx)>=0?1:-1;
+    /* Arc length is periodic, so store it as a POINT ON A CIRCLE, not as a sawtooth.
+       A wrapped 0..1 ramp has a 255->0 cliff, and 2.9 % of road cells straddle one -
+       bilinear filtering then sweeps the whole road texture across a single texel and
+       draws a hard line across the carriageway. sin/cos interpolate through the wrap
+       and the shader recovers the phase with atan. */
+    var ph=(sa/REPEAT)*Math.PI*2;
+    ruv[o*3]=Math.round((Math.sin(ph)*0.5+0.5)*255);
+    ruv[o*3+1]=Math.round(Math.max(0,Math.min(1,sgn*t/(hw*2)+0.5))*255);
+    ruv[o*3+2]=Math.round((Math.cos(ph)*0.5+0.5)*255);
+  }
+  fs.writeFileSync(P.join(OUT,'asset','roaduv.png'),png(N,N,ruv,3));
+  manifest.roadRepeatM=REPEAT;
+  fs.writeFileSync(P.join(OUT,'asset','terrain.json'),JSON.stringify(manifest));
+  /* round-trip: unpack and confirm the runtime sees the same surface */
+  const T2=TL.fromPacked(manifest,buffer);let mx=0;
+  for(let n=0;n<200000;n++){const x=Math.random()*WORLD,y=Math.random()*WORLD;
+    const d=Math.abs(TL.sampleTiled(T,x,y)-TL.sampleTiled(T2,x,y));if(d>mx)mx=d;}
+  const bin=fs.statSync(P.join(OUT,'asset','terrain.bin')).size;
+  const spl=fs.statSync(P.join(OUT,'asset','splat.png')).size;
+  stats.asset={tile:TILE,binBytes:bin,splatBytes:spl,
+    totalMB:+((bin+spl)/1048576).toFixed(2),quantStepMm:+((manifest.max-manifest.min)/65535*1000).toFixed(3),
+    roundTripMaxErrM:+mx.toExponential(2),fineTiles:manifest.fineTiles.length};
+  log(`asset pack: terrain.bin ${(bin/1048576).toFixed(2)} MB + splat ${(spl/1024).toFixed(0)} KB, quant step ${stats.asset.quantStepMm} mm, round-trip max err ${stats.asset.roundTripMaxErrM} m`);
+}
+
 /* ---------- 9. incremental streaming ---------- */
 const STR=require('./stream.js');
 {

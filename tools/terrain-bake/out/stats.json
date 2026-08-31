@@ -111,13 +111,13 @@
         },
         "errOnPrismMm": {
           "p50": 0,
-          "p99": 20,
-          "max": 73
+          "p99": 19,
+          "max": 42
         },
         "errOffPrismMm": {
           "p50": 1,
           "p99": 7,
-          "max": 215
+          "max": 162
         }
       },
       {
@@ -134,12 +134,12 @@
         "errOnPrismMm": {
           "p50": 0,
           "p99": 20,
-          "max": 38
+          "max": 43
         },
         "errOffPrismMm": {
           "p50": 1,
           "p99": 7,
-          "max": 110
+          "max": 161
         }
       },
       {
@@ -155,13 +155,13 @@
         },
         "errOnPrismMm": {
           "p50": 0,
-          "p99": 20,
-          "max": 38
+          "p99": 21,
+          "max": 89
         },
         "errOffPrismMm": {
           "p50": 1,
           "p99": 7,
-          "max": 207
+          "max": 88
         }
       },
       {
@@ -177,13 +177,13 @@
         },
         "errOnPrismMm": {
           "p50": 0,
-          "p99": 26,
-          "max": 177
+          "p99": 24,
+          "max": 183
         },
         "errOffPrismMm": {
           "p50": 0,
           "p99": 7,
-          "max": 177
+          "max": 135
         }
       }
     ]
@@ -242,49 +242,58 @@
       "maxMismatchM": 0.00000255
     },
     "grassClear": 6.75,
-    "onRoadSkipped": 19731,
+    "onRoadSkipped": 19771,
     "agreement": [
       {
         "band": "0-30 m",
-        "n": 2919,
-        "p99mm": 3.8,
-        "maxMm": 11.2,
-        "p99px": 0.305,
-        "maxPx": 1.287
+        "n": 2936,
+        "p99mm": 4,
+        "maxMm": 11.3,
+        "p99px": 0.252,
+        "maxPx": 0.937
       },
       {
         "band": "30-60 m",
-        "n": 10906,
-        "p99mm": 1.4,
-        "maxMm": 11.2,
-        "p99px": 0.035,
-        "maxPx": 0.279
+        "n": 10985,
+        "p99mm": 1.7,
+        "maxMm": 22.6,
+        "p99px": 0.042,
+        "maxPx": 0.408
       },
       {
         "band": "60-120 m",
-        "n": 45151,
-        "p99mm": 5.2,
-        "maxMm": 149.4,
-        "p99px": 0.056,
-        "maxPx": 1.326
+        "n": 45375,
+        "p99mm": 5,
+        "maxMm": 139.3,
+        "p99px": 0.054,
+        "maxPx": 1.234
       },
       {
         "band": "120-240 m",
-        "n": 180564,
-        "p99mm": 28.5,
-        "maxMm": 431.7,
-        "p99px": 0.161,
-        "maxPx": 2.543
+        "n": 180421,
+        "p99mm": 29.2,
+        "maxMm": 449,
+        "p99px": 0.166,
+        "maxPx": 3.016
       },
       {
         "band": "240-300 m",
-        "n": 131960,
-        "p99mm": 76.7,
-        "maxMm": 556.2,
-        "p99px": 0.284,
-        "maxPx": 2.265
+        "n": 131847,
+        "p99mm": 76.3,
+        "maxMm": 513.8,
+        "p99px": 0.282,
+        "maxPx": 2.106
       }
     ]
+  },
+  "asset": {
+    "tile": 8,
+    "binBytes": 1691612,
+    "splatBytes": 101451,
+    "totalMB": 1.71,
+    "quantStepMm": 0.863,
+    "roundTripMaxErrM": 0.000427,
+    "fineTiles": 445
   },
   "streaming": {
     "steps": 4000,

@@ -10,7 +10,9 @@
    interpolation, so both sides describe the same curve. T-junctions in the index
    buffer, but no gap. */
 'use strict';
-const {sampleTiled}=require('./tile.js');
+(function(){
+
+const {sampleTiled}=(typeof require!=='undefined')?require('./tile.js'):(typeof self!=='undefined'?self:this).TerrainTile;
 
 const LOD=[0.25,0.5,1,2,4];                 /* spacing per level */
 const BAND=[30,60,120,240];                 /* level L applies out to BAND[L] */
@@ -24,12 +26,17 @@ function levelFor(d){for(let L=0;L<BAND.length;L++)if(d<BAND[L])return L;return 
 function build(T,cam,opt){
   const CH=(opt&&opt.chunk)||32, RANGE=(opt&&opt.range)||300;
   const floorL=(opt&&opt.floorLevel)||(()=>0);
+  /* A cap, not just a floor. Road corridors carry the only sub-metre feature in the
+     field, and at 1-2 m spacing a distant chunk alternately catches and misses the
+     ditch - which reads as a sawtooth running along the verge. Capping corridor chunks
+     at a level that still resolves it costs vertices only where a road actually is. */
+  const capL=(opt&&opt.capLevel)||(()=>LOD.length-1);
   const nC=Math.ceil(T.WT/CH), chunks=new Map();
   for(let cj=0;cj<nC;cj++)for(let ci=0;ci<nC;ci++){
     const x0=ci*CH,y0=cj*CH,mx=x0+CH/2,my=y0+CH/2;
     const d=Math.hypot(mx-cam[0],my-cam[1]);
     if(d-CH*0.71>RANGE)continue;
-    chunks.set(cj*nC+ci,{ci,cj,d,L:Math.max(levelFor(Math.max(0,d-CH*0.71)),floorL(ci,cj))});
+    chunks.set(cj*nC+ci,{ci,cj,d,L:Math.min(capL(ci,cj),Math.max(levelFor(Math.max(0,d-CH*0.71)),floorL(ci,cj)))});
   }
   /* vertex grids */
   for(const c of chunks.values()){
@@ -68,4 +75,7 @@ function meshHeight(M,x,y){
   return (u+v<=1)?h00+(h10-h00)*u+(h01-h00)*v
                  :h11+(h01-h11)*(1-u)+(h10-h11)*(1-v);
 }
-module.exports={LOD,BAND,levelFor,build,meshHeight};
+const __api={LOD,BAND,levelFor,build,meshHeight};
+if(typeof module!=='undefined'&&module.exports)module.exports=__api;
+else (typeof self!=='undefined'?self:this).TerrainLod=__api;
+})();

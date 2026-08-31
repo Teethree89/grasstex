@@ -11,8 +11,11 @@
      walk. Edges are re-sampled from the field before re-snapping rather than being
      stored, so a re-snap can never compound a previous one. */
 'use strict';
-const {sampleTiled}=require('./tile.js');
-const {LOD,BAND,levelFor}=require('./lod.js');
+(function(){
+
+const __g=(typeof self!=='undefined'?self:this);
+const {sampleTiled}=(typeof require!=='undefined')?require('./tile.js'):__g.TerrainTile;
+const {LOD,BAND,levelFor}=(typeof require!=='undefined')?require('./lod.js'):__g.TerrainLod;
 
 function levelHyst(d,prev,H){
   if(prev===undefined)return levelFor(d);
@@ -24,7 +27,7 @@ function levelHyst(d,prev,H){
 
 function create(T,opt){
   return {T,CH:opt.chunk||32,range:opt.range||300,HYST:opt.hyst===undefined?6:opt.hyst,
-    floorLevel:opt.floorLevel||(()=>0),budget:opt.budget||4,
+    floorLevel:opt.floorLevel||(()=>0),capLevel:opt.capLevel||(()=>LOD.length-1),budget:opt.budget||4,
     nC:Math.ceil(T.WT/(opt.chunk||32)),chunks:new Map(),dirty:new Set(),
     stat:{levelChanges:0,rebuilds:0,vertsRebuilt:0,maxQueue:0}};
 }
@@ -69,7 +72,7 @@ function update(st,cam){
     const cur=st.chunks.get(k);
     if(!inRange){if(cur){st.chunks.delete(k);markDirty(st,ci,cj);removed++;}continue;}
     const de=Math.max(0,d-st.CH*0.71);
-    const L=Math.max(levelHyst(de,cur?cur.L:undefined,st.HYST),st.floorLevel(ci,cj));
+    const L=Math.min(st.capLevel(ci,cj),Math.max(levelHyst(de,cur?cur.L:undefined,st.HYST),st.floorLevel(ci,cj)));
     if(!cur){st.chunks.set(k,{ci,cj,L,n:0,s:0,g:null});markDirty(st,ci,cj);added++;}
     else if(cur.L!==L){cur.L=L;markDirty(st,ci,cj);changed++;}
   }
@@ -94,4 +97,7 @@ function drain(st){let n=0;while(st.dirty.size){
   const k=st.dirty.values().next().value;st.dirty.delete(k);
   const c=st.chunks.get(k);if(!c)continue;resample(st,c);snap(st,c);n++;}
   return n;}
-module.exports={create,update,drain,levelHyst};
+const __api={create,update,drain,levelHyst};
+if(typeof module!=='undefined'&&module.exports)module.exports=__api;
+else (typeof self!=='undefined'?self:this).TerrainStream=__api;
+})();

@@ -177,6 +177,46 @@ Drain order is nearest-first. In steady state the ~10 chunks a step dirties make
 irrelevant, but on a cold start or a teleport, scan order would fill the far field
 while the ground under the camera was still missing.
 
+## Runtime integration (`../../terrain-baked.js`)
+
+Replaces `terrain-demo.js`. Loads the pack, rebuilds the tiles, and hands the SAME
+field to both consumers - `GrassAPI.setTerrainSampler` and the streamed LOD mesh.
+
+Ship `out/asset/` to `A + 'terrain/'` (or set `window.TERRAIN_ASSET_BASE`), and load
+`tile.js`, `lod.js`, `stream.js`, `terrain-baked.js` in that order in place of
+`terrain-demo.js`. The three tool modules are dual-export: `module.exports` under Node,
+a global under a `<script>` tag, so the bake and the runtime share one implementation.
+
+Verified in headless Chromium against real Babylon 8.26 (`scratchpad/harness.html`):
+
+- **400 points sampled in the browser vs. Node: max height difference 0.00 mm**, normal.y
+  within one float ULP (2.2e-16), slope within 1.1e-12 deg. The asset round-trips exactly.
+- 233-302 chunks, 224-266 k vertices, no page errors, camera follow tracking.
+- `GrassAPI.sampleTerrain` / `isSlopeAllowed` / `isAllowed` all answer correctly.
+
+Two bugs the browser caught that Node could not:
+
+1. **Scope collision.** `tile.js` declares `const sampleTiled`; `lod.js` and `stream.js`
+   destructure the same name. Node wraps every module in its own function scope, so this
+   only fails in a browser, where classic scripts share one global scope. All three are
+   now wrapped in IIFEs like the rest of the repo.
+2. **Arc-length wrap seam.** `roaduv.png` stored road arc length as a wrapped 0..1 ramp.
+   2.9 % of road cells straddle the 255->0 cliff, and bilinear filtering sweeps the whole
+   road texture across one texel - a hard line drawn across the carriageway. Arc length is
+   now stored as a point on a circle (sin in R, cos in B) and the shader recovers the phase
+   with `atan`, which interpolates through the wrap.
+
+A third was caught by a static check before it ran: a missing `+` in the fragment-shader
+concatenation. ASI made it parse, silently truncating the shader at that line.
+
+### Known gap
+
+The terrain material is a `ShaderMaterial`, so it does not receive the cascaded shadow map
+the old `StandardMaterial` did. Terrain self-shadowing needs the CSM uniforms wired into
+this shader; grass shadow decals are unaffected. Dropping `CustomMaterial` does remove the
+CDN script this file used to boot behind - the async boot that made shadows bake flat at
+y = 0 until you walked far enough.
+
 ## Known limitations
 
 - Uniform 0.25 m grid (11.5 MB for 600 m). Tiling — coarse base plus corridor tiles —

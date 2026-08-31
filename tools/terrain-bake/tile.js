@@ -12,6 +12,8 @@
    so the shared boundary is the same curve from both sides - no crack, and grass
    sampling either tile gets the same height. */
 'use strict';
+(function(){
+
 
 function makeSampler(height,N,RES){          /* bilinear over the cell-centred bake */
   return function H(x,y){
@@ -63,6 +65,35 @@ function buildTiles(H,opt){
   return {coarse,fine,nT,GC,GF,R,TILE,COARSE,FINE,WORLD,WT,snapped,snapMax};
 }
 
+/* Wire format. Uint16 normalised over one global min/max: at a ~57 m range that is
+   0.9 mm per step, ~1500x finer than the 1.8 cm patch lift, so quantisation is not a
+   term anyone will ever see. Coarse grid first, then fine tiles in manifest order. */
+function packTiles(T){
+  let lo=Infinity,hi=-Infinity;
+  const scan=a=>{for(const v of a){if(v<lo)lo=v;if(v>hi)hi=v;}};
+  scan(T.coarse);for(const g of T.fine.values())scan(g);
+  const keys=Array.from(T.fine.keys()).sort((a,b)=>a-b);
+  const total=T.coarse.length+keys.length*T.GF*T.GF,out=new Uint16Array(total);
+  const q=(v)=>Math.round((v-lo)/(hi-lo)*65535);
+  let p=0;for(let i=0;i<T.coarse.length;i++)out[p++]=q(T.coarse[i]);
+  for(const k of keys){const g=T.fine.get(k);for(let i=0;i<g.length;i++)out[p++]=q(g[i]);}
+  return {buffer:Buffer.from(out.buffer),manifest:{
+    format:'grasstex-terrain-1',world:T.WORLD,worldPadded:T.WT,tile:T.TILE,
+    coarseRes:T.COARSE,fineRes:T.FINE,nT:T.nT,GC:T.GC,GF:T.GF,min:lo,max:hi,fineTiles:keys}};
+}
+function fromPacked(man,buf){
+  const u=new Uint16Array(buf.buffer||buf,buf.byteOffset||0,
+    (man.GC*man.GC)+man.fineTiles.length*man.GF*man.GF);
+  const s=(man.max-man.min)/65535,d=i=>man.min+u[i]*s;
+  const coarse=new Float32Array(man.GC*man.GC);
+  for(let i=0;i<coarse.length;i++)coarse[i]=d(i);
+  const fine=new Map();let p=coarse.length;
+  for(const k of man.fineTiles){const g=new Float32Array(man.GF*man.GF);
+    for(let i=0;i<g.length;i++)g[i]=d(p++);fine.set(k,g);}
+  return {coarse,fine,nT:man.nT,GC:man.GC,GF:man.GF,R:Math.round(man.coarseRes/man.fineRes),
+    TILE:man.tile,COARSE:man.coarseRes,FINE:man.fineRes,WORLD:man.world,WT:man.worldPadded};
+}
+
 /* The runtime lookup grass and the mesh both use. */
 function sampleTiled(T,x,y){
   const ti=Math.min(T.nT-1,Math.max(0,Math.floor(x/T.TILE))),tj=Math.min(T.nT-1,Math.max(0,Math.floor(y/T.TILE)));
@@ -97,4 +128,7 @@ function seamError(T){
   }
   return {samples:n,maxMismatch:mx};
 }
-module.exports={makeSampler,buildTiles,sampleTiled,seamError};
+const __api={makeSampler,buildTiles,fromPacked,packTiles,sampleTiled,seamError};
+if(typeof module!=='undefined'&&module.exports)module.exports=__api;
+else (typeof self!=='undefined'?self:this).TerrainTile=__api;
+})();
