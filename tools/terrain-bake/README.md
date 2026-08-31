@@ -95,7 +95,47 @@ error at the current LOD - negligible near the camera, which is the only place i
 visible. Within NEAR_END (30 m) a 0.5 m mesh is 14.6 k vertices.
 
 So the tiled heightfield is the right *storage* format, and camera-relative mesh LOD
-is a separate piece that is still missing. Neither replaces the other.
+is the other half. `lod.js` is that half.
+
+## Mesh LOD (`lod.js`)
+
+Chunked LOD over the tiled field. **Camera distance sets the ceiling on detail;
+road content sets the floor** - the finest level only buys anything where a road
+prism is, and the tiling already knows where those are. Everywhere else the near
+field is capped one level coarser, which costs nothing visible because grass is
+excluded from the corridor.
+
+Cracks are handled the same way as tile seams: a fine chunk's extra edge vertices are
+snapped onto the coarser neighbour's linear interpolation. T-junctions in the index
+buffer, no gap. Measured 2.6e-6 m over 300-sample sweeps of every mixed-level edge.
+
+Camera standing on the main road, 300 m range, 32 m chunks:
+
+    uniform 0.25 m mesh ......... 5.76 M vertices
+    camera LOD only .............  298 k
+    + content floor .............  274 k      (163 k when the camera is off-road)
+    shipped terrain-demo.js .....   69 k      (static, 1200 m)
+
+The content floor saves 8 % standing on a road - the worst case, since most nearby
+chunks then hold road - and 38 % anywhere else.
+
+### Does grass still sit on the ground?
+
+That is the whole question, so it is measured against what the GPU rasterises
+(barycentric over the LOD triangle), sampling only where grass may actually stand:
+
+    distance     p99        max        p99 px    max px
+      0- 30 m    3.5 mm    13.9 mm     0.24      1.61
+     30- 60 m    1.6 mm    12.3 mm     0.03      0.28
+     60-120 m    5.0 mm   110.2 mm     0.05      1.40
+    120-240 m   29.4 mm   500.6 mm     0.17      2.96
+    240-300 m   78.1 mm   553.3 mm     0.29      2.26
+
+Pixels at 1080p / 60 deg vertical. p99 stays under a third of a pixel at every
+distance, so the relaxed invariant holds: grass and the mesh read the same field and
+disagree by less than anyone can see. The half-metre maxima are daylight break lines -
+the crease where a cut or fill cone meets natural ground - crossed by a 2 m mesh at
+120 m+, which is a real feature the coarse level cannot resolve and nothing stands on.
 
 ## Known limitations
 

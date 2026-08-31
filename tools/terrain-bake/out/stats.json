@@ -111,13 +111,13 @@
         },
         "errOnPrismMm": {
           "p50": 0,
-          "p99": 20,
-          "max": 80
+          "p99": 21,
+          "max": 44
         },
         "errOffPrismMm": {
           "p50": 1,
           "p99": 7,
-          "max": 216
+          "max": 81
         }
       },
       {
@@ -133,13 +133,13 @@
         },
         "errOnPrismMm": {
           "p50": 0,
-          "p99": 19,
-          "max": 40
+          "p99": 20,
+          "max": 42
         },
         "errOffPrismMm": {
           "p50": 1,
           "p99": 7,
-          "max": 111
+          "max": 115
         }
       },
       {
@@ -155,13 +155,13 @@
         },
         "errOnPrismMm": {
           "p50": 0,
-          "p99": 20,
-          "max": 55
+          "p99": 19,
+          "max": 39
         },
         "errOffPrismMm": {
           "p50": 1,
           "p99": 7,
-          "max": 117
+          "max": 145
         }
       },
       {
@@ -177,14 +177,112 @@
         },
         "errOnPrismMm": {
           "p50": 0,
-          "p99": 26,
-          "max": 169
+          "p99": 33,
+          "max": 175
         },
         "errOffPrismMm": {
           "p50": 0,
           "p99": 7,
-          "max": 234
+          "max": 143
         }
+      }
+    ]
+  },
+  "meshLod": {
+    "chunk": 32,
+    "range": 300,
+    "contentFloor": true,
+    "levels": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "bands": [
+      30,
+      60,
+      120,
+      240
+    ],
+    "cam": [
+      267.1,
+      302.7
+    ],
+    "chunks": 301,
+    "vertices": 273661,
+    "triangles": 521600,
+    "edgeSnaps": 2488,
+    "perLevel": {
+      "L4 @4m": {
+        "chunks": 87,
+        "verts": 7047
+      },
+      "L3 @2m": {
+        "chunks": 149,
+        "verts": 43061
+      },
+      "L2 @1m": {
+        "chunks": 44,
+        "verts": 47916
+      },
+      "L1 @0.5m": {
+        "chunks": 14,
+        "verts": 59150
+      },
+      "L0 @0.25m": {
+        "chunks": 7,
+        "verts": 116487
+      }
+    },
+    "uniformVertices": 5764801,
+    "shippedTodayVertices": 69133,
+    "crack": {
+      "samples": 39431,
+      "maxMismatchM": 0.00000255
+    },
+    "grassClear": 6.75,
+    "onRoadSkipped": 19939,
+    "agreement": [
+      {
+        "band": "0-30 m",
+        "n": 2909,
+        "p99mm": 4.2,
+        "maxMm": 12.6,
+        "p99px": 0.26,
+        "maxPx": 1.536
+      },
+      {
+        "band": "30-60 m",
+        "n": 10881,
+        "p99mm": 1.7,
+        "maxMm": 15.3,
+        "p99px": 0.039,
+        "maxPx": 0.426
+      },
+      {
+        "band": "60-120 m",
+        "n": 45442,
+        "p99mm": 5.1,
+        "maxMm": 108.1,
+        "p99px": 0.056,
+        "maxPx": 1.15
+      },
+      {
+        "band": "120-240 m",
+        "n": 179528,
+        "p99mm": 29.4,
+        "maxMm": 462.2,
+        "p99px": 0.167,
+        "maxPx": 3.097
+      },
+      {
+        "band": "240-300 m",
+        "n": 132394,
+        "p99mm": 77.4,
+        "maxMm": 528.9,
+        "p99px": 0.285,
+        "maxPx": 2.16
       }
     ]
   }

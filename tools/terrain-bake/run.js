@@ -236,6 +236,68 @@ for(const r of sweep)log(`tile ${String(r.TILE).padStart(2)} m: ${String(r.fineT
 stats.tiling={uniformMB,coarseRes:1.0,fineRes:RES,prismMargin:PRISM_MARGIN,sweep};
 fs.writeFileSync(P.join(OUT,'stats.json'),JSON.stringify(stats,null,2));
 
-if(require.main===module)console.log(JSON.stringify(stats.tiling,null,2));
+/* ---------- 8. camera-relative mesh LOD over the tiled field ---------- */
+const LODM=require('./lod.js');
+{
+  const TILE=8,{nT,flag}=tileClassifier(TILE);
+  const T=TL.buildTiles(H,{WORLD,TILE,COARSE:1.0,FINE:RES,isFine:(a,b)=>!!flag[b*nT+a]});
+  /* stand on the main road so the fine tiles are actually under the camera */
+  const camS=340,[cxx,cyy]=xyAt(map.roads[0],camS),cam=[cxx,cyy];
+    /* a 32 m chunk may sit over several 8 m tiles; it earns level 0 if any is fine */
+  const CH=32,tPerC=CH/TILE;
+  const floorLevel=(ci,cj)=>{for(let b=0;b<tPerC;b++)for(let a=0;a<tPerC;a++){
+      const ti=ci*tPerC+a,tj=cj*tPerC+b;
+      if(ti<nT&&tj<nT&&flag[tj*nT+ti])return 0;}
+    return 1;};
+  const M=LODM.build(T,cam,{chunk:CH,range:300,floorLevel});
+  const perL={};for(const c of M.chunks.values()){const k='L'+c.L+' @'+LODM.LOD[c.L]+'m';
+    perL[k]=perL[k]||{chunks:0,verts:0};perL[k].chunks++;perL[k].verts+=(c.n+1)*(c.n+1);}
+
+  /* Does grass (which samples the FIELD) agree with what the GPU draws? Report the
+     disagreement in pixels as well as metres - a sub-pixel error at 200 m is not an
+     error anyone can see, and that is the actual acceptance test. */
+  const PXPERRAD=1080/(60*Math.PI/180);
+  /* Only sample where grass can actually stand. The road corridor is excluded
+     (ROAD_CLEAR half-width 6.75 m in the demo), so disagreement over the prism is
+     disagreement nobody can see - measuring it would flatter or damn the LOD for
+     the wrong reason. */
+  const GRASS_CLEAR=6.75;
+  const bands=[[0,30],[30,60],[60,120],[120,240],[240,300]].map(([a,b])=>({a,b,e:[]}));
+  let onRoadSkipped=0;
+  for(let n=0;n<400000;n++){
+    const th=Math.random()*Math.PI*2,d=Math.sqrt(Math.random())*300;
+    const x=cam[0]+Math.cos(th)*d,y=cam[1]+Math.sin(th)*d;
+    if(x<0||y<0||x>=T.WT||y>=T.WT)continue;
+    const gi=Math.min(N-1,Math.floor(x/RES)),gj=Math.min(N-1,Math.floor(y/RES));
+    if(rid[gj*N+gi]!==255&&dist[gj*N+gi]<=GRASS_CLEAR){onRoadSkipped++;continue;}
+    const mh=LODM.meshHeight(M,x,y);if(mh===null)continue;
+    const e=Math.abs(TL.sampleTiled(T,x,y)-mh);
+    for(const bd of bands)if(d>=bd.a&&d<bd.b){bd.e.push([e,d]);break;}
+  }
+  const bandStat=bands.map(bd=>{const es=bd.e.map(v=>v[0]).sort((p,q)=>p-q);
+    const px=bd.e.map(([e,d])=>e/Math.max(1,d)*PXPERRAD).sort((p,q)=>p-q);
+    return {band:bd.a+'-'+bd.b+' m',n:es.length,
+      p99mm:+(es[Math.floor(es.length*.99)]*1000).toFixed(1),maxMm:+(es[es.length-1]*1000).toFixed(1),
+      p99px:+px[Math.floor(px.length*.99)].toFixed(3),maxPx:+px[px.length-1].toFixed(3)};});
+
+  /* cracks across LOD boundaries */
+  let crack=0,crackN=0;
+  for(const c of M.chunks.values())for(const [dx,dy] of [[1,0],[0,1]]){
+    const nb=M.chunks.get((c.cj+dy)*M.nC+(c.ci+dx));if(!nb||nb.L===c.L)continue;
+    for(let k=0;k<=300;k++){const u=k/300*M.CH,e=1e-6;
+      const x=dx?(c.ci+1)*M.CH:c.ci*M.CH+u, y=dy?(c.cj+1)*M.CH:c.cj*M.CH+u;
+      const a=LODM.meshHeight(M,x-dx*e,y-dy*e),b=LODM.meshHeight(M,x+dx*e,y+dy*e);
+      if(a===null||b===null)continue;const dd=Math.abs(a-b);if(dd>crack)crack=dd;crackN++;}
+  }
+  stats.meshLod={chunk:32,range:300,contentFloor:true,levels:LODM.LOD,bands:LODM.BAND,cam:cam.map(v=>+v.toFixed(1)),
+    chunks:M.chunks.size,vertices:M.verts,triangles:M.tris,edgeSnaps:M.snaps,perLevel:perL,
+    uniformVertices:Math.round((WORLD/RES+1)**2),shippedTodayVertices:69133,
+    crack:{samples:crackN,maxMismatchM:+crack.toExponential(2)},grassClear:6.75,onRoadSkipped,agreement:bandStat};
+  log(`mesh LOD: ${M.chunks.size} chunks, ${(M.verts/1000).toFixed(0)}k verts, ${(M.tris/1000).toFixed(0)}k tris, ${M.snaps} edge snaps, crack max ${crack.toExponential(1)} m`);
+  for(const b of bandStat)log(`   ${b.band.padEnd(10)} grass-vs-mesh p99 ${String(b.p99mm).padStart(6)} mm  max ${String(b.maxMm).padStart(7)} mm   |  p99 ${String(b.p99px).padStart(6)} px  max ${String(b.maxPx).padStart(6)} px`);
+}
+fs.writeFileSync(P.join(OUT,'stats.json'),JSON.stringify(stats,null,2));
+
+if(require.main===module)console.log(JSON.stringify({tiling:stats.tiling.sweep.map(r=>({TILE:r.TILE,MB:r.MB})),meshLod:stats.meshLod},null,2));
 log('done');
 module.exports={map,natural,dist,rid,sarc,height,splat,stats,elevAt,xyAt,nat,base};
