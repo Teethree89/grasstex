@@ -35,7 +35,7 @@ for(let k=1;k<map.roads.length;k++){const r=map.roads[k];
     let best=null;
     for(let h=0;h<k;h++){const q=nearestOn(map.roads[h],pt[0],pt[1]);
       if(q.d<JUNCTION_TOL&&(!best||q.d<best.d))best={...q,host:map.roads[h]};}
-    if(best){r.pts[idx]=[best.x,best.y];junctions.push({road:r.id,host:best.host.id,end,s:best.s,snap:best.d});}
+    if(best){r.pts[idx]=[best.x,best.y];junctions.push({road:r.id,host:best.host.id,end,s:best.s,snap:best.d,x:best.x,y:best.y});}
   }
   r.s=arclen(r.pts);r.len=r.s[r.s.length-1];
 }
@@ -73,8 +73,13 @@ for(const r of map.roads){
 }
 log('graded: '+gradeReport.map(g=>`${g.road} ${g.maxGrade}% cut ${g.meanCut} fill ${g.meanFill}`).join(' | '));
 
-/* ---------- 4. road distance field ---------- */
+/* ---------- 4. road distance field (two nearest roads) ----------
+   One nearest road is not enough. Wherever two daylight regions overlap the Voronoi
+   boundary between them is a STEP, because the two roads sit at different design
+   elevations - and that boundary runs far beyond any junction disc. Keeping the two
+   nearest lets the compose pass intersect both cones instead of picking one. */
 const dist=new Float32Array(N*N).fill(Infinity),rid=new Uint8Array(N*N).fill(255),sarc=new Float32Array(N*N);
+const dist1=new Float32Array(N*N).fill(Infinity),rid1=new Uint8Array(N*N).fill(255),sarc1=new Float32Array(N*N);
 for(let k=0;k<map.roads.length;k++){const r=map.roads[k],reach=prismHalf(r.mat,r.hw)+MAX_DAYLIGHT;
   for(let seg=1;seg<r.pts.length;seg++){
     const a=r.pts[seg-1],b=r.pts[seg];
@@ -85,8 +90,12 @@ for(let k=0;k<map.roads.length;k++){const r=map.roads[k],reach=prismHalf(r.mat,r
       for(let i=i0;i<=i1;i++){const px=(i+0.5)*RES;
         let u=vv>1e-12?((px-a[0])*vx+(py-a[1])*vy)/vv:0;u=u<0?0:u>1?1:u;
         const dx=px-(a[0]+vx*u),dy=py-(a[1]+vy*u),d=Math.sqrt(dx*dx+dy*dy);
-        const o=j*N+i;
-        if(d<dist[o]){dist[o]=d;rid[o]=k;sarc[o]=r.s[seg-1]+u*(r.s[seg]-r.s[seg-1]);}
+        if(d>reach)continue;
+        const o=j*N+i,sv=r.s[seg-1]+u*(r.s[seg]-r.s[seg-1]);
+        if(rid[o]===k){if(d<dist[o]){dist[o]=d;sarc[o]=sv;}continue;}
+        if(rid1[o]===k&&d>=dist[o]){if(d<dist1[o]){dist1[o]=d;sarc1[o]=sv;}continue;}
+        if(d<dist[o]){dist1[o]=dist[o];rid1[o]=rid[o];sarc1[o]=sarc[o];dist[o]=d;rid[o]=k;sarc[o]=sv;}
+        else if(d<dist1[o]){dist1[o]=d;rid1[o]=k;sarc1[o]=sv;}
       }}
   }}
 log('distance field built');
@@ -106,7 +115,16 @@ for(let o=0;o<N*N;o++){
     }else{
       const dd=t-ph;
       if(dd<=MAX_DAYLIGHT){influenced++;
-        const lo=E-dd*FILL_SLOPE,hi=E+dd*CUT_SLOPE;
+        /* Ground must daylight to EVERY nearby road, so intersect the cones. max/min
+           of continuous functions stays continuous - the old nearest-road pick did
+           not, which is what put a step along the Voronoi boundary. */
+        let lo=E-dd*FILL_SLOPE,hi=E+dd*CUT_SLOPE;
+        const k1=rid1[o];
+        if(k1!==255){const r1=map.roads[k1],dd1=Math.max(0,dist1[o]-prismHalf(r1.mat,r1.hw));
+          if(dd1<=MAX_DAYLIGHT){const E1=elevAt(r1,sarc1[o]);
+            const l1=E1-dd1*FILL_SLOPE,h1=E1+dd1*CUT_SLOPE;
+            if(l1>lo)lo=l1;if(h1<hi)hi=h1;}}
+        if(lo>hi){const mid=(lo+hi)*0.5;lo=hi=mid;}
         if(h>hi)h=hi;else if(h<lo)h=lo;
         if(h!==natural[o]){const bi=Math.min(dayBins[k].length-1,Math.round(sarc[o]/DS));
           if(dd>dayBins[k][bi])dayBins[k][bi]=dd;
@@ -118,6 +136,74 @@ for(let o=0;o<N*N;o++){
   height[o]=h;splat[o*4]=g;splat[o*4+1]=a;splat[o*4+2]=d2;splat[o*4+3]=c;
 }
 log('composed');
+
+/* ---------- 5b. junction blending ----------
+   Nearest-road assignment is wrong wherever two roads are both close: the profiles
+   meet at a hard boundary and the branch drives its ditch straight through the host's
+   pavement. Inside a disc around each node we instead blend every incident road by
+   inverse-square distance to its centreline, and fade each road's ditch out toward a
+   crown-only apron - a ditch across a junction is the artifact, not a feature.
+   The disc result is lerped against the nearest-road result by b, which reaches 0 at
+   the rim, so the patch cannot introduce a seam of its own. */
+function crownOnly(m,hw,t){if(t>hw)return 0;const u=t/hw;return m.crown*(1-u*u);}
+const nodes=[];
+function tangent(r,s){const e=1.0,[ax,ay]=xyAt(r,Math.max(0,s-e)),[bx,by]=xyAt(r,Math.min(r.len,s+e));
+  const L=Math.hypot(bx-ax,by-ay)||1;return [(bx-ax)/L,(by-ay)/L];}
+for(const j of junctions){
+  const br=map.roads.find(q=>q.id===j.road),ho=map.roads.find(q=>q.id===j.host);
+  const inc=[{r:br,s:j.end?br.len:0},{r:ho,s:j.s}];
+  /* Two prisms of half-width p crossing at angle t overlap over ~p/sin(t), so a disc
+     sized only by width leaves the acute-angle wedge outside it - which is exactly
+     where the two ditches collide. Scale the radius by 1/sin(theta) and cap it. */
+  const t0=tangent(inc[0].r,inc[0].s),t1=tangent(inc[1].r,inc[1].s);
+  const sinT=Math.max(0.30,Math.abs(t0[0]*t1[1]-t0[1]*t1[0]));
+  const ph=Math.max(...inc.map(i=>prismHalf(i.r.mat,i.r.hw)));
+  nodes.push({x:j.x,y:j.y,inc,sinT:+sinT.toFixed(3),R:Math.min(42,2.2*ph/sinT)});
+}
+log('junction discs: '+nodes.map(n=>`R=${n.R.toFixed(1)} m (sin${String.fromCharCode(952)}=${n.sinT})`).join(', '));
+let jCells=0;const preJ=[];
+for(const nd of nodes){
+  const Rin=0.35*nd.R;
+  const i0=Math.max(0,Math.floor((nd.x-nd.R)/RES)),i1=Math.min(N-1,Math.ceil((nd.x+nd.R)/RES));
+  const j0=Math.max(0,Math.floor((nd.y-nd.R)/RES)),j1=Math.min(N-1,Math.ceil((nd.y+nd.R)/RES));
+  for(let jj=j0;jj<=j1;jj++)for(let ii=i0;ii<=i1;ii++){
+    const px=(ii+0.5)*RES,py=(jj+0.5)*RES,dn=Math.hypot(px-nd.x,py-nd.y);
+    if(dn>=nd.R)continue;
+    const b=1-ss((dn-Rin)/(nd.R-Rin));if(b<=0)continue;
+    const o=jj*N+ii;preJ.push([o,height[o]]);jCells++;
+    let wsum=0,hsum=0,Esum=0,tRel=Infinity,sw=[0,0,0,0];
+    for(const k of nd.inc){
+      const q=nearestOn(k.r,px,py),m=k.r.mat,hw=k.r.hw,ph=prismHalf(m,hw);
+      const E=elevAt(k.r,q.s),t=q.d;
+      const prof=profile(m,hw,t)*(1-b)+crownOnly(m,hw,t)*b;
+      const w=1/(t*t+0.25);
+      wsum+=w;hsum+=w*(E+prof);Esum+=w*E;
+      if(t-ph<tRel)tRel=t-ph;
+      const pav=(1-ss((t-hw)/0.45))*w;
+      if(m.splat===1)sw[1]+=pav;else if(m.splat===2)sw[2]+=pav;else sw[3]+=pav;
+    }
+    const hJ0=hsum/wsum,EJ=Esum/wsum;
+    let hJ;
+    if(tRel<=0)hJ=hJ0;
+    else{const dd=tRel,lo=EJ-dd*FILL_SLOPE,hi=EJ+dd*CUT_SLOPE,nv=natural[o];
+      hJ=nv>hi?hi:nv<lo?lo:nv;}
+    height[o]=height[o]*(1-b)+hJ*b;
+    const paved=Math.min(1,(sw[1]+sw[2]+sw[3])/wsum);
+    for(let c=1;c<4;c++){const v=255*(paved?sw[c]/wsum:0);
+      splat[o*4+c]=Math.round(splat[o*4+c]*(1-b)+Math.min(255,v)*b);}
+    splat[o*4]=Math.round(splat[o*4]*(1-b)+255*(1-Math.min(1,paved))*b);
+  }
+}
+log(`junction blending: ${nodes.length} nodes, ${jCells} cells`);
+/* how much sharpness did the nearest-road seam contribute? */
+function curvAt(arr,o){const i=o%N,j=(o/N)|0;if(i<1||j<1||i>=N-1||j>=N-1)return 0;
+  return Math.abs((arr[o+1]+arr[o-1]+arr[o+N]+arr[o-N]-4*arr[o])/(RES*RES));}
+const before=new Float32Array(height);for(const [o,v] of preJ)before[o]=v;
+const cB=[],cA=[];for(const [o] of preJ){cB.push(curvAt(before,o));cA.push(curvAt(height,o));}
+cB.sort((a,b)=>a-b);cA.sort((a,b)=>a-b);
+const jc={p999Before:+cB[Math.floor(cB.length*0.999)].toFixed(3),p999After:+cA[Math.floor(cA.length*0.999)].toFixed(3),
+  meanBefore:+(cB.reduce((a,b)=>a+b,0)/cB.length).toFixed(4),meanAfter:+(cA.reduce((a,b)=>a+b,0)/cA.length).toFixed(4)};
+log(`junction curvature p99.9 ${jc.p999Before} -> ${jc.p999After}`);
 
 /* ---------- 6. outputs + stats ---------- */
 let hlo=Infinity,hhi=-Infinity;for(const v of height){if(v<hlo)hlo=v;if(v>hhi)hhi=v;}
@@ -142,7 +228,7 @@ const stats={
   base:{quantStepM:+base.quantStep.toFixed(4),quantErrRmsMm:+(base.quantErr.rms*1000).toFixed(1),
     bandingPlainRmsMm:+(base.bandPlain.rms*1000).toFixed(2),bandingDitherRmsMm:+(base.bandDither.rms*1000).toFixed(2)},
   heightRange:{min:+hlo.toFixed(2),max:+hhi.toFixed(2),u16StepMm:+((hhi-hlo)/65535*1000).toFixed(3)},
-  junctions,grade:gradeReport,
+  junctions,grade:gradeReport,junctionBlend:{nodes:nodes.map(n=>({R:+n.R.toFixed(1),sinTheta:n.sinT})),cells:jCells,curvature:jc},
   daylight:{samples:dayAll.length,min:pct(0),median:pct(0.5),p95:pct(0.95),max:pct(0.999),
     cappedCells:capped,cappedPct:+(100*capped/(influenced||1)).toFixed(3),capM:MAX_DAYLIGHT},
   sharpness:{road:sharp(nearRoad),offRoad:sharp(o=>!nearRoad(o))},

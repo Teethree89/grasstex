@@ -115,3 +115,28 @@ ${cut}${fill}${g}<path d="${pathOf(gnd)}" fill="none" stroke="#eb6834" stroke-wi
 <text x="20" y="${Tp+PH/2}" font-size="12" fill="#52514e" text-anchor="middle" transform="rotate(-90 20 ${Tp+PH/2})">elevation (m)</text></svg>`);
  console.log('fig4-cross-section.svg  station='+s0.toFixed(0)+'m  earthwork='+best.e.toFixed(2)+'m');
 }
+
+/* 5. junction close-up — the artifact this pass exists to remove */
+{
+ const nd=stats.junctionBlend.nodes[0],j=stats.junctions[0];
+ const cx=map.roads.find(r=>r.id===j.road).pts[j.end?-1:0][0],cy=map.roads.find(r=>r.id===j.road).pts[j.end?-1:0][1];
+ const half=30,M2=760;
+ const curv=o=>{const i=o%N,j2=(o/N)|0;if(i<1||j2<1||i>=N-1||j2>=N-1)return 0;
+   return Math.abs((height[o+1]+height[o-1]+height[o+N]+height[o-N]-4*height[o])/(RES*RES));};
+ const px=new Uint8Array(M2*M2*3),v=new Float64Array(M2*M2);let lo=1e30,hi=-1e30;
+ for(let y=0;y<M2;y++)for(let x=0;x<M2;x++){
+   const wx=cx-half+2*half*x/M2,wy=cy-half+2*half*y/M2;
+   const i=Math.min(N-2,Math.max(1,Math.floor(wx/RES))),j2=Math.min(N-2,Math.max(1,Math.floor(wy/RES)));
+   const m=Math.pow(curv(j2*N+i),0.35);v[y*M2+x]=m;if(m<lo)lo=m;if(m>hi)hi=m;}
+ for(let i=0;i<M2*M2;i++){const c=ramp((v[i]-lo)/(hi-lo||1));px[i*3]=c[0];px[i*3+1]=c[1];px[i*3+2]=c[2];}
+ const PAD=56,sw=M2+PAD*2,sh=M2+PAD+118,jb=stats.junctionBlend.curvature;
+ fs.writeFileSync(P.join(OUT,'fig5-junction.svg'),`<svg xmlns="http://www.w3.org/2000/svg" width="${sw}" height="${sh}" viewBox="0 0 ${sw} ${sh}" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
+<rect width="${sw}" height="${sh}" fill="#fcfcfb"/>
+<text x="${PAD}" y="30" font-size="17" font-weight="600" fill="#0b0b0b">Junction close-up — dirt spur meeting the asphalt main, ±${half} m</text>
+<text x="${PAD}" y="49" font-size="12.5" fill="#52514e">Curvature again. Both ditches fade into a crown-only apron; the blend disc is R = ${nd.R} m, scaled by 1/sin${String.fromCharCode(952)} (${nd.sinTheta}) so it covers the acute-angle overlap.</text>
+<image x="${PAD}" y="${PAD+8}" width="${M2}" height="${M2}" href="data:image/png;base64,${png(M2,M2,px,3).toString('base64')}"/>
+<rect x="${PAD}" y="${PAD+8}" width="${M2}" height="${M2}" fill="none" stroke="#c3c2b7"/>
+<text x="${PAD}" y="${PAD+M2+40}" font-size="13" fill="#0b0b0b">Curvature p99.9 over junction cells: <tspan font-weight="600" fill="#e34948">${jb.p999Before} /m</tspan> nearest-road &#8594; <tspan font-weight="600" fill="#1baf7a">${jb.p999After} /m</tspan> blended — below the road's own ${stats.sharpness.road.curvP999} /m, so junctions are no longer the sharpest feature in the bake.</text>
+${legend(PAD,PAD+M2+66,240,12,Math.pow(lo,1/0.35).toFixed(2),Math.pow(hi,1/0.35).toFixed(1),'1/m','Curvature (γ 0.35)')}</svg>`);
+ console.log('fig5-junction.svg');
+}

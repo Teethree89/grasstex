@@ -43,8 +43,8 @@ function parseD(d){
   const pts=[];let i=0,cx=0,cy=0,sx=0,sy=0,cmd='M';
   const num=()=>parseFloat(tok[i++]);
   const push=(x,y)=>{const l=pts[pts.length-1];if(!l||Math.hypot(x-l[0],y-l[1])>1e-9)pts.push([x,y]);};
-  const bez=(x1,y1,x2,y2,x3,y3)=>{                          /* flatten to ~2 m chords */
-    const n=Math.max(4,Math.ceil((Math.hypot(x1-cx,y1-cy)+Math.hypot(x2-x1,y2-y1)+Math.hypot(x3-x2,y3-y2))/2));
+  const bez=(x1,y1,x2,y2,x3,y3)=>{                          /* flatten to ~1 m chords */
+    const n=Math.max(4,Math.ceil((Math.hypot(x1-cx,y1-cy)+Math.hypot(x2-x1,y2-y1)+Math.hypot(x3-x2,y3-y2))/1));
     for(let k=1;k<=n;k++){const u=k/n,v=1-u;
       push(v*v*v*cx+3*v*v*u*x1+3*v*u*u*x2+u*u*u*x3, v*v*v*cy+3*v*v*u*y1+3*v*u*u*y2+u*u*u*y3);}
     cx=x3;cy=y3;};
