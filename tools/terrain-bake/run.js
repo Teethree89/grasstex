@@ -4,11 +4,11 @@ const fs=require('fs'),P=require('path'),B=require('./bake.js');
 const {WORLD,RES,N,NL,DS,MAX_GRADE,GRADE_ITERS,CUT_SLOPE,FILL_SLOPE,MAX_DAYLIGHT,
   JUNCTION_TOL,NOISE_AMP,ss,prismHalf,skirtHalf,crownOf,skirt,profile,readMap,buildBase,sampleLow,fbm,png}=B;
 const SMOOTH_LEN=40;
-const OUT=P.join(__dirname,'out');fs.mkdirSync(OUT,{recursive:true});
+const OUT=process.env.OUTDIR||P.join(__dirname,'out');fs.mkdirSync(OUT,{recursive:true});
 const t0=Date.now(),log=m=>console.log(`[${((Date.now()-t0)/1000).toFixed(1)}s] ${m}`);
 
 /* ---------- 1. authored base ---------- */
-const map=readMap(P.join(__dirname,'map.svg'));
+const map=readMap(process.env.MAP||P.join(__dirname,'map.svg'));
 const base=buildBase(map.hills);
 log(`base: 8-bit step ${base.quantStep.toFixed(3)} m | banding after blur - plain ${(base.bandPlain.rms*1000).toFixed(1)} mm rms, dithered ${(base.bandDither.rms*1000).toFixed(1)} mm rms`);
 
@@ -439,4 +439,4 @@ fs.writeFileSync(P.join(OUT,'stats.json'),JSON.stringify(stats,null,2));
 
 if(require.main===module)console.log(JSON.stringify({tiling:stats.tiling.sweep.map(r=>({TILE:r.TILE,MB:r.MB})),meshLod:stats.meshLod},null,2));
 log('done');
-module.exports={map,natural,dist,rid,sarc,height,splat,stats,elevAt,xyAt,nat,base};
+module.exports={map,natural,dist,rid,sarc,dist1,rid1,sarc1,height,splat,stats,elevAt,xyAt,nat,base};

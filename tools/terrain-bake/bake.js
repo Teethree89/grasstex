@@ -10,7 +10,7 @@
 const fs=require('fs'),path=require('path');
 const {png}=require('./png.js');
 
-const WORLD=600, RES=0.25, N=Math.round(WORLD/RES);        /* 2400^2 @ 0.25 m */
+const WORLD=+(process.env.WORLD||600), RES=0.25, N=Math.round(WORLD/RES);   /* 0.25 m grid */
 const LOW=1.0, NL=Math.round(WORLD/LOW);                    /* authored base grid */
 const BLUR_M=5.0, NOISE_AMP=2.6, NOISE_BASE=70, NOISE_OCT=5;
 const DS=2.0, MAX_GRADE=0.08, GRADE_ITERS=600;              /* 8 % longitudinal */
