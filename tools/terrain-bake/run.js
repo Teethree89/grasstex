@@ -2,7 +2,7 @@
 'use strict';
 const fs=require('fs'),P=require('path'),B=require('./bake.js');
 const {WORLD,RES,N,NL,DS,MAX_GRADE,GRADE_ITERS,CUT_SLOPE,FILL_SLOPE,MAX_DAYLIGHT,
-  JUNCTION_TOL,NOISE_AMP,ss,prismHalf,profile,readMap,buildBase,sampleLow,fbm,png}=B;
+  JUNCTION_TOL,NOISE_AMP,ss,prismHalf,skirtHalf,crownOf,skirt,profile,readMap,buildBase,sampleLow,fbm,png}=B;
 const SMOOTH_LEN=40;
 const OUT=P.join(__dirname,'out');fs.mkdirSync(OUT,{recursive:true});
 const t0=Date.now(),log=m=>console.log(`[${((Date.now()-t0)/1000).toFixed(1)}s] ${m}`);
@@ -100,110 +100,72 @@ for(let k=0;k<map.roads.length;k++){const r=map.roads[k],reach=prismHalf(r.mat,r
   }}
 log('distance field built');
 
-/* ---------- 5. compose: prism, cut/fill, daylight ---------- */
+/* ---------- 5. compose: union offsets, one continuous design surface ----------
+   Built outward from the crown the way a vector would stroke it: the bands are offsets
+   of the UNION of the paved regions, u = min_k (t_k - hw_k). That single change removes
+   the need for a ditch-suppression disc and for scaling it by 1/sin(theta) - a junction
+   wedge has small u from both sides, so it never reaches the ditch band at all.
+   Design elevation is one smooth inverse-square blend of the nearby roads, so the crown,
+   the skirt and the daylight cone all hang off the same continuous surface and cannot
+   step against each other. */
 const height=new Float32Array(N*N),splat=new Uint8Array(N*N*4);
 const dayBins=map.roads.map(r=>new Float32Array(Math.ceil(r.len/DS)+1));
+const WFAR0=20,WFAR1=45;
+const wOf=t=>t>=WFAR1?0:(1/((t+1)*(t+1)))*(1-ss((t-WFAR0)/(WFAR1-WFAR0)));
+/* Polynomial smooth-min. Plain min() on the union distance is only C0, and its crease
+   shows up as a curvature ridge; smin rounds it over a k-metre band - which is also
+   physically what a junction has, a fillet rather than a corner. */
+const SMIN_K=+(process.env.SMIN_K||3.0);
+function smin(x,y){const h=Math.max(SMIN_K-Math.abs(x-y),0)/SMIN_K;return Math.min(x,y)-h*h*SMIN_K*0.25;}
 let capped=0,influenced=0;
 for(let o=0;o<N*N;o++){
-  const k=rid[o];let h=natural[o],g=255,a=0,d2=0,c=0;
-  if(k!==255){
-    const r=map.roads[k],m=r.mat,hw=r.hw,ph=prismHalf(m,hw),t=dist[o],E=elevAt(r,sarc[o]);
-    if(t<=ph){h=E+profile(m,hw,t);influenced++;
-      const w=1-ss((t-hw)/0.45);                 /* paved core, short feather */
-      const v=Math.round(255*w);g=255-v;
-      if(m.splat===1)a=v;else if(m.splat===2)d2=v;else c=v;
-    }else{
-      const dd=t-ph;
-      if(dd<=MAX_DAYLIGHT){influenced++;
-        /* Ground must daylight to EVERY nearby road, so intersect the cones. max/min
-           of continuous functions stays continuous - the old nearest-road pick did
-           not, which is what put a step along the Voronoi boundary. */
-        let lo=E-dd*FILL_SLOPE,hi=E+dd*CUT_SLOPE;
-        const k1=rid1[o];
-        if(k1!==255){const r1=map.roads[k1],dd1=Math.max(0,dist1[o]-prismHalf(r1.mat,r1.hw));
-          if(dd1<=MAX_DAYLIGHT){const E1=elevAt(r1,sarc1[o]);
-            const l1=E1-dd1*FILL_SLOPE,h1=E1+dd1*CUT_SLOPE;
-            if(l1>lo)lo=l1;if(h1<hi)hi=h1;}}
-        if(lo>hi){const mid=(lo+hi)*0.5;lo=hi=mid;}
-        if(h>hi)h=hi;else if(h<lo)h=lo;
-        if(h!==natural[o]){const bi=Math.min(dayBins[k].length-1,Math.round(sarc[o]/DS));
-          if(dd>dayBins[k][bi])dayBins[k][bi]=dd;
-          if(dd>MAX_DAYLIGHT-RES){capped++;}   /* still binding at the cap = needs a wall */
-        }
-      }
+  const k0=rid[o];
+  if(k0===255){height[o]=natural[o];splat[o*4]=255;continue;}
+  const cand=[{r:map.roads[k0],t:dist[o],s:sarc[o],k:k0}];
+  const k1=rid1[o];if(k1!==255&&isFinite(dist1[o]))cand.push({r:map.roads[k1],t:dist1[o],s:sarc1[o],k:k1});
+  /* Blend the material PARAMETERS, never the per-road profiles: blending profiles
+     would let both roads assert a ditch in the wedge, which is the artifact. The
+     union distance decides which band we are in; the blend decides its shape. */
+  let wsum=0,esum=0,u=Infinity,hw=0,cr=0,shd=0,drp=0,dw=0,dd_=0,bk=0,sw=[0,0,0,0];
+  for(const c of cand){c.w=wOf(c.t);wsum+=c.w;}
+  if(wsum<=0){cand[0].w=1;wsum=1;}
+  for(const c of cand){const m=c.r.mat,w=c.w/wsum,ui=c.t-c.r.hw;
+    u=u===Infinity?ui:smin(u,ui);
+    esum+=w*elevAt(c.r,c.s);hw+=w*c.r.hw;cr+=w*m.crown;shd+=w*m.shoulder;
+    drp+=w*m.drop;dw+=w*m.ditchW;dd_+=w*m.ditchD;bk+=w*m.back;sw[m.splat]+=w;}
+  const E=esum,mb={crown:cr,shoulder:shd,drop:drp,ditchW:dw,ditchD:dd_,back:bk},sh=skirtHalf(mb);
+  let h,pav=0;
+  if(u<=0){h=E+crownOf(mb,hw,Math.max(0,u+hw));influenced++;pav=1;}
+  else if(u<=sh){h=E+skirt(mb,u);influenced++;pav=1-ss(u/0.45);}
+  else{
+    const dl=u-sh;h=natural[o];
+    if(dl<=MAX_DAYLIGHT){influenced++;
+      const lo=E-dl*FILL_SLOPE,hi=E+dl*CUT_SLOPE;
+      if(h>hi)h=hi;else if(h<lo)h=lo;
+      if(h!==natural[o]){const pk=cand[0].k,bi=Math.min(dayBins[pk].length-1,Math.round(cand[0].s/DS));
+        if(dl>dayBins[pk][bi])dayBins[pk][bi]=dl;
+        if(dl>MAX_DAYLIGHT-RES)capped++;}
     }
   }
-  height[o]=h;splat[o*4]=g;splat[o*4+1]=a;splat[o*4+2]=d2;splat[o*4+3]=c;
+  height[o]=h;
+  const v=Math.round(255*pav),tw=sw[1]+sw[2]+sw[3]||1;
+  splat[o*4]=255-v;
+  splat[o*4+1]=Math.round(v*sw[1]/tw);splat[o*4+2]=Math.round(v*sw[2]/tw);splat[o*4+3]=Math.round(v*sw[3]/tw);
 }
-log('composed');
+log('composed (union offsets)');
 
-/* ---------- 5b. junction blending ----------
-   Nearest-road assignment is wrong wherever two roads are both close: the profiles
-   meet at a hard boundary and the branch drives its ditch straight through the host's
-   pavement. Inside a disc around each node we instead blend every incident road by
-   inverse-square distance to its centreline, and fade each road's ditch out toward a
-   crown-only apron - a ditch across a junction is the artifact, not a feature.
-   The disc result is lerped against the nearest-road result by b, which reaches 0 at
-   the rim, so the patch cannot introduce a seam of its own. */
-function crownOnly(m,hw,t){if(t>hw)return 0;const u=t/hw;return m.crown*(1-u*u);}
-const nodes=[];
-function tangent(r,s){const e=1.0,[ax,ay]=xyAt(r,Math.max(0,s-e)),[bx,by]=xyAt(r,Math.min(r.len,s+e));
-  const L=Math.hypot(bx-ax,by-ay)||1;return [(bx-ax)/L,(by-ay)/L];}
-for(const j of junctions){
-  const br=map.roads.find(q=>q.id===j.road),ho=map.roads.find(q=>q.id===j.host);
-  const inc=[{r:br,s:j.end?br.len:0},{r:ho,s:j.s}];
-  /* Two prisms of half-width p crossing at angle t overlap over ~p/sin(t), so a disc
-     sized only by width leaves the acute-angle wedge outside it - which is exactly
-     where the two ditches collide. Scale the radius by 1/sin(theta) and cap it. */
-  const t0=tangent(inc[0].r,inc[0].s),t1=tangent(inc[1].r,inc[1].s);
-  const sinT=Math.max(0.30,Math.abs(t0[0]*t1[1]-t0[1]*t1[0]));
-  const ph=Math.max(...inc.map(i=>prismHalf(i.r.mat,i.r.hw)));
-  nodes.push({x:j.x,y:j.y,inc,sinT:+sinT.toFixed(3),R:Math.min(42,2.2*ph/sinT)});
-}
-log('junction discs: '+nodes.map(n=>`R=${n.R.toFixed(1)} m (sin${String.fromCharCode(952)}=${n.sinT})`).join(', '));
-let jCells=0;const preJ=[];
-for(const nd of nodes){
-  const Rin=0.35*nd.R;
-  const i0=Math.max(0,Math.floor((nd.x-nd.R)/RES)),i1=Math.min(N-1,Math.ceil((nd.x+nd.R)/RES));
-  const j0=Math.max(0,Math.floor((nd.y-nd.R)/RES)),j1=Math.min(N-1,Math.ceil((nd.y+nd.R)/RES));
-  for(let jj=j0;jj<=j1;jj++)for(let ii=i0;ii<=i1;ii++){
-    const px=(ii+0.5)*RES,py=(jj+0.5)*RES,dn=Math.hypot(px-nd.x,py-nd.y);
-    if(dn>=nd.R)continue;
-    const b=1-ss((dn-Rin)/(nd.R-Rin));if(b<=0)continue;
-    const o=jj*N+ii;preJ.push([o,height[o]]);jCells++;
-    let wsum=0,hsum=0,Esum=0,tRel=Infinity,sw=[0,0,0,0];
-    for(const k of nd.inc){
-      const q=nearestOn(k.r,px,py),m=k.r.mat,hw=k.r.hw,ph=prismHalf(m,hw);
-      const E=elevAt(k.r,q.s),t=q.d;
-      const prof=profile(m,hw,t)*(1-b)+crownOnly(m,hw,t)*b;
-      const w=1/(t*t+0.25);
-      wsum+=w;hsum+=w*(E+prof);Esum+=w*E;
-      if(t-ph<tRel)tRel=t-ph;
-      const pav=(1-ss((t-hw)/0.45))*w;
-      if(m.splat===1)sw[1]+=pav;else if(m.splat===2)sw[2]+=pav;else sw[3]+=pav;
-    }
-    const hJ0=hsum/wsum,EJ=Esum/wsum;
-    let hJ;
-    if(tRel<=0)hJ=hJ0;
-    else{const dd=tRel,lo=EJ-dd*FILL_SLOPE,hi=EJ+dd*CUT_SLOPE,nv=natural[o];
-      hJ=nv>hi?hi:nv<lo?lo:nv;}
-    height[o]=height[o]*(1-b)+hJ*b;
-    const paved=Math.min(1,(sw[1]+sw[2]+sw[3])/wsum);
-    for(let c=1;c<4;c++){const v=255*(paved?sw[c]/wsum:0);
-      splat[o*4+c]=Math.round(splat[o*4+c]*(1-b)+Math.min(255,v)*b);}
-    splat[o*4]=Math.round(splat[o*4]*(1-b)+255*(1-Math.min(1,paved))*b);
-  }
-}
-log(`junction blending: ${nodes.length} nodes, ${jCells} cells`);
-/* how much sharpness did the nearest-road seam contribute? */
+/* junction cells, for the same before/after curvature measure as the disc version */
 function curvAt(arr,o){const i=o%N,j=(o/N)|0;if(i<1||j<1||i>=N-1||j>=N-1)return 0;
   return Math.abs((arr[o+1]+arr[o-1]+arr[o+N]+arr[o-N]-4*arr[o])/(RES*RES));}
-const before=new Float32Array(height);for(const [o,v] of preJ)before[o]=v;
-const cB=[],cA=[];for(const [o] of preJ){cB.push(curvAt(before,o));cA.push(curvAt(height,o));}
-cB.sort((a,b)=>a-b);cA.sort((a,b)=>a-b);
-const jc={p999Before:+cB[Math.floor(cB.length*0.999)].toFixed(3),p999After:+cA[Math.floor(cA.length*0.999)].toFixed(3),
-  meanBefore:+(cB.reduce((a,b)=>a+b,0)/cB.length).toFixed(4),meanAfter:+(cA.reduce((a,b)=>a+b,0)/cA.length).toFixed(4)};
-log(`junction curvature p99.9 ${jc.p999Before} -> ${jc.p999After}`);
+const jc=(()=>{const c=[];
+  for(const j of junctions){const R=22;
+    const i0=Math.max(0,Math.floor((j.x-R)/RES)),i1=Math.min(N-1,Math.ceil((j.x+R)/RES));
+    const j0=Math.max(0,Math.floor((j.y-R)/RES)),j1=Math.min(N-1,Math.ceil((j.y+R)/RES));
+    for(let jj=j0;jj<=j1;jj++)for(let ii=i0;ii<=i1;ii++){
+      if(Math.hypot((ii+0.5)*RES-j.x,(jj+0.5)*RES-j.y)>=R)continue;c.push(curvAt(height,jj*N+ii));}}
+  c.sort((a,b)=>a-b);
+  return {cells:c.length,p999:+c[Math.floor(c.length*0.999)].toFixed(3),mean:+(c.reduce((a,b)=>a+b,0)/c.length).toFixed(4)};})();
+log(`junction curvature p99.9 ${jc.p999} (disc version was 3.019, nearest-road 19.762)`);
 
 /* ---------- 6. outputs + stats ---------- */
 let hlo=Infinity,hhi=-Infinity;for(const v of height){if(v<hlo)hlo=v;if(v>hhi)hhi=v;}
@@ -228,7 +190,7 @@ const stats={
   base:{quantStepM:+base.quantStep.toFixed(4),quantErrRmsMm:+(base.quantErr.rms*1000).toFixed(1),
     bandingPlainRmsMm:+(base.bandPlain.rms*1000).toFixed(2),bandingDitherRmsMm:+(base.bandDither.rms*1000).toFixed(2)},
   heightRange:{min:+hlo.toFixed(2),max:+hhi.toFixed(2),u16StepMm:+((hhi-hlo)/65535*1000).toFixed(3)},
-  junctions,grade:gradeReport,junctionBlend:{nodes:nodes.map(n=>({R:+n.R.toFixed(1),sinTheta:n.sinT})),cells:jCells,curvature:jc},
+  junctions,grade:gradeReport,junctions_:jc,
   daylight:{samples:dayAll.length,min:pct(0),median:pct(0.5),p95:pct(0.95),max:pct(0.999),
     cappedCells:capped,cappedPct:+(100*capped/(influenced||1)).toFixed(3),capM:MAX_DAYLIGHT},
   sharpness:{road:sharp(nearRoad),offRoad:sharp(o=>!nearRoad(o))},

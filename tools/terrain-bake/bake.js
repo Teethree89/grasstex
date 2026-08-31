@@ -26,14 +26,20 @@ const MATERIALS={
   cobble: {splat:3,crown:0.04,shoulder:0.40,drop:0.02,ditchW:0.60,ditchD:0.12,back:0.50},
 };
 const ss=t=>{t=t<0?0:t>1?1:t;return t*t*(3-2*t);};
-function prismHalf(m,hw){return hw+m.shoulder+m.ditchW+m.back;}
-function profile(m,hw,t){                                   /* t = |offset| from centreline */
-  if(t<=hw){const u=t/hw;return m.crown*(1-u*u);}
-  let a=hw+m.shoulder; if(t<=a)return -m.drop*ss((t-hw)/m.shoulder);
-  let b=a+m.ditchW;    if(t<=b)return -m.drop+(-m.ditchD+m.drop)*ss((t-a)/m.ditchW);
-  let c=b+m.back;      if(t<=c)return -m.ditchD*(1-ss((t-b)/m.back));
+function skirtHalf(m){return m.shoulder+m.ditchW+m.back;}
+function prismHalf(m,hw){return hw+skirtHalf(m);}
+function crownOf(m,hw,t){const u=t/hw;return m.crown*(1-u*u);}
+/* Bands are offsets OUTWARD FROM THE PAVED EDGE, so u is distance past that edge -
+   not distance from a centreline. For a network u is min over roads, which is the
+   distance to the UNION of the paved regions: in the wedge between two roads u stays
+   small, so the wedge reads as shoulder instead of two ditches colliding in it. */
+function skirt(m,u){
+  if(u<=m.shoulder)return -m.drop*ss(u/m.shoulder);
+  const a=m.shoulder+m.ditchW; if(u<=a)return -m.drop+(-m.ditchD+m.drop)*ss((u-m.shoulder)/m.ditchW);
+  const b=a+m.back;            if(u<=b)return -m.ditchD*(1-ss((u-a)/m.back));
   return 0;
 }
+function profile(m,hw,t){return t<=hw?crownOf(m,hw,t):skirt(m,t-hw);}
 
 /* ---------------- SVG (controlled subset: ellipse/circle + path M,L,C,Q,Z) ------------- */
 function attrs(tag){const o={};tag.replace(/([\w-]+)\s*=\s*"([^"]*)"/g,(_,k,v)=>{o[k]=v;return '';});return o;}
@@ -131,4 +137,4 @@ function sampleLow(low,px,py){
   return a+(b-a)*fx+(c-a)*fy+(a-b-c+d)*fx*fy;
 }
 module.exports={WORLD,RES,N,LOW,NL,DS,MAX_GRADE,GRADE_ITERS,CUT_SLOPE,FILL_SLOPE,MAX_DAYLIGHT,
-  JUNCTION_TOL,NOISE_AMP,MATERIALS,ss,prismHalf,profile,readMap,buildBase,sampleLow,fbm,png};
+  JUNCTION_TOL,NOISE_AMP,MATERIALS,ss,prismHalf,skirtHalf,crownOf,skirt,profile,readMap,buildBase,sampleLow,fbm,png};

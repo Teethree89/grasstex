@@ -34,22 +34,30 @@ so dirt differs from asphalt in shape, not only in texture.
 
 ## Junctions
 
-Three things were wrong with nearest-road assignment, fixed in that order:
+There is no junction-specific code. Bands are built outward from the crown the way a
+vector would stroke it, so the geometry falls out of the construction:
 
-1. **The daylight seam.** Two roads at different design elevations met at a Voronoi
-   boundary, which is a *step*, and that boundary runs far past any junction disc.
-   Fixed by keeping the two nearest roads and **intersecting their cones** — ground
-   must daylight to every nearby road, and max/min of continuous functions stays
-   continuous. This is the one that mattered most.
-2. **Ditches through the pavement.** Inside a disc around each node, incident roads
-   are blended by inverse-square distance to centreline and each ditch fades toward a
-   crown-only apron.
-3. **The acute-angle wedge.** Two prisms of half-width p crossing at angle t overlap
-   over ~p/sin(t), so a disc sized by width alone leaves the wedge — exactly where the
-   ditches collide — outside it. Radius is scaled by 1/sin(t), capped at 42 m.
+    u = smin over roads of (distance to centreline - paved half-width)
 
-Measured on the sample map: curvature p99.9 over junction cells 19.8 -> 3.0 /m, which
-is below the road's own 3.0 /m. Junctions are no longer the sharpest feature.
+`u` is distance past the edge of the **union** of the paved regions. In the wedge
+between two roads `u` stays small from both sides, so the wedge reads as shoulder and
+never reaches the ditch band - the collision that needed a suppression disc simply
+cannot form. `smin` (polynomial smooth-min, `SMIN_K` metres) rounds the union corner
+into a fillet, which is also what a real junction has.
+
+Two things are blended rather than switched, and both matter:
+
+- **Design elevation**, by inverse-square distance over the two nearest roads. All of
+  crown, skirt and daylight cone hang off this one surface, so they cannot step
+  against each other. This is what the old cone-intersection pass was working around.
+- **Material parameters** - crown height, ditch depth and so on - not the per-road
+  profiles. Blending profiles would let both roads assert a ditch in the wedge, which
+  is the original artifact. The union distance picks the band; the blend picks its shape.
+
+Measured: peak curvature in a +/-30 m window at the spur junction is 3.2 /m, equal to
+the road's own 3.0 /m. Nearest-road was 19.8; an earlier blend-disc version reached
+3.0 on p99.9 but still spiked to 8.8 locally, and needed ~40 lines of disc radius,
+1/sin(theta) scaling, ditch fading and cone intersection that this replaces.
 
 ## Known limitations
 
@@ -58,6 +66,9 @@ is below the road's own 3.0 /m. Junctions are no longer the sharpest feature.
 - Daylight cap is a hard stop; a real pipeline would place a retaining wall there.
 - Only the two nearest roads are kept, so a true three-way node at a single point
   would lose one contribution. Two separate nearby junctions are fine.
+- `smin` widens pavement slightly wherever two roads pass close without joining. At
+  `SMIN_K` = 3 m the effect is under a metre and only within ~3 m of a genuine
+  crossing, but a dense network would want the fillet gated on a real node.
 - Faint scalloping along curves in the curvature figures is the 1 m polyline
   flattening of the beziers, not the surface: it is ~5 mm in height terms, and the
   gamma-compressed curvature view exaggerates it.
