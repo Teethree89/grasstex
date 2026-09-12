@@ -58,6 +58,8 @@ jobs:
           set ftp:passive-mode true
           pwd
           cls -la
+          cd grasstex
+          pwd
           put battle_sim.php -o battle_sim.php
           cls -l battle_sim.php
           bye
@@ -71,5 +73,5 @@ jobs:
             echo ""
             echo "- Source: \`main@$(git rev-parse --short HEAD)\`"
             echo "- File: \`battle_sim.php\`"
-            echo "- FTP destination: login root / battle_sim.php"
+            echo "- FTP destination: login root / grasstex / battle_sim.php"
           } >> "$GITHUB_STEP_SUMMARY"
