@@ -1,6 +1,8 @@
-/* Battle Sim / ww2fps AI lab v20 operator controls. */
+/* Battle Sim / ww2fps AI lab v22 operator controls. */
 (function(root){
   'use strict';
+  root.BATTLE_BUILD='v22';
+  try{var buildEl=document.getElementById('buildVersion');if(buildEl)buildEl.textContent='v22';document.title='WW2FPS AI Lab v22';}catch(_){}
   if(!root.BattleSim)return;
   var oldStart=root.BattleSim.start,API_BASE=root.BATTLE_API_BASE||'/grasstex/';
   function telemetry(sim,type,data){if(root.BattleTelemetry)root.BattleTelemetry.record(type,data,sim);}
@@ -36,5 +38,5 @@
     sim.restart=function(){var resumeAfter=sim.manualEnded||!sim.paused;if(root.BattleTelemetry)root.BattleTelemetry.end(sim,'restart');rawRestart();sim.manualEnded=false;sim.paused=!resumeAfter;var sc=scenario(sim);if(root.BattleTelemetry)root.BattleTelemetry.start(sim,'live',{restart:true,policyRevision:root.BattleAIPolicy?root.BattleAIPolicy.revision:0,scenarioSeed:sc&&sc.seed,scenarioId:sc&&sc.id});var s=document.getElementById('aiTestStatus');if(s)s.textContent='AI log: active · genome r'+(root.BattleAIPolicy?root.BattleAIPolicy.revision:0);};
     installUi(sim);var sc=scenario(sim);telemetry(sim,'battle-start',{usAlive:sim.factions.us.alive,geAlive:sim.factions.ge.alive,policyRevision:root.BattleAIPolicy?root.BattleAIPolicy.revision:0,scenarioSeed:sc&&sc.seed,scenarioId:sc&&sc.id,fingerprint:sc&&sc.fingerprint,unitModules:root.BattleModules?root.BattleModules.listUnitTypes().map(function(x){return x.id;}):[]});return sim;
   };
-  root.BattleControl={spawnUnit:spawnUnit,endBattle:endBattle,refreshStats:refreshStats,newScenario:newScenario,runScenarios:function(sim){return root.BattleAITrainer&&root.BattleAITrainer.train(sim,{candidates:4,scenarios:3});}};console.log('[CONTROL] AI lab controls v20 loaded');
+  root.BattleControl={spawnUnit:spawnUnit,endBattle:endBattle,refreshStats:refreshStats,newScenario:newScenario,runScenarios:function(sim){return root.BattleAITrainer&&root.BattleAITrainer.train(sim,{candidates:4,scenarios:3});}};console.log('[CONTROL] AI lab controls v22 loaded');
 })(typeof window!=='undefined'?window:globalThis);
