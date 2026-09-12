@@ -79,18 +79,24 @@ shows alive/kill counts, squads remaining, a speed multiplier, and a restart but
 `window.__battle__` is the live `BattleSim`
 instance for poking at from the console.
 
-The ground is textured and there's a sky dome, both reusing this repo's own hosted assets
-(`test.ivandpopov.com/grasstex/Assets/dirttex.png` and `skytex.png`) at their absolute URL -
-same texture terrain-demo.js tiles under its grass, and the identical sky shader/asset from
-grass-realism.js, just lifted out on its own since the battle sim doesn't load that file.
-Loading those assets cross-origin (e.g. from a local dev copy of the page opened somewhere
-other than that host) will fail WebGL's texture upload with an untainted-canvas error - they
-only load because the real deployment (`battle_sim.php`) serves the page from that exact
-origin too. Terrain height sampling also learned the same lesson terrain-demo.js's own README
-documents: soldiers/obstacles used to be placed with the *analytic* height formula, which is
-not the same surface as the flat-triangle mesh the GPU actually draws, so anything standing on
-a sloped patch could visibly sink into or float above the ground. `sampleAt` in `battle-sim.js`
-now interpolates the real built mesh instead, the same fix and the same reasoning.
+The ground is textured and there's a sky dome - `DIRT_TEXTURE_URL`/`SKY_TEXTURE_URL` in
+`battle-sim.js`, downscaled/recompressed data-URI copies of this repo's own
+`dirttex.png`/`skytex.png` (same texture terrain-demo.js tiles under its grass, and the
+identical sky shader/asset from grass-realism.js, lifted out on its own since the battle sim
+doesn't load that file). They're embedded rather than fetched from
+`test.ivandpopov.com/grasstex/Assets/` at runtime: an early version did fetch them remotely at
+full size (3-7MB) and that turned into Babylon's checkerboard error texture on at least one
+real mobile connection, with nothing in this environment able to reproduce or diagnose why -
+inlining them removes the request, its size, and any host/TLS/CORS dependency entirely rather
+than trying to make an external load more reliable. Both textures also get an `onError`
+fallback (a flat color for the ground, hiding the dome entirely for the sky) in case a decode
+ever fails anyway.
+
+Terrain height sampling learned the same lesson terrain-demo.js's own README documents:
+soldiers/obstacles used to be placed with the *analytic* height formula, which is not the same
+surface as the flat-triangle mesh the GPU actually draws, so anything standing on a sloped
+patch could visibly sink into or float above the ground. `sampleAt` in `battle-sim.js` now
+interpolates the real built mesh instead, the same fix and the same reasoning.
 
 Known limitations, since this is a starting point for further modeling/AI work rather than a
 finished sim: no soldier-blocks-soldier occlusion, the obstacle steering above is local
