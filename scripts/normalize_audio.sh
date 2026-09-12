@@ -30,7 +30,7 @@ target_for() {
 
 measure_json() {
   local file="$1" target="$2"
-  ffmpeg -hide_banner -nostats -i "$file" \
+  ffmpeg -nostdin -hide_banner -nostats -i "$file" \
     -af "loudnorm=I=${target}:TP=${TP}:LRA=${LRA}:print_format=json" \
     -f null - 2>&1 | python3 -c '
 import sys,re,json
@@ -71,7 +71,7 @@ PY
     filter="loudnorm=I=${target}:TP=${TP}:LRA=${LRA}:print_format=summary"
   fi
 
-  ffmpeg -y -hide_banner -loglevel error -i "$file" \
+  ffmpeg -nostdin -y -hide_banner -loglevel error -i "$file" \
     -map_metadata -1 -af "$filter" -ar 48000 -ac 1 -c:a libmp3lame -b:a 128k "$tmp"
   mv "$tmp" "$file"
 }
