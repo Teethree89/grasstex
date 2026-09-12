@@ -64,6 +64,7 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   window.addEventListener('error',function(e){writeDebug('error',[e.message+' @ '+e.filename+':'+e.lineno]);});
   window.addEventListener('unhandledrejection',function(e){writeDebug('error',['Unhandled promise rejection:',e.reason]);});
   console.log('Battle Sim',build,'ref='+ref);
+  console.log('pageProtocol='+location.protocol);
   console.log('assetBase='+(window.BATTLE_ASSET_BASE||'hardcoded/default'));
   console.log('audioBase='+(window.BATTLE_AUDIO_BASE||'audio/'));
   if(window.BATTLE_ASSET_PROBE&&window.BATTLE_ASSET_PROBE.length){
@@ -74,7 +75,10 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   }
 
   var canvas=document.getElementById('renderCanvas');
-  var engine=new BABYLON.Engine(canvas,true,{stencil:true,preserveDrawingBuffer:true});
+  /* Babylon stopped creating the legacy audio engine by default in 7.52. BABYLON.Sound
+     still uses that engine, so explicitly enable it for this sim. */
+  var engine=new BABYLON.Engine(canvas,true,{stencil:true,preserveDrawingBuffer:true,audioEngine:true});
+  console.log('legacyAudioEngine='+(BABYLON.Engine.audioEngine?'present':'missing'));
   var scene=new BABYLON.Scene(engine);
   scene.clearColor=new BABYLON.Color4(.55,.62,.68,1);
   scene.fogMode=BABYLON.Scene.FOGMODE_LINEAR;scene.fogColor=new BABYLON.Color3(.72,.62,.52);scene.fogStart=320;scene.fogEnd=800;
