@@ -37,10 +37,13 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 #banner .card small{display:block;margin-top:8px;font-size:12px;color:#b7bba0}
 #banner button{margin-top:16px;padding:7px 18px;border-radius:6px;border:1px solid #6b8a44;
   background:#3c4a26;color:#fff;cursor:pointer;font-size:13px}
-#soundBtn{margin-top:6px;width:100%;padding:6px;background:#1c2116;border:1px solid #46512f;
-  color:#d9dcc4;border-radius:5px;cursor:pointer;font-size:11px}
-#soundBtn:hover{background:#2a331c}
-#soundBtn.on{background:#2c3a1f;color:#cdeec0;border-color:#557a34}
+/* The one button that matters before anything else: starting the battle is also the user
+   gesture mobile browsers require before they'll play any sound at all (see the JS below),
+   so this doubles as "enable sound" without needing a second, more confusing button for it. */
+#startBtn{margin-top:8px;width:100%;padding:8px;background:#3c4a26;border:1px solid #6b8a44;
+  color:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700}
+#startBtn:hover{background:#4a5c2e}
+#startBtn[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -53,13 +56,13 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   <div class="side"><span class="tag ge">GER</span><span class="nums" id="geNums">50 alive &middot; 0 kills</span></div>
   <div class="row"><span>Squads left</span><span id="squadsLeft">5 / 5</span></div>
   <div class="row"><span>Time</span><span id="clock">0:00</span></div>
+  <button id="startBtn" type="button">&#9654; Start battle</button>
   <div id="controls">
     <button data-speed="1">1&times;</button>
     <button data-speed="2" class="active">2&times;</button>
     <button data-speed="4">4&times;</button>
   </div>
   <button id="restartBtn" type="button">Restart battle</button>
-  <button id="soundBtn" type="button">&#128266; Enable sound</button>
 </div>
 
 <div id="banner"><div class="card">
@@ -113,6 +116,9 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
      same trick terrain-baked.js uses for window.TERRAIN_ASSET_BASE. */
   var audioBase=window.BATTLE_AUDIO_BASE||'audio/';
   var battle=BattleSim.start(scene,{timeScale:2,obstacles:features.obstacles,audioBase:audioBase});
+  // Both armies stand at their spawn lines, camera and HUD fully live, nothing moving or
+  // shooting until Start Battle - see that button's wiring below for why it stays paused.
+  battle.pause();
 
   // ---------- HUD wiring ----------
   var usNums=document.getElementById('usNums'),geNums=document.getElementById('geNums'),
@@ -154,22 +160,25 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   window.addEventListener('resize',function(){engine.resize();});
 
   /* Mobile browsers - iOS Safari in particular - keep the Web Audio context suspended until
-     a real user gesture unlocks it, and nothing about starting the sim (it runs on its own,
-     nobody has to press play) counts as one. Without this, every BABYLON.Sound.play() call
-     in battle-sim.js's onFire hook is a silent no-op forever: audio never starts on its own.
-     An explicit button both makes that discoverable (a corner hint is easy to miss/dismiss
-     without reading) and gives a definite "yes, that worked" instead of trusting that
-     whatever the visitor happened to tap counted as a real gesture. The passive listeners
-     stay too, so tapping the canvas to orbit the camera unlocks it just as well. */
-  var soundBtn=document.getElementById('soundBtn');
+     a real user gesture unlocks it, and nothing about the sim spawning/pausing itself on load
+     counts as one. Rather than a separate "enable sound" button (one more thing to explain,
+     easy to skip past), Start Battle IS that gesture: clicking it unlocks audio and un-pauses
+     in the same breath, so there's exactly one button standing between "loaded" and "live",
+     not two doing overlapping jobs. */
+  var startBtn=document.getElementById('startBtn');
   function unlockAudio(){
     if(BABYLON.Engine.audioEngine)BABYLON.Engine.audioEngine.unlock();
-    soundBtn.textContent='\u{1F50A} Sound on';
-    soundBtn.classList.add('on');
+  }
+  function startBattle(){
+    unlockAudio();
+    battle.resume();
+    startBtn.hidden=true;
     document.removeEventListener('pointerdown',unlockAudio);
     document.removeEventListener('touchend',unlockAudio);
   }
-  soundBtn.addEventListener('click',unlockAudio);
+  startBtn.addEventListener('click',startBattle);
+  // Orbiting the camera before pressing Start is still a real gesture - may as well let it
+  // unlock audio early too, even though it doesn't start the fight on its own.
   document.addEventListener('pointerdown',unlockAudio,{once:true});
   document.addEventListener('touchend',unlockAudio,{once:true});
 

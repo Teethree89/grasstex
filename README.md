@@ -68,9 +68,15 @@ than walking straight through them - a short lookahead check and a push away fro
 it'd collide with, not real pathfinding, so a destination boxed in by obstacles on all sides
 can still get a soldier stuck against them. Weapon fire plays a positional gunshot sound per
 weapon kind (`battle/audio/*.mp3`, ElevenLabs sound-generation) through a small round-robin
-`BABYLON.Sound` pool per kind. Mobile browsers (iOS Safari especially) block all audio until a
-real user gesture, so the HUD has an explicit "Enable sound" button alongside the alive/kill
-counts, speed multiplier, and restart button; `window.__battle__` is the live `BattleSim`
+`BABYLON.Sound` pool per kind.
+
+Both armies spawn standing at their lines, paused, and stay that way until **Start Battle** is
+clicked - which is also the real user gesture mobile browsers (iOS Safari especially) require
+before they'll play any audio at all, so one button does both jobs instead of a separate,
+easy-to-miss "enable sound" button doing one of them. Restarting afterward doesn't re-pause;
+Start Battle is a one-time gate on load, Restart is just an instant re-fight. The HUD also
+shows alive/kill counts, squads remaining, a speed multiplier, and a restart button;
+`window.__battle__` is the live `BattleSim`
 instance for poking at from the console.
 
 The ground is textured and there's a sky dome, both reusing this repo's own hosted assets
