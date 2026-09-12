@@ -15,8 +15,14 @@
   function send(events,beacon){if(!events.length)return Promise.resolve(true);var body=JSON.stringify({events:events});if(beacon&&navigator.sendBeacon){try{return Promise.resolve(navigator.sendBeacon(ENDPOINT,new Blob([body],{type:'application/json'})));}catch(_){}}return fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:body,cache:'no-store',keepalive:true}).then(function(r){return r.ok;}).catch(function(){return false;});}
   function flush(beacon){if(!queue.length)return Promise.resolve(true);var batch=queue.splice(0,queue.length);return send(batch,!!beacon).then(function(ok){if(!ok)queue=batch.concat(queue);return ok;});}
   function start(sim,nextMode,meta){if(active)end(sim,'session-replaced');sessionId=makeId();mode=nextMode||'live';active=true;seq=0;record('session-start',Object.assign({mode:mode},meta||{}),sim,true);return sessionId;}
-  function end(sim,reason,extra){if(!active)return;record('battle-end',Object.assign({reason:reason||'ended'},extra||{}),sim,true);active=false;flush(true);}
+  function end(sim,reason,extra){if(!active)return Promise.resolve(true);record('battle-end',Object.assign({reason:reason||'ended'},extra||{}),sim,true);active=false;return flush(true);}
+  /* Training uses an awaited ordinary fetch rather than sendBeacon so a match is durably handed
+     off before its scene resources are torn down. */
+  function checkpoint(sim,reason,extra){
+    if(active){record('battle-end',Object.assign({reason:reason||'checkpoint'},extra||{}),sim,true);active=false;}
+    return flush(false);
+  }
   function state(){return{active:active,sessionId:sessionId,mode:mode,queued:queue.length,seq:seq,endpoint:ENDPOINT};}
   flushTimer=setInterval(function(){if(queue.length)flush(false);},4000);window.addEventListener('pagehide',function(){if(queue.length)flush(true);});window.addEventListener('beforeunload',function(){if(queue.length)flush(true);});
-  root.BattleTelemetry={start:start,ensure:ensure,record:record,end:end,flush:flush,state:state};console.log('[TELEMETRY] runtime v20 loaded');
+  root.BattleTelemetry={start:start,ensure:ensure,record:record,end:end,checkpoint:checkpoint,flush:flush,state:state};console.log('[TELEMETRY] runtime v20 loaded');
 })(typeof window!=='undefined'?window:globalThis);
