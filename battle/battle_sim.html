@@ -3,74 +3,52 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>WW2 Battle Sim — 50v50</title>
+<title>WW2 Battle Sim</title>
 <style>
-/* Same dark-viewport-plus-one-faded-panel shape as the rest of this repo's demo pages:
-   the thing being tested is the AI, so nothing here should compete with the battlefield
-   for attention until you actually want to read a number. */
 html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font-family:Arial,sans-serif}
 #renderCanvas{position:fixed;inset:0;width:100%;height:100%;display:block;outline:none;touch-action:none}
-#hud{position:fixed;top:10px;left:10px;z-index:10;width:240px;padding:10px 12px;
+#hud{position:fixed;top:10px;left:10px;z-index:10;width:260px;padding:10px 12px;
   background:rgba(14,17,12,.86);border:1px solid rgba(255,255,255,.14);border-radius:8px;
-  color:#e7e7dc;font-size:12px;opacity:.88;transition:opacity .15s}
+  color:#e7e7dc;font-size:12px;opacity:.9;transition:opacity .15s}
 #hud:hover{opacity:1}
-#hud h1{font-size:13px;margin:0 0 8px;letter-spacing:.03em;color:#fff}
+#hud h1{font-size:13px;margin:0 0 8px;letter-spacing:.03em;color:#fff;display:flex;justify-content:space-between;gap:8px;align-items:center}
+#buildVersion{font-size:10px;color:#a8ab8e;font-weight:400;letter-spacing:.08em;white-space:nowrap}
 .side{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:1px solid rgba(255,255,255,.08)}
 .side:first-of-type{border-top:0}
-.side .tag{font-weight:700}
-.tag.us{color:#8fb4e8}
-.tag.ge{color:#e0c46a}
+.side .tag{font-weight:700}.tag.us{color:#8fb4e8}.tag.ge{color:#e0c46a}
 .side .nums{color:#c7c7ba;font-variant-numeric:tabular-nums}
 #hud .row{display:flex;justify-content:space-between;margin-top:8px;color:#a8ab8e}
 #controls{display:flex;gap:6px;margin-top:10px}
-#controls button{flex:1;padding:5px 4px;background:#1c2116;border:1px solid #46512f;color:#d9dcc4;
-  font-size:11px;border-radius:5px;cursor:pointer}
-#controls button.active{background:#3c4a26;color:#fff}
-#controls button:hover{background:#2a331c}
-#restartBtn{margin-top:8px;width:100%;padding:6px;background:#3a2020;border:1px solid #6b3232;
-  color:#f1d9d9;border-radius:5px;cursor:pointer;font-size:11px}
+#controls button{flex:1;padding:5px 4px;background:#1c2116;border:1px solid #46512f;color:#d9dcc4;font-size:11px;border-radius:5px;cursor:pointer}
+#controls button.active{background:#3c4a26;color:#fff}#controls button:hover{background:#2a331c}
+#restartBtn{margin-top:8px;width:100%;padding:6px;background:#3a2020;border:1px solid #6b3232;color:#f1d9d9;border-radius:5px;cursor:pointer;font-size:11px}
 #restartBtn:hover{background:#4a2828}
-#banner{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;
-  background:rgba(6,8,6,.55)}
-#banner .card{background:rgba(18,22,14,.96);border:1px solid rgba(255,255,255,.18);border-radius:10px;
-  padding:26px 34px;text-align:center;color:#fff;font-size:20px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+#startBtn{margin-top:8px;width:100%;padding:8px;background:#3c4a26;border:1px solid #6b8a44;color:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700}
+#startBtn:hover{background:#4a5c2e}#startBtn[hidden]{display:none}
+#debugPanel{margin-top:8px;border-top:1px solid rgba(255,255,255,.1);padding-top:7px}
+#debugPanel summary{cursor:pointer;color:#b9bea7;font-size:11px;user-select:none;list-style-position:inside}
+#debugConsole{margin-top:6px;height:145px;overflow:auto;background:#070907;border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:6px;color:#b8c4ad;font:10px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+.debug-warn{color:#d8c57c}.debug-error{color:#e58d8d}
+#banner{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:rgba(6,8,6,.55)}
+#banner .card{background:rgba(18,22,14,.96);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:26px 34px;text-align:center;color:#fff;font-size:20px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
 #banner .card small{display:block;margin-top:8px;font-size:12px;color:#b7bba0}
-#banner button{margin-top:16px;padding:7px 18px;border-radius:6px;border:1px solid #6b8a44;
-  background:#3c4a26;color:#fff;cursor:pointer;font-size:13px}
-/* The one button that matters before anything else: starting the battle is also the user
-   gesture mobile browsers require before they'll play any sound at all (see the JS below),
-   so this doubles as "enable sound" without needing a second, more confusing button for it. */
-#startBtn{margin-top:8px;width:100%;padding:8px;background:#3c4a26;border:1px solid #6b8a44;
-  color:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700}
-#startBtn:hover{background:#4a5c2e}
-#startBtn[hidden]{display:none}
+#banner button{margin-top:16px;padding:7px 18px;border-radius:6px;border:1px solid #6b8a44;background:#3c4a26;color:#fff;cursor:pointer;font-size:13px}
 </style>
 </head>
 <body>
-
 <canvas id="renderCanvas"></canvas>
-
 <div id="hud">
-  <h1>WW2 BATTLE SIM &middot; 50v50</h1>
+  <h1><span>WW2 BATTLE SIM &middot; 50v50</span><span id="buildVersion">dev</span></h1>
   <div class="side"><span class="tag us">US</span><span class="nums" id="usNums">50 alive &middot; 0 kills</span></div>
   <div class="side"><span class="tag ge">GER</span><span class="nums" id="geNums">50 alive &middot; 0 kills</span></div>
   <div class="row"><span>Squads left</span><span id="squadsLeft">5 / 5</span></div>
   <div class="row"><span>Time</span><span id="clock">0:00</span></div>
   <button id="startBtn" type="button">&#9654; Start battle</button>
-  <div id="controls">
-    <button data-speed="1">1&times;</button>
-    <button data-speed="2" class="active">2&times;</button>
-    <button data-speed="4">4&times;</button>
-  </div>
+  <div id="controls"><button data-speed="1">1&times;</button><button data-speed="2" class="active">2&times;</button><button data-speed="4">4&times;</button></div>
   <button id="restartBtn" type="button">Restart battle</button>
+  <details id="debugPanel"><summary>Console</summary><div id="debugConsole"></div></details>
 </div>
-
-<div id="banner"><div class="card">
-  <div id="bannerText">—</div>
-  <small id="bannerSub"></small>
-  <div><button id="bannerRestart" type="button">Run it again</button></div>
-</div></div>
-
+<div id="banner"><div class="card"><div id="bannerText">—</div><small id="bannerSub"></small><div><button id="bannerRestart" type="button">Run it again</button></div></div></div>
 <script src="https://cdn.jsdelivr.net/npm/babylonjs@8.26.0/babylon.js"></script>
 <script src="soldier.js"></script>
 <script src="weapons.js"></script>
@@ -79,111 +57,60 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 <script src="battle-sim.js"></script>
 <script>
 (function(){
+  var build=window.BATTLE_BUILD||'dev',ref=window.BATTLE_REF||'direct';
+  var buildEl=document.getElementById('buildVersion');buildEl.textContent=build;
+  document.title='WW2 Battle Sim '+build;
+
+  var debugConsole=document.getElementById('debugConsole');
+  function stringify(v){
+    if(typeof v==='string')return v;
+    try{return JSON.stringify(v);}catch(_){return String(v);}
+  }
+  function writeDebug(level,args){
+    if(!debugConsole)return;
+    var line=document.createElement('div');
+    if(level==='warn')line.className='debug-warn';else if(level==='error')line.className='debug-error';
+    line.textContent='['+level.toUpperCase()+'] '+Array.prototype.map.call(args,stringify).join(' ');
+    debugConsole.appendChild(line);debugConsole.scrollTop=debugConsole.scrollHeight;
+  }
+  ['log','warn','error'].forEach(function(level){
+    var original=console[level];
+    console[level]=function(){writeDebug(level,arguments);return original.apply(console,arguments);};
+  });
+  window.addEventListener('error',function(e){writeDebug('error',[e.message+' @ '+e.filename+':'+e.lineno]);});
+  window.addEventListener('unhandledrejection',function(e){writeDebug('error',['Unhandled promise rejection:',e.reason]);});
+  console.log('Battle Sim',build,'ref='+ref);
+  console.log('assetBase='+(window.BATTLE_ASSET_BASE||'hardcoded/default'));
+  console.log('audioBase='+(window.BATTLE_AUDIO_BASE||'audio/'));
+
   var canvas=document.getElementById('renderCanvas');
   var engine=new BABYLON.Engine(canvas,true,{stencil:true,preserveDrawingBuffer:true});
   var scene=new BABYLON.Scene(engine);
-  // Only visible before the sky texture loads, or if it fails to - the dome covers the rest.
   scene.clearColor=new BABYLON.Color4(.55,.62,.68,1);
-  scene.fogMode=BABYLON.Scene.FOGMODE_LINEAR;
-  // A warm haze tint matching the sky's horizon glow, not a flat blue-grey - distant, heavily
-  // fogged terrain blends into the sky dome's own horizon color instead of an unrelated one.
-  scene.fogColor=new BABYLON.Color3(.72,.62,.52);
-  /* fogStart/fogEnd have to be tuned to this field's actual scale rather than borrowed from
-     the grass demo's much smaller camera range: at 180-420 almost the entire 360x280 field
-     was past fogStart from the default camera position, so the terrain blended into "the
-     sky" and read as not there at all. */
-  scene.fogStart=320;scene.fogEnd=800;
-
+  scene.fogMode=BABYLON.Scene.FOGMODE_LINEAR;scene.fogColor=new BABYLON.Color3(.72,.62,.52);scene.fogStart=320;scene.fogEnd=800;
   var target=new BABYLON.Vector3(0,4,0);
   var camera=new BABYLON.ArcRotateCamera('cam',-Math.PI/2,1.02,240,target,scene);
-  camera.lowerRadiusLimit=60;camera.upperRadiusLimit=420;
-  camera.lowerBetaLimit=.35;camera.upperBetaLimit=1.5;
-  camera.wheelPrecision=3;camera.panningSensibility=140;
-  camera.attachControl(canvas,true);
-
-  // Sunset warmth to match the borrowed sky dome, rather than the neutral daylight this had
-  // before the dome existed.
-  var hemi=new BABYLON.HemisphericLight('hemi',new BABYLON.Vector3(0,1,.2),scene);
-  hemi.intensity=.85;hemi.diffuse=new BABYLON.Color3(.9,.85,.78);hemi.groundColor=new BABYLON.Color3(.32,.27,.20);
-  var sun=new BABYLON.DirectionalLight('sun',new BABYLON.Vector3(-.6,-.5,.35),scene);
-  sun.intensity=1.05;sun.diffuse=new BABYLON.Color3(1,.82,.58);
-
-  BattleSim.buildTerrain(scene);
-  BattleSim.buildSky(scene);
+  camera.lowerRadiusLimit=60;camera.upperRadiusLimit=420;camera.lowerBetaLimit=.35;camera.upperBetaLimit=1.5;camera.wheelPrecision=3;camera.panningSensibility=140;camera.attachControl(canvas,true);
+  var hemi=new BABYLON.HemisphericLight('hemi',new BABYLON.Vector3(0,1,.2),scene);hemi.intensity=.85;hemi.diffuse=new BABYLON.Color3(.9,.85,.78);hemi.groundColor=new BABYLON.Color3(.32,.27,.20);
+  var sun=new BABYLON.DirectionalLight('sun',new BABYLON.Vector3(-.6,-.5,.35),scene);sun.intensity=1.05;sun.diffuse=new BABYLON.Color3(1,.82,.58);
+  BattleSim.buildTerrain(scene);BattleSim.buildSky(scene);
   var features=BattleTerrainFeatures.scatter(scene,BattleSim.heightAt,{fieldW:BattleSim.FIELD_W,fieldD:BattleSim.FIELD_D});
-  /* Overridden by the root loader (battle_sim.html) before it document.writes this page in,
-     so audio keeps resolving against the git repo instead of whatever host is showing this -
-     same trick terrain-baked.js uses for window.TERRAIN_ASSET_BASE. */
   var audioBase=window.BATTLE_AUDIO_BASE||'audio/';
-  var battle=BattleSim.start(scene,{timeScale:2,obstacles:features.obstacles,audioBase:audioBase});
-  // Both armies stand at their spawn lines, camera and HUD fully live, nothing moving or
-  // shooting until Start Battle - see that button's wiring below for why it stays paused.
-  battle.pause();
-
-  // ---------- HUD wiring ----------
-  var usNums=document.getElementById('usNums'),geNums=document.getElementById('geNums'),
-    squadsLeft=document.getElementById('squadsLeft'),clock=document.getElementById('clock'),
-    banner=document.getElementById('banner'),bannerText=document.getElementById('bannerText'),
-    bannerSub=document.getElementById('bannerSub');
-
+  var battle=BattleSim.start(scene,{timeScale:2,obstacles:features.obstacles,audioBase:audioBase});battle.pause();
+  var usNums=document.getElementById('usNums'),geNums=document.getElementById('geNums'),squadsLeft=document.getElementById('squadsLeft'),clock=document.getElementById('clock'),banner=document.getElementById('banner'),bannerText=document.getElementById('bannerText'),bannerSub=document.getElementById('bannerSub');
   function fmtClock(t){var m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+(s<10?'0':'')+s;}
   function aliveSquads(faction){return faction.squads.filter(function(sq){return sq.aliveCount>0;}).length;}
-
-  battle.onUpdate=function(sim){
-    var us=sim.factions.us,ge=sim.factions.ge;
-    usNums.textContent=us.alive+' alive · '+us.kills+' kills';
-    geNums.textContent=ge.alive+' alive · '+ge.kills+' kills';
-    squadsLeft.textContent=aliveSquads(us)+' / '+aliveSquads(ge)+' (US/GER)';
-    clock.textContent=fmtClock(sim.time);
-  };
-  battle.onWinner=function(winner,sim){
-    var label=winner==='draw'?'Mutual annihilation':winner==='us'?'US forces win the field':'German forces win the field';
-    bannerText.textContent=label;
-    bannerSub.textContent='US '+sim.factions.us.alive+' alive ('+sim.factions.us.kills+' kills) · '+
-      'GER '+sim.factions.ge.alive+' alive ('+sim.factions.ge.kills+' kills) · '+fmtClock(sim.time);
-    banner.style.display='flex';
-  };
-
-  function restart(){banner.style.display='none';battle.restart();}
-  document.getElementById('restartBtn').addEventListener('click',restart);
-  document.getElementById('bannerRestart').addEventListener('click',restart);
-
-  var speedButtons=document.querySelectorAll('#controls button');
-  speedButtons.forEach(function(btn){
-    btn.addEventListener('click',function(){
-      battle.setTimeScale(+btn.dataset.speed);
-      speedButtons.forEach(function(b){b.classList.toggle('active',b===btn);});
-    });
-  });
-
-  engine.runRenderLoop(function(){scene.render();});
-  window.addEventListener('resize',function(){engine.resize();});
-
-  /* Mobile browsers - iOS Safari in particular - keep the Web Audio context suspended until
-     a real user gesture unlocks it, and nothing about the sim spawning/pausing itself on load
-     counts as one. Rather than a separate "enable sound" button (one more thing to explain,
-     easy to skip past), Start Battle IS that gesture: clicking it unlocks audio and un-pauses
-     in the same breath, so there's exactly one button standing between "loaded" and "live",
-     not two doing overlapping jobs. */
+  battle.onUpdate=function(sim){var us=sim.factions.us,ge=sim.factions.ge;usNums.textContent=us.alive+' alive · '+us.kills+' kills';geNums.textContent=ge.alive+' alive · '+ge.kills+' kills';squadsLeft.textContent=aliveSquads(us)+' / '+aliveSquads(ge)+' (US/GER)';clock.textContent=fmtClock(sim.time);};
+  battle.onWinner=function(winner,sim){var label=winner==='draw'?'Mutual annihilation':winner==='us'?'US forces win the field':'German forces win the field';bannerText.textContent=label;bannerSub.textContent='US '+sim.factions.us.alive+' alive ('+sim.factions.us.kills+' kills) · GER '+sim.factions.ge.alive+' alive ('+sim.factions.ge.kills+' kills) · '+fmtClock(sim.time);banner.style.display='flex';console.log('winner='+winner,'time='+sim.time.toFixed(1));};
+  function restart(){banner.style.display='none';battle.restart();console.log('battle restarted');}
+  document.getElementById('restartBtn').addEventListener('click',restart);document.getElementById('bannerRestart').addEventListener('click',restart);
+  var speedButtons=document.querySelectorAll('#controls button');speedButtons.forEach(function(btn){btn.addEventListener('click',function(){battle.setTimeScale(+btn.dataset.speed);speedButtons.forEach(function(b){b.classList.toggle('active',b===btn);});console.log('speed='+btn.dataset.speed+'x');});});
+  engine.runRenderLoop(function(){scene.render();});window.addEventListener('resize',function(){engine.resize();});
   var startBtn=document.getElementById('startBtn');
-  function unlockAudio(){
-    if(BABYLON.Engine.audioEngine)BABYLON.Engine.audioEngine.unlock();
-  }
-  function startBattle(){
-    unlockAudio();
-    battle.resume();
-    startBtn.hidden=true;
-    document.removeEventListener('pointerdown',unlockAudio);
-    document.removeEventListener('touchend',unlockAudio);
-  }
-  startBtn.addEventListener('click',startBattle);
-  // Orbiting the camera before pressing Start is still a real gesture - may as well let it
-  // unlock audio early too, even though it doesn't start the fight on its own.
-  document.addEventListener('pointerdown',unlockAudio,{once:true});
-  document.addEventListener('touchend',unlockAudio,{once:true});
-
-  // Same debug door the model lab uses, for headless/manual poking from the console.
-  window.__battle__=battle;
+  function unlockAudio(){if(BABYLON.Engine.audioEngine)BABYLON.Engine.audioEngine.unlock();}
+  function startBattle(){unlockAudio();battle.resume();startBtn.hidden=true;document.removeEventListener('pointerdown',unlockAudio);document.removeEventListener('touchend',unlockAudio);console.log('battle started; audio unlock requested');}
+  startBtn.addEventListener('click',startBattle);document.addEventListener('pointerdown',unlockAudio,{once:true});document.addEventListener('touchend',unlockAudio,{once:true});
+  window.__battle__=battle;console.log('Battle Sim ready; obstacles='+features.obstacles.length);
 })();
 </script>
 </body>
