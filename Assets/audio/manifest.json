@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "base": "Assets/audio/",
+  "format": "mp3",
+  "runtime": {
+    "spatial": true,
+    "defaultMaxDistance": 145,
+    "voiceMaxDistance": 95,
+    "vehicleMaxDistance": 260,
+    "aircraftMaxDistance": 420,
+    "ambienceSpatial": false
+  },
+  "categories": {
+    "weapons": {
+      "rifle": ["weapons/rifle.mp3"],
+      "carbine": ["weapons/carbine.mp3"],
+      "lmg": ["weapons/lmg.mp3"],
+      "pistol": ["weapons/pistol.mp3"],
+      "smg": ["weapons/smg-01.mp3", "weapons/smg-02.mp3"],
+      "hmg": ["weapons/hmg-01.mp3", "weapons/hmg-02.mp3"],
+      "cannon": ["weapons/cannon-01.mp3", "weapons/cannon-02.mp3"]
+    },
+    "grenades": {
+      "pin": ["grenades/pin-01.mp3"],
+      "throw": ["grenades/throw-01.mp3"],
+      "bounce": ["grenades/bounce-01.mp3", "grenades/bounce-02.mp3"],
+      "explosion": ["grenades/explosion-01.mp3", "grenades/explosion-02.mp3", "grenades/explosion-03.mp3"]
+    },
+    "vehicles": {
+      "tankEngineIdle": ["vehicles/tank-engine-idle.mp3"],
+      "tankEngineMove": ["vehicles/tank-engine-move.mp3"],
+      "tankTrack": ["vehicles/tank-track-01.mp3", "vehicles/tank-track-02.mp3"],
+      "tankTurret": ["vehicles/tank-turret.mp3"],
+      "tankCannon": ["vehicles/tank-cannon-01.mp3", "vehicles/tank-cannon-02.mp3"],
+      "tankImpact": ["vehicles/tank-impact-01.mp3", "vehicles/tank-impact-02.mp3"],
+      "tankDestroyed": ["vehicles/tank-destroyed-01.mp3", "vehicles/tank-destroyed-02.mp3"]
+    },
+    "aircraft": {
+      "fighterPass": ["aircraft/fighter-pass-01.mp3", "aircraft/fighter-pass-02.mp3"],
+      "bomberPass": ["aircraft/bomber-pass-01.mp3", "aircraft/bomber-pass-02.mp3"],
+      "dive": ["aircraft/dive-01.mp3"],
+      "strafing": ["aircraft/strafing-01.mp3", "aircraft/strafing-02.mp3"],
+      "bombDrop": ["aircraft/bomb-drop-01.mp3"],
+      "bombExplosion": ["aircraft/bomb-explosion-01.mp3", "aircraft/bomb-explosion-02.mp3"]
+    },
+    "ambience": {
+      "distantBattle": ["ambience/distant-battle-01.mp3", "ambience/distant-battle-02.mp3"],
+      "wind": ["ambience/wind-01.mp3"],
+      "artilleryDistant": ["ambience/artillery-distant-01.mp3", "ambience/artillery-distant-02.mp3"]
+    }
+  },
+  "callouts": {
+    "us": {
+      "language": "en-US",
+      "contact": [
+        {"file":"voices/us/contact-front-01.mp3","text":"Contact front!"},
+        {"file":"voices/us/contact-left-01.mp3","text":"Contact left!"},
+        {"file":"voices/us/contact-right-01.mp3","text":"Contact right!"}
+      ],
+      "movement": [
+        {"file":"voices/us/move-up-01.mp3","text":"Move up!"},
+        {"file":"voices/us/hold-01.mp3","text":"Hold here!"},
+        {"file":"voices/us/fall-back-01.mp3","text":"Fall back!"},
+        {"file":"voices/us/take-cover-01.mp3","text":"Take cover!"},
+        {"file":"voices/us/get-down-01.mp3","text":"Get down!"}
+      ],
+      "combat": [
+        {"file":"voices/us/open-fire-01.mp3","text":"Open fire!"},
+        {"file":"voices/us/reloading-01.mp3","text":"Reloading!"},
+        {"file":"voices/us/cover-me-01.mp3","text":"Cover me!"},
+        {"file":"voices/us/man-down-01.mp3","text":"Man down!"}
+      ],
+      "grenade": [
+        {"file":"voices/us/grenade-out-01.mp3","text":"Grenade out!"},
+        {"file":"voices/us/grenade-incoming-01.mp3","text":"Grenade!"}
+      ],
+      "armor": [
+        {"file":"voices/us/tank-spotted-01.mp3","text":"Tank!"},
+        {"file":"voices/us/armor-front-01.mp3","text":"Armor front!"},
+        {"file":"voices/us/anti-tank-01.mp3","text":"Get anti-tank up here!"}
+      ],
+      "aircraft": [
+        {"file":"voices/us/aircraft-01.mp3","text":"Aircraft!"},
+        {"file":"voices/us/take-cover-air-01.mp3","text":"Take cover!"},
+        {"file":"voices/us/strafing-01.mp3","text":"They're strafing us!"}
+      ]
+    },
+    "ge": {
+      "language": "de-DE",
+      "contact": [
+        {"file":"voices/ge/feind-voraus-01.mp3","text":"Feind voraus!"},
+        {"file":"voices/ge/feind-links-01.mp3","text":"Feind links!"},
+        {"file":"voices/ge/feind-rechts-01.mp3","text":"Feind rechts!"}
+      ],
+      "movement": [
+        {"file":"voices/ge/vorwaerts-01.mp3","text":"Vorwärts!"},
+        {"file":"voices/ge/halt-01.mp3","text":"Halt!"},
+        {"file":"voices/ge/zurueck-01.mp3","text":"Zurück!"},
+        {"file":"voices/ge/deckung-01.mp3","text":"Deckung!"},
+        {"file":"voices/ge/runter-01.mp3","text":"Runter!"}
+      ],
+      "combat": [
+        {"file":"voices/ge/feuer-frei-01.mp3","text":"Feuer frei!"},
+        {"file":"voices/ge/nachladen-01.mp3","text":"Nachladen!"},
+        {"file":"voices/ge/feuerschutz-01.mp3","text":"Feuerschutz!"},
+        {"file":"voices/ge/mann-gefallen-01.mp3","text":"Mann gefallen!"}
+      ],
+      "grenade": [
+        {"file":"voices/ge/granate-raus-01.mp3","text":"Granate raus!"},
+        {"file":"voices/ge/granate-01.mp3","text":"Granate!"}
+      ],
+      "armor": [
+        {"file":"voices/ge/panzer-01.mp3","text":"Panzer!"},
+        {"file":"voices/ge/panzer-voraus-01.mp3","text":"Panzer voraus!"},
+        {"file":"voices/ge/panzerabwehr-01.mp3","text":"Panzerabwehr vor!"}
+      ],
+      "aircraft": [
+        {"file":"voices/ge/flieger-01.mp3","text":"Flieger!"},
+        {"file":"voices/ge/deckung-luft-01.mp3","text":"Deckung!"},
+        {"file":"voices/ge/tiefflieger-01.mp3","text":"Tiefflieger!"}
+      ]
+    }
+  },
+  "rules": {
+    "voice": {
+      "positional": true,
+      "perSoldierCooldownSeconds": 6,
+      "perSquadCooldownSeconds": 2.5,
+      "globalMaxConcurrent": 4,
+      "dropBeyondDistance": 120,
+      "captainPriority": true
+    },
+    "grenades": {
+      "positional": true,
+      "explosionPriority": "high"
+    },
+    "vehicles": {
+      "positional": true,
+      "loopEngineLayers": true
+    },
+    "aircraft": {
+      "positional": true,
+      "dopplerCandidate": true
+    }
+  },
+  "notes": {
+    "existing": "Current rifle/carbine/lmg/pistol files remain in Assets/audio/ until runtime paths migrate into weapons/.",
+    "missingFiles": "Most entries are planned filenames and are intentionally not present yet.",
+    "voices": "Generate faction-appropriate short callouts and keep each semantic event in its own file so runtime can spatialize and throttle them independently."
+  }
+}
