@@ -15,6 +15,7 @@
 
   function clamp(n,a,b){return Math.max(a,Math.min(b,n));}
   function dist2(ax,az,bx,bz){var dx=ax-bx,dz=az-bz;return Math.sqrt(dx*dx+dz*dz);}
+  function rand(battle){return battle&&battle.random?battle.random():Math.random();}
   function segmentHitsObstacle(ax,az,bx,bz,ob){var dx=bx-ax,dz=bz-az,len2=dx*dx+dz*dz;var t=len2>1e-6?((ob.x-ax)*dx+(ob.z-az)*dz)/len2:0;t=clamp(t,0,1);var px=ax+dx*t,pz=az+dz*t,ddx=px-ob.x,ddz=pz-ob.z;return ddx*ddx+ddz*ddz<=ob.radius*ob.radius;}
   function obstacleBlocks(ax,az,bx,bz,obstacles){if(!obstacles)return false;for(var i=0;i<obstacles.length;i++)if(segmentHitsObstacle(ax,az,bx,bz,obstacles[i]))return true;return false;}
   function coverMultiplierAt(x,z,obstacles){if(!obstacles)return 1;var best=1;for(var i=0;i<obstacles.length;i++){var ob=obstacles[i],dx=x-ob.x,dz=z-ob.z,r=ob.radius+1.4;if(dx*dx+dz*dz<=r*r&&ob.cover<best)best=ob.cover;}return best;}
@@ -32,6 +33,7 @@
     var ax=a.root.position.x,az=a.root.position.z,ay=heightAt(ax,az)+eyeHeight(a);
     var bx=b.root.position.x,bz=b.root.position.z,by=heightAt(bx,bz)+eyeHeight(b);
     if(obstacleBlocks(ax,az,bx,bz,obstacles))return false;
+    if(root.BattleNavigation&&root.BattleNavigation.lineOfSightBlocked({x:ax,z:az},{x:bx,z:bz},ay,by))return false;
     for(var i=1;i<LOS_SAMPLES;i++){var t=i/LOS_SAMPLES,x=ax+(bx-ax)*t,z=az+(bz-az)*t;var lineY=ay+(by-ay)*t,groundY=heightAt(x,z);if(groundY>lineY-.15)return false;}
     return true;
   }
@@ -48,11 +50,12 @@
     if(shooter.role==='gunner'&&shooter.setUp)acc*=1.25;
     if(shooter.prone)acc*=1.12;
     if(shooter.moving)acc*=.82;
+    if(target._windowSlot)acc*=.46;
     acc*=coverMultiplierAt(target.root.position.x,target.root.position.z,battle.obstacles);
     acc=clamp(acc,.02,.95);
-    var hit=Math.random()<acc;
+    var hit=rand(battle)<acc;
     if(stats.suppressive)target.suppressedUntil=battle.time+SUPPRESSION_TIME;
-    if(hit){target.hp-=stats.damage*(.85+Math.random()*.3);if(target.hp<=0)battle.killSoldier(target,shooter);}
+    if(hit){target.hp-=stats.damage*(.85+rand(battle)*.3);if(target.hp<=0)battle.killSoldier(target,shooter);}
     battle.onShot&&battle.onShot(shooter,target,hit,d);
     return hit;
   }
@@ -76,7 +79,7 @@
 
   function callout(soldier,battle,type){
     if(!battle.onCallout||battle.time<(soldier.voiceCooldown||0))return;
-    soldier.voiceCooldown=battle.time+4+Math.random()*5;
+    soldier.voiceCooldown=battle.time+4+rand(battle)*5;
     battle.onCallout(soldier,type);
   }
 
@@ -94,6 +97,7 @@
     }
 
     if(soldier.squad.state==='retreat'){
+      if(root.BattleNavigation)root.BattleNavigation.releaseWindow(soldier);
       soldier.prone=false;soldier.state='retreat';soldier.destination=formationSlot(soldier.squad,soldier,soldier.slotIndex);
       soldier.destination.x=soldier.squad.home.x+(soldier.destination.x-soldier.squad.rally.x);soldier.destination.z=soldier.squad.home.z+(soldier.destination.z-soldier.squad.rally.z);
       if(soldier.target&&dist2(soldier.root.position.x,soldier.root.position.z,soldier.target.root.position.x,soldier.target.root.position.z)<35)tryFire(soldier,battle);
@@ -118,11 +122,12 @@
       soldier.prone=!!(canProne&&hold&&(longRange||shallow||soldier.suppressedUntil>battle.time&&d>55));
       if(d<=role.engageRange)tryFire(soldier,battle);
     }else{
+      if(root.BattleNavigation&&soldier._windowSlot)root.BattleNavigation.releaseWindow(soldier);
       soldier.prone=false;soldier.state='advance';soldier.setUp=false;soldier.destination=formationSlot(soldier.squad,soldier,soldier.slotIndex);
     }
   }
 
-  function tryFire(soldier,battle){if(soldier.fireCooldown>0)return;var stats=soldier.weapon.stats;resolveFire(soldier,soldier.target,battle);soldier.fireCooldown=1/stats.rof*(.85+Math.random()*.3);battle.onFire&&battle.onFire(soldier);}
+  function tryFire(soldier,battle){if(soldier.fireCooldown>0)return;var stats=soldier.weapon.stats;resolveFire(soldier,soldier.target,battle);soldier.fireCooldown=1/stats.rof*(.85+rand(battle)*.3);battle.onFire&&battle.onFire(soldier);}
 
   root.SquadAI={ROLES:ROLES,COMPOSITION:COMPOSITION,createSquad:createSquad,createSoldier:createSoldier,updateSquad:updateSquad,updateSoldier:updateSoldier,formationSlot:formationSlot,hasLineOfSight:hasLineOfSight,findTarget:findTarget,coverMultiplierAt:coverMultiplierAt,dist2:dist2};
 })(typeof window!=='undefined'?window:globalThis);
