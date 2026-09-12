@@ -115,10 +115,11 @@ jobs:
           put battle/commander-ai.js -o commander-ai.js
           put battle/ai-trainer.js -o ai-trainer.js
           put battle/battle-control.js -o battle-control.js
-          mirror -R --verbose battle/modules modules
+          mirror -R --delete --verbose battle/modules modules
           cls -l scenario-generator.js
           cls -l battle-navigation.js
           cls -l ai-trainer.js
+          cls -l battle-control.js
           cls -l modules
           bye
           LFTP
@@ -127,7 +128,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "### 50webs Battle Sim AI lab v20 deployment"
+            echo "### 50webs Battle Sim AI lab v22 deployment"
             echo ""
             echo "- Source: \`main@$(git rev-parse --short HEAD)\`"
             echo "- Battle: \`/grasstex/battle_sim.php\`"
@@ -136,6 +137,6 @@ jobs:
             echo "- Aggregate stats: \`/grasstex/battle_log_stats.php\`"
             echo "- Genome state: \`/grasstex/battle_policy.php\`"
             echo "- Scenario memory: \`/grasstex/battle_learning.php\`"
-            echo "- Runtime modules: \`/grasstex/battle/modules/\`"
+            echo "- Runtime modules: exact mirror of \`/grasstex/battle/modules/\`"
             echo "- Trigger: every push to \`main\` plus manual dispatch"
           } >> "$GITHUB_STEP_SUMMARY"
