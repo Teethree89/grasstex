@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "base": "Assets/",
+  "files": [
+    "grasstex0.png",
+    "grasstex1.png",
+    "grasstex2.png",
+    "grasstex3.png",
+    "grasstex4.png",
+    "grasstex5.png",
+    "filltex.png",
+    "dirttex.png",
+    "roadtex.png",
+    "skytex.png",
+    "terrain/terrain.json",
+    "terrain/terrain.bin",
+    "terrain/splat.png",
+    "terrain/roaduv.png",
+    "audio/rifle.mp3",
+    "audio/carbine.mp3",
+    "audio/lmg.mp3",
+    "audio/pistol.mp3"
+  ],
+  "notes": {
+    "audio": "Tracked in Git and mirrored to 50webs by battle_sim.php.",
+    "textures": "Legacy deployment filenames reconstructed from the current and pinned loaders. Existing hosted texture files remain authoritative until their exact binaries are imported into Git.",
+    "terrain": "Baked terrain pack expected by terrain-baked.js. Existing hosted terrain files remain authoritative until their exact binaries are imported into Git."
+  }
+}
