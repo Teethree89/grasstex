@@ -1,49 +1,65 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>WW2 Battle Sim — loading</title><script>if(location.protocol==='http:'&&location.hostname!=='localhost'&&location.hostname!=='127.0.0.1'){location.replace('https://'+location.host+location.pathname+location.search+location.hash);}</script></head><body><div id="boot" style="font-family:Arial,sans-serif;color:#fff;background:#0f141c;position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">Loading battle sim v6…</div><script>(async()=>{
-/* Follow the working grass game loader literally for binary assets: use one explicit HTTPS
-   deployment base on test.ivandpopov.com rather than deriving a relative URL from whichever
-   PHP/HTML entry point happened to load the page. Code still comes live from GitHub main. */
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>WW2 Battle Sim — loading</title><script>if(location.protocol==='http:'&&location.hostname!=='localhost'&&location.hostname!=='127.0.0.1'){location.replace('https://'+location.host+location.pathname+location.search+location.hash);}</script></head><body><div id="boot" style="font-family:Arial,sans-serif;color:#fff;background:#0f141c;position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">Loading battle sim v7…</div><script>(async()=>{
+/* v7 keeps combat timing deterministic but de-bursts gunshot playback across render frames.
+   Binary assets use the same explicit HTTPS deployment base as the working grass demo. */
 const REPO='https://raw.githubusercontent.com/Teethree89/grasstex/';
 const REF=new URLSearchParams(location.search).get('ref')||'main';
-const BUILD='v6';
+const BUILD='v7';
 const ASSETS='https://test.ivandpopov.com/grasstex/Assets/';
 const AUDIO=ASSETS+'audio/';
-const grab=async(path)=>{
-  const r=await fetch(REPO+REF+'/'+path+'?ts='+Date.now(),{cache:'no-store'});
-  if(!r.ok)throw new Error(path+' -> HTTP '+r.status);
-  return r.text();
-};
-const probe=async(url)=>{
-  try{
-    const r=await fetch(url+'?probe='+Date.now(),{cache:'no-store'});
-    return {url:url,ok:r.ok,status:r.status,type:r.headers.get('content-type')||''};
-  }catch(e){return {url:url,ok:false,status:'fetch-error',type:'',error:String(e&&e.message||e)};}
-};
+const grab=async(path)=>{const r=await fetch(REPO+REF+'/'+path+'?ts='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error(path+' -> HTTP '+r.status);return r.text();};
+const probe=async(url)=>{try{const r=await fetch(url+'?probe='+Date.now(),{cache:'no-store'});return {url:url,ok:r.ok,status:r.status,type:r.headers.get('content-type')||''};}catch(e){return {url:url,ok:false,status:'fetch-error',type:'',error:String(e&&e.message||e)};}};
 const ET='</scr'+'ipt>',OT='<scr'+'ipt>';
 const OLD_SCRIPTS='<script src="soldier.js">'+ET+'\n<script src="weapons.js">'+ET+'\n<script src="terrain-features.js">'+ET+'\n<script src="squad-ai.js">'+ET+'\n<script src="battle-sim.js">'+ET;
 try{
-  const [html,soldier,weapons,terrainFeatures,squadAi,battleSim,assetProbe]=await Promise.all([
-    grab('battle/battle_sim.html'),
-    grab('battle/soldier.js'),
-    grab('battle/weapons.js'),
-    grab('battle/terrain-features.js'),
-    grab('battle/squad-ai.js'),
-    grab('battle/battle-sim.js'),
-    Promise.all([
-      ASSETS+'dirttex.png',ASSETS+'skytex.png',
-      AUDIO+'rifle.mp3',AUDIO+'carbine.mp3',AUDIO+'lmg.mp3',AUDIO+'pistol.mp3'
-    ].map(probe))
+  const [html,soldier,weapons,terrainFeatures,squadAi,battleSimRaw,assetProbe]=await Promise.all([
+    grab('battle/battle_sim.html'),grab('battle/soldier.js'),grab('battle/weapons.js'),grab('battle/terrain-features.js'),grab('battle/squad-ai.js'),grab('battle/battle-sim.js'),
+    Promise.all([ASSETS+'dirttex.png',ASSETS+'skytex.png',AUDIO+'rifle.mp3',AUDIO+'carbine.mp3',AUDIO+'lmg.mp3',AUDIO+'pistol.mp3'].map(probe))
   ]);
-  if(html.indexOf(OLD_SCRIPTS)<0)
-    throw new Error('battle/battle_sim.html script tags changed shape; refusing to boot with stale inlining');
-  const inlined=OT+soldier+';\n'+weapons+';\n'+terrainFeatures+';\n'+squadAi+';\n'+battleSim+ET;
+  if(html.indexOf(OLD_SCRIPTS)<0)throw new Error('battle/battle_sim.html script tags changed shape; refusing to boot with stale inlining');
+
+  const oldFire="this.onFire=function(soldier){\n      var pos=muzzleWorld(soldier);\n      spawnMuzzleFlash(self.scene,pos);\n      audio.play(soldier.weapon.kind,pos);\n    };";
+  const newFire="this.onFire=function(soldier){\n      var pos=muzzleWorld(soldier);\n      spawnMuzzleFlash(self.scene,pos);\n      if(window.BattleAudioScheduler)window.BattleAudioScheduler.enqueue(audio,soldier.weapon.kind,pos,self.scene.activeCamera);\n      else audio.play(soldier.weapon.kind,pos);\n    };";
+  if(battleSimRaw.indexOf(oldFire)<0)throw new Error('battle audio hook changed shape; refusing stale v7 patch');
+  let battleSim=battleSimRaw.replace(oldFire,newFire);
+  battleSim=battleSim.replace("maxDistance:260,rolloffFactor:1,volume:.5","maxDistance:180,rolloffFactor:1.35,volume:.38");
+
+  const scheduler=`
+window.BattleAudioScheduler=(function(){
+  var q=[],running=false,recentFar={};
+  var MAX_PER_FRAME=3,MAX_QUEUE=18,FAR_START=120,FAR_DROP=235;
+  function cameraPos(cam){return cam&&(cam.globalPosition||cam.position)||null;}
+  function dist(a,b){if(!a||!b)return 0;var dx=a.x-b.x,dy=a.y-b.y,dz=a.z-b.z;return Math.sqrt(dx*dx+dy*dy+dz*dz);}
+  function enqueue(audio,kind,pos,cam){
+    var cp=cameraPos(cam),d=dist(cp,pos),now=performance.now();
+    if(d>FAR_DROP)return;
+    if(d>185&&Math.random()<.72)return;
+    if(d>FAR_START){
+      var last=recentFar[kind]||0;
+      if(now-last<42)return;
+      recentFar[kind]=now;
+    }
+    if(q.length>=MAX_QUEUE)q.shift();
+    q.push({audio:audio,kind:kind,pos:pos.clone?pos.clone():{x:pos.x,y:pos.y,z:pos.z},due:now+Math.random()*30});
+    if(!running){running=true;requestAnimationFrame(drain);}
+  }
+  function drain(){
+    var now=performance.now(),started=0,remain=[];
+    for(var i=0;i<q.length;i++){
+      var e=q[i];
+      if(started<MAX_PER_FRAME&&e.due<=now){
+        try{e.audio.play(e.kind,e.pos);}catch(_){}
+        started++;
+      }else remain.push(e);
+    }
+    q=remain;
+    if(q.length)requestAnimationFrame(drain);else running=false;
+  }
+  return {enqueue:enqueue,get queued(){return q.length;}};
+})();`;
+
+  const inlined=OT+scheduler+';\n'+soldier+';\n'+weapons+';\n'+terrainFeatures+';\n'+squadAi+';\n'+battleSim+ET;
   const page=html.replace(OLD_SCRIPTS,inlined);
-  window.BATTLE_BUILD=BUILD;
-  window.BATTLE_REF=REF;
-  window.BATTLE_ASSET_BASE=ASSETS;
-  window.BATTLE_AUDIO_BASE=AUDIO;
-  window.BATTLE_ASSET_PROBE=assetProbe;
+  window.BATTLE_BUILD=BUILD;window.BATTLE_REF=REF;window.BATTLE_ASSET_BASE=ASSETS;window.BATTLE_AUDIO_BASE=AUDIO;window.BATTLE_ASSET_PROBE=assetProbe;
   document.open();document.write(page);document.close();
-}catch(e){
-  document.getElementById('boot').textContent='Battle sim '+BUILD+' failed to load ('+REF+'): '+(e.message||e);
-}
+}catch(e){document.getElementById('boot').textContent='Battle sim '+BUILD+' failed to load ('+REF+'): '+(e.message||e);}
 })();</script></body></html>
