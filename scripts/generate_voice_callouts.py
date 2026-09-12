@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Generate neutral/base battle-sim voice callouts from manifest v3 via ElevenLabs TTS.
 
-The game derives pitch variants during deployment. This script intentionally generates only
-files explicitly listed in callouts.<faction>.generation and never .pitch-* derivatives.
+Default behavior fills only missing files. Use --force to regenerate everything, --force EVENT to
+regenerate one event, and --faction us|ge to limit generation to one faction. Pitch derivatives are
+built separately during deployment and are never synthesized here.
 """
 import argparse
 import json
@@ -60,7 +61,13 @@ def tts(voice_id, text):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--force", action="store_true", help="regenerate files that already exist")
+    parser.add_argument(
+        "--force",
+        nargs="?",
+        const="*",
+        metavar="EVENT",
+        help="regenerate all existing clips, or only the named event",
+    )
     parser.add_argument("--faction", choices=("us", "ge"), help="generate only one faction")
     return parser.parse_args()
 
@@ -76,7 +83,10 @@ def main():
         sys.exit("manifest v3+ is required")
 
     base = os.path.join(REPO, manifest["base"])
+    force_all = args.force == "*"
+    force_event = None if args.force in (None, "*") else args.force
     jobs = []
+
     for faction, data in manifest["callouts"].items():
         if args.faction and faction != args.faction:
             continue
@@ -90,13 +100,17 @@ def main():
                 sys.exit(f"Invalid generation record for {faction}: {record!r}")
             if ".pitch-" in rel_path:
                 sys.exit(f"Pitch derivative must not appear in generation[]: {rel_path}")
+            if force_event and event != force_event:
+                continue
+
             out_path = os.path.join(base, rel_path)
-            if not args.force and os.path.isfile(out_path) and os.path.getsize(out_path) > 0:
+            forced = force_all or force_event == event
+            if not forced and os.path.isfile(out_path) and os.path.getsize(out_path) > 0:
                 continue
             jobs.append((faction, event, text, rel_path, out_path))
 
     if not jobs:
-        print("No missing neutral voice files. Use --force to regenerate existing clips.")
+        print("No matching voice files need generation.")
         return
 
     print(f"Generating {len(jobs)} neutral/base lines...")
