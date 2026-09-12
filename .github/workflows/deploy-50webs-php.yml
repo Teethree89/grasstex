@@ -28,7 +28,6 @@ jobs:
           set -euo pipefail
           php -l battle_sim_local.php
           for f in \
-            battle_sim.html \
             battle/battle_sim.html \
             battle/soldier.js \
             battle/weapons.js \
@@ -68,7 +67,6 @@ jobs:
           set ftp:passive-mode true
           cd grasstex
           put battle_sim_local.php -o battle_sim.php
-          put battle_sim.html -o battle_sim.html
           cd battle
           put battle/battle_sim.html -o battle_sim.html
           put battle/soldier.js -o soldier.js
@@ -79,6 +77,7 @@ jobs:
           put battle/acoustics.js -o acoustics.js
           put battle/town-objectives.js -o town-objectives.js
           put battle/commander-ai.js -o commander-ai.js
+          cls -l acoustics.js
           cls -l town-objectives.js
           cls -l commander-ai.js
           bye
@@ -92,7 +91,7 @@ jobs:
             echo ""
             echo "- Source: \`main@$(git rev-parse --short HEAD)\`"
             echo "- PHP: \`battle_sim_local.php -> /grasstex/battle_sim.php\`"
-            echo "- Loader: \`/grasstex/battle_sim.html\`"
-            echo "- Runtime code: \`/grasstex/battle/\`"
-            echo "- Verified uploads: \`town-objectives.js\`, \`commander-ai.js\`"
+            echo "- Page: \`/grasstex/battle/battle_sim.html\`"
+            echo "- Runtime code: separate cache-busted files under \`/grasstex/battle/\`"
+            echo "- Verified uploads: \`acoustics.js\`, \`town-objectives.js\`, \`commander-ai.js\`"
           } >> "$GITHUB_STEP_SUMMARY"
