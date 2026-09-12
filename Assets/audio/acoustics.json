@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "units": "meters",
+  "speedOfSoundMps": 343,
+  "referenceEnvironment": {
+    "temperatureC": 20,
+    "relativeHumidityPercent": 50,
+    "pressureKPa": 101.325,
+    "notes": "Reference conditions for propagation timing and future atmospheric absorption. Runtime uses source-class approximations rather than full octave-band ISO 9613 solving."
+  },
+  "profiles": {
+    "voiceShout": {
+      "sourceLevelDbAAt1m": 84,
+      "description": "Strong battlefield shout; audible farther than it remains intelligible.",
+      "clearAirAudibleDistanceM": 180,
+      "battlefieldIntelligibleDistanceM": 90,
+      "hardCullDistanceM": 150,
+      "maxRuntimeGain": 0.28,
+      "noiseFloorDb": 42,
+      "mixCeilingDb": 92
+    },
+    "smallArms": {
+      "sourcePeakDbAt1m": 160,
+      "description": "Rifle/carbine/LMG/pistol impulse class. NIOSH notes firearm impulses commonly reach roughly 160-170 dB peak and can reach 170-180 dB or higher.",
+      "clearAirAudibleDistanceM": 3000,
+      "hardCullDistanceM": 1200,
+      "maxRuntimeGain": 0.20,
+      "noiseFloorDb": 38,
+      "mixCeilingDb": 138
+    },
+    "grenadeExplosion": {
+      "sourcePeakDbAt1m": 165,
+      "clearAirAudibleDistanceM": 5000,
+      "hardCullDistanceM": 1800,
+      "maxRuntimeGain": 0.28,
+      "noiseFloorDb": 35,
+      "mixCeilingDb": 142
+    },
+    "tankCannon": {
+      "sourcePeakDbAt1m": 175,
+      "clearAirAudibleDistanceM": 8000,
+      "hardCullDistanceM": 3000,
+      "maxRuntimeGain": 0.32,
+      "noiseFloorDb": 35,
+      "mixCeilingDb": 148
+    },
+    "vehicleEngine": {
+      "sourceLevelDbAAt1m": 105,
+      "clearAirAudibleDistanceM": 1200,
+      "hardCullDistanceM": 700,
+      "maxRuntimeGain": 0.20,
+      "noiseFloorDb": 40,
+      "mixCeilingDb": 108
+    },
+    "aircraft": {
+      "sourceLevelDbAAt1m": 120,
+      "clearAirAudibleDistanceM": 5000,
+      "hardCullDistanceM": 3500,
+      "maxRuntimeGain": 0.24,
+      "noiseFloorDb": 38,
+      "mixCeilingDb": 125
+    }
+  },
+  "runtimeModel": {
+    "geometricSpreading": "20*log10(distance/referenceDistance)",
+    "propagationDelay": "distance/speedOfSound",
+    "airAbsorption": "distance increases high-frequency loss; full ISO 9613-1 band filtering reserved for filtered/distant asset layers",
+    "groundAndBarriers": "future occlusion layer",
+    "dynamicRange": "Physical source SPL is mapped through a game-mix compressor so a phone speaker can represent both speech and gunfire without clipping."
+  }
+}
