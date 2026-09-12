@@ -1,7 +1,7 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>WW2 Battle Sim — loading</title><script>if(location.protocol==='http:'&&location.hostname!=='localhost'&&location.hostname!=='127.0.0.1'){location.replace('https://'+location.host+location.pathname+location.search+location.hash);}</script></head><body><div id="boot" style="font-family:Arial,sans-serif;color:#fff;background:#0f141c;position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">Loading battle sim v12…</div><script>(async()=>{
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>WW2 Battle Sim — loading</title><script>if(location.protocol==='http:'&&location.hostname!=='localhost'&&location.hostname!=='127.0.0.1'){location.replace('https://'+location.host+location.pathname+location.search+location.hash);}</script></head><body><div id="boot" style="font-family:Arial,sans-serif;color:#fff;background:#0f141c;position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">Loading battle sim v13…</div><script>(async()=>{
 const REPO='https://raw.githubusercontent.com/Teethree89/grasstex/';
 const REF=new URLSearchParams(location.search).get('ref')||'main';
-const BUILD='v12';
+const BUILD='v13';
 const ASSETS='https://test.ivandpopov.com/grasstex/Assets/';
 const AUDIO=ASSETS+'audio/';
 const grab=async(path)=>{const r=await fetch(REPO+REF+'/'+path+'?ts='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error(path+' -> HTTP '+r.status);return r.text();};
@@ -19,7 +19,7 @@ try{
 
   const oldFire="this.onFire=function(soldier){\n      var pos=muzzleWorld(soldier);\n      spawnMuzzleFlash(self.scene,pos);\n      audio.play(soldier.weapon.kind,pos);\n    };";
   const newFire="this.onFire=function(soldier){\n      var pos=muzzleWorld(soldier);\n      spawnMuzzleFlash(self.scene,pos);\n      if(window.BattleAudioScheduler)window.BattleAudioScheduler.enqueue(audio,soldier.weapon.kind,pos,self.scene.activeCamera);\n      else audio.play(soldier.weapon.kind,pos,.18,1);\n    };";
-  if(battleSimRaw.indexOf(oldFire)<0)throw new Error('battle audio hook changed shape; refusing stale v12 patch');
+  if(battleSimRaw.indexOf(oldFire)<0)throw new Error('battle audio hook changed shape; refusing stale v13 patch');
   let battleSim=battleSimRaw.replace(oldFire,newFire);
   battleSim=battleSim.replace("maxDistance:260,rolloffFactor:1,volume:.5","maxDistance:145,rolloffFactor:1.5,volume:.20");
   battleSim=battleSim.replace("play:function(kind,position){\n        var voices=pools[kind];if(!voices)return;\n        var voice=voices[cursors[kind]];cursors[kind]=(cursors[kind]+1)%voices.length;\n        try{voice.setPosition(position);voice.play();}catch(_){/* audio context not unlocked yet */}\n      }","play:function(kind,position,gain,rate){\n        var voices=pools[kind];if(!voices)return;\n        var voice=voices[cursors[kind]];cursors[kind]=(cursors[kind]+1)%voices.length;\n        try{voice.setPosition(position);if(voice.setVolume)voice.setVolume(gain==null?.18:gain);if(voice.setPlaybackRate)voice.setPlaybackRate(rate||1);voice.play();}catch(_){}\n      }");
@@ -70,7 +70,7 @@ try{
     if(BattleSoldierModel.setProne)BattleSoldierModel.setProne(soldier,!!soldier.prone);
     BattleSoldierModel.animateWalk(soldier,dt,soldier.speed>0?soldier.moveSpeed/soldier.speed:0);
   }`;
-  if(battleSim.indexOf(oldMove)<0)throw new Error('movement integrator changed shape; refusing stale v12 patch');
+  if(battleSim.indexOf(oldMove)<0)throw new Error('movement integrator changed shape; refusing stale v13 patch');
   battleSim=battleSim.replace(oldMove,newMove);
   battleSim=battleSim.replace("this.onFire=null;this.onShot=null;this.onWinner=opts.onWinner||null;this.onUpdate=opts.onUpdate||null;","this.onFire=null;this.onShot=null;this.onCallout=null;this.onWinner=opts.onWinner||null;this.onUpdate=opts.onUpdate||null;");
   battleSim=battleSim.replace("this.onShot=function(shooter,target,hit){\n      if(!hit)return;","this.onCallout=function(soldier,type){if(window.BattleVoiceScheduler)window.BattleVoiceScheduler.enqueue(soldier,type,self.scene.activeCamera);};\n    this.onShot=function(shooter,target,hit){\n      if(!hit)return;");
