@@ -69,7 +69,6 @@ jobs:
           cd grasstex
           put battle_sim_local.php -o battle_sim.php
           put battle_sim.html -o battle_sim.html
-          mkdir -p battle
           cd battle
           put battle/battle_sim.html -o battle_sim.html
           put battle/soldier.js -o soldier.js
@@ -80,7 +79,8 @@ jobs:
           put battle/acoustics.js -o acoustics.js
           put battle/town-objectives.js -o town-objectives.js
           put battle/commander-ai.js -o commander-ai.js
-          cls -l
+          cls -l town-objectives.js
+          cls -l commander-ai.js
           bye
           LFTP
 
@@ -94,5 +94,5 @@ jobs:
             echo "- PHP: \`battle_sim_local.php -> /grasstex/battle_sim.php\`"
             echo "- Loader: \`/grasstex/battle_sim.html\`"
             echo "- Runtime code: \`/grasstex/battle/\`"
-            echo "- Live runtime uses local deployed files; no browser GitHub fetches."
+            echo "- Verified uploads: \`town-objectives.js\`, \`commander-ai.js\`"
           } >> "$GITHUB_STEP_SUMMARY"
