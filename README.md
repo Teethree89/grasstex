@@ -24,12 +24,21 @@ See `window.GrassSimulation` in `grass-api.js` for the flag itself.
 
 ## Battle sim (WW2 squad AI prototype)
 
-`battle_sim.html` is a 50v50 US-vs-German battle sim used to test squad AI, not to look
-good - the terrain reuses this repo's rolling-landscape shape and the soldiers/weapons are
-rudimentary low-poly primitives built at runtime (see `battle/soldier.js`). It does not load
-any of the grass files above.
+A 50v50 US-vs-German battle sim used to test squad AI, not to look good - the terrain reuses
+this repo's rolling-landscape shape and the soldiers/weapons are rudimentary low-poly
+primitives built at runtime (see `battle/soldier.js`). It does not load any of the grass
+files above.
 
-Open `battle_sim.html` directly. Five 10-soldier squads a side (1 captain, 1 gunner, 2
+The real page is `battle/battle_sim.html`; open it directly for local work (`python3 -m
+http.server` from the repo root, or just double-click it). The root `battle_sim.html` is a
+self-fetching loader in the same shape as `index.html`/`game.html` - it pulls
+`battle/battle_sim.html` and the four `battle/*.js` files straight from GitHub `main` at load
+time and inlines them, so it's the one file that needs to exist on a static host (like the
+50webs deploy this repo already uses) for the battle sim to be reachable there; nothing else
+ever needs re-uploading; a push to `main` is live immediately. Append `?ref=<branch>` to test
+a branch there before it merges, e.g. `battle_sim.html?ref=claude/model-lab-runners-commits-b9s5ll`.
+
+Five 10-soldier squads a side (1 captain, 1 gunner, 2
 scouts, 6 riflemen - see `battle/squad-ai.js`'s `COMPOSITION`) spawn on opposite edges of the
 field and advance, engage, and retreat on their own:
 
