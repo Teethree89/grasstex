@@ -5,7 +5,7 @@
 (function(root){
 'use strict';if(!root.BattleAIPolicy||!root.BattleCommanderAI||!root.BattleScenarioGenerator||!root.BattleTownObjectives)return;
 function telemetry(sim,type,data){if(root.BattleTelemetry)root.BattleTelemetry.record(type,data,sim);}function other(f){return f==='us'?'ge':'us';}
-function yieldToBrowser(headless){return new Promise(function(resolve){if(!headless&&root.requestAnimationFrame){root.requestAnimationFrame(function(){resolve();});}else setTimeout(resolve,0);});}
+function yieldToBrowser(headless){return new Promise(function(resolve){var visible=!root.document||!root.document.hidden;if(!headless&&visible&&root.requestAnimationFrame){root.requestAnimationFrame(function(){resolve();});}else setTimeout(resolve,0);});}
 function reportProgress(runOpts,detail){try{if(runOpts&&typeof runOpts.onProgress==='function')runOpts.onProgress(detail);}catch(_){}}
 function units(sim,faction){var all=root.BattleModules?root.BattleModules.unitsFor(sim):((sim._roster&&sim._roster[faction])||[]);return all.filter(function(u){return u&&u.faction===faction&&!u.dead&&u.countsForElimination!==false;});}
 function forceValue(sim,faction){var total=0;units(sim,faction).forEach(function(u){total+=u.scoreValue==null?1:+u.scoreValue;});return total;}function objectiveCounts(sim){var c=sim.objectiveControl||{};return c.counts||{us:c.us||0,ge:c.ge||0};}function fixedStep(sim,dt){sim._trainerStepActive=true;try{if(sim.step)sim.step(dt);else sim._frame(dt);}finally{sim._trainerStepActive=false;}}function mean(a){return a.length?a.reduce(function(x,y){return x+y;},0)/a.length:0;}function stdev(a){if(a.length<2)return 0;var m=mean(a);return Math.sqrt(mean(a.map(function(x){return(x-m)*(x-m);})));}
