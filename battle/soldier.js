@@ -99,11 +99,11 @@
     rot(r.neck,prone?-.24:0,0,0,k);
 
     if(prone){
-      var crawlSwing=crawl?sin*.20:0,crawlKneeR=crawl?(.28+.58*rightForward):.18,crawlKneeL=crawl?(.28+.58*leftForward):.18;
-      rot(r.thighR,.04-crawlSwing,0,crawl?.07:0,k);rot(r.thighL,.04+crawlSwing,0,crawl?-.07:0,k);
+      var crawlSwing=crawl?sin*.13:0,crawlKneeR=crawl?(.12+.30*rightForward):.10,crawlKneeL=crawl?(.12+.30*leftForward):.10;
+      rot(r.thighR,.03-crawlSwing,0,crawl?.14:0,k);rot(r.thighL,.03+crawlSwing,0,crawl?-.14:0,k);
       /* Positive shin X is the anatomical knee-flex direction for this hierarchy. */
       rot(r.shinR,crawlKneeR,0,0,k);rot(r.shinL,crawlKneeL,0,0,k);
-      rot(r.footR,-.16-crawlKneeR*.22,0,0,k);rot(r.footL,-.16-crawlKneeL*.22,0,0,k);
+      rot(r.footR,-.08-crawlKneeR*.18,0,0,k);rot(r.footL,-.08-crawlKneeL*.18,0,0,k);
     }else{
       var baseHip=crouch?-.64:0,rightHip=baseHip-sin*walkSwing,leftHip=baseHip+sin*walkSwing;
       var kneeBase=crouch?1.10:0,rightKnee=kneeBase+(crouch?0:.68*rightForward*moving),leftKnee=kneeBase+(crouch?0:.68*leftForward*moving);
