@@ -61,9 +61,13 @@
     var elapsed=Math.max(0,now-soldier._bakedStarted),loop=name==='idle'||name==='walk'||name==='aim';
     var duration=Math.max(.001,clip.duration),time=loop?elapsed%duration:Math.min(duration,elapsed),frame=time*data.sampleRate,index=Math.floor(frame),frames=clip.frames,last=frames.length-1,next=Math.min(last,index+1),mix=Math.min(1,frame-index),rig=soldier.rig;
     for(var i=0;i<data.bones.length;i++){
-      var jointName=data.bones[i],joint=rig[jointName];if(!joint)continue;var offset=i*4;
-      var from=retargetPackageRotation(jointName,name,frames[index],offset),to=retargetPackageRotation(jointName,name,frames[next],offset);
-      joint.rotationQuaternion=BABYLON.Quaternion.Slerp(from,to,mix);
+      var jointName=data.bones[i],joint=rig[jointName];if(!joint)continue;var offset=i*4,reference=frames[0];
+      var current=retargetPackageRotation(jointName,name,frames[index],offset),following=retargetPackageRotation(jointName,name,frames[next],offset),rest=retargetPackageRotation(jointName,name,reference,offset);
+      /* The source skeleton's absolute rest axes differ from the procedural rig. Sample each
+         clip as a delta from frame zero, then layer it over the calibrated procedural stance.
+         This keeps rifle/crouch/death silhouettes stable while retaining package motion. */
+      var inverseRest=new BABYLON.Quaternion(-rest.x,-rest.y,-rest.z,rest.w),from=current.multiply(inverseRest),to=following.multiply(inverseRest),delta=BABYLON.Quaternion.Slerp(from,to,mix),base=BABYLON.Quaternion.FromEulerAngles(joint.rotation.x,joint.rotation.y,joint.rotation.z);
+      joint.rotationQuaternion=base.multiply(delta);
     }
     return true;
   }
@@ -191,9 +195,13 @@
   }
 
   function animateWalk(soldier,dt,speedFrac){
-    var b=soldier&&soldier.animationBinding;if(b&&b.backend.indexOf('procedural')!==0&&typeof b.update==='function'){
+    var b=soldier&&soldier.animationBinding;if(b&&b.backend==='baked-procedural-v1'&&typeof b.update==='function'){
       var tag=soldier.dead?(soldier.deathTag||TAGS.deathSide):(soldier.reloading?TAGS.reload:(soldier.prone?(soldier.crawling&&speedFrac>.02?TAGS.crawl:TAGS.prone):(soldier.crouching?(speedFrac>.03?TAGS.crouchWalk:TAGS.crouch):(speedFrac>.03?TAGS.walk:(soldier.target?TAGS.aim:TAGS.idle)))));
-      try{if(b.update(soldier,{tag:tag,speed:speedFrac||0,target:soldier.target||null},dt,TAGS)!==false)return;}catch(e){console.warn('[ANIM] external update failed',e);}
+      primitivePose(soldier,dt,speedFrac);try{b.update(soldier,{tag:tag,speed:speedFrac||0,target:soldier.target||null},dt,TAGS);}catch(e){console.warn('[ANIM] external update failed',e);}return;
+    }
+    if(b&&b.backend.indexOf('procedural')!==0&&typeof b.update==='function'){
+      var externalTag=soldier.dead?(soldier.deathTag||TAGS.deathSide):(soldier.reloading?TAGS.reload:(soldier.prone?(soldier.crawling&&speedFrac>.02?TAGS.crawl:TAGS.prone):(soldier.crouching?(speedFrac>.03?TAGS.crouchWalk:TAGS.crouch):(speedFrac>.03?TAGS.walk:(soldier.target?TAGS.aim:TAGS.idle)))));
+      try{b.update(soldier,{tag:externalTag,speed:speedFrac||0,target:soldier.target||null},dt,TAGS);}catch(e){console.warn('[ANIM] external update failed',e);}return;
     }
     primitivePose(soldier,dt,speedFrac);
   }

@@ -68,6 +68,10 @@ for shared joints; it never exports a mesh, skeleton, or inverse-bind matrix. Cr
 prone/crawl still use the hand-authored procedural poses because the free package has no
 corresponding clips.
 
+The in-page **Motion Lab** exposes every active package track alongside the procedural crouch
+and prone states. Use it to review a pose independently of live combat before enabling a new
+retarget mapping.
+
 ## Replacing the soldier with another skeletal GLTF
 
 Keep the soldier runtime record (`root`, `weaponSocket`, faction/role metadata) and bind a backend with:
