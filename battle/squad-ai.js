@@ -11,6 +11,10 @@
   var COMPOSITION=['captain','gunner','scout','scout','rifleman','rifleman','rifleman','rifleman','rifleman','rifleman'];
 
   var RETREAT_CASUALTY_FRAC=.6,GUNNER_SETUP_TIME=1.4,SUPPRESSION_TIME=1.3,LOS_SAMPLES=8;
+  /* A captain issues a destination for the squad, not a constantly-moving point for
+     every man to chase.  These modest bounds leave room for each man to navigate
+     around a building and settle into his own slot before the next order. */
+  var ORDER_STRIDE=13,ORDER_ARRIVAL_RADIUS=8,ORDER_COHESION=.55,DESTINATION_COMMIT=1.35;
   var EYE_HEIGHT=1.55,EYE_HEIGHT_CROUCH=1.05,EYE_HEIGHT_PRONE=.42;
 
   function clamp(n,a,b){return Math.max(a,Math.min(b,n));}
@@ -60,21 +64,83 @@
     return hit;
   }
 
-  function createSquad(id,faction,homePoint,objective){return {id:id,faction:faction,members:[],state:'advance',home:homePoint,objective:objective,rally:{x:homePoint.x,z:homePoint.z},accuracyMultiplier:1,captainAlive:true};}
-  function formationSlot(squad,soldier,slotIndex){var dx=squad.objective.x-squad.home.x,dz=squad.objective.z-squad.home.z,len=Math.hypot(dx,dz)||1;var fx=dx/len,fz=dz/len,rx=-fz,rz=fx,rally=squad.rally;if(soldier.role==='captain')return {x:rally.x,z:rally.z};if(soldier.role==='gunner')return {x:rally.x-fx*11,z:rally.z-fz*11};if(soldier.role==='scout'){var side=(slotIndex%2===0)?1:-1;return {x:rally.x+rx*side*24+fx*10,z:rally.z+rz*side*24+fz*10};}var lane=(slotIndex%6)-2.5;return {x:rally.x+rx*lane*5.5,z:rally.z+rz*lane*5.5-fz*2};}
+  function createSquad(id,faction,homePoint,objective){return {id:id,faction:faction,members:[],state:'advance',home:homePoint,objective:objective,rally:{x:homePoint.x,z:homePoint.z},orderAnchor:{x:homePoint.x,z:homePoint.z},formation:'wedge',accuracyMultiplier:1,captainAlive:true,_orderGoal:{x:homePoint.x,z:homePoint.z},_orderVersion:0};}
+  function formationDirection(squad){
+    var anchor=squad.orderAnchor||squad.rally,goal=squad.state==='retreat'?squad.home:squad.objective||squad.home,dx=goal.x-anchor.x,dz=goal.z-anchor.z,len=Math.hypot(dx,dz);
+    if(len<.1&&squad._formationForward){return squad._formationForward;}
+    var forward={x:dx/(len||1),z:dz/(len||1)};squad._formationForward=forward;return forward;
+  }
+  function formationFor(squad){
+    var phase=squad.commandPhase||'';
+    if(squad.state==='retreat'||phase==='corner-check'||phase==='clear-town'||phase==='regroup')return 'column';
+    if(squad.state==='engaged'||['contact','assault','capture','defend'].indexOf(phase)>=0)return 'line';
+    var anchor=squad.orderAnchor||squad.rally,goal=squad.objective||squad.home;
+    return dist2(anchor.x,anchor.z,goal.x,goal.z)<68?'line':'wedge';
+  }
+  function slotJitter(soldier,axis){
+    var n=(soldier.slotIndex*37+String(soldier.id).length*19+(axis?11:3))%17;
+    return (n-8)*.22;
+  }
+  function formationSlot(squad,soldier,slotIndex){
+    var f=formationDirection(squad),fx=f.x,fz=f.z,rx=-fz,rz=fx,anchor=squad.orderAnchor||squad.rally,form=squad.formation||formationFor(squad),side=slotIndex%2===0?1:-1,lateral=slotJitter(soldier,0),depth=slotJitter(soldier,1),forward=0;
+    if(form==='column'){
+      if(soldier.role==='captain'){forward=-1;lateral=0;}
+      else if(soldier.role==='scout'){forward=5+(slotIndex%2)*3;lateral=side*2.4+lateral;}
+      else if(soldier.role==='gunner'){forward=-5;lateral=1.5+lateral;}
+      else{forward=-3-(slotIndex-4)*2.7;lateral=side*(1.8+(slotIndex%3)*.8)+lateral;}
+    }else if(form==='line'){
+      if(soldier.role==='captain'){forward=-7;lateral=0;}
+      else if(soldier.role==='gunner'){forward=-9;lateral=2+lateral;}
+      else if(soldier.role==='scout'){forward=2;lateral=side*14+lateral;}
+      else{var lane=slotIndex-6;forward=-2-(Math.abs(lane)%2)*2+depth;lateral=lane*5.3+lateral;}
+    }else{
+      if(soldier.role==='captain'){forward=-4;lateral=0;}
+      else if(soldier.role==='gunner'){forward=-10;lateral=1.5+lateral;}
+      else if(soldier.role==='scout'){forward=9;lateral=side*10+lateral;}
+      else{var rank=Math.floor((slotIndex-4)/2),wing=slotIndex%2===0?1:-1;forward=1-rank*4+depth;lateral=wing*(4+rank*4.3)+lateral;}
+    }
+    return{x:anchor.x+fx*forward+rx*lateral,z:anchor.z+fz*forward+rz*lateral};
+  }
 
   function createSoldier(opts){
     var role=ROLES[opts.role];
-    return Object.assign({},opts.model,{id:opts.id,faction:opts.faction,role:opts.role,squad:opts.squad,slotIndex:opts.slotIndex,weapon:opts.weapon,hp:role.hp,maxHp:role.hp,state:'advance',target:null,destination:{x:opts.model.root.position.x,z:opts.model.root.position.z},fireCooldown:Math.random()*.5,moving:false,crouching:false,prone:false,suppressedUntil:0,setUp:false,setUpSince:0,speed:role.speed,moveSpeed:0,voiceCooldown:Math.random()*2,lastSquadState:'advance'});
+    return Object.assign({},opts.model,{id:opts.id,faction:opts.faction,role:opts.role,squad:opts.squad,slotIndex:opts.slotIndex,weapon:opts.weapon,hp:role.hp,maxHp:role.hp,state:'advance',target:null,destination:{x:opts.model.root.position.x,z:opts.model.root.position.z},orderDestination:null,_destinationCommitUntil:0,fireCooldown:Math.random()*.5,moving:false,crouching:false,prone:false,suppressedUntil:0,setUp:false,setUpSince:0,speed:role.speed,moveSpeed:0,voiceCooldown:Math.random()*2,lastSquadState:'advance'});
   }
 
-  function updateSquad(squad){
+  function setDestination(soldier,next,battle,urgent){
+    if(!next)return;
+    soldier.orderDestination={x:next.x,z:next.z};
+    var current=soldier.destination,atCurrent=current&&dist2(soldier.root.position.x,soldier.root.position.z,current.x,current.z)<1.8,changed=!current||dist2(current.x,current.z,next.x,next.z)>2.4;
+    if(urgent||atCurrent||(changed&&battle.time>=(soldier._destinationCommitUntil||0))){
+      soldier.destination={x:next.x,z:next.z};
+      soldier._destinationCommitUntil=battle.time+DESTINATION_COMMIT+(soldier.slotIndex%3)*.22;
+    }
+  }
+  function orderCanAdvance(squad){
+    var alive=0,arrived=0;
+    for(var i=0;i<squad.members.length;i++){var s=squad.members[i];if(s.dead)continue;alive++;if(s.orderDestination&&dist2(s.root.position.x,s.root.position.z,s.orderDestination.x,s.orderDestination.z)<=ORDER_ARRIVAL_RADIUS)arrived++;}
+    return !alive||arrived/alive>=ORDER_COHESION;
+  }
+  function issueOrders(squad,battle,force){
+    var anchor=squad.orderAnchor||(squad.orderAnchor={x:squad.rally.x,z:squad.rally.z}),goal=squad.state==='retreat'?squad.home:(squad.objective||squad.home),goalChanged=!squad._orderGoal||dist2(goal.x,goal.z,squad._orderGoal.x,squad._orderGoal.z)>3;
+    var form=formationFor(squad),formChanged=form!==squad.formation,phase=squad.commandPhase||'',hold=['regroup','support-hold','hold','reserve','defend','corner-check'].indexOf(phase)>=0;
+    if(goalChanged){squad._orderGoal={x:goal.x,z:goal.z};force=true;}
+    if(formChanged){squad.formation=form;force=true;}
+    var dx=goal.x-anchor.x,dz=goal.z-anchor.z,len=Math.hypot(dx,dz),mayAdvance=!hold&&(squad.state==='advance'||squad.state==='engaged');
+    if((force||orderCanAdvance(squad))&&mayAdvance&&len>2){
+      var stride=squad.state==='engaged'?ORDER_STRIDE*.62:ORDER_STRIDE;
+      anchor.x+=dx/len*Math.min(stride,len);anchor.z+=dz/len*Math.min(stride,len);squad._orderVersion++;
+    }else if(squad.state==='retreat'&&len>2){
+      anchor.x+=dx/len*Math.min(ORDER_STRIDE,len);anchor.z+=dz/len*Math.min(ORDER_STRIDE,len);squad._orderVersion++;
+    }
+    squad.rally={x:anchor.x,z:anchor.z};
+    for(var i=0;i<squad.members.length;i++){var soldier=squad.members[i];if(!soldier.dead)setDestination(soldier,formationSlot(squad,soldier,soldier.slotIndex),battle,force||squad.state==='retreat');}
+  }
+  function updateSquad(squad,battle){
     var alive=0;for(var i=0;i<squad.members.length;i++)if(!squad.members[i].dead)alive++;squad.aliveCount=alive;
     var casualtyFrac=1-alive/squad.members.length,anyEngaged=false;for(i=0;i<squad.members.length;i++)if(squad.members[i].target)anyEngaged=true;
     if(casualtyFrac>=RETREAT_CASUALTY_FRAC)squad.state='retreat';else squad.state=anyEngaged?'engaged':'advance';
-    var step=.42;
-    if(squad.state==='advance'){var dx=squad.objective.x-squad.rally.x,dz=squad.objective.z-squad.rally.z,len=Math.hypot(dx,dz);if(len>step){squad.rally.x+=dx/len*step;squad.rally.z+=dz/len*step;}}
-    else if(squad.state==='retreat'){var hx=squad.home.x-squad.rally.x,hz=squad.home.z-squad.rally.z,hlen=Math.hypot(hx,hz);if(hlen>step){squad.rally.x+=hx/hlen*step;squad.rally.z+=hz/hlen*step;}}
+    if(battle)issueOrders(squad,battle,false);
   }
 
   function callout(soldier,battle,type){
@@ -98,8 +164,7 @@
 
     if(soldier.squad.state==='retreat'){
       if(root.BattleNavigation)root.BattleNavigation.releaseWindow(soldier);
-      soldier.prone=false;soldier.state='retreat';soldier.destination=formationSlot(soldier.squad,soldier,soldier.slotIndex);
-      soldier.destination.x=soldier.squad.home.x+(soldier.destination.x-soldier.squad.rally.x);soldier.destination.z=soldier.squad.home.z+(soldier.destination.z-soldier.squad.rally.z);
+      soldier.prone=false;soldier.state='retreat';setDestination(soldier,soldier.orderDestination||formationSlot(soldier.squad,soldier,soldier.slotIndex),battle,true);
       if(soldier.target&&dist2(soldier.root.position.x,soldier.root.position.z,soldier.target.root.position.x,soldier.target.root.position.z)<35)tryFire(soldier,battle);
       soldier.setUp=false;return;
     }
@@ -111,25 +176,23 @@
       var longRange=d>Math.max(80,role.engageRange*.62);
       var canProne=soldier.role==='rifleman'||soldier.role==='gunner';
       var hold=false;
+      var orderTarget=soldier.orderDestination||formationSlot(soldier.squad,soldier,soldier.slotIndex);
+      setDestination(soldier,orderTarget,battle,false);
+      hold=dist2(soldier.root.position.x,soldier.root.position.z,orderTarget.x,orderTarget.z)<2.2||d<=role.engageRange*.65;
       if(soldier.role==='gunner'){
-        soldier.destination={x:soldier.root.position.x,z:soldier.root.position.z};hold=true;
-        soldier.setUpSince=soldier.setUp?soldier.setUpSince:battle.time;soldier.setUp=battle.time-soldier.setUpSince>GUNNER_SETUP_TIME;
-      }else{
-        soldier.setUp=false;
-        if(d>role.engageRange*.65){soldier.destination={x:t.root.position.x,z:t.root.position.z};}
-        else{soldier.destination={x:soldier.root.position.x,z:soldier.root.position.z};hold=true;}
-      }
+        soldier.setUpSince=hold?(soldier.setUp?soldier.setUpSince:battle.time):battle.time;soldier.setUp=hold&&battle.time-soldier.setUpSince>GUNNER_SETUP_TIME;
+      }else soldier.setUp=false;
       soldier.prone=!!(canProne&&hold&&(longRange||shallow||soldier.suppressedUntil>battle.time&&d>55));
       if(d<=role.engageRange)tryFire(soldier,battle);
     }else{
       if(root.BattleNavigation&&soldier._windowSlot)root.BattleNavigation.releaseWindow(soldier);
-      soldier.prone=false;soldier.state='advance';soldier.setUp=false;soldier.destination=formationSlot(soldier.squad,soldier,soldier.slotIndex);
+      soldier.prone=false;soldier.state='advance';soldier.setUp=false;setDestination(soldier,soldier.orderDestination||formationSlot(soldier.squad,soldier,soldier.slotIndex),battle,false);
     }
   }
 
   function tryFire(soldier,battle){if(soldier.fireCooldown>0)return;var stats=soldier.weapon.stats;resolveFire(soldier,soldier.target,battle);soldier.fireCooldown=1/stats.rof*(.85+rand(battle)*.3);battle.onFire&&battle.onFire(soldier);}
 
-  root.SquadAI={ROLES:ROLES,COMPOSITION:COMPOSITION,createSquad:createSquad,createSoldier:createSoldier,updateSquad:updateSquad,updateSoldier:updateSoldier,formationSlot:formationSlot,hasLineOfSight:hasLineOfSight,findTarget:findTarget,coverMultiplierAt:coverMultiplierAt,dist2:dist2};
+  root.SquadAI={ROLES:ROLES,COMPOSITION:COMPOSITION,createSquad:createSquad,createSoldier:createSoldier,updateSquad:updateSquad,updateSoldier:updateSoldier,formationSlot:formationSlot,formationFor:formationFor,setDestination:setDestination,hasLineOfSight:hasLineOfSight,findTarget:findTarget,coverMultiplierAt:coverMultiplierAt,dist2:dist2};
 })(typeof window!=='undefined'?window:globalThis);
 
 /* v12 voice runtime override. The loader's original scheduler used a loader-local AUDIO

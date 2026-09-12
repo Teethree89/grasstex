@@ -141,13 +141,16 @@
     if(sim.objectiveHold&&sim.objectiveHold.us>=OBJECTIVE_HOLD_WIN)declare(sim,'us','held all objectives');else if(sim.objectiveHold&&sim.objectiveHold.ge>=OBJECTIVE_HOLD_WIN)declare(sim,'ge','held all objectives');
   }
 
-  root.SquadAI.updateSquad=function(sq){var commanded=sq.route&&sq.route.length,objective=commanded&&sq.objective?{x:sq.objective.x,z:sq.objective.z}:null;oldUpdateSquad(sq);if(commanded&&objective){sq.objective=objective;var sim=sq._battleSim,cfg=policy(sim,sq.faction);if(sq.state==='engaged'&&['regroup','support-hold','hold','reserve','defend'].indexOf(sq.commandPhase)<0){var dx=objective.x-sq.rally.x,dz=objective.z-sq.rally.z,len=Math.hypot(dx,dz);if(len>1){sq.rally.x+=dx/len*cfg.engagedRallyAdvance;sq.rally.z+=dz/len*cfg.engagedRallyAdvance;}}}};
-
-  root.SquadAI.updateSoldier=function(soldier,battle){
-    oldUpdateSoldier(soldier,battle);var sq=soldier.squad;if(!sq||!sq.route||soldier.dead||sq.state==='retreat')return;var cfg=policy(battle,sq.faction),p=soldier.root.position;
-    if((sq.commandPhase==='corner-check')&&battle.time<sq.commandHoldUntil){var wp=sq.route[Math.max(0,sq.routeIndex-1)]||sq.rally,dx=wp.x-p.x,dz=wp.z-p.z,len=Math.hypot(dx,dz)||1,back=soldier.role==='scout'?1.5:(soldier.role==='captain'?3.5:5+soldier.slotIndex*.35);soldier.destination={x:wp.x-dx/len*back,z:wp.z-dz/len*back};soldier.prone=false;return;}
-    if(['approach','clear-town','capture','assault','flank','defend'].indexOf(sq.commandPhase)>=0&&sq.objective){var objD=dist(p.x,p.z,sq.objective.x,sq.objective.z),enemyD=soldier.target?dist(p.x,p.z,soldier.target.root.position.x,soldier.target.root.position.z):Infinity,canPress=soldier.role!=='gunner'&&objD>cfg.pressObjectiveMinDistance&&enemyD>cfg.pressEnemyClearance&&soldier.suppressedUntil<=battle.time;if(canPress){soldier.destination=root.SquadAI.formationSlot(sq,soldier,soldier.slotIndex);soldier.prone=false;}if(!soldier.target){var vx=sq.objective.x-sq.rally.x,vz=sq.objective.z-sq.rally.z,vlen=Math.hypot(vx,vz)||1;if(soldier.role==='scout'){soldier.destination.x+=vx/vlen*cfg.scoutLead;soldier.destination.z+=vz/vlen*cfg.scoutLead;}else if(soldier.role==='gunner'){soldier.destination.x-=vx/vlen*cfg.gunnerTrail;soldier.destination.z-=vz/vlen*cfg.gunnerTrail;}}}
+  /* The squad layer owns personal slots and destination commitment.  Commander AI now
+     supplies only intent (route, phase and objective), so it cannot pull everybody
+     backwards through one shared rally point after the squad layer has issued orders. */
+  root.SquadAI.updateSquad=function(sq,battle){
+    var commanded=sq.route&&sq.route.length,objective=commanded&&sq.objective?{x:sq.objective.x,z:sq.objective.z}:null;
+    oldUpdateSquad(sq,battle);
+    if(commanded&&objective)sq.objective=objective;
   };
+
+  root.SquadAI.updateSoldier=function(soldier,battle){oldUpdateSoldier(soldier,battle);};
 
   root.BattleSim.start=function(scene,opts){
     var sim=oldStart(scene,opts),town=scene.metadata&&scene.metadata.battleScenario||scene.metadata&&scene.metadata.battleTown;if(!town){console.warn('[COMMAND] no scenario metadata; hierarchical infantry AI disabled');return sim;}
