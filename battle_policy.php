@@ -59,8 +59,16 @@ foreach ($ranges as $k=>$range) {
     if ($v < $range[0] || $v > $range[1]) { http_response_code(400); echo json_encode(array('ok'=>false,'error'=>'out of range '.$k)); exit; }
     $clean[$k] = $v;
 }
+
 $current = read_policy_state($stateFile);
-$revision = $current && isset($current['revision']) ? intval($current['revision']) + 1 : 1;
+$currentRevision = $current && isset($current['revision']) ? intval($current['revision']) : 0;
+$baseRevision = is_array($data) && isset($data['baseRevision']) ? intval($data['baseRevision']) : -1;
+if ($baseRevision !== $currentRevision) {
+    http_response_code(409);
+    echo json_encode(array('ok'=>false,'error'=>'stale policy revision','currentRevision'=>$currentRevision,'current'=>$current), JSON_UNESCAPED_SLASHES);
+    exit;
+}
+$revision = $currentRevision + 1;
 $meta = sanitize_meta(isset($data['meta']) ? $data['meta'] : array());
 $record = array(
     'revision'=>$revision,
