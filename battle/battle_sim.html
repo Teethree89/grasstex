@@ -15,6 +15,7 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 #buildVersion{font-size:10px;color:#a8ab8e;font-weight:400;letter-spacing:.08em;white-space:nowrap}
 .side{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:1px solid rgba(255,255,255,.08)}.side:first-of-type{border-top:0}.side .tag{font-weight:700}.tag.us{color:#8fb4e8}.tag.ge{color:#e0c46a}.side .nums{color:#c7c7ba;font-variant-numeric:tabular-nums}
 #hud .row{display:flex;justify-content:space-between;gap:10px;margin-top:8px;color:#a8ab8e}#seedShort{max-width:175px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c6cbb0}
+#cameraHint{margin-top:7px;color:#7f876f;font-size:10px;text-align:center;letter-spacing:.01em}
 #controls{display:flex;gap:6px;margin-top:10px}#controls button{flex:1;padding:5px 4px;background:#1c2116;border:1px solid #46512f;color:#d9dcc4;font-size:11px;border-radius:5px;cursor:pointer}#controls button.active{background:#3c4a26;color:#fff}#controls button:hover{background:#2a331c}
 #restartBtn{margin-top:8px;width:100%;padding:6px;background:#3a2020;border:1px solid #6b3232;color:#f1d9d9;border-radius:5px;cursor:pointer;font-size:11px}#restartBtn:hover{background:#4a2828}
 #startBtn{margin-top:8px;width:100%;padding:8px;background:#3c4a26;border:1px solid #6b8a44;color:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700}#startBtn:hover{background:#4a5c2e}#startBtn[hidden]{display:none}
@@ -26,13 +27,14 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 <body>
 <canvas id="renderCanvas"></canvas>
 <div id="hud">
-  <h1><span id="hudTitle"><span>WW2FPS AI LAB</span><span id="buildVersion">dev</span></span><button id="hudClose" type="button" title="Hide controls">&#10005;</button></h1>
+  <h1><span id="hudTitle"><span>WW2FPS AI LAB</span><span id="buildVersion">v22</span></span><button id="hudClose" type="button" title="Hide controls">&#10005;</button></h1>
   <div class="side"><span class="tag us">US</span><span class="nums" id="usNums">50 alive &middot; 0 kills</span></div>
   <div class="side"><span class="tag ge">GER</span><span class="nums" id="geNums">50 alive &middot; 0 kills</span></div>
   <div class="row"><span>Squads left</span><span id="squadsLeft">5 / 5</span></div>
   <div class="row"><span>Objectives</span><span id="objectiveStatus">contested</span></div>
   <div class="row"><span>Scenario seed</span><span id="seedShort">—</span></div>
   <div class="row"><span>Time</span><span id="clock">0:00</span></div>
+  <div id="cameraHint">Camera: WASD pan · Shift = faster · mouse orbit/zoom</div>
   <button id="startBtn" type="button">&#9654; Start battle</button>
   <div id="controls"><button data-speed="1">1&times;</button><button data-speed="2" class="active">2&times;</button><button data-speed="4">4&times;</button></div>
   <button id="restartBtn" type="button">Restart battle</button>
@@ -54,7 +56,9 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 </script>
 <script>
 (function(){
-  var build=window.BATTLE_BUILD||'dev',ref=window.BATTLE_REF||'direct',buildEl=document.getElementById('buildVersion');buildEl.textContent=build;document.title='WW2FPS AI Lab '+build;
+  /* Runtime marker is deliberately duplicated here so stale PHP opcode/cache cannot disguise a fresh v22 page. */
+  window.BATTLE_BUILD='v22';
+  var build='v22',ref=window.BATTLE_REF||'direct',buildEl=document.getElementById('buildVersion');buildEl.textContent=build;document.title='WW2FPS AI Lab '+build;
   var debugConsole=document.getElementById('debugConsole');function stringify(v){if(typeof v==='string')return v;try{return JSON.stringify(v);}catch(_){return String(v);}}function writeDebug(level,args){if(!debugConsole)return;var line=document.createElement('div');if(level==='warn')line.className='debug-warn';else if(level==='error')line.className='debug-error';line.textContent='['+level.toUpperCase()+'] '+Array.prototype.map.call(args,stringify).join(' ');debugConsole.appendChild(line);debugConsole.scrollTop=debugConsole.scrollHeight;}['log','warn','error'].forEach(function(level){var original=console[level];console[level]=function(){writeDebug(level,arguments);return original.apply(console,arguments);};});window.addEventListener('error',function(e){writeDebug('error',[e.message+' @ '+e.filename+':'+e.lineno]);});window.addEventListener('unhandledrejection',function(e){writeDebug('error',['Unhandled promise rejection:',e.reason]);});
   console.log('Battle Sim',build,'ref='+ref);console.log('pageProtocol='+location.protocol);console.log('assetBase='+(window.BATTLE_ASSET_BASE||'hardcoded/default'));console.log('audioBase='+(window.BATTLE_AUDIO_BASE||'audio/'));
 
@@ -65,6 +69,14 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   var canvas=document.getElementById('renderCanvas'),engine=new BABYLON.Engine(canvas,true,{stencil:true,preserveDrawingBuffer:true,audioEngine:true});console.log('legacyAudioEngine='+(BABYLON.Engine.audioEngine?'present':'missing'));
   var scene=new BABYLON.Scene(engine);scene.clearColor=new BABYLON.Color4(.55,.62,.68,1);scene.fogMode=BABYLON.Scene.FOGMODE_LINEAR;scene.fogColor=new BABYLON.Color3(.72,.62,.52);scene.fogStart=850;scene.fogEnd=2250;
   var target=new BABYLON.Vector3(scenario.center.x,4,scenario.center.z),camera=new BABYLON.ArcRotateCamera('cam',-Math.PI/2,1.02,720,target,scene);camera.lowerRadiusLimit=90;camera.upperRadiusLimit=1850;camera.lowerBetaLimit=.28;camera.upperBetaLimit=1.5;camera.wheelPrecision=3;camera.panningSensibility=120;camera.attachControl(canvas,true);
+
+  /* Smooth RTS-style keyboard pan. W/S follow the camera's ground-facing direction; A/D strafe. */
+  var cameraKeys=Object.create(null);function cameraKey(code){return code==='KeyW'||code==='KeyA'||code==='KeyS'||code==='KeyD'||code==='ShiftLeft'||code==='ShiftRight';}
+  window.addEventListener('keydown',function(e){if(!cameraKey(e.code))return;cameraKeys[e.code]=true;if(e.code!=='ShiftLeft'&&e.code!=='ShiftRight')e.preventDefault();},{passive:false});
+  window.addEventListener('keyup',function(e){if(cameraKey(e.code))cameraKeys[e.code]=false;});window.addEventListener('blur',function(){cameraKeys=Object.create(null);});
+  scene.onBeforeRenderObservable.add(function(){var f=(cameraKeys.KeyW?1:0)-(cameraKeys.KeyS?1:0),r=(cameraKeys.KeyD?1:0)-(cameraKeys.KeyA?1:0);if(!f&&!r)return;var fx=camera.target.x-camera.position.x,fz=camera.target.z-camera.position.z,len=Math.hypot(fx,fz)||1;fx/=len;fz/=len;var rx=fz,rz=-fx,dx=fx*f+rx*r,dz=fz*f+rz*r,dlen=Math.hypot(dx,dz)||1;dx/=dlen;dz/=dlen;var dt=Math.min(.05,engine.getDeltaTime()/1000),boost=(cameraKeys.ShiftLeft||cameraKeys.ShiftRight)?2.25:1,speed=Math.max(45,Math.min(300,camera.radius*.52))*boost,halfW=BattleSim.FIELD_W/2-20,halfD=BattleSim.FIELD_D/2-20;camera.target.x=Math.max(-halfW,Math.min(halfW,camera.target.x+dx*speed*dt));camera.target.z=Math.max(-halfD,Math.min(halfD,camera.target.z+dz*speed*dt));camera.target.y=BattleSim.heightAt(camera.target.x,camera.target.z)+4;});
+  console.log('[CAMERA] v22 WASD pan enabled');
+
   var hemi=new BABYLON.HemisphericLight('hemi',new BABYLON.Vector3(0,1,.2),scene);hemi.intensity=.85;hemi.diffuse=new BABYLON.Color3(.9,.85,.78);hemi.groundColor=new BABYLON.Color3(.32,.27,.20);var sun=new BABYLON.DirectionalLight('sun',new BABYLON.Vector3(-.6,-.5,.35),scene);sun.intensity=1.05;sun.diffuse=new BABYLON.Color3(1,.82,.58);
   var battleGround=BattleSim.buildTerrain(scene);BattleSim.buildSky(scene);if(battleGround&&battleGround.material&&battleGround.material.diffuseTexture){battleGround.material.diffuseTexture.uScale=BattleSim.FIELD_W/20;battleGround.material.diffuseTexture.vScale=BattleSim.FIELD_D/20;battleGround.material.diffuseTexture.anisotropicFilteringLevel=8;}if(battleGround&&battleGround.refreshBoundingInfo)battleGround.refreshBoundingInfo();if(battleGround&&battleGround.getBoundingInfo){var bb=battleGround.getBoundingInfo().boundingBox;console.log('terrain bounds y='+bb.minimum.y.toFixed(2)+'..'+bb.maximum.y.toFixed(2));}
   var features=BattleTerrainFeatures.scatter(scene,BattleSim.heightAt,{fieldW:BattleSim.FIELD_W,fieldD:BattleSim.FIELD_D,scenarioSeed:liveSeed}),audioBase=window.BATTLE_AUDIO_BASE||'audio/',battle=BattleSim.start(scene,{timeScale:2,obstacles:features.obstacles,audioBase:audioBase});battle.pause();
