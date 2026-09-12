@@ -79,9 +79,9 @@ a sloped patch could visibly sink into or float above the ground. `sampleAt` in 
 now interpolates the real built mesh instead, the same fix and the same reasoning.
 
 Known limitations, since this is a starting point for further modeling/AI work rather than a
-finished sim: no soldier-blocks-soldier occlusion, the obstacle steering above is local
-avoidance rather than real pathfinding, and the models/weapons are placeholder primitives
-rather than real assets.
+finished sim: no soldier-blocks-soldier occlusion and the obstacle steering above is local
+avoidance rather than full pathfinding. Live battles use the Human Soldier low-poly skeletal
+asset; the trainer deliberately uses procedural soldiers to keep generation throughput high.
 
 ## Main files
 

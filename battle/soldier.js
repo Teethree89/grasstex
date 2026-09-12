@@ -19,6 +19,83 @@
     stand:'stance.stand',crouch:'stance.crouch',prone:'stance.prone',
     deathFront:'death.front',deathBack:'death.back',deathSide:'death.side'
   };
+  /* The package asset is preloaded once, then cloned with its own skeleton and animation
+     groups for every live soldier.  Training can deliberately fall back to primitives: it
+     exercises the same combat state machine without paying for 100 skinned meshes per match. */
+  var importedScenes=typeof WeakMap!=='undefined'?new WeakMap():null,IMPORTED_FILE='models/human-soldier.glb',IMPORTED_SCALE=1,IMPORTED_FEET_OFFSET=0;
+  function importedState(scene){
+    if(importedScenes){var value=importedScenes.get(scene);if(!value){value={container:null,promise:null,useImported:true};importedScenes.set(scene,value);}return value;}
+    return scene._battleSoldierAsset||(scene._battleSoldierAsset={container:null,promise:null,useImported:true});
+  }
+  function preloadImported(scene,assetBase){
+    var state=importedState(scene);if(state.container)return Promise.resolve(true);if(state.promise)return state.promise;
+    if(!BABYLON.SceneLoader||!BABYLON.SceneLoader.LoadAssetContainerAsync)return Promise.resolve(false);
+    var base=assetBase||root.BATTLE_ASSET_BASE||'Assets/';if(base.charAt(base.length-1)!=='/')base+='/' ;
+    state.promise=BABYLON.SceneLoader.LoadAssetContainerAsync(base,IMPORTED_FILE,scene).then(function(container){
+      state.container=container;var groups=container.animationGroups||[];console.log('[ANIM] Human Soldier package ready · '+groups.map(function(g){return g.name;}).join(', '));return true;
+    }).catch(function(error){console.warn('[ANIM] Human Soldier package unavailable; using procedural fallback',error&&error.message||error);state.promise=null;return false;});
+    return state.promise;
+  }
+  function importedMesh(entries){
+    var skeleton=entries.skeletons&&entries.skeletons[0],meshes=skeleton&&skeleton._meshes||[];
+    if(meshes.length)return meshes[0];
+    var roots=entries.rootNodes||[];
+    for(var i=0;i<roots.length;i++){if(roots[i].getChildMeshes){var children=roots[i].getChildMeshes(false);if(children.length)return children[0];}if(roots[i] instanceof BABYLON.AbstractMesh)return roots[i];}
+    return null;
+  }
+  function importedNode(entries,name){
+    var roots=entries.rootNodes||[];
+    for(var i=0;i<roots.length;i++){
+      var nodes=[roots[i]].concat(roots[i].getDescendants?roots[i].getDescendants(false):[]);
+      for(var j=0;j<nodes.length;j++){var candidate=String(nodes[j].name||'');if(candidate===name||candidate.slice(-name.length-1)==='-'+name)return nodes[j];}
+    }
+    return null;
+  }
+  function animationGroup(groups,name){
+    var lower=String(name).toLowerCase();
+    for(var i=0;i<groups.length;i++){var candidate=String(groups[i].name||'').toLowerCase();if(candidate===lower||candidate.slice(-lower.length-1)==='_'+lower)return groups[i];}
+    return null;
+  }
+  function selectImportedAnimation(soldier,name,loop){
+    var group=soldier._animationGroups&&soldier._animationGroups[name];if(!group||soldier._activeAnimation===name)return;
+    var previous=soldier._activeAnimation&&soldier._animationGroups[soldier._activeAnimation];if(previous)previous.stop();
+    soldier._activeAnimation=name;group.start(!!loop,1);
+  }
+  function updateImportedAnimation(soldier,state){
+    var tag=state.tag,name='idle',loop=true,now=typeof performance!=='undefined'?performance.now():Date.now();
+    if(soldier.dead){name=soldier.deathVariant==='front'?'death.front':(soldier.deathVariant==='back'?'death.back':'death.side');loop=false;}
+    else if(soldier.reloading){name='reload';loop=false;}
+    else if(soldier._animationHoldUntil>now){name=soldier._animationOneShot||'fire';loop=false;}
+    /* The package has rifle-held aim but no armed locomotion blend.  Prefer the source aim
+       pose in contact so a moving fighter keeps the weapon shouldered instead of returning
+       to an unarmed walk cycle. */
+    else if(soldier.target){name='aim';}
+    else if(tag===TAGS.walk||state.speed>.03){name='walk';}
+    selectImportedAnimation(soldier,name,loop);
+  }
+  function playImportedAnimation(tag,data,soldier){
+    var now=typeof performance!=='undefined'?performance.now():Date.now();
+    if(tag===TAGS.fire){soldier._animationOneShot='fire';soldier._animationHoldUntil=now+360;selectImportedAnimation(soldier,'fire',false);}
+    else if(tag===TAGS.reload){soldier._animationOneShot='reload';soldier._animationHoldUntil=now+(data&&data.duration||2.4)*1000;selectImportedAnimation(soldier,'reload',false);}
+    else if(tag===TAGS.deathFront||tag===TAGS.deathBack||tag===TAGS.deathSide){soldier._animationHoldUntil=Infinity;selectImportedAnimation(soldier,tag,false);}
+  }
+  function buildImportedRig(scene,faction,role,parent){
+    var state=importedState(scene);if(!state.useImported||!state.container)return null;
+    try{
+      var entries=state.container.instantiateModelsToScene(function(name){return 'humanSoldier-'+name;},false),world=node(scene,'soldier',parent||null),visual=node(scene,'soldierVisual',world);
+      visual.scaling.setAll(IMPORTED_SCALE);visual.position.y=IMPORTED_FEET_OFFSET;
+      var roots=entries.rootNodes||[];
+      for(var i=0;i<roots.length;i++)if(!roots[i].parent||roots.indexOf(roots[i].parent)<0)roots[i].parent=visual;
+      var skeleton=entries.skeletons&&entries.skeletons[0],mesh=importedMesh(entries),socket=node(scene,'socket.weapon',world),prop=importedNode(entries,'B-handProp.R'),bone=null;
+      if(prop){socket.parent=prop;socket.position.set(0,0,0);}
+      if(skeleton&&skeleton.bones)for(i=0;i<skeleton.bones.length;i++)if(skeleton.bones[i].name==='B-handProp.R'||skeleton.bones[i].name==='B-hand.R'){bone=skeleton.bones[i];break;}
+      if(!prop&&bone&&mesh)socket.attachToBone(bone,mesh);else if(!prop&&!bone){socket.parent=visual;socket.position.set(.18,.92,.18);}
+      var groups=entries.animationGroups||[],byName={};['idle','walk','aim','fire','reload','death.front','death.back','death.side'].forEach(function(name){var group=animationGroup(groups,name);if(group){group.stop();byName[name]=group;}});
+      world.onDisposeObservable.add(function(){groups.forEach(function(group){try{group.dispose();}catch(_){}});});
+      return{faction:faction,role:role,root:world,poseRoot:visual,weaponSocket:socket,dead:false,rig:{weapon:socket},animationBinding:{backend:'human-soldier-gltf',tags:TAGS,play:playImportedAnimation,update:updateImportedAnimation},_animationGroups:byName,_activeAnimation:null,_animationHoldUntil:0,deathClock:0};
+    }catch(error){console.warn('[ANIM] Human Soldier clone failed; using procedural fallback',error&&error.message||error);return null;}
+  }
+  function setImportedEnabled(scene,enabled){importedState(scene).useImported=!!enabled;}
 
   function paint(mesh,color){var n=mesh.getTotalVertices(),data=new Float32Array(n*4);for(var i=0;i<n;i++){data[i*4]=color.r;data[i*4+1]=color.g;data[i*4+2]=color.b;data[i*4+3]=1;}mesh.setVerticesData(BABYLON.VertexBuffer.ColorKind,data);return mesh;}
   function box(scene,size,color,parent,pos){var m=BABYLON.MeshBuilder.CreateBox('soldierPart',{width:size[0],height:size[1],depth:size[2]},scene);paint(m,color);m.parent=parent;if(pos)m.position.set(pos[0],pos[1],pos[2]);m.material=bodyMaterial(scene);m.isPickable=false;m.alwaysSelectAsActiveMesh=true;return m;}
@@ -70,6 +147,7 @@
     return{faction:faction,role:role,root:world,poseRoot:pose,weaponSocket:weaponSocket,dead:false,rig:rig,
       animationBinding:{backend:'procedural-v3',tags:TAGS},walkPhase:Math.random()*Math.PI*2,stanceBlend:0,_animFireKick:0,_animReloadClock:0,deathClock:0};
   }
+  function createSoldier(scene,faction,role,parent){return buildImportedRig(scene,faction,role,parent)||buildPrimitiveRig(scene,faction,role,parent);}
 
   function damp(a,b,k){return a+(b-a)*k;}
   function rot(node_,x,y,z,k){node_.rotation.x=damp(node_.rotation.x,x,k);node_.rotation.y=damp(node_.rotation.y,y||0,k);node_.rotation.z=damp(node_.rotation.z,z||0,k);}
@@ -143,6 +221,6 @@
   function setProne(soldier,v){if(!soldier||soldier.dead)return;soldier.prone=!!v;if(v)soldier.crouching=false;}
   function kill(soldier){if(!soldier||soldier.dead)return;soldier.dead=true;soldier.crawling=false;soldier.reloading=false;soldier.deathClock=0;var r=Math.random();soldier.deathVariant=r<.34?'front':(r<.67?'back':'side');soldier.deathSide=Math.random()<.5?-1:1;soldier.deathTag=soldier.deathVariant==='front'?TAGS.deathFront:(soldier.deathVariant==='back'?TAGS.deathBack:TAGS.deathSide);trigger(soldier,soldier.deathTag,{variant:soldier.deathVariant});}
 
-  root.BattleSoldierModel={FACTIONS:FACTIONS,BODY:BODY,TAGS:TAGS,createSoldier:buildPrimitiveRig,animateWalk:animateWalk,setCrouch:setCrouch,setProne:setProne,kill:kill,triggerAnimation:trigger,bindAnimationBackend:bindAnimationBackend};
-  console.log('[ANIM] anatomical soldier rig v3 + semantic animation tags loaded');
+  root.BattleSoldierModel={FACTIONS:FACTIONS,BODY:BODY,TAGS:TAGS,createSoldier:createSoldier,preload:preloadImported,setImportedEnabled:setImportedEnabled,animateWalk:animateWalk,setCrouch:setCrouch,setProne:setProne,kill:kill,triggerAnimation:trigger,bindAnimationBackend:bindAnimationBackend};
+  console.log('[ANIM] anatomical procedural rig + Human Soldier GLB backend loaded');
 })(typeof window!=='undefined'?window:globalThis);
