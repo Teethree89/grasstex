@@ -19,85 +19,50 @@
     stand:'stance.stand',crouch:'stance.crouch',prone:'stance.prone',
     deathFront:'death.front',deathBack:'death.back',deathSide:'death.side'
   };
-  /* The package asset is preloaded once, then cloned with its own skeleton and animation
-     groups for every live soldier.  Training can deliberately fall back to primitives: it
-     exercises the same combat state machine without paying for 100 skinned meshes per match. */
-  var importedScenes=typeof WeakMap!=='undefined'?new WeakMap():null,IMPORTED_FILE='models/human-soldier.glb',IMPORTED_SCALE=1,IMPORTED_FEET_OFFSET=0;
-  function importedState(scene){
-    if(importedScenes){var value=importedScenes.get(scene);if(!value){value={container:null,promise:null,useImported:true};importedScenes.set(scene,value);}return value;}
-    return scene._battleSoldierAsset||(scene._battleSoldierAsset={container:null,promise:null,useImported:true});
+  /* Package poses are baked into a small JS track file and retargeted to the articulated
+     primitives. This preserves the original low-poly model, avoids inverse-bind issues, and
+     works when the static host has not mirrored binary Assets/models files. */
+  var bakedScenes=typeof WeakMap!=='undefined'?new WeakMap():null;
+  function bakedState(scene){
+    if(bakedScenes){var value=bakedScenes.get(scene);if(!value){value={useBaked:true};bakedScenes.set(scene,value);}return value;}
+    return scene._battleSoldierBakedState||(scene._battleSoldierBakedState={useBaked:true});
   }
-  function preloadImported(scene,assetBase){
-    var state=importedState(scene);if(state.container)return Promise.resolve(true);if(state.promise)return state.promise;
-    if(!BABYLON.SceneLoader||!BABYLON.SceneLoader.LoadAssetContainerAsync)return Promise.resolve(false);
-    var base=assetBase||root.BATTLE_ASSET_BASE||'Assets/';if(base.charAt(base.length-1)!=='/')base+='/' ;
-    var assetVersion=root.BATTLE_SOLDIER_ASSET_VERSION||root.BATTLE_REF||'';
-    var file=IMPORTED_FILE+(assetVersion?'?v='+encodeURIComponent(assetVersion):'');
-    state.promise=BABYLON.SceneLoader.LoadAssetContainerAsync(base,file,scene).then(function(container){
-      state.container=container;var groups=container.animationGroups||[];console.log('[ANIM] Human Soldier package ready · '+groups.map(function(g){return g.name;}).join(', '));return true;
-    }).catch(function(error){console.warn('[ANIM] Human Soldier package unavailable; using procedural fallback',error&&error.message||error);state.promise=null;return false;});
-    return state.promise;
-  }
-  function importedMesh(entries){
-    var skeleton=entries.skeletons&&entries.skeletons[0],meshes=skeleton&&skeleton._meshes||[];
-    if(meshes.length)return meshes[0];
-    var roots=entries.rootNodes||[];
-    for(var i=0;i<roots.length;i++){if(roots[i].getChildMeshes){var children=roots[i].getChildMeshes(false);if(children.length)return children[0];}if(roots[i] instanceof BABYLON.AbstractMesh)return roots[i];}
-    return null;
-  }
-  function importedNode(entries,name){
-    var roots=entries.rootNodes||[];
-    for(var i=0;i<roots.length;i++){
-      var nodes=[roots[i]].concat(roots[i].getDescendants?roots[i].getDescendants(false):[]);
-      for(var j=0;j<nodes.length;j++){var candidate=String(nodes[j].name||'');if(candidate===name||candidate.slice(-name.length-1)==='-'+name)return nodes[j];}
-    }
-    return null;
-  }
-  function animationGroup(groups,name){
-    var lower=String(name).toLowerCase();
-    for(var i=0;i<groups.length;i++){var candidate=String(groups[i].name||'').toLowerCase();if(candidate===lower||candidate.slice(-lower.length-1)==='_'+lower)return groups[i];}
-    return null;
-  }
-  function selectImportedAnimation(soldier,name,loop){
-    var group=soldier._animationGroups&&soldier._animationGroups[name];if(!group||soldier._activeAnimation===name)return;
-    var previous=soldier._activeAnimation&&soldier._animationGroups[soldier._activeAnimation];if(previous)previous.stop();
-    soldier._activeAnimation=name;group.start(!!loop,1);
-  }
-  function updateImportedAnimation(soldier,state){
-    var tag=state.tag,name='idle',loop=true,now=typeof performance!=='undefined'?performance.now():Date.now();
-    if(soldier.dead){name=soldier.deathVariant==='front'?'death.front':(soldier.deathVariant==='back'?'death.back':'death.side');loop=false;}
-    else if(soldier.reloading){name='reload';loop=false;}
-    else if(soldier._animationHoldUntil>now){name=soldier._animationOneShot||'fire';loop=false;}
-    /* The package has rifle-held aim but no armed locomotion blend.  Prefer the source aim
-       pose in contact so a moving fighter keeps the weapon shouldered instead of returning
-       to an unarmed walk cycle. */
-    else if(soldier.target){name='aim';}
-    else if(tag===TAGS.walk||state.speed>.03){name='walk';}
-    selectImportedAnimation(soldier,name,loop);
-  }
-  function playImportedAnimation(tag,data,soldier){
+  function bakedData(){var data=root.BattleSoldierAnimationClips;return data&&data.version===1&&data.clips&&data.bones?data:null;}
+  function preloadImported(){return Promise.resolve(!!bakedData());}
+  function setImportedEnabled(scene,enabled){bakedState(scene).useBaked=!!enabled;}
+  function clipName(soldier,state){
     var now=typeof performance!=='undefined'?performance.now():Date.now();
-    if(tag===TAGS.fire){soldier._animationOneShot='fire';soldier._animationHoldUntil=now+360;selectImportedAnimation(soldier,'fire',false);}
-    else if(tag===TAGS.reload){soldier._animationOneShot='reload';soldier._animationHoldUntil=now+(data&&data.duration||2.4)*1000;selectImportedAnimation(soldier,'reload',false);}
-    else if(tag===TAGS.deathFront||tag===TAGS.deathBack||tag===TAGS.deathSide){soldier._animationHoldUntil=Infinity;selectImportedAnimation(soldier,tag,false);}
+    if(soldier.dead)return soldier.deathVariant==='front'?'death.front':(soldier.deathVariant==='back'?'death.back':'death.side');
+    if(soldier.reloading)return 'reload';
+    if(soldier._animationHoldUntil>now)return soldier._animationOneShot||'fire';
+    if(state.tag===TAGS.crawl||state.tag===TAGS.prone||state.tag===TAGS.crouch||state.tag===TAGS.crouchWalk)return null;
+    if(soldier.target)return 'aim';
+    return state.tag===TAGS.walk||state.speed>.03?'walk':'idle';
   }
-  function buildImportedRig(scene,faction,role,parent){
-    var state=importedState(scene);if(!state.useImported||!state.container)return null;
-    try{
-      var entries=state.container.instantiateModelsToScene(function(name){return 'humanSoldier-'+name;},false),world=node(scene,'soldier',parent||null),visual=node(scene,'soldierVisual',world);
-      visual.scaling.setAll(IMPORTED_SCALE);visual.position.y=IMPORTED_FEET_OFFSET;
-      var roots=entries.rootNodes||[];
-      for(var i=0;i<roots.length;i++)if(!roots[i].parent||roots.indexOf(roots[i].parent)<0)roots[i].parent=visual;
-      var skeleton=entries.skeletons&&entries.skeletons[0],mesh=importedMesh(entries),socket=node(scene,'socket.weapon',world),prop=importedNode(entries,'B-handProp.R'),bone=null;
-      if(prop){socket.parent=prop;socket.position.set(0,0,0);}
-      if(skeleton&&skeleton.bones)for(i=0;i<skeleton.bones.length;i++)if(skeleton.bones[i].name==='B-handProp.R'||skeleton.bones[i].name==='B-hand.R'){bone=skeleton.bones[i];break;}
-      if(!prop&&bone&&mesh)socket.attachToBone(bone,mesh);else if(!prop&&!bone){socket.parent=visual;socket.position.set(.18,.92,.18);}
-      var groups=entries.animationGroups||[],byName={};['idle','walk','aim','fire','reload','death.front','death.back','death.side'].forEach(function(name){var group=animationGroup(groups,name);if(group){group.stop();byName[name]=group;}});
-      world.onDisposeObservable.add(function(){groups.forEach(function(group){try{group.dispose();}catch(_){}});});
-      return{faction:faction,role:role,root:world,poseRoot:visual,weaponSocket:socket,dead:false,rig:{weapon:socket},animationBinding:{backend:'human-soldier-gltf',tags:TAGS,play:playImportedAnimation,update:updateImportedAnimation},_animationGroups:byName,_activeAnimation:null,_animationHoldUntil:0,deathClock:0};
-    }catch(error){console.warn('[ANIM] Human Soldier clone failed; using procedural fallback',error&&error.message||error);return null;}
+  function resetBakedPose(soldier){
+    var rig=soldier.rig,nodes=soldier._bakedNodes||[];for(var i=0;i<nodes.length;i++)nodes[i].rotationQuaternion=null;
+    soldier._bakedClip=null;if(rig&&rig.weapon)rig.weapon.rotationQuaternion=null;
   }
-  function setImportedEnabled(scene,enabled){importedState(scene).useImported=!!enabled;}
+  function updateBakedAnimation(soldier,state){
+    var data=bakedData(),name=clipName(soldier,state);if(!data||!name||!data.clips[name]){resetBakedPose(soldier);return false;}
+    var clip=data.clips[name],now=(typeof performance!=='undefined'?performance.now():Date.now())/1000;
+    if(soldier._bakedClip!==name){soldier._bakedClip=name;soldier._bakedStarted=now;}
+    var elapsed=Math.max(0,now-soldier._bakedStarted),loop=name==='idle'||name==='walk'||name==='aim';
+    var duration=Math.max(.001,clip.duration),time=loop?elapsed%duration:Math.min(duration,elapsed),frame=time*data.sampleRate,index=Math.floor(frame),frames=clip.frames,last=frames.length-1,next=Math.min(last,index+1),mix=Math.min(1,frame-index),rig=soldier.rig;
+    for(var i=0;i<data.bones.length;i++){
+      var joint=rig[data.bones[i]];if(!joint)continue;var offset=i*4,a=frames[index][offset],b=frames[next][offset];
+      var from=new BABYLON.Quaternion(a,frames[index][offset+1],frames[index][offset+2],frames[index][offset+3]),to=new BABYLON.Quaternion(b,frames[next][offset+1],frames[next][offset+2],frames[next][offset+3]);
+      joint.rotationQuaternion=BABYLON.Quaternion.Slerp(from,to,mix);
+    }
+    return true;
+  }
+  function playBakedAnimation(tag,data,soldier){
+    var now=typeof performance!=='undefined'?performance.now():Date.now();
+    if(tag===TAGS.fire){soldier._animationOneShot='fire';soldier._animationHoldUntil=now+800;}
+    else if(tag===TAGS.reload){soldier._animationOneShot='reload';soldier._animationHoldUntil=now+(data&&data.duration||2.4)*1000;}
+    else if(tag===TAGS.deathFront||tag===TAGS.deathBack||tag===TAGS.deathSide)soldier._animationHoldUntil=Infinity;
+    soldier._bakedClip=null;
+  }
 
   function paint(mesh,color){var n=mesh.getTotalVertices(),data=new Float32Array(n*4);for(var i=0;i<n;i++){data[i*4]=color.r;data[i*4+1]=color.g;data[i*4+2]=color.b;data[i*4+3]=1;}mesh.setVerticesData(BABYLON.VertexBuffer.ColorKind,data);return mesh;}
   function box(scene,size,color,parent,pos){var m=BABYLON.MeshBuilder.CreateBox('soldierPart',{width:size[0],height:size[1],depth:size[2]},scene);paint(m,color);m.parent=parent;if(pos)m.position.set(pos[0],pos[1],pos[2]);m.material=bodyMaterial(scene);m.isPickable=false;m.alwaysSelectAsActiveMesh=true;return m;}
@@ -146,10 +111,12 @@
     };
     /* Compatibility aliases for any diagnostic code written against the first articulated pass. */
     rig.hipR=rig.thighR;rig.hipL=rig.thighL;rig.kneeR=rig.shinR;rig.kneeL=rig.shinL;rig.elbowR=rig.forearmR;rig.elbowL=rig.forearmL;
-    return{faction:faction,role:role,root:world,poseRoot:pose,weaponSocket:weaponSocket,dead:false,rig:rig,
-      animationBinding:{backend:'procedural-v3',tags:TAGS},walkPhase:Math.random()*Math.PI*2,stanceBlend:0,_animFireKick:0,_animReloadClock:0,deathClock:0};
+    var useBaked=bakedState(scene).useBaked&&!!bakedData(),soldier={faction:faction,role:role,root:world,poseRoot:pose,weaponSocket:weaponSocket,dead:false,rig:rig,
+      animationBinding:useBaked?{backend:'baked-procedural-v1',tags:TAGS,play:playBakedAnimation,update:updateBakedAnimation}:{backend:'procedural-v3',tags:TAGS},walkPhase:Math.random()*Math.PI*2,stanceBlend:0,_animFireKick:0,_animReloadClock:0,deathClock:0};
+    soldier._bakedNodes=useBaked?Object.keys(rig).map(function(key){return rig[key];}).filter(function(value,index,list){return value&&list.indexOf(value)===index&&value!==weaponSocket;}):[];
+    return soldier;
   }
-  function createSoldier(scene,faction,role,parent){return buildImportedRig(scene,faction,role,parent)||buildPrimitiveRig(scene,faction,role,parent);}
+  function createSoldier(scene,faction,role,parent){return buildPrimitiveRig(scene,faction,role,parent);}
 
   function damp(a,b,k){return a+(b-a)*k;}
   function rot(node_,x,y,z,k){node_.rotation.x=damp(node_.rotation.x,x,k);node_.rotation.y=damp(node_.rotation.y,y||0,k);node_.rotation.z=damp(node_.rotation.z,z||0,k);}
@@ -215,7 +182,7 @@
   function animateWalk(soldier,dt,speedFrac){
     var b=soldier&&soldier.animationBinding;if(b&&b.backend.indexOf('procedural')!==0&&typeof b.update==='function'){
       var tag=soldier.dead?(soldier.deathTag||TAGS.deathSide):(soldier.reloading?TAGS.reload:(soldier.prone?(soldier.crawling&&speedFrac>.02?TAGS.crawl:TAGS.prone):(soldier.crouching?(speedFrac>.03?TAGS.crouchWalk:TAGS.crouch):(speedFrac>.03?TAGS.walk:(soldier.target?TAGS.aim:TAGS.idle)))));
-      try{b.update(soldier,{tag:tag,speed:speedFrac||0,target:soldier.target||null},dt,TAGS);}catch(e){console.warn('[ANIM] external update failed',e);}return;
+      try{if(b.update(soldier,{tag:tag,speed:speedFrac||0,target:soldier.target||null},dt,TAGS)!==false)return;}catch(e){console.warn('[ANIM] external update failed',e);}
     }
     primitivePose(soldier,dt,speedFrac);
   }
@@ -224,5 +191,5 @@
   function kill(soldier){if(!soldier||soldier.dead)return;soldier.dead=true;soldier.crawling=false;soldier.reloading=false;soldier.deathClock=0;var r=Math.random();soldier.deathVariant=r<.34?'front':(r<.67?'back':'side');soldier.deathSide=Math.random()<.5?-1:1;soldier.deathTag=soldier.deathVariant==='front'?TAGS.deathFront:(soldier.deathVariant==='back'?TAGS.deathBack:TAGS.deathSide);trigger(soldier,soldier.deathTag,{variant:soldier.deathVariant});}
 
   root.BattleSoldierModel={FACTIONS:FACTIONS,BODY:BODY,TAGS:TAGS,createSoldier:createSoldier,preload:preloadImported,setImportedEnabled:setImportedEnabled,animateWalk:animateWalk,setCrouch:setCrouch,setProne:setProne,kill:kill,triggerAnimation:trigger,bindAnimationBackend:bindAnimationBackend};
-  console.log('[ANIM] anatomical procedural rig + Human Soldier GLB backend loaded');
+  console.log('[ANIM] anatomical procedural rig + baked Human Soldier motion tracks loaded');
 })(typeof window!=='undefined'?window:globalThis);

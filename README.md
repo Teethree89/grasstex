@@ -80,8 +80,9 @@ now interpolates the real built mesh instead, the same fix and the same reasonin
 
 Known limitations, since this is a starting point for further modeling/AI work rather than a
 finished sim: no soldier-blocks-soldier occlusion and the obstacle steering above is local
-avoidance rather than full pathfinding. Live battles use the Human Soldier low-poly skeletal
-asset; the trainer deliberately uses procedural soldiers to keep generation throughput high.
+avoidance rather than full pathfinding. Soldiers stay procedural in both live battles and the
+trainer; live battles additionally use compact Human Soldier pose tracks, while trainer batches
+can disable those tracks for maximum throughput.
 
 ## Main files
 

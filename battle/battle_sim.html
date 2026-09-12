@@ -46,6 +46,7 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 <script>
 (function(){var originalCreateGround=BABYLON.MeshBuilder.CreateGround;BABYLON.MeshBuilder.CreateGround=function(name,options,scene){if(name==='battleField')options=Object.assign({},options||{},{updatable:true});return originalCreateGround.call(BABYLON.MeshBuilder,name,options,scene);};})();
 </script>
+<script src="soldier-animations.js"></script>
 <script src="soldier.js"></script>
 <script src="weapons.js"></script>
 <script src="terrain-features.js"></script>
@@ -92,7 +93,7 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   var hud=document.getElementById('hud'),hudToggle=document.getElementById('hudToggle'),hudClose=document.getElementById('hudClose');function setHudCollapsed(v){hud.classList.toggle('collapsed',!!v);hudToggle.style.display=v?'block':'none';try{localStorage.setItem('battleAiHudCollapsed',v?'1':'0');}catch(_){}}hudClose.addEventListener('click',function(){setHudCollapsed(true);});hudToggle.addEventListener('click',function(){setHudCollapsed(false);});try{setHudCollapsed(localStorage.getItem('battleAiHudCollapsed')==='1');}catch(_){}
   window.__battle__=battle;window.__scenario__=scenario;console.log('Battle Sim ready; obstacles='+features.obstacles.length+' navWindows='+(BattleNavigation&&BattleNavigation.windowSlots?BattleNavigation.windowSlots.length:0));
   }
-  var soldierPreload=BattleSoldierModel&&BattleSoldierModel.preload?BattleSoldierModel.preload(scene,window.BATTLE_SOLDIER_ASSET_BASE||window.BATTLE_ASSET_BASE):null;
+  var soldierPreload=BattleSoldierModel&&BattleSoldierModel.preload?BattleSoldierModel.preload(scene):null;
   if(soldierPreload&&typeof soldierPreload.then==='function')soldierPreload.then(initializeBattle);else initializeBattle();
 })();
 </script>
