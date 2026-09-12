@@ -23,7 +23,9 @@ $runtimeFiles = array(
     'battle/battle-sim.js',
     'battle/acoustics.js',
     'battle/town-objectives.js',
-    'battle/commander-ai.js'
+    'battle/battle-telemetry.js',
+    'battle/commander-ai.js',
+    'battle/battle-control.js'
 );
 
 if (!is_file($pagePath) || !is_readable($pagePath)) {
@@ -57,7 +59,7 @@ if (is_file($manifestPath) && is_readable($manifestPath)) {
 }
 
 $bootstrap = '<script>' .
-    'window.BATTLE_BUILD="v17";' .
+    'window.BATTLE_BUILD="v18";' .
     'window.BATTLE_REF="local-' . $deployId . '";' .
     'window.BATTLE_ASSET_BASE=' . json_encode($assetBase) . ';' .
     'window.BATTLE_AUDIO_BASE=' . json_encode($audioBase) . ';' .
@@ -80,10 +82,12 @@ foreach ($scriptFiles as $file) {
     $body = str_replace($old, $new, $body);
 }
 
-/* Replace the historical document.write/GitHub extra-runtime block with three ordinary scripts. */
+/* Replace the historical extra-runtime block with independent local modules. */
 $extras = '<script src="/grasstex/battle/acoustics.js?v=' . $deployId . '"></script>' . "\n" .
           '<script src="/grasstex/battle/town-objectives.js?v=' . $deployId . '"></script>' . "\n" .
-          '<script src="/grasstex/battle/commander-ai.js?v=' . $deployId . '"></script>';
+          '<script src="/grasstex/battle/battle-telemetry.js?v=' . $deployId . '"></script>' . "\n" .
+          '<script src="/grasstex/battle/commander-ai.js?v=' . $deployId . '"></script>' . "\n" .
+          '<script src="/grasstex/battle/battle-control.js?v=' . $deployId . '"></script>';
 $pattern = '#<script>\s*/\* Extra runtimes[\s\S]*?</script>#';
 $body = preg_replace($pattern, $extras, $body, 1, $count);
 if ($count !== 1) {
@@ -93,6 +97,6 @@ if ($count !== 1) {
 }
 
 header('X-Grasstex-Deploy-Id: ' . $deployId);
-header('X-Grasstex-Build: v17');
+header('X-Grasstex-Build: v18');
 echo $body;
 ?>
