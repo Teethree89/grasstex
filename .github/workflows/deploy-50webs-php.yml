@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Upload Battle Sim runtime
+    name: Upload Battle Sim AI lab
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -31,7 +31,10 @@ jobs:
           set -euo pipefail
           php -l battle_sim_local.php
           php -l battle_log.php
+          php -l battle_log_stats.php
+          php -l battle_policy.php
           test -s battle/battle_sim.html
+
           for f in \
             battle/soldier.js \
             battle/weapons.js \
@@ -40,11 +43,22 @@ jobs:
             battle/battle-sim.js \
             battle/acoustics.js \
             battle/town-objectives.js \
+            battle/module-registry.js \
+            battle/ai-policy.js \
+            battle/objective-system.js \
             battle/battle-telemetry.js \
             battle/commander-ai.js \
+            battle/ai-trainer.js \
             battle/battle-control.js; do
             test -s "$f"
             node --check "$f"
+          done
+
+          test -d battle/modules
+          find battle/modules -maxdepth 1 -type f -name '*.js' -print0 | sort -z | while IFS= read -r -d '' f; do
+            test -s "$f"
+            node --check "$f"
+            echo "Validated module: $f"
           done
           echo "Deploying commit: $(git rev-parse HEAD)"
 
@@ -75,6 +89,8 @@ jobs:
           cd grasstex
           put battle_sim_local.php -o battle_sim.php
           put battle_log.php -o battle_log.php
+          put battle_log_stats.php -o battle_log_stats.php
+          put battle_policy.php -o battle_policy.php
           cd battle
           put battle/battle_sim.html -o battle_sim.html
           put battle/soldier.js -o soldier.js
@@ -84,12 +100,18 @@ jobs:
           put battle/battle-sim.js -o battle-sim.js
           put battle/acoustics.js -o acoustics.js
           put battle/town-objectives.js -o town-objectives.js
+          put battle/module-registry.js -o module-registry.js
+          put battle/ai-policy.js -o ai-policy.js
+          put battle/objective-system.js -o objective-system.js
           put battle/battle-telemetry.js -o battle-telemetry.js
           put battle/commander-ai.js -o commander-ai.js
+          put battle/ai-trainer.js -o ai-trainer.js
           put battle/battle-control.js -o battle-control.js
-          cls -l battle-telemetry.js
-          cls -l commander-ai.js
-          cls -l battle-control.js
+          mirror -R --verbose battle/modules modules
+          cls -l module-registry.js
+          cls -l objective-system.js
+          cls -l ai-trainer.js
+          cls -l modules
           bye
           LFTP
 
@@ -97,12 +119,13 @@ jobs:
         shell: bash
         run: |
           {
-            echo "### 50webs Battle Sim deployment"
+            echo "### 50webs Battle Sim AI lab deployment"
             echo ""
             echo "- Source: \`main@$(git rev-parse --short HEAD)\`"
             echo "- PHP entry: \`battle_sim_local.php -> /grasstex/battle_sim.php\`"
-            echo "- Log endpoint: \`/grasstex/battle_log.php\`"
-            echo "- Page: \`/grasstex/battle/battle_sim.html\`"
-            echo "- Runtime: separate cache-busted modules under \`/grasstex/battle/\`"
+            echo "- Telemetry: \`/grasstex/battle_log.php\`"
+            echo "- Aggregate stats: \`/grasstex/battle_log_stats.php\`"
+            echo "- Learned policy: \`/grasstex/battle_policy.php\`"
+            echo "- Runtime modules: \`/grasstex/battle/modules/\`"
             echo "- Trigger: every push to \`main\` plus manual dispatch"
           } >> "$GITHUB_STEP_SUMMARY"
