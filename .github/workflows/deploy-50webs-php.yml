@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          php -l battle_sim.php
+          php -l battle_sim_local.php
           for f in \
             battle_sim.html \
             battle/battle_sim.html \
@@ -67,7 +67,7 @@ jobs:
           set ftp:ssl-allow no
           set ftp:passive-mode true
           cd grasstex
-          put battle_sim.php -o battle_sim.php
+          put battle_sim_local.php -o battle_sim.php
           put battle_sim.html -o battle_sim.html
           mkdir -p battle
           cd battle
@@ -91,7 +91,8 @@ jobs:
             echo "### 50webs Battle Sim deployment"
             echo ""
             echo "- Source: \`main@$(git rev-parse --short HEAD)\`"
-            echo "- PHP: \`/grasstex/battle_sim.php\`"
+            echo "- PHP: \`battle_sim_local.php -> /grasstex/battle_sim.php\`"
             echo "- Loader: \`/grasstex/battle_sim.html\`"
             echo "- Runtime code: \`/grasstex/battle/\`"
+            echo "- Live runtime uses local deployed files; no browser GitHub fetches."
           } >> "$GITHUB_STEP_SUMMARY"
