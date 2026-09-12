@@ -1,10 +1,10 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>WW2 Battle Sim — loading</title></head><body><div id="boot" style="font-family:Arial,sans-serif;color:#fff;background:#0f141c;position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">Loading battle sim v5…</div><script>(async()=>{
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>WW2 Battle Sim — loading</title><script>if(location.protocol==='http:'&&location.hostname!=='localhost'&&location.hostname!=='127.0.0.1'){location.replace('https://'+location.host+location.pathname+location.search+location.hash);}</script></head><body><div id="boot" style="font-family:Arial,sans-serif;color:#fff;background:#0f141c;position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">Loading battle sim v6…</div><script>(async()=>{
 /* Follow the working grass game loader literally for binary assets: use one explicit HTTPS
    deployment base on test.ivandpopov.com rather than deriving a relative URL from whichever
    PHP/HTML entry point happened to load the page. Code still comes live from GitHub main. */
 const REPO='https://raw.githubusercontent.com/Teethree89/grasstex/';
 const REF=new URLSearchParams(location.search).get('ref')||'main';
-const BUILD='v5';
+const BUILD='v6';
 const ASSETS='https://test.ivandpopov.com/grasstex/Assets/';
 const AUDIO=ASSETS+'audio/';
 const grab=async(path)=>{
