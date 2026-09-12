@@ -1,16 +1,14 @@
 <?php
-/* 50webs production Battle Sim entrypoint.
-   The GitHub Action deploys battle/battle_sim.html plus each battle/*.js file locally.
-   This PHP serves the real battle page directly and rewrites every local runtime script to
-   a cache-busted /grasstex/battle/<file>?v=<deploy-id> URL. No concatenation, document.write,
-   or browser-side GitHub source fetching is used. */
+/* 50webs production entrypoint for the Battle Sim / ww2fps AI laboratory.
+   Core runtimes remain separate files. Extension files under battle/modules/*.js are
+   discovered automatically, cache-busted, and loaded in lexical order. */
 
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: 0');
 header('Surrogate-Control: no-store');
-header('X-Grasstex-Source: local-separate-runtime');
+header('X-Grasstex-Source: modular-ai-lab');
 
 $root = dirname(__FILE__);
 $pagePath = $root . '/battle/battle_sim.html';
@@ -23,10 +21,24 @@ $runtimeFiles = array(
     'battle/battle-sim.js',
     'battle/acoustics.js',
     'battle/town-objectives.js',
+    'battle/module-registry.js',
+    'battle/ai-policy.js',
+    'battle/objective-system.js',
     'battle/battle-telemetry.js',
     'battle/commander-ai.js',
+    'battle/ai-trainer.js',
     'battle/battle-control.js'
 );
+
+$modulePaths = glob($root . '/battle/modules/*.js');
+if ($modulePaths === false) $modulePaths = array();
+sort($modulePaths, SORT_STRING);
+$moduleFiles = array();
+foreach ($modulePaths as $modulePath) {
+    $name = basename($modulePath);
+    $moduleFiles[] = $name;
+    $runtimeFiles[] = 'battle/modules/' . $name;
+}
 
 if (!is_file($pagePath) || !is_readable($pagePath)) {
     http_response_code(503);
@@ -34,7 +46,7 @@ if (!is_file($pagePath) || !is_readable($pagePath)) {
     exit;
 }
 
-/* Any deployed runtime file changing produces a new deploy id, so every local script URL changes. */
+/* Any deployed runtime file changing produces a new deploy id for every script URL. */
 $deployId = 0;
 foreach ($runtimeFiles as $rel) {
     $p = $root . '/' . $rel;
@@ -51,19 +63,28 @@ if ($body === false || stripos($body, '<html') === false) {
 
 $assetBase = 'https://test.ivandpopov.com/grasstex/Assets/';
 $audioBase = $assetBase . 'audio/';
+$apiBase = '/grasstex/';
 $manifest = null;
 $manifestPath = $root . '/Assets/audio/manifest.json';
 if (is_file($manifestPath) && is_readable($manifestPath)) {
     $decoded = json_decode(@file_get_contents($manifestPath), true);
     if (is_array($decoded)) $manifest = $decoded;
 }
+$policyState = null;
+$policyPath = $root . '/state/ai-policy.json';
+if (is_file($policyPath) && is_readable($policyPath)) {
+    $decodedPolicy = json_decode(@file_get_contents($policyPath), true);
+    if (is_array($decodedPolicy)) $policyState = $decodedPolicy;
+}
 
 $bootstrap = '<script>' .
-    'window.BATTLE_BUILD="v18";' .
+    'window.BATTLE_BUILD="v19";' .
     'window.BATTLE_REF="local-' . $deployId . '";' .
     'window.BATTLE_ASSET_BASE=' . json_encode($assetBase) . ';' .
     'window.BATTLE_AUDIO_BASE=' . json_encode($audioBase) . ';' .
+    'window.BATTLE_API_BASE=' . json_encode($apiBase) . ';' .
     'window.BATTLE_AUDIO_MANIFEST=' . json_encode($manifest) . ';' .
+    'window.BATTLE_AI_POLICY=' . json_encode($policyState) . ';' .
     '</script>';
 
 $cdnTag = '<script src="https://cdn.jsdelivr.net/npm/babylonjs@8.26.0/babylon.js"></script>';
@@ -74,20 +95,27 @@ if (strpos($body, $cdnTag) === false) {
 }
 $body = str_replace($cdnTag, $bootstrap . "\n" . $cdnTag, $body);
 
-/* Core modules stay as independent browser scripts, each with the same deployment cache key. */
-$scriptFiles = array('soldier.js','weapons.js','terrain-features.js','squad-ai.js','battle-sim.js');
-foreach ($scriptFiles as $file) {
+$coreScripts = array('soldier.js','weapons.js','terrain-features.js','squad-ai.js','battle-sim.js');
+foreach ($coreScripts as $file) {
     $old = '<script src="' . $file . '"></script>';
     $new = '<script src="/grasstex/battle/' . $file . '?v=' . $deployId . '"></script>';
     $body = str_replace($old, $new, $body);
 }
 
-/* Replace the historical extra-runtime block with independent local modules. */
-$extras = '<script src="/grasstex/battle/acoustics.js?v=' . $deployId . '"></script>' . "\n" .
-          '<script src="/grasstex/battle/town-objectives.js?v=' . $deployId . '"></script>' . "\n" .
-          '<script src="/grasstex/battle/battle-telemetry.js?v=' . $deployId . '"></script>' . "\n" .
-          '<script src="/grasstex/battle/commander-ai.js?v=' . $deployId . '"></script>' . "\n" .
-          '<script src="/grasstex/battle/battle-control.js?v=' . $deployId . '"></script>';
+/* Independent runtimes: one module throwing cannot prevent later files from loading. */
+$extraFiles = array(
+    'acoustics.js',
+    'town-objectives.js',
+    'module-registry.js',
+    'ai-policy.js',
+    'objective-system.js'
+);
+$extras = '';
+foreach ($extraFiles as $file) $extras .= '<script src="/grasstex/battle/' . $file . '?v=' . $deployId . '"></script>' . "\n";
+foreach ($moduleFiles as $file) $extras .= '<script src="/grasstex/battle/modules/' . rawurlencode($file) . '?v=' . $deployId . '"></script>' . "\n";
+$tailFiles = array('battle-telemetry.js','commander-ai.js','ai-trainer.js','battle-control.js');
+foreach ($tailFiles as $file) $extras .= '<script src="/grasstex/battle/' . $file . '?v=' . $deployId . '"></script>' . "\n";
+
 $pattern = '#<script>\s*/\* Extra runtimes[\s\S]*?</script>#';
 $body = preg_replace($pattern, $extras, $body, 1, $count);
 if ($count !== 1) {
@@ -97,6 +125,7 @@ if ($count !== 1) {
 }
 
 header('X-Grasstex-Deploy-Id: ' . $deployId);
-header('X-Grasstex-Build: v18');
+header('X-Grasstex-Build: v19');
+header('X-Grasstex-Modules: ' . count($moduleFiles));
 echo $body;
 ?>
