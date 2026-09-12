@@ -16,27 +16,85 @@
 
   /* Same shape of formula as terrain-demo.js's landscapeHeight, retuned for a field a third
      the size: gentle enough that a rifleman never disappears entirely, pronounced enough
-     that hasLineOfSight in squad-ai.js has hills worth blocking. */
-  function heightAt(x,z){
+     that hasLineOfSight in squad-ai.js has hills worth blocking. This is the ANALYTIC
+     surface - see the sampleAt/gridH note below for why nothing should call this directly
+     once the mesh exists. */
+  function landscapeHeight(x,z){
     return Math.sin(x*.018)*2.4+Math.cos(z*.021)*1.8+Math.sin((x+z)*.015)*1.1+Math.sin(x*.05-z*.04)*.5;
   }
 
+  /* terrain-demo.js's README already documents this exact bug class: the analytic surface
+     and the flat-triangle mesh the GPU actually draws are not the same surface, so placing
+     soldiers/obstacles at landscapeHeight(x,z) puts them on ground that isn't the ground
+     being rendered - which is what read as soldiers sinking into (or floating above) the
+     field. Once the mesh is built, gridH holds its vertex heights and sampleAt interpolates
+     the SAME triangle the GPU rasterizes, exactly like terrain-demo.js's sampleAt; before
+     that (there's a chicken-and-egg problem building the first mesh) it falls back to the
+     analytic surface, same as terrain-demo.js's sampleAnalytic fallback. */
+  var SUB_X=100,SUB_Z=78,GRIDX=SUB_X+1,GRIDZ=SUB_Z+1,gridH=null;
+  function sampleAt(x,z){
+    if(!gridH)return landscapeHeight(x,z);
+    var cellW=FIELD_W/SUB_X,cellD=FIELD_D/SUB_Z;
+    // CreateGround: x rises with col (0..SUB_X), z FALLS with row (0..SUB_Z) - row 0 sits at
+    // +FIELD_D/2, the last row at -FIELD_D/2. Vertex index = col + row*GRIDX.
+    var fcol=(x+FIELD_W/2)/cellW,i=Math.floor(fcol),u=fcol-i;
+    var frow=(FIELD_D/2-z)/cellD,j=Math.floor(frow),v=frow-j;
+    if(i<0||j<0||i>=SUB_X||j>=SUB_Z)return landscapeHeight(x,z); // off the mesh entirely
+    var k=i+j*GRIDX,hC=gridH[k],hB=gridH[k+1],hD=gridH[k+GRIDX],hA=gridH[k+GRIDX+1];
+    // Same (A,B,C)/(D,A,C) triangle split CreateGround itself uses, so this indexes exactly
+    // the triangle the GPU rasterizes rather than merely something close to it.
+    if(u>=v)return hC+u*(hB-hC)+v*(hA-hB);
+    return hC+v*(hD-hC)+u*(hA-hD);
+  }
+
   function buildTerrain(scene){
-    var SUB_X=100,SUB_Z=78;
     // subdivisionsX/subdivisionsY, NOT a {w,h} subdivisions object - that shape belongs to
     // CreateTiledGround. CreateGround silently took it as a bad numeric subdivisions value
     // and built a 1-vertex, 0-index mesh: no ground at all, just the scene's clear color
     // showing through everywhere - which is what "no terrain" actually was.
     var ground=BABYLON.MeshBuilder.CreateGround('battleField',{width:FIELD_W,height:FIELD_D,subdivisionsX:SUB_X,subdivisionsY:SUB_Z},scene);
     var pos=ground.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-    for(var i=0;i<pos.length;i+=3)pos[i+1]=heightAt(pos[i],pos[i+2]);
+    gridH=new Float32Array(GRIDX*GRIDZ);
+    for(var i=0;i<pos.length;i+=3){
+      var h=landscapeHeight(pos[i],pos[i+2]);
+      pos[i+1]=h;gridH[i/3]=h;
+    }
     ground.updateVerticesData(BABYLON.VertexBuffer.PositionKind,pos);
     var normals=[];BABYLON.VertexData.ComputeNormals(pos,ground.getIndices(),normals);
     ground.updateVerticesData(BABYLON.VertexBuffer.NormalKind,normals);
     var mat=new BABYLON.StandardMaterial('battleFieldMat',scene);
-    mat.diffuseColor=new BABYLON.Color3(.30,.36,.20);mat.specularColor=BABYLON.Color3.Black();
+    mat.specularColor=BABYLON.Color3.Black();
+    /* Reuses the grass demo's own ground texture (test.ivandpopov.com/grasstex/Assets/) -
+       it's dirt rather than grass, but that's exactly what terrain-demo.js tiles under its
+       own grass blades too; a muted olive tint over it reads as a churned battlefield rather
+       than a bare dirt lot, and it's the one ground texture already proven to work here. */
+    var dirt=new BABYLON.Texture('https://test.ivandpopov.com/grasstex/Assets/dirttex.png',scene,false,false,BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
+    dirt.wrapU=dirt.wrapV=BABYLON.Texture.WRAP_ADDRESSMODE;
+    dirt.uScale=FIELD_W/9;dirt.vScale=FIELD_D/9;
+    dirt.anisotropicFilteringLevel=4;
+    mat.diffuseTexture=dirt;mat.diffuseColor=new BABYLON.Color3(.62,.72,.48);
     ground.material=mat;ground.receiveShadows=true;ground.isPickable=false;
     return ground;
+  }
+
+  /* Equirectangular sky dome, lifted from grass-realism.js as-is (same shader, same asset) -
+     the battle sim doesn't load that file (it doesn't want the grass shaders that come with
+     it), so this just takes the one piece of it that's purely "what does the horizon look
+     like" and has nothing to do with grass. */
+  function buildSky(scene){
+    var SKY_RADIUS=500,SKY_OFFSET_UV=.110;
+    BABYLON.Effect.ShadersStore.battleSkyDomeVertexShader='precision highp float;attribute vec3 position;uniform mat4 worldViewProjection;varying vec3 vDir;void main(){vDir=position;gl_Position=worldViewProjection*vec4(position,1.0);}';
+    BABYLON.Effect.ShadersStore.battleSkyDomeFragmentShader='precision highp float;varying vec3 vDir;uniform sampler2D skyTexture;void main(){vec3 d=normalize(vDir);float lon=atan(d.z,d.x);float lat=acos(clamp(d.y,-1.0,1.0));float s=lon/(2.0*3.14159265359)+0.5;float t=lat/3.14159265359;gl_FragColor=vec4(texture2D(skyTexture,vec2(s,t)).rgb,1.0);}';
+    var sky=BABYLON.MeshBuilder.CreateSphere('battleSkyDome',{diameter:SKY_RADIUS*2,segments:24},scene);
+    sky.infiniteDistance=true;sky.isPickable=false;sky.applyFog=false;
+    var skyMat=new BABYLON.ShaderMaterial('battleSkyDomeMat',scene,{vertex:'battleSkyDome',fragment:'battleSkyDome'},{attributes:['position'],uniforms:['worldViewProjection'],samplers:['skyTexture']});
+    skyMat.backFaceCulling=false;skyMat.disableDepthWrite=true;
+    skyMat.setTexture('skyTexture',new BABYLON.Texture('https://test.ivandpopov.com/grasstex/Assets/skytex.png',scene,false,false,BABYLON.Texture.BILINEAR_SAMPLINGMODE));
+    sky.material=skyMat;
+    // Same physical vertical offset trick as grass-realism.js's setSkyPhysicalOffset, just
+    // applied once rather than kept adjustable - this field doesn't have a quality panel.
+    sky.position.y=SKY_RADIUS*Math.sin(Math.PI*SKY_OFFSET_UV);
+    return sky;
   }
 
   // ---------- transient combat FX: cheap, disposed almost immediately ----------
@@ -96,7 +154,7 @@
   function BattleSim(scene,opts){
     opts=opts||{};
     this.scene=scene;
-    this.heightAt=heightAt;
+    this.heightAt=sampleAt;
     // Plain {x,z,radius,cover} circles from terrain-features.js - squad-ai.js reads this
     // directly (battle.obstacles) for LOS blocking and cover, so an empty array here just
     // means an open field rather than a special case anywhere else.
@@ -141,7 +199,7 @@
           var jitterX=laneX+(Math.random()-.5)*8,jitterZ=z+(Math.random()-.5)*6;
           var parent=null; // world space; soldier.js's TransformNode is enough on its own
           var model=BattleSoldierModel.createSoldier(scene,faction,role,parent);
-          model.root.position.set(jitterX,heightAt(jitterX,jitterZ),jitterZ);
+          model.root.position.set(jitterX,sampleAt(jitterX,jitterZ),jitterZ);
           model.root.rotation.y=facingObjectiveZ>z?0:Math.PI;
           var weapon=BattleWeapons.attachWeapon(scene,model.weaponSocket,SquadAI.ROLES[role].weapon);
           var soldier=SquadAI.createSoldier({id:nextId++,faction:faction,role:role,squad:squad,slotIndex:si,model:model,weapon:weapon});
@@ -166,6 +224,29 @@
   BattleSim.prototype.pause=function(){this.paused=true;};
   BattleSim.prototype.resume=function(){this.paused=false;};
 
+  /* Not pathfinding - just enough local steering that a soldier heading straight at a tree
+     trunk or a hedge segment nudges sideways around it instead of clipping through. Looks a
+     short distance ahead along the current travel direction; any obstacle whose footprint
+     that lookahead point would land inside adds a push directly away from that obstacle's
+     center, and all such pushes get blended into the desired direction before it's applied.
+     Sparse, roughly-circular obstacles is exactly what this handles well; it will still walk
+     a soldier into a corner between two obstacles that fully box a destination in. */
+  var AVOID_LOOKAHEAD=1.8,AVOID_MARGIN=.5;
+  function steerAroundObstacles(obstacles,x,z,dirx,dirz){
+    if(!obstacles||!obstacles.length)return null;
+    var lookX=x+dirx*AVOID_LOOKAHEAD,lookZ=z+dirz*AVOID_LOOKAHEAD,pushX=0,pushZ=0,any=false;
+    for(var i=0;i<obstacles.length;i++){
+      var ob=obstacles[i],dxo=lookX-ob.x,dzo=lookZ-ob.z,r=ob.radius+AVOID_MARGIN,dSq=dxo*dxo+dzo*dzo;
+      if(dSq>=r*r)continue;
+      any=true;
+      var dist=Math.sqrt(dSq)||.001;
+      pushX+=dxo/dist;pushZ+=dzo/dist;
+    }
+    if(!any)return null;
+    var nx=dirx+pushX*.9,nz=dirz+pushZ*.9,len=Math.hypot(nx,nz);
+    return len>1e-4?{x:nx/len,z:nz/len}:null;
+  }
+
   function stepMovement(self,soldier,dt){
     if(soldier.dead)return;
     soldier.fireCooldown=Math.max(0,soldier.fireCooldown-dt);
@@ -173,9 +254,12 @@
     var wantCrouch=(soldier.suppressedUntil>self.time)||(!!soldier.target&&d<=.6);
     if(d>.6){
       var spd=soldier.speed*(wantCrouch?.55:1),step=Math.min(d,spd*dt);
-      var nx=soldier.root.position.x+dx/d*step,nz=soldier.root.position.z+dz/d*step;
+      var dirx=dx/d,dirz=dz/d;
+      var steered=steerAroundObstacles(self.obstacles,soldier.root.position.x,soldier.root.position.z,dirx,dirz);
+      if(steered){dirx=steered.x;dirz=steered.z;}
+      var nx=soldier.root.position.x+dirx*step,nz=soldier.root.position.z+dirz*step;
       soldier.root.position.x=nx;soldier.root.position.z=nz;soldier.root.position.y=self.heightAt(nx,nz);
-      soldier.root.rotation.y=Math.atan2(dx,dz);
+      soldier.root.rotation.y=Math.atan2(dx,dz); // face the destination, not the swerve
       soldier.moving=true;
     }else{
       soldier.moving=false;
@@ -243,5 +327,5 @@
     return sim;
   }
 
-  root.BattleSim={FIELD_W:FIELD_W,FIELD_D:FIELD_D,heightAt:heightAt,buildTerrain:buildTerrain,start:start};
+  root.BattleSim={FIELD_W:FIELD_W,FIELD_D:FIELD_D,heightAt:sampleAt,buildTerrain:buildTerrain,buildSky:buildSky,start:start};
 })(typeof window!=='undefined'?window:globalThis);

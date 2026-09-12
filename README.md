@@ -62,17 +62,34 @@ A squad falls back once 60% of it is down. Combat is resolved on a fixed ~6.7 Hz
 (`battle/squad-ai.js`), independent of render framerate. Targeting checks both a
 terrain-height line-of-sight (hills can block a shot) and `battle/terrain-features.js`'s
 scattered tree clumps and gapped hedgerows, which also knock down a target's hit chance while
-it's fighting from near one (a hedge more than a lone tree) - see `coverMultiplierAt`. Weapon
-fire plays a positional gunshot sound per weapon kind (`battle/audio/*.mp3`, ElevenLabs
-sound-generation) through a small round-robin `BABYLON.Sound` pool per kind, so a firefight
-doesn't spawn an unbounded number of overlapping audio nodes. The HUD shows alive/kill counts
-per side, a speed multiplier, and a restart button; `window.__battle__` is the live
-`BattleSim` instance for poking at from the console.
+it's fighting from near one (a hedge more than a lone tree) - see `coverMultiplierAt`. Moving
+soldiers also steer around nearby obstacles (`steerAroundObstacles` in `battle-sim.js`) rather
+than walking straight through them - a short lookahead check and a push away from anything
+it'd collide with, not real pathfinding, so a destination boxed in by obstacles on all sides
+can still get a soldier stuck against them. Weapon fire plays a positional gunshot sound per
+weapon kind (`battle/audio/*.mp3`, ElevenLabs sound-generation) through a small round-robin
+`BABYLON.Sound` pool per kind. Mobile browsers (iOS Safari especially) block all audio until a
+real user gesture, so the HUD has an explicit "Enable sound" button alongside the alive/kill
+counts, speed multiplier, and restart button; `window.__battle__` is the live `BattleSim`
+instance for poking at from the console.
+
+The ground is textured and there's a sky dome, both reusing this repo's own hosted assets
+(`test.ivandpopov.com/grasstex/Assets/dirttex.png` and `skytex.png`) at their absolute URL -
+same texture terrain-demo.js tiles under its grass, and the identical sky shader/asset from
+grass-realism.js, just lifted out on its own since the battle sim doesn't load that file.
+Loading those assets cross-origin (e.g. from a local dev copy of the page opened somewhere
+other than that host) will fail WebGL's texture upload with an untainted-canvas error - they
+only load because the real deployment (`battle_sim.php`) serves the page from that exact
+origin too. Terrain height sampling also learned the same lesson terrain-demo.js's own README
+documents: soldiers/obstacles used to be placed with the *analytic* height formula, which is
+not the same surface as the flat-triangle mesh the GPU actually draws, so anything standing on
+a sloped patch could visibly sink into or float above the ground. `sampleAt` in `battle-sim.js`
+now interpolates the real built mesh instead, the same fix and the same reasoning.
 
 Known limitations, since this is a starting point for further modeling/AI work rather than a
-finished sim: no soldier-blocks-soldier occlusion, trees/hedges block sightlines and grant
-cover but don't block movement (soldiers path straight through them), no pathfinding around
-terrain otherwise, and the models/weapons are placeholder primitives rather than real assets.
+finished sim: no soldier-blocks-soldier occlusion, the obstacle steering above is local
+avoidance rather than real pathfinding, and the models/weapons are placeholder primitives
+rather than real assets.
 
 ## Main files
 

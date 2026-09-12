@@ -37,10 +37,10 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 #banner .card small{display:block;margin-top:8px;font-size:12px;color:#b7bba0}
 #banner button{margin-top:16px;padding:7px 18px;border-radius:6px;border:1px solid #6b8a44;
   background:#3c4a26;color:#fff;cursor:pointer;font-size:13px}
-#soundHint{position:fixed;bottom:10px;left:10px;z-index:10;padding:6px 10px;
-  background:rgba(14,17,12,.86);border:1px solid rgba(255,255,255,.14);border-radius:6px;
-  color:#d9dcc4;font-size:11px;pointer-events:none;transition:opacity .3s}
-#soundHint[hidden]{display:none}
+#soundBtn{margin-top:6px;width:100%;padding:6px;background:#1c2116;border:1px solid #46512f;
+  color:#d9dcc4;border-radius:5px;cursor:pointer;font-size:11px}
+#soundBtn:hover{background:#2a331c}
+#soundBtn.on{background:#2c3a1f;color:#cdeec0;border-color:#557a34}
 </style>
 </head>
 <body>
@@ -59,6 +59,7 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
     <button data-speed="4">4&times;</button>
   </div>
   <button id="restartBtn" type="button">Restart battle</button>
+  <button id="soundBtn" type="button">&#128266; Enable sound</button>
 </div>
 
 <div id="banner"><div class="card">
@@ -66,11 +67,6 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   <small id="bannerSub"></small>
   <div><button id="bannerRestart" type="button">Run it again</button></div>
 </div></div>
-
-<!-- Mobile browsers (iOS Safari in particular) refuse to make any sound at all until the
-     page has seen one real user gesture - the sim itself never asks for one, so without this
-     the gunfire audio just silently never starts. Gone on the first tap/click. -->
-<div id="soundHint">🔊 Tap anywhere to enable sound</div>
 
 <script src="https://cdn.jsdelivr.net/npm/babylonjs@8.26.0/babylon.js"></script>
 <script src="soldier.js"></script>
@@ -83,11 +79,13 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   var canvas=document.getElementById('renderCanvas');
   var engine=new BABYLON.Engine(canvas,true,{stencil:true,preserveDrawingBuffer:true});
   var scene=new BABYLON.Scene(engine);
+  // Only visible before the sky texture loads, or if it fails to - the dome covers the rest.
   scene.clearColor=new BABYLON.Color4(.55,.62,.68,1);
   scene.fogMode=BABYLON.Scene.FOGMODE_LINEAR;
-  scene.fogColor=new BABYLON.Color3(.55,.62,.68);
-  /* fogColor matches clearColor on purpose (a seamless horizon) - which is exactly why
-     fogStart/fogEnd have to be tuned to this field's actual scale rather than borrowed from
+  // A warm haze tint matching the sky's horizon glow, not a flat blue-grey - distant, heavily
+  // fogged terrain blends into the sky dome's own horizon color instead of an unrelated one.
+  scene.fogColor=new BABYLON.Color3(.72,.62,.52);
+  /* fogStart/fogEnd have to be tuned to this field's actual scale rather than borrowed from
      the grass demo's much smaller camera range: at 180-420 almost the entire 360x280 field
      was past fogStart from the default camera position, so the terrain blended into "the
      sky" and read as not there at all. */
@@ -100,12 +98,15 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   camera.wheelPrecision=3;camera.panningSensibility=140;
   camera.attachControl(canvas,true);
 
+  // Sunset warmth to match the borrowed sky dome, rather than the neutral daylight this had
+  // before the dome existed.
   var hemi=new BABYLON.HemisphericLight('hemi',new BABYLON.Vector3(0,1,.2),scene);
-  hemi.intensity=.85;hemi.diffuse=new BABYLON.Color3(.85,.88,.9);hemi.groundColor=new BABYLON.Color3(.30,.30,.24);
-  var sun=new BABYLON.DirectionalLight('sun',new BABYLON.Vector3(-.5,-.85,.3),scene);
-  sun.intensity=1.0;sun.diffuse=new BABYLON.Color3(1,.98,.9);
+  hemi.intensity=.85;hemi.diffuse=new BABYLON.Color3(.9,.85,.78);hemi.groundColor=new BABYLON.Color3(.32,.27,.20);
+  var sun=new BABYLON.DirectionalLight('sun',new BABYLON.Vector3(-.6,-.5,.35),scene);
+  sun.intensity=1.05;sun.diffuse=new BABYLON.Color3(1,.82,.58);
 
   BattleSim.buildTerrain(scene);
+  BattleSim.buildSky(scene);
   var features=BattleTerrainFeatures.scatter(scene,BattleSim.heightAt,{fieldW:BattleSim.FIELD_W,fieldD:BattleSim.FIELD_D});
   /* Overridden by the root loader (battle_sim.html) before it document.writes this page in,
      so audio keeps resolving against the git repo instead of whatever host is showing this -
@@ -155,14 +156,20 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   /* Mobile browsers - iOS Safari in particular - keep the Web Audio context suspended until
      a real user gesture unlocks it, and nothing about starting the sim (it runs on its own,
      nobody has to press play) counts as one. Without this, every BABYLON.Sound.play() call
-     in battle-sim.js's onFire hook is a silent no-op forever: audio never starts on its own. */
-  var soundHint=document.getElementById('soundHint');
+     in battle-sim.js's onFire hook is a silent no-op forever: audio never starts on its own.
+     An explicit button both makes that discoverable (a corner hint is easy to miss/dismiss
+     without reading) and gives a definite "yes, that worked" instead of trusting that
+     whatever the visitor happened to tap counted as a real gesture. The passive listeners
+     stay too, so tapping the canvas to orbit the camera unlocks it just as well. */
+  var soundBtn=document.getElementById('soundBtn');
   function unlockAudio(){
     if(BABYLON.Engine.audioEngine)BABYLON.Engine.audioEngine.unlock();
-    soundHint.hidden=true;
+    soundBtn.textContent='\u{1F50A} Sound on';
+    soundBtn.classList.add('on');
     document.removeEventListener('pointerdown',unlockAudio);
     document.removeEventListener('touchend',unlockAudio);
   }
+  soundBtn.addEventListener('click',unlockAudio);
   document.addEventListener('pointerdown',unlockAudio,{once:true});
   document.addEventListener('touchend',unlockAudio,{once:true});
 
