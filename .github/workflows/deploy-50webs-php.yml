@@ -1,6 +1,9 @@
 name: Deploy Battle Runtime to 50webs
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -8,7 +11,7 @@ permissions:
 
 concurrency:
   group: deploy-50webs-battle-runtime
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -27,6 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           php -l battle_sim_local.php
+          php -l battle_log.php
           for f in \
             battle/battle_sim.html \
             battle/soldier.js \
@@ -36,7 +40,9 @@ jobs:
             battle/battle-sim.js \
             battle/acoustics.js \
             battle/town-objectives.js \
-            battle/commander-ai.js; do
+            battle/battle-telemetry.js \
+            battle/commander-ai.js \
+            battle/battle-control.js; do
             test -s "$f"
           done
           echo "Deploying commit: $(git rev-parse HEAD)"
@@ -67,6 +73,7 @@ jobs:
           set ftp:passive-mode true
           cd grasstex
           put battle_sim_local.php -o battle_sim.php
+          put battle_log.php -o battle_log.php
           cd battle
           put battle/battle_sim.html -o battle_sim.html
           put battle/soldier.js -o soldier.js
@@ -76,10 +83,12 @@ jobs:
           put battle/battle-sim.js -o battle-sim.js
           put battle/acoustics.js -o acoustics.js
           put battle/town-objectives.js -o town-objectives.js
+          put battle/battle-telemetry.js -o battle-telemetry.js
           put battle/commander-ai.js -o commander-ai.js
-          cls -l acoustics.js
-          cls -l town-objectives.js
+          put battle/battle-control.js -o battle-control.js
+          cls -l battle-telemetry.js
           cls -l commander-ai.js
+          cls -l battle-control.js
           bye
           LFTP
 
@@ -90,8 +99,9 @@ jobs:
             echo "### 50webs Battle Sim deployment"
             echo ""
             echo "- Source: \`main@$(git rev-parse --short HEAD)\`"
-            echo "- PHP: \`battle_sim_local.php -> /grasstex/battle_sim.php\`"
+            echo "- PHP entry: \`battle_sim_local.php -> /grasstex/battle_sim.php\`"
+            echo "- Log endpoint: \`/grasstex/battle_log.php\`"
             echo "- Page: \`/grasstex/battle/battle_sim.html\`"
-            echo "- Runtime code: separate cache-busted files under \`/grasstex/battle/\`"
-            echo "- Verified uploads: \`acoustics.js\`, \`town-objectives.js\`, \`commander-ai.js\`"
+            echo "- Runtime: separate cache-busted modules under \`/grasstex/battle/\`"
+            echo "- Trigger: every push to \`main\` plus manual dispatch"
           } >> "$GITHUB_STEP_SUMMARY"
