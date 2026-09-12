@@ -23,7 +23,11 @@
 
   function buildTerrain(scene){
     var SUB_X=100,SUB_Z=78;
-    var ground=BABYLON.MeshBuilder.CreateGround('battleField',{width:FIELD_W,height:FIELD_D,subdivisions:{w:SUB_X,h:SUB_Z}},scene);
+    // subdivisionsX/subdivisionsY, NOT a {w,h} subdivisions object - that shape belongs to
+    // CreateTiledGround. CreateGround silently took it as a bad numeric subdivisions value
+    // and built a 1-vertex, 0-index mesh: no ground at all, just the scene's clear color
+    // showing through everywhere - which is what "no terrain" actually was.
+    var ground=BABYLON.MeshBuilder.CreateGround('battleField',{width:FIELD_W,height:FIELD_D,subdivisionsX:SUB_X,subdivisionsY:SUB_Z},scene);
     var pos=ground.getVerticesData(BABYLON.VertexBuffer.PositionKind);
     for(var i=0;i<pos.length;i+=3)pos[i+1]=heightAt(pos[i],pos[i+2]);
     ground.updateVerticesData(BABYLON.VertexBuffer.PositionKind,pos);

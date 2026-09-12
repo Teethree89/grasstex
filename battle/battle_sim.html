@@ -37,6 +37,10 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 #banner .card small{display:block;margin-top:8px;font-size:12px;color:#b7bba0}
 #banner button{margin-top:16px;padding:7px 18px;border-radius:6px;border:1px solid #6b8a44;
   background:#3c4a26;color:#fff;cursor:pointer;font-size:13px}
+#soundHint{position:fixed;bottom:10px;left:10px;z-index:10;padding:6px 10px;
+  background:rgba(14,17,12,.86);border:1px solid rgba(255,255,255,.14);border-radius:6px;
+  color:#d9dcc4;font-size:11px;pointer-events:none;transition:opacity .3s}
+#soundHint[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -63,6 +67,11 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   <div><button id="bannerRestart" type="button">Run it again</button></div>
 </div></div>
 
+<!-- Mobile browsers (iOS Safari in particular) refuse to make any sound at all until the
+     page has seen one real user gesture - the sim itself never asks for one, so without this
+     the gunfire audio just silently never starts. Gone on the first tap/click. -->
+<div id="soundHint">🔊 Tap anywhere to enable sound</div>
+
 <script src="https://cdn.jsdelivr.net/npm/babylonjs@8.26.0/babylon.js"></script>
 <script src="soldier.js"></script>
 <script src="weapons.js"></script>
@@ -77,7 +86,12 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   scene.clearColor=new BABYLON.Color4(.55,.62,.68,1);
   scene.fogMode=BABYLON.Scene.FOGMODE_LINEAR;
   scene.fogColor=new BABYLON.Color3(.55,.62,.68);
-  scene.fogStart=180;scene.fogEnd=420;
+  /* fogColor matches clearColor on purpose (a seamless horizon) - which is exactly why
+     fogStart/fogEnd have to be tuned to this field's actual scale rather than borrowed from
+     the grass demo's much smaller camera range: at 180-420 almost the entire 360x280 field
+     was past fogStart from the default camera position, so the terrain blended into "the
+     sky" and read as not there at all. */
+  scene.fogStart=320;scene.fogEnd=800;
 
   var target=new BABYLON.Vector3(0,4,0);
   var camera=new BABYLON.ArcRotateCamera('cam',-Math.PI/2,1.02,240,target,scene);
@@ -137,6 +151,20 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 
   engine.runRenderLoop(function(){scene.render();});
   window.addEventListener('resize',function(){engine.resize();});
+
+  /* Mobile browsers - iOS Safari in particular - keep the Web Audio context suspended until
+     a real user gesture unlocks it, and nothing about starting the sim (it runs on its own,
+     nobody has to press play) counts as one. Without this, every BABYLON.Sound.play() call
+     in battle-sim.js's onFire hook is a silent no-op forever: audio never starts on its own. */
+  var soundHint=document.getElementById('soundHint');
+  function unlockAudio(){
+    if(BABYLON.Engine.audioEngine)BABYLON.Engine.audioEngine.unlock();
+    soundHint.hidden=true;
+    document.removeEventListener('pointerdown',unlockAudio);
+    document.removeEventListener('touchend',unlockAudio);
+  }
+  document.addEventListener('pointerdown',unlockAudio,{once:true});
+  document.addEventListener('touchend',unlockAudio,{once:true});
 
   // Same debug door the model lab uses, for headless/manual poking from the console.
   window.__battle__=battle;
