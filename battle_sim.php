@@ -2,11 +2,9 @@
 /* Live Battle Sim proxy plus asset mirroring.
 
    GitHub remains the source of the live loader and any files committed under Assets/.
-   50webs mirrors changed GitHub assets locally. The two Battle Sim textures are a special
-   bootstrap case: their last known-good compact JPEG copies only existed inside historical
-   battle-sim.js as data URIs, so this script extracts those bytes once and materializes them
-   as ordinary Assets/dirttex.jpg and Assets/skytex.jpg files on the host. Runtime code then
-   loads normal files; it does not use data URIs. */
+   50webs mirrors changed GitHub assets locally. The live loader is fetched from GitHub's
+   Contents API first so branch updates do not depend on raw.githubusercontent.com's CDN
+   propagation; raw GitHub remains a fallback. */
 
 $repo = 'Teethree89/grasstex';
 $branch = 'main';
@@ -24,7 +22,6 @@ function gh_get($url, $binary = false) {
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
     curl_setopt($ch, CURLOPT_TIMEOUT, $binary ? 30 : 20);
     curl_setopt($ch, CURLOPT_USERAGENT, 'grasstex-50webs');
-    /* Public read-only GitHub content; 50webs' legacy CA bundle has caused validation issues. */
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
     $body = curl_exec($ch);
@@ -47,9 +44,7 @@ function asset_path_safe($path) {
     return strpos($path, 'Assets/') === 0 && strpos($path, '..') === false && strpos($path, "\0") === false;
 }
 
-/* Materialize the known-good compact Battle textures as REAL files. This is deliberately
-   only a migration/bootstrap path. Once written, Babylon loads dirttex.jpg/skytex.jpg just
-   like any other ordinary asset. */
+/* Keep the historical compact texture bootstrap for old deployments that still need it. */
 $dirtDest = $root . '/Assets/dirttex.jpg';
 $skyDest = $root . '/Assets/skytex.jpg';
 if (!is_file($dirtDest) || @filesize($dirtDest) < 1024 || !is_file($skyDest) || @filesize($skyDest) < 1024) {
@@ -82,8 +77,6 @@ if (is_file($stateFile) && is_readable($stateFile)) {
     if (is_array($decoded)) $state = array_merge($state, $decoded);
 }
 
-/* If the newly canonical audio files are not local yet, bypass the normal throttle so one
-   page load is enough to populate them. */
 $requiredAudio = array('rifle.mp3','carbine.mp3','lmg.mp3','pistol.mp3');
 $missingRequiredAsset = false;
 foreach ($requiredAudio as $audioFile) {
@@ -106,7 +99,6 @@ if ($missingRequiredAsset || time() - intval($state['checked_at']) >= $syncInter
                 if ($entry['type'] !== 'blob' || !asset_path_safe($entry['path'])) continue;
                 $assets[] = $entry;
             }
-
             if (count($assets) === 0) {
                 $syncStatus = 'no-github-assets';
             } else {
@@ -117,7 +109,6 @@ if ($missingRequiredAsset || time() - intval($state['checked_at']) >= $syncInter
                     $dest = $root . '/' . $path;
                     $known = isset($state['files'][$path]) ? $state['files'][$path] : null;
                     if ($known === $sha && is_file($dest)) continue;
-
                     $segments = explode('/', $path);
                     $encoded = array();
                     foreach ($segments as $segment) $encoded[] = rawurlencode($segment);
@@ -136,9 +127,6 @@ if ($missingRequiredAsset || time() - intval($state['checked_at']) >= $syncInter
     @file_put_contents($stateFile, json_encode($state), LOCK_EX);
 }
 
-$github = 'https://raw.githubusercontent.com/' . $repo . '/' . $branch . '/battle_sim.html?pull=' . time();
-$fallback = $root . '/battle_sim.html';
-
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
@@ -146,13 +134,32 @@ header('Expires: 0');
 header('X-Grasstex-Asset-Sync: ' . $syncStatus);
 header('X-Grasstex-Texture-Bootstrap: ' . $textureBootstrapStatus);
 
-$body = gh_get($github);
+/* Resolve current main through GitHub's Contents API first. This avoids the occasional lag
+   observed when raw.githubusercontent.com/main still serves the preceding object briefly. */
+$apiUrl = 'https://api.github.com/repos/' . $repo . '/contents/battle_sim.html?ref=' . rawurlencode($branch) . '&ts=' . time();
+$apiBody = gh_get($apiUrl);
+if ($apiBody !== false) {
+    $api = json_decode($apiBody, true);
+    if (is_array($api) && isset($api['content'], $api['encoding']) && $api['encoding'] === 'base64') {
+        $body = base64_decode(str_replace(array("\r", "\n"), '', $api['content']), true);
+        if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false) {
+            header('X-Grasstex-Source: github-contents-api');
+            if (isset($api['sha'])) header('X-Grasstex-Loader-SHA: ' . $api['sha']);
+            echo $body;
+            exit;
+        }
+    }
+}
+
+$rawUrl = 'https://raw.githubusercontent.com/' . $repo . '/' . $branch . '/battle_sim.html?pull=' . time();
+$body = gh_get($rawUrl);
 if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false) {
-    header('X-Grasstex-Source: github-live');
+    header('X-Grasstex-Source: github-raw-fallback');
     echo $body;
     exit;
 }
 
+$fallback = $root . '/battle_sim.html';
 if (is_file($fallback) && is_readable($fallback)) {
     header('X-Grasstex-Source: local-fallback');
     readfile($fallback);
