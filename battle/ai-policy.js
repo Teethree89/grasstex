@@ -4,7 +4,8 @@
 (function(root){
   'use strict';
 
-  var ENDPOINT='/grasstex/battle_policy.php';
+  var API_BASE=root.BATTLE_API_BASE||'/grasstex/';
+  var ENDPOINT=API_BASE+'battle_policy.php';
   var DEFAULTS={
     cohesionRadius:34,
     captainlessCohesion:26,
@@ -36,6 +37,7 @@
     engagedRallyAdvance:[0.04,0.34],pressObjectiveMinDistance:[3,14],pressEnemyClearance:[18,65],scoutLead:[0,10],gunnerTrail:[0,8],
     objectiveHoldWin:[20,60],decisionSnapshotSeconds:[3,12]
   };
+  /* Game rules are deliberately excluded: the learner may tune tactics, not victory/capture rules. */
   var TUNABLE=['cohesionRadius','captainlessCohesion','regroupHold','cornerHold','supportDelay','sectorNeutralNeed','sectorEnemyNeed','sectorActiveBonus','sectorDistanceWeight','routeArrivalRadius','finalRouteRadius','captureCommitRatio','contactDistance','engagedRallyAdvance','pressEnemyClearance','scoutLead','gunnerTrail'];
 
   function clone(v){return JSON.parse(JSON.stringify(v));}
@@ -53,11 +55,8 @@
   var revision=persisted&&persisted.revision||0;
 
   function get(){return clone(current);}
-  function set(policy,meta){current=normalize(policy);if(meta&&meta.revision!=null)revision=meta.revision;return get();}
-  function policyFor(sim,faction){
-    if(sim&&sim.aiPolicies&&sim.aiPolicies[faction])return sim.aiPolicies[faction];
-    return current;
-  }
+  function set(nextPolicy,meta){current=normalize(nextPolicy);if(meta&&meta.revision!=null)revision=meta.revision;return get();}
+  function policyFor(sim,faction){if(sim&&sim.aiPolicies&&sim.aiPolicies[faction])return sim.aiPolicies[faction];return current;}
   function setMatchPolicies(sim,us,ge){sim.aiPolicies={us:normalize(us||current),ge:normalize(ge||current)};return sim.aiPolicies;}
   function clearMatchPolicies(sim){if(sim)sim.aiPolicies=null;}
 
@@ -75,8 +74,8 @@
     TUNABLE.forEach(function(k){var r=RANGES[k],span=r[1]-r[0];sum+=Math.pow((a[k]-b[k])/span,2);});
     return Math.sqrt(sum/TUNABLE.length);
   }
-  function persist(policy,meta){
-    var payload={policy:normalize(policy),meta:meta||{},baseRevision:revision};
+  function persist(nextPolicy,meta){
+    var payload={policy:normalize(nextPolicy),meta:meta||{},baseRevision:revision};
     return fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),cache:'no-store'})
       .then(function(r){if(!r.ok)throw new Error('policy save HTTP '+r.status);return r.json();})
       .then(function(j){if(!j||!j.ok)throw new Error(j&&j.error||'policy save failed');current=normalize(j.policy||payload.policy);revision=j.revision||revision;root.BATTLE_AI_POLICY=j;console.log('[POLICY] persisted revision '+revision);return j;});
