@@ -51,11 +51,11 @@ foreach ($files as $path) {
         } elseif ($type === 'objective-captured') { $summary['captures']++; $daily['captures']++; }
         elseif ($type === 'objective-neutralized') { $summary['neutralizations']++; }
         elseif ($type === 'reinforcement' || $type === 'module-spawn') { $summary['reinforcements']++; }
-        elseif ($type === 'training-result') {
+        elseif ($type === 'training-result' || $type === 'policy-match-result') {
             $summary['trainingResults']++; $daily['trainingResults']++;
             $winner = isset($data['winner']) ? strval($data['winner']) : 'none';
             if (!isset($summary['winners'][$winner])) $summary['winners'][$winner] = 0; $summary['winners'][$winner]++;
-        } elseif ($type === 'training-summary') { $summary['trainingSummaries']++; }
+        } elseif ($type === 'training-summary' || $type === 'policy-training-summary') { $summary['trainingSummaries']++; }
         elseif ($type === 'policy-candidate') { $summary['policyCandidates']++; }
         elseif ($type === 'policy-promoted') { $summary['policyPromotions']++; }
         elseif ($type === 'objective-victory' && $mode !== 'training') {
@@ -66,7 +66,7 @@ foreach ($files as $path) {
         $ts = isset($e['serverTime']) ? strval($e['serverTime']) : (isset($e['clientTime']) ? strval($e['clientTime']) : '');
         if ($ts !== '' && $ts >= $latestTs) {
             $latestTs = $ts;
-            $summary['latestEvent'] = array('time'=>$ts,'type'=>$type,'mode'=>$mode,'session'=>$session,'battleTime'=>isset($e['battleTime'])?$e['battleTime']:null);
+            $summary['latestEvent'] = array('time'=>$ts,'type'=>$type,'mode'=>$mode,'session'=>$session,'battleTime'=>isset($e['battleTime'])?$e['battleTime']:null,'policyRevision'=>isset($e['policyRevision'])?$e['policyRevision']:null);
         }
     }
     fclose($fh);
@@ -79,7 +79,9 @@ ksort($summary['eventTypes']); ksort($summary['modes']);
 $policyPath = $root . '/state/ai-policy.json';
 if (is_file($policyPath)) {
     $p = json_decode(@file_get_contents($policyPath), true);
-    if (is_array($p)) $summary['policy'] = array('revision'=>isset($p['revision'])?$p['revision']:0,'score'=>isset($p['score'])?$p['score']:null,'trainedAt'=>isset($p['trainedAt'])?$p['trainedAt']:null,'matches'=>isset($p['matches'])?$p['matches']:null);
+    if (is_array($p)) $summary['policy'] = array('revision'=>isset($p['revision'])?$p['revision']:0,'score'=>isset($p['score'])?$p['score']:null,'trainedAt'=>isset($p['trainedAt'])?$p['trainedAt']:null,'matches'=>isset($p['matches'])?$p['matches']:null,'candidateId'=>isset($p['meta']['candidateId'])?$p['meta']['candidateId']:null);
+} else {
+    $summary['policy'] = array('revision'=>0,'score'=>null,'trainedAt'=>null,'matches'=>null,'candidateId'=>null);
 }
 
 echo json_encode($summary, JSON_UNESCAPED_SLASHES);
