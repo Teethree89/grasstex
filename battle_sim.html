@@ -1,42 +1,47 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>WW2 Battle Sim — loading</title></head><body><div id="boot" style="font-family:Arial,sans-serif;color:#fff;background:#0f141c;position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">Loading battle sim v4…</div><script>(async()=>{
-/* Same self-fetching shape as index.html/game.html: this file is the only thing that has to
-   live on the static host. It pulls the real page and JS from GitHub, while binary assets
-   resolve against the same-origin Assets/ tree maintained by battle_sim.php. */
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>WW2 Battle Sim — loading</title></head><body><div id="boot" style="font-family:Arial,sans-serif;color:#fff;background:#0f141c;position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">Loading battle sim v5…</div><script>(async()=>{
+/* Follow the working grass game loader literally for binary assets: use one explicit HTTPS
+   deployment base on test.ivandpopov.com rather than deriving a relative URL from whichever
+   PHP/HTML entry point happened to load the page. Code still comes live from GitHub main. */
 const REPO='https://raw.githubusercontent.com/Teethree89/grasstex/';
 const REF=new URLSearchParams(location.search).get('ref')||'main';
-const BUILD='v4';
+const BUILD='v5';
+const ASSETS='https://test.ivandpopov.com/grasstex/Assets/';
+const AUDIO=ASSETS+'audio/';
 const grab=async(path)=>{
   const r=await fetch(REPO+REF+'/'+path+'?ts='+Date.now(),{cache:'no-store'});
   if(!r.ok)throw new Error(path+' -> HTTP '+r.status);
   return r.text();
 };
+const probe=async(url)=>{
+  try{
+    const r=await fetch(url+'?probe='+Date.now(),{cache:'no-store'});
+    return {url:url,ok:r.ok,status:r.status,type:r.headers.get('content-type')||''};
+  }catch(e){return {url:url,ok:false,status:'fetch-error',type:'',error:String(e&&e.message||e)};}
+};
 const ET='</scr'+'ipt>',OT='<scr'+'ipt>';
 const OLD_SCRIPTS='<script src="soldier.js">'+ET+'\n<script src="weapons.js">'+ET+'\n<script src="terrain-features.js">'+ET+'\n<script src="squad-ai.js">'+ET+'\n<script src="battle-sim.js">'+ET;
 try{
-  const [html,soldier,weapons,terrainFeatures,squadAi,battleSimRaw]=await Promise.all([
+  const [html,soldier,weapons,terrainFeatures,squadAi,battleSim,assetProbe]=await Promise.all([
     grab('battle/battle_sim.html'),
     grab('battle/soldier.js'),
     grab('battle/weapons.js'),
     grab('battle/terrain-features.js'),
     grab('battle/squad-ai.js'),
-    grab('battle/battle-sim.js')
+    grab('battle/battle-sim.js'),
+    Promise.all([
+      ASSETS+'dirttex.png',ASSETS+'skytex.png',
+      AUDIO+'rifle.mp3',AUDIO+'carbine.mp3',AUDIO+'lmg.mp3',AUDIO+'pistol.mp3'
+    ].map(probe))
   ]);
   if(html.indexOf(OLD_SCRIPTS)<0)
     throw new Error('battle/battle_sim.html script tags changed shape; refusing to boot with stale inlining');
-
-  /* battle-sim.js historically hardcoded the deployment host for these two images. v4 keeps
-     the JS otherwise untouched but resolves them through the canonical same-origin Assets/
-     base, using the physical JPEG files materialized by battle_sim.php. */
-  const battleSim=battleSimRaw
-    .replace("'https://test.ivandpopov.com/grasstex/Assets/dirttex.png'","window.BATTLE_ASSET_BASE+'dirttex.jpg'")
-    .replace("'https://test.ivandpopov.com/grasstex/Assets/skytex.png'","window.BATTLE_ASSET_BASE+'skytex.jpg'");
-
   const inlined=OT+soldier+';\n'+weapons+';\n'+terrainFeatures+';\n'+squadAi+';\n'+battleSim+ET;
   const page=html.replace(OLD_SCRIPTS,inlined);
   window.BATTLE_BUILD=BUILD;
   window.BATTLE_REF=REF;
-  window.BATTLE_ASSET_BASE=new URL('Assets/',location.href).href;
-  window.BATTLE_AUDIO_BASE=window.BATTLE_ASSET_BASE+'audio/';
+  window.BATTLE_ASSET_BASE=ASSETS;
+  window.BATTLE_AUDIO_BASE=AUDIO;
+  window.BATTLE_ASSET_PROBE=assetProbe;
   document.open();document.write(page);document.close();
 }catch(e){
   document.getElementById('boot').textContent='Battle sim '+BUILD+' failed to load ('+REF+'): '+(e.message||e);
