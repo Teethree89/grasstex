@@ -1,11 +1,10 @@
-/* Central village/objective layer for Battle Sim v18.
-   Wraps BattleTerrainFeatures.scatter so existing callers automatically receive a small
-   village, its collision/cover obstacles, urban corner nodes and capture sectors. */
+/* Central village/scenario layer for the Battle Sim AI lab v19.
+   Geometry lives here; objective behavior is delegated to BattleObjectiveSystem modules. */
 (function(root){
   'use strict';
   if(typeof BABYLON==='undefined'||!root.BattleTerrainFeatures)return;
-  root.BATTLE_BUILD='v18';
-  console.log('[TOWN] runtime v18 loaded');
+  root.BATTLE_BUILD='v19';
+  console.log('[TOWN] runtime v19 loaded');
 
   var oldScatter=root.BattleTerrainFeatures.scatter;
   var WALL=new BABYLON.Color3(.52,.48,.39),ROOF=new BABYLON.Color3(.28,.19,.14),ROAD=new BABYLON.Color3(.24,.23,.21),SQUARE=new BABYLON.Color3(.36,.34,.29);
@@ -30,19 +29,23 @@
 
     addBuilding(scene,heightAt,meshes,obstacles,corners,'NW1',-28,-26,18,14,7.2);addBuilding(scene,heightAt,meshes,obstacles,corners,'NE1',29,-27,16,15,6.8);addBuilding(scene,heightAt,meshes,obstacles,corners,'NW2',-31,20,15,18,7.5);addBuilding(scene,heightAt,meshes,obstacles,corners,'NE2',31,22,18,15,7.0);addBuilding(scene,heightAt,meshes,obstacles,corners,'W',-53,2,15,20,6.5);addBuilding(scene,heightAt,meshes,obstacles,corners,'E',53,-2,15,20,6.5);
 
-    var sectors=[{id:'south-edge',x:0,z:-34,radius:23,label:'South edge'},{id:'square',x:0,z:0,radius:20,label:'Village square'},{id:'north-edge',x:0,z:34,radius:23,label:'North edge'}];
+    var objectives=[
+      {id:'south-edge',type:'capture-zone',x:0,z:-34,radius:23,label:'South edge',captureSeconds:12,minPresence:2,value:1},
+      {id:'square',type:'capture-zone',x:0,z:0,radius:20,label:'Village square',captureSeconds:12,minPresence:2,value:1.25},
+      {id:'north-edge',type:'capture-zone',x:0,z:34,radius:23,label:'North edge',captureSeconds:12,minPresence:2,value:1}
+    ];
     var routes={
       us:{left:[{x:-58,z:-58},{x:-58,z:-22},{x:-43,z:-10},{x:-18,z:0},{x:0,z:0},{x:0,z:34}],center:[{x:0,z:-58},{x:0,z:-34},{x:-8,z:-15},{x:0,z:0},{x:0,z:34}],right:[{x:58,z:-58},{x:58,z:-22},{x:43,z:-10},{x:18,z:0},{x:0,z:0},{x:0,z:34}],support:[{x:0,z:-62},{x:0,z:-46},{x:0,z:-38}]},
       ge:{left:[{x:58,z:58},{x:58,z:22},{x:43,z:10},{x:18,z:0},{x:0,z:0},{x:0,z:-34}],center:[{x:0,z:58},{x:0,z:34},{x:8,z:15},{x:0,z:0},{x:0,z:-34}],right:[{x:-58,z:58},{x:-58,z:22},{x:-43,z:10},{x:-18,z:0},{x:0,z:0},{x:0,z:-34}],support:[{x:0,z:62},{x:0,z:46},{x:0,z:38}]}
     };
-    var town={meshes:meshes,obstacles:obstacles,corners:corners,sectors:sectors,routes:routes,center:{x:0,z:0},radius:70,dispose:function(){for(var i=0;i<meshes.length;i++)meshes[i].dispose();}};
+    var town={meshes:meshes,obstacles:obstacles,corners:corners,objectives:objectives,sectors:objectives,routes:routes,center:{x:0,z:0},radius:70,dispose:function(){for(var i=0;i<meshes.length;i++)meshes[i].dispose();}};
     scene.metadata=scene.metadata||{};scene.metadata.battleTown=town;return town;
   }
 
   root.BattleTerrainFeatures.scatter=function(scene,heightAt,opts){
     opts=opts||{};var base=oldScatter(scene,heightAt,Object.assign({},opts,{clumpCount:opts.clumpCount||17,hedgeRows:opts.hedgeRows||3}));
     var town=buildTown(scene,heightAt),oldDispose=base.dispose;base.obstacles=base.obstacles.concat(town.obstacles);base.town=town;base.dispose=function(){oldDispose&&oldDispose();town.dispose();};
-    console.log('[TOWN] v18 village built; buildings=6 sectors=3 obstacles='+town.obstacles.length);return base;
+    console.log('[TOWN] v19 village built; buildings=6 objectives='+town.objectives.length+' obstacles='+town.obstacles.length);return base;
   };
 
   root.BattleTownObjectives={build:buildTown};
