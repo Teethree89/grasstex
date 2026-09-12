@@ -1,94 +1,17 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>WW2 Battle Sim — loading</title><script>if(location.protocol==='http:'&&location.hostname!=='localhost'&&location.hostname!=='127.0.0.1'){location.replace('https://'+location.host+location.pathname+location.search+location.hash);}</script></head><body><div id="boot" style="font-family:Arial,sans-serif;color:#fff;background:#0f141c;position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">Loading battle sim v15…</div><script>(async()=>{
-const REPO='https://raw.githubusercontent.com/Teethree89/grasstex/';
-const REF=new URLSearchParams(location.search).get('ref')||'main';
-const BUILD='v15';
-const ASSETS='https://test.ivandpopov.com/grasstex/Assets/';
-const AUDIO=ASSETS+'audio/';
-const grab=async(path)=>{const r=await fetch(REPO+REF+'/'+path+'?ts='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error(path+' -> HTTP '+r.status);return r.text();};
-const fetchJson=async(url)=>{try{const r=await fetch(url+'?ts='+Date.now(),{cache:'no-store'});if(!r.ok)return null;return await r.json();}catch(_){return null;}};
-const probe=async(url)=>{try{const r=await fetch(url+'?probe='+Date.now(),{cache:'no-store'});return {url:url,ok:r.ok,status:r.status,type:r.headers.get('content-type')||''};}catch(e){return {url:url,ok:false,status:'fetch-error',type:'',error:String(e&&e.message||e)};}};
-const ET='</scr'+'ipt>',OT='<scr'+'ipt>';
-const OLD_SCRIPTS='<script src="soldier.js">'+ET+'\n<script src="weapons.js">'+ET+'\n<script src="terrain-features.js">'+ET+'\n<script src="squad-ai.js">'+ET+'\n<script src="battle-sim.js">'+ET;
-try{
-  const [html,soldier,weapons,terrainFeatures,squadAi,battleSimRaw,acoustics,townObjectives,commanderAi,assetProbe,audioManifest]=await Promise.all([
-    grab('battle/battle_sim.html'),
-    grab('battle/soldier.js'),
-    grab('battle/weapons.js'),
-    grab('battle/terrain-features.js'),
-    grab('battle/squad-ai.js'),
-    grab('battle/battle-sim.js'),
-    grab('battle/acoustics.js'),
-    grab('battle/town-objectives.js'),
-    grab('battle/commander-ai.js'),
-    Promise.all([ASSETS+'dirttex.png',ASSETS+'skytex.png',AUDIO+'rifle.mp3',AUDIO+'carbine.mp3',AUDIO+'lmg.mp3',AUDIO+'pistol.mp3'].map(probe)),
-    fetchJson(AUDIO+'manifest.json')
-  ]);
-  if(html.indexOf(OLD_SCRIPTS)<0)throw new Error('battle/battle_sim.html script tags changed shape; refusing to boot with stale inlining');
-
-  const oldFire="this.onFire=function(soldier){\n      var pos=muzzleWorld(soldier);\n      spawnMuzzleFlash(self.scene,pos);\n      audio.play(soldier.weapon.kind,pos);\n    };";
-  const newFire="this.onFire=function(soldier){\n      var pos=muzzleWorld(soldier);\n      spawnMuzzleFlash(self.scene,pos);\n      if(window.BattleAudioScheduler)window.BattleAudioScheduler.enqueue(audio,soldier.weapon.kind,pos,self.scene.activeCamera);\n      else audio.play(soldier.weapon.kind,pos,.18,1);\n    };";
-  if(battleSimRaw.indexOf(oldFire)<0)throw new Error('battle audio hook changed shape; refusing stale v15 patch');
-  let battleSim=battleSimRaw.replace(oldFire,newFire);
-  battleSim=battleSim.replace("maxDistance:260,rolloffFactor:1,volume:.5","maxDistance:145,rolloffFactor:1.5,volume:.20");
-  battleSim=battleSim.replace("play:function(kind,position){\n        var voices=pools[kind];if(!voices)return;\n        var voice=voices[cursors[kind]];cursors[kind]=(cursors[kind]+1)%voices.length;\n        try{voice.setPosition(position);voice.play();}catch(_){/* audio context not unlocked yet */}\n      }","play:function(kind,position,gain,rate){\n        var voices=pools[kind];if(!voices)return;\n        var voice=voices[cursors[kind]];cursors[kind]=(cursors[kind]+1)%voices.length;\n        try{voice.setPosition(position);if(voice.setVolume)voice.setVolume(gain==null?.18:gain);if(voice.setPlaybackRate)voice.setPlaybackRate(rate||1);voice.play();}catch(_){}\n      }");
-
-  const oldMove=`  function stepMovement(self,soldier,dt){
-    if(soldier.dead)return;
-    soldier.fireCooldown=Math.max(0,soldier.fireCooldown-dt);
-    var dx=soldier.destination.x-soldier.root.position.x,dz=soldier.destination.z-soldier.root.position.z,d=Math.hypot(dx,dz);
-    var wantCrouch=(soldier.suppressedUntil>self.time)||(!!soldier.target&&d<=.6);
-    if(d>.6){
-      var spd=soldier.speed*(wantCrouch?.55:1),step=Math.min(d,spd*dt);
-      var dirx=dx/d,dirz=dz/d;
-      var steered=steerAroundObstacles(self.obstacles,soldier.root.position.x,soldier.root.position.z,dirx,dirz);
-      if(steered){dirx=steered.x;dirz=steered.z;}
-      var nx=soldier.root.position.x+dirx*step,nz=soldier.root.position.z+dirz*step;
-      soldier.root.position.x=nx;soldier.root.position.z=nz;soldier.root.position.y=self.heightAt(nx,nz);
-      soldier.root.rotation.y=Math.atan2(dx,dz); // face the destination, not the swerve
-      soldier.moving=true;
-    }else{
-      soldier.moving=false;
-      if(soldier.target){
-        var tx=soldier.target.root.position.x-soldier.root.position.x,tz=soldier.target.root.position.z-soldier.root.position.z;
-        if(Math.abs(tx)+Math.abs(tz)>1e-4)soldier.root.rotation.y=Math.atan2(tx,tz);
-      }
-    }
-    if(wantCrouch!==soldier.crouching){soldier.crouching=wantCrouch;BattleSoldierModel.setCrouch(soldier,wantCrouch);}
-    BattleSoldierModel.animateWalk(soldier,dt,soldier.moving?(soldier.crouching?.5:1):0);
-  }`;
-  const newMove=`  function stepMovement(self,soldier,dt){
-    if(soldier.dead)return;
-    soldier.fireCooldown=Math.max(0,soldier.fireCooldown-dt);
-    var dx=soldier.destination.x-soldier.root.position.x,dz=soldier.destination.z-soldier.root.position.z,d=Math.hypot(dx,dz);
-    var wantCrouch=!soldier.prone&&((soldier.suppressedUntil>self.time)||(!!soldier.target&&d<=.6));
-    var desiredSpeed=(d>.35&&!soldier.prone)?soldier.speed*(wantCrouch?.58:1):0;
-    var cur=soldier.moveSpeed||0,rate=desiredSpeed>cur?4.2:6.5;
-    soldier.moveSpeed=Math.max(0,cur+Math.max(-rate*dt,Math.min(rate*dt,desiredSpeed-cur)));
-    function turnToward(yaw){var diff=Math.atan2(Math.sin(yaw-soldier.root.rotation.y),Math.cos(yaw-soldier.root.rotation.y));var maxTurn=(soldier.prone?1.1:2.8)*dt;soldier.root.rotation.y+=Math.max(-maxTurn,Math.min(maxTurn,diff));}
-    if(d>.35&&soldier.moveSpeed>.025&&!soldier.prone){
-      var dirx=dx/d,dirz=dz/d,steered=steerAroundObstacles(self.obstacles,soldier.root.position.x,soldier.root.position.z,dirx,dirz);
-      if(steered){dirx=steered.x;dirz=steered.z;}
-      var step=Math.min(d,soldier.moveSpeed*dt),nx=soldier.root.position.x+dirx*step,nz=soldier.root.position.z+dirz*step;
-      soldier.root.position.x=nx;soldier.root.position.z=nz;soldier.root.position.y=self.heightAt(nx,nz);turnToward(Math.atan2(dirx,dirz));soldier.moving=true;
-    }else{
-      soldier.moving=false;
-      if(soldier.target){var tx=soldier.target.root.position.x-soldier.root.position.x,tz=soldier.target.root.position.z-soldier.root.position.z;if(Math.abs(tx)+Math.abs(tz)>1e-4)turnToward(Math.atan2(tx,tz));}
-    }
-    if(wantCrouch!==soldier.crouching)BattleSoldierModel.setCrouch(soldier,wantCrouch);
-    if(BattleSoldierModel.setProne)BattleSoldierModel.setProne(soldier,!!soldier.prone);
-    BattleSoldierModel.animateWalk(soldier,dt,soldier.speed>0?soldier.moveSpeed/soldier.speed:0);
-  }`;
-  if(battleSim.indexOf(oldMove)<0)throw new Error('movement integrator changed shape; refusing stale v15 patch');
-  battleSim=battleSim.replace(oldMove,newMove);
-  battleSim=battleSim.replace("this.onFire=null;this.onShot=null;this.onWinner=opts.onWinner||null;this.onUpdate=opts.onUpdate||null;","this.onFire=null;this.onShot=null;this.onCallout=null;this.onWinner=opts.onWinner||null;this.onUpdate=opts.onUpdate||null;");
-  battleSim=battleSim.replace("this.onShot=function(shooter,target,hit){\n      if(!hit)return;","this.onCallout=function(soldier,type){if(window.BattleVoiceScheduler)window.BattleVoiceScheduler.enqueue(soldier,type,self.scene.activeCamera);};\n    this.onShot=function(shooter,target,hit){\n      if(!hit)return;");
-
-  const scheduler=`window.BattleAudioScheduler=(function(){var q=[],running=false,recentFar={};var MAX_PER_FRAME=2,MAX_QUEUE=14,FAR_START=95,FAR_DROP=195;function cameraPos(cam){return cam&&(cam.globalPosition||cam.position)||null;}function dist(a,b){if(!a||!b)return 0;var dx=a.x-b.x,dy=a.y-b.y,dz=a.z-b.z;return Math.sqrt(dx*dx+dy*dy+dz*dz);}function clamp(v,a,b){return Math.max(a,Math.min(b,v));}function acoustics(d){var t=clamp(d/FAR_DROP,0,1);return {gain:.20*(1-.72*t),rate:1-.055*t};}function push(audio,kind,pos,due,gain,rate,echo){if(q.length>=MAX_QUEUE){var drop=-1;for(var i=0;i<q.length;i++){if(q[i].echo){drop=i;break;}}if(drop>=0)q.splice(drop,1);else q.shift();}q.push({audio:audio,kind:kind,pos:pos.clone?pos.clone():{x:pos.x,y:pos.y,z:pos.z},due:due,gain:gain,rate:rate,echo:!!echo});}function enqueue(audio,kind,pos,cam){var cp=cameraPos(cam),d=dist(cp,pos),now=performance.now();if(d>FAR_DROP)return;if(d>150&&Math.random()<.82)return;if(d>FAR_START){var last=recentFar[kind]||0;if(now-last<55)return;recentFar[kind]=now;}var a=acoustics(d);push(audio,kind,pos,now+Math.random()*26,a.gain,a.rate,false);if(d>65){var chance=d>130?.34:.18;if(Math.random()<chance){var delay=95+d*.65+Math.random()*65;push(audio,kind,pos,now+delay,a.gain*(d>130?.16:.11),Math.max(.90,a.rate-.035),true);}}if(!running){running=true;requestAnimationFrame(drain);}}function drain(){var now=performance.now(),started=0,remain=[];for(var i=0;i<q.length;i++){var e=q[i];if(started<MAX_PER_FRAME&&e.due<=now){try{e.audio.play(e.kind,e.pos,e.gain,e.rate);}catch(_){}started++;}else remain.push(e);}q=remain;if(q.length)requestAnimationFrame(drain);else running=false;}return {enqueue:enqueue,get queued(){return q.length;}};})();\nwindow.BattleVoiceScheduler=(function(){var cache={},lastGlobal=0,squadLast={};function cameraPos(cam){return cam&&(cam.globalPosition||cam.position)||null;}function distance(a,b){if(!a||!b)return 0;var dx=a.x-b.x,dy=a.y-b.y,dz=a.z-b.z;return Math.sqrt(dx*dx+dy*dy+dz*dz);}function enqueue(soldier,type,cam){var m=window.BATTLE_AUDIO_MANIFEST;if(!m||!m.callouts||!m.callouts[soldier.faction])return;var faction=m.callouts[soldier.faction],events=faction.events||{},files=events[type];if(!files||!files.length)return;var rules=m.rules&&m.rules.voice||{},now=performance.now(),globalGap=700,squadGap=(rules.perSquadCooldownSeconds||2.5)*1000;var cp=cameraPos(cam),drop=rules.dropBeyondDistance||120;if(cp&&distance(cp,soldier.root.position)>drop)return;if(now-lastGlobal<globalGap)return;var squadId=soldier.squad&&soldier.squad.id||soldier.faction;if(now-(squadLast[squadId]||0)<squadGap)return;lastGlobal=now;squadLast[squadId]=now;var file=files[Math.floor(Math.random()*files.length)],sound=cache[file];if(!sound){try{var voiceScene=soldier.root.getScene();sound=new BABYLON.Sound('voice-'+file,AUDIO+file,voiceScene,null,{spatialSound:true,distanceModel:'linear',maxDistance:(m.runtime&&m.runtime.voiceMaxDistance)||95,rolloffFactor:1.7,volume:.24,autoplay:false});cache[file]=sound;}catch(_){return;}}try{sound.setPosition(soldier.root.position.clone?soldier.root.position.clone():soldier.root.position);sound.play();}catch(_){}}return {enqueue:enqueue};})();`;
-
-  const inlined=OT+scheduler+';\n'+soldier+';\n'+weapons+';\n'+terrainFeatures+';\n'+squadAi+';\n'+battleSim+';\n'+acoustics+';\n'+townObjectives+';\n'+commanderAi+ET;
-  let page=html.replace(OLD_SCRIPTS,inlined);
-  page=page.replace(/<script>\s*\/\* Extra runtimes[\s\S]*?\(\);\s*<\/script>\s*(?=<script>\s*\(function\(\)\{)/,'');
-  window.BATTLE_BUILD=BUILD;window.BATTLE_REF=REF;window.BATTLE_ASSET_BASE=ASSETS;window.BATTLE_AUDIO_BASE=AUDIO;window.BATTLE_AUDIO_MANIFEST=audioManifest;window.BATTLE_ASSET_PROBE=assetProbe;
-  document.open();document.write(page);document.close();
-}catch(e){document.getElementById('boot').textContent='Battle sim '+BUILD+' failed to load ('+REF+'): '+(e.message||e);}
-})();</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WW2FPS AI Lab</title>
+</head>
+<body style="margin:0;display:grid;min-height:100vh;place-items:center;background:#0f141c;color:#eef0df;font:16px Arial,sans-serif">
+  <p id="message">Opening WW2FPS AI Lab…</p>
+  <script>
+    (function(){
+      if(location.protocol==='file:'){document.getElementById('message').textContent='Serve this project through PHP, then open battle_sim.php.';return;}
+      location.replace('battle_sim.php'+location.search+location.hash);
+    })();
+  </script>
+</body>
+</html>
