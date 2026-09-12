@@ -1,8 +1,8 @@
-/* Battlefield acoustics runtime.
+/* Battlefield acoustics runtime v17.
    One Babylon world unit is treated as approximately one metre.
-   We preserve real propagation timing (343 m/s reference), source-class ranges and
-   physically motivated geometric spreading, then compress the enormous real-world
-   dynamic range into a safe mobile-speaker game mix. */
+   Real propagation timing and source-class attenuation are handled by the schedulers below.
+   Babylon.Sound itself is intentionally left untouched because Babylon 8 exposes Sound as a
+   getter-only namespace property in some builds. */
 (function(root){
   'use strict';
   if(typeof window==='undefined'||typeof BABYLON==='undefined')return;
@@ -14,8 +14,6 @@
   };
   root.BATTLE_ACOUSTICS=root.BATTLE_ACOUSTICS||{speedOfSoundMps:SPEED_OF_SOUND,profiles:cfg};
 
-  /* Load the machine-readable spec when the mirrored hosted copy is available. Runtime has
-     safe defaults above so an asset-sync delay never blocks the battle. */
   try{
     var base=root.BATTLE_AUDIO_BASE||'https://test.ivandpopov.com/grasstex/Assets/audio/';
     fetch(base+'acoustics.json?ts='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(j){
@@ -23,37 +21,11 @@
     }).catch(function(){});
   }catch(_){}
 
-  function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
   function cameraPos(cam){return cam&&(cam.globalPosition||cam.position)||null;}
   function distance(a,b){if(!a||!b)return 0;var dx=a.x-b.x,dy=(a.y||0)-(b.y||0),dz=a.z-b.z;return Math.sqrt(dx*dx+dy*dy+dz*dz);}
   function copyPos(p){return p&&p.clone?p.clone():{x:p.x,y:p.y||0,z:p.z};}
   function arrivalDelayMs(d){return Math.max(0,d)/SPEED_OF_SOUND*1000;}
-
-  /* Real free-field pressure falls as 1/r (6 dB per distance doubling). Reproducing that
-     literally alongside a 160 dB firearm and an 84 dB shout is impossible on a phone, so
-     we apply a documented dynamic-range compression exponent after physical classification.
-     The relative ordering/range and travel time remain physically meaningful. */
-  function compressedGain(profile,d){
-    d=Math.max(1,d);
-    return profile.maxGain*Math.pow(d,-profile.exponent);
-  }
-
-  /* Gun sounds created by battle-sim.js used a short linear maxDistance from the earlier
-     performance pass. Expand only combat SFX before pools are constructed; the scheduler
-     below performs the actual level/culling logic. */
-  if(!root.__battleAcousticSoundWrapped){
-    root.__battleAcousticSoundWrapped=true;
-    var OriginalSound=BABYLON.Sound;
-    function AcousticSound(name,url,scene,ready,options,error){
-      options=options?Object.assign({},options):{};
-      if(/Sfx\d+$/.test(String(name||''))){options.maxDistance=1200;options.rolloffFactor=.15;options.distanceModel='linear';}
-      if(/^voice-/.test(String(name||''))){options.maxDistance=150;options.rolloffFactor=.7;options.distanceModel='linear';}
-      return new OriginalSound(name,url,scene,ready,options,error);
-    }
-    AcousticSound.prototype=OriginalSound.prototype;
-    try{Object.getOwnPropertyNames(OriginalSound).forEach(function(k){if(k==='prototype'||k==='name'||k==='length')return;try{AcousticSound[k]=OriginalSound[k];}catch(_){}});}catch(_){}
-    BABYLON.Sound=AcousticSound;
-  }
+  function compressedGain(profile,d){d=Math.max(1,d);return profile.maxGain*Math.pow(d,-profile.exponent);}
 
   root.BattleAudioScheduler=(function(){
     var q=[],running=false,recentFar={};
@@ -66,16 +38,10 @@
     function enqueue(audio,kind,pos,cam){
       var cp=cameraPos(cam),d=distance(cp,pos),p=cfg.smallArms,now=performance.now();
       if(d>p.cull)return;
-      /* Far volleys remain audible, but do not instantiate every single coincident rifle. */
       if(d>260&&Math.random()<.55)return;
       if(d>140){var last=recentFar[kind]||0;if(now-last<45)return;recentFar[kind]=now;}
-      var gain=compressedGain(p,d);
-      var due=now+arrivalDelayMs(d)+Math.random()*8;
+      var gain=compressedGain(p,d),due=now+arrivalDelayMs(d)+Math.random()*8;
       push({audio:audio,kind:kind,pos:copyPos(pos),gain:gain,due:due,echo:false});
-
-      /* Sparse terrain/building reflection proxy. Reflection arrives after the direct wave,
-         grows more likely with distance, and is much quieter. No fake pitch shift: air
-         absorption should remove highs, not transpose the gunshot. */
       if(d>55&&Math.random()<(d>180?.23:.11)){
         var extra=90+Math.min(420,d*.55)+Math.random()*85;
         push({audio:audio,kind:kind,pos:copyPos(pos),gain:gain*(d>180?.14:.09),due:due+extra,echo:true});
@@ -131,5 +97,5 @@
     return {enqueue:enqueue};
   })();
 
-  console.log('[ACOUSTICS] physical propagation active: voice 150m cull, small arms 1200m cull, delayed at '+SPEED_OF_SOUND+'m/s');
+  console.log('[ACOUSTICS] runtime v17 active; voice 150m cull, small arms 1200m cull, delayed at '+SPEED_OF_SOUND+'m/s');
 })(typeof window!=='undefined'?window:globalThis);
