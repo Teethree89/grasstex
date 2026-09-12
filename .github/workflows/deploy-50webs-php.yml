@@ -58,13 +58,12 @@ jobs:
           : "${FTP_PASSWORD:?Missing repository secret FIFTYWEBS_FTP_PASSWORD}"
           : "${REMOTE_DIR:?Missing remote directory}"
 
-          lftp <<'LFTP'
+          lftp -u "$FTP_USER","$FTP_PASSWORD" "$FTP_HOST" <<LFTP
           set cmd:fail-exit yes
           set net:max-retries 2
           set net:timeout 15
           set ftp:ssl-allow no
           set ftp:passive-mode true
-          open -u "$FTP_USER","$FTP_PASSWORD" "$FTP_HOST"
           cd "$REMOTE_DIR"
           put battle_sim.php -o battle_sim.php
           cls -l battle_sim.php
