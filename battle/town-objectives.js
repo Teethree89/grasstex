@@ -1,52 +1,71 @@
-/* Central village/scenario layer for the Battle Sim AI lab v19.
-   Geometry lives here; objective behavior is delegated to BattleObjectiveSystem modules. */
+/* Battle Sim / ww2fps AI lab v20 procedural settlement renderer.
+   Scenario data comes from scenario-generator.js. Buildings are one-storey, roofless and truly
+   enterable: walls are constructed around door/window holes instead of using a solid footprint. */
 (function(root){
   'use strict';
-  if(typeof BABYLON==='undefined'||!root.BattleTerrainFeatures)return;
-  root.BATTLE_BUILD='v19';
-  console.log('[TOWN] runtime v19 loaded');
+  if(typeof BABYLON==='undefined'||!root.BattleTerrainFeatures||!root.BattleScenarioGenerator)return;
+  root.BATTLE_BUILD='v20';
+  console.log('[TOWN] procedural settlement runtime v20 loaded');
 
-  var oldScatter=root.BattleTerrainFeatures.scatter;
-  var WALL=new BABYLON.Color3(.52,.48,.39),ROOF=new BABYLON.Color3(.28,.19,.14),ROAD=new BABYLON.Color3(.24,.23,.21),SQUARE=new BABYLON.Color3(.36,.34,.29);
-
+  var oldScatter=root.BattleTerrainFeatures.scatter,currentRender=null;
+  var WALL=new BABYLON.Color3(.52,.48,.39),WALL2=new BABYLON.Color3(.43,.40,.34),FLOOR=new BABYLON.Color3(.31,.29,.25),ROAD=new BABYLON.Color3(.24,.23,.21);
   function mat(scene,name,color){var m=new BABYLON.StandardMaterial(name,scene);m.diffuseColor=color;m.specularColor=BABYLON.Color3.Black();return m;}
-  function addBuilding(scene,heightAt,meshes,obstacles,corners,id,x,z,w,d,h){
-    var y=heightAt(x,z),body=BABYLON.MeshBuilder.CreateBox('town-'+id,{width:w,height:h,depth:d},scene);
-    body.position.set(x,y+h/2,z);body.material=mat(scene,'townWall-'+id,WALL);body.isPickable=false;meshes.push(body);
-    var roof=BABYLON.MeshBuilder.CreateCylinder('townRoof-'+id,{diameter:1,height:w*.72,tessellation:3},scene);
-    roof.scaling.z=d/w;roof.rotation.z=Math.PI/2;roof.position.set(x,y+h+.85,z);roof.material=mat(scene,'townRoofMat-'+id,ROOF);roof.isPickable=false;meshes.push(roof);
-    var nx=Math.max(2,Math.ceil(w/4)),nz=Math.max(2,Math.ceil(d/4));
-    for(var ix=0;ix<nx;ix++)for(var iz=0;iz<nz;iz++)obstacles.push({x:x-w/2+(ix+.5)*w/nx,z:z-d/2+(iz+.5)*d/nz,radius:Math.max(w/nx,d/nz)*.62,cover:.28,type:'building',building:id});
-    var pad=3.2;
-    corners.push({x:x-w/2-pad,z:z-d/2-pad,building:id,kind:'corner'});corners.push({x:x+w/2+pad,z:z-d/2-pad,building:id,kind:'corner'});corners.push({x:x-w/2-pad,z:z+d/2+pad,building:id,kind:'corner'});corners.push({x:x+w/2+pad,z:z+d/2+pad,building:id,kind:'corner'});
+  function addBox(scene,parent,name,w,h,d,x,y,z,material){var m=BABYLON.MeshBuilder.CreateBox(name,{width:w,height:h,depth:d},scene);m.parent=parent;m.position.set(x,y,z);m.material=material;m.isPickable=false;return m;}
+  function sideOpenings(b,side){return(b.openings||[]).filter(function(o){return o.side===side;}).sort(function(a,c){return a.offset-c.offset;});}
+
+  function buildWall(scene,rootNode,b,side,wallMat,meshes){
+    var northSouth=side==='north'||side==='south',len=northSouth?b.w:b.d,thick=.32,h=b.h,constant=northSouth?(side==='north'?b.d/2:-b.d/2):(side==='east'?b.w/2:-b.w/2),opens=sideOpenings(b,side),cursor=-len/2;
+    function piece(range,y0,y1){
+      var width=range[1]-range[0];if(width<=.03||y1-y0<=.03)return;var along=(range[0]+range[1])/2,cy=(y0+y1)/2,m;
+      if(northSouth)m=addBox(scene,rootNode,'wall-'+b.id+'-'+side,width,y1-y0,thick,along,cy,constant,wallMat);
+      else m=addBox(scene,rootNode,'wall-'+b.id+'-'+side,thick,y1-y0,width,constant,cy,along,wallMat);
+      meshes.push(m);
+    }
+    for(var i=0;i<opens.length;i++){
+      var o=opens[i],a=Math.max(-len/2,o.offset-o.width/2),c=Math.min(len/2,o.offset+o.width/2);
+      if(a>cursor)piece([cursor,a],0,h);
+      if(o.bottom>0)piece([a,c],0,Math.min(h,o.bottom));
+      if(o.top<h)piece([a,c],Math.max(0,o.top),h);
+      cursor=Math.max(cursor,c);
+    }
+    if(cursor<len/2)piece([cursor,len/2],0,h);
   }
 
-  function buildTown(scene,heightAt){
-    var meshes=[],obstacles=[],corners=[];
-    var roadMat=mat(scene,'townRoadMat',ROAD),squareMat=mat(scene,'townSquareMat',SQUARE);
-    function slab(name,x,z,w,d,m){var y=heightAt(x,z)+.035,s=BABYLON.MeshBuilder.CreateBox(name,{width:w,height:.07,depth:d},scene);s.position.set(x,y,z);s.material=m;s.isPickable=false;meshes.push(s);}
-    slab('townRoadNS',0,0,9,92,roadMat);slab('townRoadEW',0,0,118,9,roadMat);slab('townSquare',0,0,24,24,squareMat);
-
-    addBuilding(scene,heightAt,meshes,obstacles,corners,'NW1',-28,-26,18,14,7.2);addBuilding(scene,heightAt,meshes,obstacles,corners,'NE1',29,-27,16,15,6.8);addBuilding(scene,heightAt,meshes,obstacles,corners,'NW2',-31,20,15,18,7.5);addBuilding(scene,heightAt,meshes,obstacles,corners,'NE2',31,22,18,15,7.0);addBuilding(scene,heightAt,meshes,obstacles,corners,'W',-53,2,15,20,6.5);addBuilding(scene,heightAt,meshes,obstacles,corners,'E',53,-2,15,20,6.5);
-
-    var objectives=[
-      {id:'south-edge',type:'capture-zone',x:0,z:-34,radius:23,label:'South edge',captureSeconds:12,minPresence:2,value:1},
-      {id:'square',type:'capture-zone',x:0,z:0,radius:20,label:'Village square',captureSeconds:12,minPresence:2,value:1.25},
-      {id:'north-edge',type:'capture-zone',x:0,z:34,radius:23,label:'North edge',captureSeconds:12,minPresence:2,value:1}
-    ];
-    var routes={
-      us:{left:[{x:-58,z:-58},{x:-58,z:-22},{x:-43,z:-10},{x:-18,z:0},{x:0,z:0},{x:0,z:34}],center:[{x:0,z:-58},{x:0,z:-34},{x:-8,z:-15},{x:0,z:0},{x:0,z:34}],right:[{x:58,z:-58},{x:58,z:-22},{x:43,z:-10},{x:18,z:0},{x:0,z:0},{x:0,z:34}],support:[{x:0,z:-62},{x:0,z:-46},{x:0,z:-38}]},
-      ge:{left:[{x:58,z:58},{x:58,z:22},{x:43,z:10},{x:18,z:0},{x:0,z:0},{x:0,z:-34}],center:[{x:0,z:58},{x:0,z:34},{x:8,z:15},{x:0,z:0},{x:0,z:-34}],right:[{x:-58,z:58},{x:-58,z:22},{x:-43,z:10},{x:-18,z:0},{x:0,z:0},{x:0,z:-34}],support:[{x:0,z:62},{x:0,z:46},{x:0,z:38}]}
-    };
-    var town={meshes:meshes,obstacles:obstacles,corners:corners,objectives:objectives,sectors:objectives,routes:routes,center:{x:0,z:0},radius:70,dispose:function(){for(var i=0;i<meshes.length;i++)meshes[i].dispose();}};
-    scene.metadata=scene.metadata||{};scene.metadata.battleTown=town;return town;
+  function buildBuilding(scene,heightAt,b,index,meshes){
+    var y=heightAt(b.x,b.z),node=new BABYLON.TransformNode('building-'+b.id,scene);node.position.set(b.x,y,b.z);node.rotation.y=b.rot||0;meshes.push(node);
+    var wallMat=mat(scene,'wallmat-'+b.id,index%3===0?WALL2:WALL),floorMat=mat(scene,'floormat-'+b.id,FLOOR);
+    var slab=addBox(scene,node,'floor-'+b.id,b.w,.08,b.d,0,.04,0,floorMat);meshes.push(slab);
+    buildWall(scene,node,b,'north',wallMat,meshes);buildWall(scene,node,b,'south',wallMat,meshes);buildWall(scene,node,b,'east',wallMat,meshes);buildWall(scene,node,b,'west',wallMat,meshes);
+    return node;
   }
+  function buildRoad(scene,heightAt,r,index,meshes){
+    var dx=r.bx-r.ax,dz=r.bz-r.az,len=Math.hypot(dx,dz),cx=(r.ax+r.bx)/2,cz=(r.az+r.bz)/2,y=heightAt(cx,cz)+.025;
+    var mesh=BABYLON.MeshBuilder.CreateBox('scenario-road-'+index,{width:r.width||8,height:.05,depth:len},scene);mesh.position.set(cx,y,cz);mesh.rotation.y=Math.atan2(dx,dz);mesh.material=mat(scene,'scenario-road-mat-'+index,ROAD);mesh.isPickable=false;meshes.push(mesh);
+  }
+
+  function renderScenario(scene,heightAt,scenario){
+    var meshes=[];if(currentRender&&currentRender.dispose)currentRender.dispose();
+    for(var r=0;r<(scenario.roads||[]).length;r++)buildRoad(scene,heightAt,scenario.roads[r],r,meshes);
+    for(var i=0;i<(scenario.buildings||[]).length;i++)buildBuilding(scene,heightAt,scenario.buildings[i],i,meshes);
+    scenario.meshes=meshes;scenario.sectors=scenario.objectives;scenario.center=scenario.center||{x:scenario.settlement.cx,z:scenario.settlement.cz};scenario.radius=scenario.radius||Math.max(scenario.settlement.spanX,scenario.settlement.spanZ)*.62;
+    scenario.dispose=function(){for(var j=0;j<meshes.length;j++)try{meshes[j].dispose();}catch(_){}};
+    scene.metadata=scene.metadata||{};scene.metadata.battleScenario=scenario;scene.metadata.battleTown=scenario;
+    root.BattleScenarioGenerator.setActive(scenario);if(root.BattleNavigation)root.BattleNavigation.installScenario(scenario);
+    currentRender=scenario;
+    console.log('[TOWN] v20 scenario '+scenario.id+' seed='+scenario.seed+' buildings='+scenario.buildings.length+' objectives='+scenario.objectives.length);
+    return scenario;
+  }
+
+  function regenerate(scene,heightAt,seed,meta){var scenario=root.BattleScenarioGenerator.create(seed,meta||{});return renderScenario(scene,heightAt,scenario);}
 
   root.BattleTerrainFeatures.scatter=function(scene,heightAt,opts){
-    opts=opts||{};var base=oldScatter(scene,heightAt,Object.assign({},opts,{clumpCount:opts.clumpCount||17,hedgeRows:opts.hedgeRows||3}));
-    var town=buildTown(scene,heightAt),oldDispose=base.dispose;base.obstacles=base.obstacles.concat(town.obstacles);base.town=town;base.dispose=function(){oldDispose&&oldDispose();town.dispose();};
-    console.log('[TOWN] v19 village built; buildings=6 objectives='+town.objectives.length+' obstacles='+town.obstacles.length);return base;
+    opts=opts||{};var scenario=root.BattleScenarioGenerator.current();
+    if(!scenario)scenario=root.BattleScenarioGenerator.activate(opts.scenarioSeed||root.BATTLE_SCENARIO_SEED||root.BattleScenarioGenerator.newSeed('live'));
+    var seedInt=root.BattleScenarioGenerator.hashSeed(scenario.seed+'|terrain');
+    var base=oldScatter(scene,heightAt,Object.assign({},opts,{seed:seedInt,fieldW:scenario.map.width,fieldD:scenario.map.depth,keepoutZ:scenario.map.depth*.40,clumpCount:opts.clumpCount||52,hedgeRows:opts.hedgeRows||7}));
+    var rendered=renderScenario(scene,heightAt,scenario),oldDispose=base.dispose;base.town=rendered;base.scenario=rendered;base.dispose=function(){oldDispose&&oldDispose();rendered.dispose();};
+    return base;
   };
 
-  root.BattleTownObjectives={build:buildTown};
+  root.BattleTownObjectives={render:renderScenario,regenerate:regenerate,current:function(){return currentRender;},build:function(scene,heightAt){var s=root.BattleScenarioGenerator.current()||root.BattleScenarioGenerator.activate(root.BattleScenarioGenerator.newSeed('live'));return renderScenario(scene,heightAt,s);}};
 })(typeof window!=='undefined'?window:globalThis);
