@@ -1,20 +1,20 @@
-/* Battle Sim v19 evolutionary tactical-policy trainer.
-   Five mutated policies fight the current persisted baseline twice each, mirrored US/GER.
-   Tactical parameters learn; scenario rules do not. Registered future unit modules are
-   included automatically in force scoring. */
+/* Battle Sim / ww2fps AI lab v20 Genome v2 trainer.
+   Each generation gets a reproducible training seed. Four structurally different candidate genomes
+   are evaluated on three procedural scenarios from both sides = 24 matches. Selection rewards
+   performance, generalization and modest novelty; successful scenario-specific experience is stored
+   for later similarity recall. */
 (function(root){
   'use strict';
-  if(!root.BattleAIPolicy||!root.BattleCommanderAI)return;
+  if(!root.BattleAIPolicy||!root.BattleCommanderAI||!root.BattleScenarioGenerator||!root.BattleTownObjectives)return;
 
   function telemetry(sim,type,data){if(root.BattleTelemetry)root.BattleTelemetry.record(type,data,sim);}
   function other(f){return f==='us'?'ge':'us';}
-  function units(sim,faction){
-    var all=root.BattleModules?root.BattleModules.unitsFor(sim):((sim._roster&&sim._roster[faction])||[]);
-    return all.filter(function(u){return u&&u.faction===faction&&!u.dead&&u.countsForElimination!==false;});
-  }
+  function units(sim,faction){var all=root.BattleModules?root.BattleModules.unitsFor(sim):((sim._roster&&sim._roster[faction])||[]);return all.filter(function(u){return u&&u.faction===faction&&!u.dead&&u.countsForElimination!==false;});}
   function forceValue(sim,faction){var total=0;units(sim,faction).forEach(function(u){total+=u.scoreValue==null?1:+u.scoreValue;});return total;}
   function objectiveCounts(sim){var c=sim.objectiveControl||{};return c.counts||{us:c.us||0,ge:c.ge||0};}
   function fixedStep(sim,dt){sim._trainerStepActive=true;try{if(sim.step)sim.step(dt);else sim._frame(dt);}finally{sim._trainerStepActive=false;}}
+  function mean(a){if(!a.length)return 0;return a.reduce(function(x,y){return x+y;},0)/a.length;}
+  function stdev(a){if(a.length<2)return 0;var m=mean(a);return Math.sqrt(mean(a.map(function(x){return(x-m)*(x-m);})));}
 
   function scoreMatch(sim,candidateFaction){
     var enemy=other(candidateFaction),counts=objectiveCounts(sim),stats=sim.objectiveStats||{},caps=stats.capturesByFaction||{},pressure=stats.pressureSecondsByFaction||{},score=0;
@@ -27,81 +27,85 @@
     if((stats.captures||0)===0)score-=22;
     return +score.toFixed(3);
   }
-  function resultRecord(sim,candidateId,candidateFaction,score){
+  function resultRecord(sim,candidateId,candidateFaction,score,scenario,trainingSeed,scenarioIndex){
     var stats=sim.objectiveStats||{},counts=objectiveCounts(sim);
-    return {candidateId:candidateId,candidateFaction:candidateFaction,winner:sim.winner||'none',time:+sim.time.toFixed(2),score:score,
-      usAlive:units(sim,'us').length,geAlive:units(sim,'ge').length,usForceValue:+forceValue(sim,'us').toFixed(2),geForceValue:+forceValue(sim,'ge').toFixed(2),
-      usObjectives:counts.us||0,geObjectives:counts.ge||0,capturesByFaction:stats.capturesByFaction||{},pressureSecondsByFaction:stats.pressureSecondsByFaction||{}};
+    return{candidateId:candidateId,candidateFaction:candidateFaction,winner:sim.winner||'none',time:+sim.time.toFixed(2),score:score,trainingSeed:trainingSeed,scenarioSeed:scenario.seed,scenarioId:scenario.id,scenarioIndex:scenarioIndex,fingerprint:scenario.fingerprint,
+      usAlive:units(sim,'us').length,geAlive:units(sim,'ge').length,usForceValue:+forceValue(sim,'us').toFixed(2),geForceValue:+forceValue(sim,'ge').toFixed(2),usObjectives:counts.us||0,geObjectives:counts.ge||0,captures:stats.captures||0,neutralizations:stats.neutralizations||0,capturesByFaction:stats.capturesByFaction||{},pressureSecondsByFaction:stats.pressureSecondsByFaction||{}};
   }
 
-  async function runMatch(sim,rawRestart,town,baseline,candidate,candidateId,candidateFaction,status,matchNo,totalMatches){
-    rawRestart();sim.manualEnded=false;sim.winner=null;sim.paused=false;sim.trainingMode=true;sim.timeScale=1;
+  function installScenario(sim,seed,trainingSeed,index){
+    var scene=sim.scene,scenario=root.BattleTownObjectives.regenerate(scene,sim.heightAt,seed,{trainingSeed:trainingSeed,scenarioIndex:index},sim);
+    return scenario;
+  }
+  async function runMatch(sim,rawRestart,baseline,candidate,candidateId,candidateFaction,scenarioSeed,trainingSeed,scenarioIndex,status,matchNo,totalMatches){
+    var scenario=installScenario(sim,scenarioSeed,trainingSeed,scenarioIndex);rawRestart();sim.manualEnded=false;sim.winner=null;sim.paused=false;sim.trainingMode=true;sim.timeScale=1;
     root.BattleAIPolicy.setMatchPolicies(sim,candidateFaction==='us'?candidate:baseline,candidateFaction==='ge'?candidate:baseline);
-    if(root.BattleTelemetry)root.BattleTelemetry.start(sim,'training',{candidateId:candidateId,candidateFaction:candidateFaction,match:matchNo,totalMatches:totalMatches});
-    telemetry(sim,'policy-match-start',{candidateId:candidateId,candidateFaction:candidateFaction,policy:candidate});
+    if(root.BattleTelemetry)root.BattleTelemetry.start(sim,'training',{candidateId:candidateId,candidateFaction:candidateFaction,match:matchNo,totalMatches:totalMatches,trainingSeed:trainingSeed,scenarioSeed:scenario.seed,scenarioId:scenario.id});
+    telemetry(sim,'policy-match-start',{candidateId:candidateId,candidateFaction:candidateFaction,trainingSeed:trainingSeed,scenarioSeed:scenario.seed,scenarioId:scenario.id,scenarioIndex:scenarioIndex,fingerprint:scenario.fingerprint,genome:candidate});
 
     var fixedDt=.15,commandAccum=0,steps=0,maxSteps=Math.ceil((sim.timeLimit+3)/fixedDt);
     while(!sim.winner&&sim.time<sim.timeLimit+1&&steps<maxSteps){
-      var batch=Math.min(160,maxSteps-steps);
-      for(var i=0;i<batch&&!sim.winner;i++){
-        fixedStep(sim,fixedDt);steps++;commandAccum+=fixedDt;
-        while(commandAccum>=root.BattleCommanderAI.commandTick&&!sim.winner){commandAccum-=root.BattleCommanderAI.commandTick;root.BattleCommanderAI.update(sim,town,root.BattleCommanderAI.commandTick);}
-      }
-      if(status)status.textContent='Training '+matchNo+'/'+totalMatches+' · '+candidateId+' '+candidateFaction.toUpperCase()+' · '+Math.floor(sim.time)+'s';
+      var batch=Math.min(180,maxSteps-steps);
+      for(var i=0;i<batch&&!sim.winner;i++){fixedStep(sim,fixedDt);steps++;commandAccum+=fixedDt;while(commandAccum>=root.BattleCommanderAI.commandTick&&!sim.winner){commandAccum-=root.BattleCommanderAI.commandTick;root.BattleCommanderAI.update(sim,scenario,root.BattleCommanderAI.commandTick);}}
+      if(status)status.textContent='Genome training '+matchNo+'/'+totalMatches+' · map '+(scenarioIndex+1)+' · '+candidateId+' '+candidateFaction.toUpperCase()+' · '+Math.floor(sim.time)+'s';
       await new Promise(function(resolve){setTimeout(resolve,0);});
     }
-    if(!sim.winner&&sim._checkWinner)sim._checkWinner();
-    var score=scoreMatch(sim,candidateFaction),record=resultRecord(sim,candidateId,candidateFaction,score);
+    if(!sim.winner&&sim._checkWinner)sim._checkWinner();var score=scoreMatch(sim,candidateFaction),record=resultRecord(sim,candidateId,candidateFaction,score,scenario,trainingSeed,scenarioIndex);
     telemetry(sim,'policy-match-result',record);if(root.BattleTelemetry)root.BattleTelemetry.end(sim,'training-match-complete',record);return record;
   }
 
-  function candidateSummary(entry){
-    var results=entry.results,total=0,wins=0,losses=0;
-    results.forEach(function(r){total+=r.score;if(r.winner===r.candidateFaction)wins++;else if(r.winner&&r.winner!=='draw'&&r.winner!=='none')losses++;});
-    return {id:entry.id,avgScore:+(total/Math.max(1,results.length)).toFixed(3),wins:wins,losses:losses,results:results,policy:entry.policy};
+  function candidateSummary(entry,allCandidates){
+    var results=entry.results,scores=results.map(function(r){return r.score;}),wins=0,losses=0,byScenario={};results.forEach(function(r){if(r.winner===r.candidateFaction)wins++;else if(r.winner&&r.winner!=='draw'&&r.winner!=='none')losses++;(byScenario[r.scenarioSeed]=byScenario[r.scenarioSeed]||[]).push(r.score);});
+    var scenarioScores=Object.keys(byScenario).map(function(seed){return{seed:seed,score:+mean(byScenario[seed]).toFixed(3)};}),avg=mean(scores),sd=stdev(scenarioScores.map(function(x){return x.score;})),novelty=0;
+    if(allCandidates&&allCandidates.length){var distances=[];for(var i=0;i<allCandidates.length;i++)if(allCandidates[i]!==entry)distances.push(root.BattleAIPolicy.distance(entry.genome,allCandidates[i].genome));novelty=mean(distances);}
+    var selection=avg-sd*.18+novelty*14;
+    return{id:entry.id,avgScore:+avg.toFixed(3),generalization:+Math.max(-200,avg-sd).toFixed(3),scenarioStd:+sd.toFixed(3),novelty:+novelty.toFixed(4),selectionFitness:+selection.toFixed(3),wins:wins,losses:losses,scenarioScores:scenarioScores,results:results,genome:entry.genome};
+  }
+
+  function makeCandidates(baseline,count,strength,revision){
+    count=Math.max(3,count||4);var out=[];for(var i=0;i<Math.min(3,count);i++)out.push({id:'g'+(revision+1)+'-m'+(i+1),genome:root.BattleAIPolicy.mutate(baseline,strength),results:[]});
+    while(out.length<count){var a=out[(out.length-1)%out.length].genome,b=out[(out.length)%Math.max(1,out.length)].genome,cross=root.BattleAIPolicy.crossover(a,b);out.push({id:'g'+(revision+1)+'-x'+(out.length+1),genome:root.BattleAIPolicy.mutate(cross,strength*.72),results:[]});}
+    return out;
+  }
+
+  async function rememberScenarioExperience(best,trainingSeed,scenarioSeed,promotion){
+    var scenarioResults=best.results.filter(function(r){return r.scenarioSeed===scenarioSeed;}),score=mean(scenarioResults.map(function(r){return r.score;}));if(!scenarioResults.length||score<=0)return null;
+    var exemplar=scenarioResults.slice().sort(function(a,b){return b.score-a.score;})[0];
+    return root.BattleAIPolicy.remember({seed:scenarioSeed,scenarioId:exemplar.scenarioId,trainingSeed:trainingSeed,fingerprint:exemplar.fingerprint,genome:best.genome,score:+score.toFixed(3),winner:exemplar.winner,revision:promotion&&promotion.revision||root.BattleAIPolicy.revision,candidateId:best.id,stats:{time:exemplar.time,captures:exemplar.captures,neutralizations:exemplar.neutralizations,usObjectives:exemplar.usObjectives,geObjectives:exemplar.geObjectives,usForceValue:exemplar.usForceValue,geForceValue:exemplar.geForceValue}});
   }
 
   async function train(sim,opts){
-    opts=opts||{};if(sim._trainingRunning)return null;sim._trainingRunning=true;
-    var button=opts.button||null,status=opts.status||document.getElementById('aiTestStatus'),town=sim.scene.metadata&&sim.scene.metadata.battleTown;if(button)button.disabled=true;
-    if(!town){sim._trainingRunning=false;if(button)button.disabled=false;throw new Error('No battle scenario context for training');}
+    opts=opts||{};if(sim._trainingRunning)return null;sim._trainingRunning=true;var button=opts.button||null,status=opts.status||document.getElementById('aiTestStatus');if(button)button.disabled=true;
+    var originalScenario=sim.scene.metadata&&sim.scene.metadata.battleScenario,originalSeed=originalScenario&&originalScenario.seed||root.BattleScenarioGenerator.newSeed('live');
+    var rawRestart=sim._controlRawRestart||sim.restart.bind(sim),saved={onFire:sim.onFire,onShot:sim.onShot,onCallout:sim.onCallout,onUpdate:sim.onUpdate,onWinner:sim.onWinner,timeScale:sim.timeScale,paused:sim.paused};sim.onFire=function(){};sim.onShot=function(){};sim.onCallout=function(){};sim.onUpdate=function(){};sim.onWinner=function(){};
+    var baseline=root.BattleAIPolicy.get(),baselineRevision=root.BattleAIPolicy.revision,candidateCount=opts.candidates||4,scenarioCount=opts.scenarios||3,strength=opts.mutationStrength==null?.18:+opts.mutationStrength,trainingSeed=String(opts.seed||root.BattleScenarioGenerator.newSeed('training'));
+    var scenarioSeeds=[];for(var s=0;s<scenarioCount;s++)scenarioSeeds.push(trainingSeed+'-map-'+(s+1));var candidates=makeCandidates(baseline,candidateCount,strength,baselineRevision),totalMatches=candidateCount*scenarioCount*2,matchNo=0,promotion=null,summaries=[];
 
-    var rawRestart=sim._controlRawRestart||sim.restart.bind(sim),saved={onFire:sim.onFire,onShot:sim.onShot,onCallout:sim.onCallout,onUpdate:sim.onUpdate,onWinner:sim.onWinner,timeScale:sim.timeScale,paused:sim.paused};
-    sim.onFire=function(){};sim.onShot=function(){};sim.onCallout=function(){};sim.onUpdate=function(){};sim.onWinner=function(){};
-    var baseline=root.BattleAIPolicy.get(),baselineRevision=root.BattleAIPolicy.revision,candidateCount=opts.candidates||5,strength=opts.mutationStrength==null?.16:+opts.mutationStrength,totalMatches=candidateCount*2,candidates=[];
-    for(var c=0;c<candidateCount;c++)candidates.push({id:'g'+(baselineRevision+1)+'-c'+(c+1),policy:root.BattleAIPolicy.mutate(baseline,strength),results:[]});
+    if(root.BattleTelemetry){root.BattleTelemetry.end(sim,'training-start');root.BattleTelemetry.start(sim,'training',{phase:'generation-metadata',baselineRevision:baselineRevision,totalMatches:totalMatches,trainingSeed:trainingSeed});}
+    telemetry(sim,'policy-training-start',{genomeVersion:2,revision:baselineRevision,trainingSeed:trainingSeed,scenarioSeeds:scenarioSeeds,candidates:candidateCount,totalMatches:totalMatches,baseline:baseline});
+    candidates.forEach(function(candidate){telemetry(sim,'policy-candidate',{candidateId:candidate.id,genome:candidate.genome,distanceFromBaseline:root.BattleAIPolicy.distance(candidate.genome,baseline),ruleCount:candidate.genome.rules.length,doctrine:candidate.genome.doctrine});});if(root.BattleTelemetry)root.BattleTelemetry.end(sim,'training-metadata-complete');
 
-    if(root.BattleTelemetry){root.BattleTelemetry.end(sim,'training-start');root.BattleTelemetry.start(sim,'training',{phase:'generation-metadata',baselineRevision:baselineRevision,totalMatches:totalMatches});}
-    telemetry(sim,'policy-training-start',{revision:baselineRevision,candidates:candidateCount,totalMatches:totalMatches,baseline:baseline});
-    candidates.forEach(function(candidate){telemetry(sim,'policy-candidate',{candidateId:candidate.id,policy:candidate.policy,distanceFromBaseline:root.BattleAIPolicy.distance(candidate.policy,baseline)});});
-    if(root.BattleTelemetry)root.BattleTelemetry.end(sim,'training-metadata-complete');
-
-    var matchNo=0,promotion=null,summaries=[];
     try{
       for(var i=0;i<candidates.length;i++){
         var candidate=candidates[i];
-        for(var sideIndex=0;sideIndex<2;sideIndex++){var side=sideIndex===0?'us':'ge';matchNo++;candidate.results.push(await runMatch(sim,rawRestart,town,baseline,candidate.policy,candidate.id,side,status,matchNo,totalMatches));}
-        summaries.push(candidateSummary(candidate));
+        for(var si=0;si<scenarioSeeds.length;si++)for(var sideIndex=0;sideIndex<2;sideIndex++){var side=sideIndex===0?'us':'ge';matchNo++;candidate.results.push(await runMatch(sim,rawRestart,baseline,candidate.genome,candidate.id,side,scenarioSeeds[si],trainingSeed,si,status,matchNo,totalMatches));}
       }
-      summaries.sort(function(a,b){return b.avgScore-a.avgScore;});
-      var best=summaries[0],threshold=opts.promotionThreshold==null?12:+opts.promotionThreshold,shouldPromote=!!(best&&best.avgScore>=threshold&&best.wins>=1&&best.losses<2);
-      var trainingSummary={baselineRevision:baselineRevision,totalMatches:totalMatches,promotionThreshold:threshold,best:best?{id:best.id,avgScore:best.avgScore,wins:best.wins,losses:best.losses}:null,candidates:summaries.map(function(s){return {id:s.id,avgScore:s.avgScore,wins:s.wins,losses:s.losses};}),promoted:shouldPromote};
+      summaries=candidates.map(function(c){return candidateSummary(c,candidates);});summaries.sort(function(a,b){return b.selectionFitness-a.selectionFitness;});var best=summaries[0],threshold=opts.promotionThreshold==null?8:+opts.promotionThreshold;
+      var shouldPromote=!!(best&&best.avgScore>0&&best.selectionFitness>=threshold&&best.wins>=best.losses&&best.generalization>-55);
+      var trainingSummary={genomeVersion:2,trainingSeed:trainingSeed,baselineRevision:baselineRevision,scenarioSeeds:scenarioSeeds,totalMatches:totalMatches,promotionThreshold:threshold,best:best?{id:best.id,avgScore:best.avgScore,selectionFitness:best.selectionFitness,generalization:best.generalization,scenarioStd:best.scenarioStd,novelty:best.novelty,wins:best.wins,losses:best.losses,ruleCount:best.genome.rules.length,doctrine:best.genome.doctrine,scenarioScores:best.scenarioScores}:null,candidates:summaries.map(function(x){return{id:x.id,avgScore:x.avgScore,selectionFitness:x.selectionFitness,generalization:x.generalization,novelty:x.novelty,wins:x.wins,losses:x.losses,ruleCount:x.genome.rules.length};}),promoted:shouldPromote};
 
-      if(root.BattleTelemetry)root.BattleTelemetry.start(sim,'training',{phase:'generation-summary',baselineRevision:baselineRevision});
-      telemetry(sim,'policy-training-summary',trainingSummary);
-      if(shouldPromote){
-        promotion=await root.BattleAIPolicy.persist(best.policy,{score:best.avgScore,matches:best.results.length,baselineScore:0,candidateId:best.id,generation:baselineRevision+1,sourceBuild:root.BATTLE_BUILD||'dev'});
-        telemetry(sim,'policy-promoted',{candidateId:best.id,revision:promotion.revision,score:best.avgScore,policy:best.policy});
-      }
-      if(root.BattleTelemetry)root.BattleTelemetry.end(sim,'training-generation-complete',{promoted:!!promotion,revision:root.BattleAIPolicy.revision});
-      if(status)status.textContent=promotion?('AI learned policy r'+promotion.revision+' · '+best.id+' score '+best.avgScore+' · '+best.wins+'W/'+best.losses+'L'):('AI kept policy r'+root.BattleAIPolicy.revision+' · best candidate '+(best?best.avgScore:'n/a')+' below '+threshold);
-      console.log('[TRAINING] v19 policy summary',trainingSummary,promotion||'no promotion');return {summary:trainingSummary,promotion:promotion,candidates:summaries};
+      if(root.BattleTelemetry)root.BattleTelemetry.start(sim,'training',{phase:'generation-summary',baselineRevision:baselineRevision,trainingSeed:trainingSeed});telemetry(sim,'policy-training-summary',trainingSummary);
+      if(shouldPromote){promotion=await root.BattleAIPolicy.persist(best.genome,{score:best.selectionFitness,matches:best.results.length,baselineScore:0,candidateId:best.id,generation:baselineRevision+1,sourceBuild:root.BATTLE_BUILD||'dev',trainingSeed:trainingSeed,scenarioCount:scenarioCount,validationScore:best.generalization,noveltyScore:best.novelty});telemetry(sim,'policy-promoted',{candidateId:best.id,revision:promotion.revision,score:best.selectionFitness,avgScore:best.avgScore,generalization:best.generalization,trainingSeed:trainingSeed,genome:best.genome});}
+      for(var rs=0;rs<scenarioSeeds.length;rs++)await rememberScenarioExperience(best,trainingSeed,scenarioSeeds[rs],promotion);
+      if(root.BattleTelemetry)root.BattleTelemetry.end(sim,'training-generation-complete',{promoted:!!promotion,revision:root.BattleAIPolicy.revision,trainingSeed:trainingSeed});
+      if(status)status.textContent=promotion?('Genome v2 learned r'+promotion.revision+' · '+best.id+' · fit '+best.selectionFitness+' · gen '+best.generalization):('Genome v2 kept r'+root.BattleAIPolicy.revision+' · best fit '+(best?best.selectionFitness:'n/a')+' · gen '+(best?best.generalization:'n/a'));
+      console.log('[TRAINING] Genome v2 summary',trainingSummary,promotion||'no promotion');return{summary:trainingSummary,promotion:promotion,candidates:summaries};
     } finally {
-      root.BattleAIPolicy.clearMatchPolicies(sim);rawRestart();sim.trainingMode=false;sim.timeScale=saved.timeScale;sim.onFire=saved.onFire;sim.onShot=saved.onShot;sim.onCallout=saved.onCallout;sim.onUpdate=saved.onUpdate;sim.onWinner=saved.onWinner;sim.paused=saved.paused;
-      if(root.BattleTelemetry)root.BattleTelemetry.start(sim,'live',{afterTraining:true,policyRevision:root.BattleAIPolicy.revision});sim._trainingRunning=false;if(button)button.disabled=false;
+      root.BattleAIPolicy.clearMatchPolicies(sim);root.BattleTownObjectives.regenerate(sim.scene,sim.heightAt,originalSeed,{restoredAfterTraining:true},sim);rawRestart();sim.trainingMode=false;sim.timeScale=saved.timeScale;sim.onFire=saved.onFire;sim.onShot=saved.onShot;sim.onCallout=saved.onCallout;sim.onUpdate=saved.onUpdate;sim.onWinner=saved.onWinner;sim.paused=saved.paused;
+      if(root.BattleTelemetry)root.BattleTelemetry.start(sim,'live',{afterTraining:true,policyRevision:root.BattleAIPolicy.revision,trainingSeed:trainingSeed,scenarioSeed:originalSeed});sim._trainingRunning=false;if(button)button.disabled=false;
     }
   }
 
   root.BattleAITrainer={train:train,scoreMatch:scoreMatch};
-  console.log('[TRAINING] evolutionary policy trainer v19 loaded');
+  console.log('[TRAINING] Genome v2 seeded multi-scenario trainer v20 loaded');
 })(typeof window!=='undefined'?window:globalThis);
