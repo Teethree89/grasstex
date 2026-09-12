@@ -1,14 +1,17 @@
-/* Battle Sim core for the ww2fps AI/units laboratory.
-   Owns terrain, initial infantry force, deterministic stepping, movement, combat FX and audio
-   hooks. Tactical command/objectives/extra unit types are separate modules. */
+/* Battle Sim core for the ww2fps AI/units laboratory v20.
+   Uses the ww2fps battlefield footprint (2000m x 1200m), deterministic scenario spawns and
+   building-aware movement. Tactical command/objectives/extra unit types remain separate modules. */
 (function(root){
   'use strict';
   if(typeof BABYLON==='undefined')return;
 
-  var FIELD_W=360,FIELD_D=280,SPAWN_Z=110,LANES=[-140,-70,0,70,140];
-  var AI_TICK=.15,DEFAULT_TIME_LIMIT=420,SUB_X=100,SUB_Z=78,GRIDX=SUB_X+1,GRIDZ=SUB_Z+1,gridH=null;
+  var FIELD_W=2000,FIELD_D=1200,SPAWN_Z=510,LANES=[-700,-350,0,350,700];
+  var AI_TICK=.15,DEFAULT_TIME_LIMIT=600,SUB_X=160,SUB_Z=96,GRIDX=SUB_X+1,GRIDZ=SUB_Z+1,gridH=null;
 
-  function landscapeHeight(x,z){return Math.sin(x*.018)*2.4+Math.cos(z*.021)*1.8+Math.sin((x+z)*.015)*1.1+Math.sin(x*.05-z*.04)*.5;}
+  function landscapeHeight(x,z){
+    var s=root.BattleScenarioGenerator&&root.BattleScenarioGenerator.current(),rough=s&&s.terrain?(.65+s.terrain.roughness*.7):1;
+    return rough*(Math.sin(x*.0052)*2.8+Math.cos(z*.0071)*2.1+Math.sin((x+z)*.0038)*1.35+Math.sin(x*.012-z*.010)*.55);
+  }
   function sampleAt(x,z){
     if(!gridH)return landscapeHeight(x,z);
     var cellW=FIELD_W/SUB_X,cellD=FIELD_D/SUB_Z,fcol=(x+FIELD_W/2)/cellW,i=Math.floor(fcol),u=fcol-i,frow=(FIELD_D/2-z)/cellD,j=Math.floor(frow),v=frow-j;
@@ -31,7 +34,7 @@
   }
 
   function buildSky(scene){
-    var radius=500,offset=.110;
+    var radius=1800,offset=.110;
     BABYLON.Effect.ShadersStore.battleSkyDomeVertexShader='precision highp float;attribute vec3 position;uniform mat4 worldViewProjection;varying vec3 vDir;void main(){vDir=position;gl_Position=worldViewProjection*vec4(position,1.0);}';
     BABYLON.Effect.ShadersStore.battleSkyDomeFragmentShader='precision highp float;varying vec3 vDir;uniform sampler2D skyTexture;void main(){vec3 d=normalize(vDir);float lon=atan(d.z,d.x);float lat=acos(clamp(d.y,-1.0,1.0));float s=lon/(2.0*3.14159265359)+0.5;float t=lat/3.14159265359;gl_FragColor=vec4(texture2D(skyTexture,vec2(s,t)).rgb,1.0);}';
     var sky=BABYLON.MeshBuilder.CreateSphere('battleSkyDome',{diameter:radius*2,segments:24},scene);sky.infiniteDistance=true;sky.isPickable=false;sky.applyFog=false;
@@ -55,31 +58,37 @@
   function BattleSim(scene,opts){
     opts=opts||{};this.scene=scene;this.heightAt=sampleAt;this.obstacles=opts.obstacles||[];this.time=0;this.timeScale=opts.timeScale||1.5;this.timeLimit=opts.timeLimit||DEFAULT_TIME_LIMIT;this.paused=false;this.winner=null;
     this.factions={us:makeFaction(),ge:makeFaction()};this._roster={us:[],ge:[]};this._moduleUnits=[];this._aiAccum=0;this._disposables=[];
-    this.onFire=null;this.onShot=null;this.onCallout=null;this.onWinner=opts.onWinner||null;this.onUpdate=opts.onUpdate||null;
+    this.onFire=null;this.onShot=null;this.onCallout=null;this.onWinner=opts.onWinner||null;this.onUpdate=opts.onUpdate||null;this._rng=Math.random;
     var self=this;this._renderObserver=scene.onBeforeRenderObservable.add(function(){self._frame();});this.spawnAll();
   }
   BattleSim.prototype.rosterOf=function(faction){return this._roster[faction];};
-  BattleSim.prototype.killSoldier=function(soldier,killer){if(soldier.dead)return;BattleSoldierModel.kill(soldier);soldier.hp=0;soldier.target=null;this.factions[soldier.faction].alive--;if(killer)this.factions[killer.faction].kills++;if(soldier.role==='captain'){soldier.squad.captainAlive=false;soldier.squad.accuracyMultiplier=.8;}};
+  BattleSim.prototype.random=function(){return this._rng();};
+  BattleSim.prototype._resetRandom=function(){var s=this.scene.metadata&&this.scene.metadata.battleScenario,seed=s&&s.seed||'battle-default';this._rng=root.BattleScenarioGenerator?root.BattleScenarioGenerator.rngFor(seed,'combat'):Math.random;};
+  BattleSim.prototype.killSoldier=function(soldier,killer){if(soldier.dead)return;if(root.BattleNavigation)root.BattleNavigation.releaseWindow(soldier);BattleSoldierModel.kill(soldier);soldier.hp=0;soldier.target=null;this.factions[soldier.faction].alive--;if(killer)this.factions[killer.faction].kills++;if(soldier.role==='captain'){soldier.squad.captainAlive=false;soldier.squad.accuracyMultiplier=.8;}};
 
   BattleSim.prototype.spawnAll=function(){
-    var scene=this.scene;this.factions={us:makeFaction(),ge:makeFaction()};this._roster={us:[],ge:[]};this._moduleUnits=[];this.time=0;this.winner=null;this._aiAccum=0;var nextId=0,self=this;
-    function spawnSide(faction,z,facingObjectiveZ){
-      for(var li=0;li<LANES.length;li++){
-        var laneX=LANES[li],home={x:laneX,z:z},objective={x:laneX,z:facingObjectiveZ},squad=SquadAI.createSquad(faction+'-'+li,faction,home,objective);
+    var scene=this.scene,scenario=scene.metadata&&scene.metadata.battleScenario;this._resetRandom();
+    this.factions={us:makeFaction(),ge:makeFaction()};this._roster={us:[],ge:[]};this._moduleUnits=[];this.time=0;this.winner=null;this._aiAccum=0;var nextId=0,self=this;
+    function zone(f){return scenario&&scenario.spawnZones&&scenario.spawnZones[f]||{z:f==='us'?-SPAWN_Z:SPAWN_Z,lanes:LANES};}
+    function spawnSide(faction){
+      var zn=zone(faction),z=zn.z,lanes=zn.lanes||LANES,facingObjectiveZ=faction==='us'?Math.abs(z):-Math.abs(z);
+      for(var li=0;li<lanes.length;li++){
+        var laneX=lanes[li],home={x:laneX,z:z},objective={x:scenario&&scenario.center?scenario.center.x:laneX,z:scenario&&scenario.center?scenario.center.z:facingObjectiveZ},squad=SquadAI.createSquad(faction+'-'+li,faction,home,objective);
         for(var si=0;si<SquadAI.COMPOSITION.length;si++){
-          var role=SquadAI.COMPOSITION[si],jx=laneX+(Math.random()-.5)*8,jz=z+(Math.random()-.5)*6,model=BattleSoldierModel.createSoldier(scene,faction,role,null);
-          model.root.position.set(jx,sampleAt(jx,jz),jz);model.root.rotation.y=facingObjectiveZ>z?0:Math.PI;
+          var role=SquadAI.COMPOSITION[si],jx=laneX+(self.random()-.5)*8,jz=z+(self.random()-.5)*6,model=BattleSoldierModel.createSoldier(scene,faction,role,null);
+          model.root.position.set(jx,sampleAt(jx,jz),jz);model.root.rotation.y=objective.z>z?0:Math.PI;
           var weapon=BattleWeapons.attachWeapon(scene,model.weaponSocket,SquadAI.ROLES[role].weapon),soldier=SquadAI.createSoldier({id:nextId++,faction:faction,role:role,squad:squad,slotIndex:si,model:model,weapon:weapon});
-          soldier.unitType='infantry';soldier.captureWeight=1;soldier.scoreValue=1;squad.members.push(soldier);self._roster[faction].push(soldier);self.factions[faction].alive++;
+          soldier.fireCooldown=self.random()*.5;soldier.unitType='infantry';soldier.captureWeight=1;soldier.scoreValue=1;squad.members.push(soldier);self._roster[faction].push(soldier);self.factions[faction].alive++;
+          if(root.BattleModules)root.BattleModules.addUnit(self,soldier,{unitType:'infantry',captureWeight:1});
         }
         self.factions[faction].squads.push(squad);
       }
     }
-    spawnSide('us',-SPAWN_Z,SPAWN_Z);spawnSide('ge',SPAWN_Z,-SPAWN_Z);
+    spawnSide('us');spawnSide('ge');
   };
   BattleSim.prototype.restart=function(){
     if(root.BattleModules)root.BattleModules.runHook('beforeBattleRestart',this,{});
-    var all=this._roster.us.concat(this._roster.ge);for(var i=0;i<all.length;i++)all[i].root.dispose();this.spawnAll();
+    var all=this._roster.us.concat(this._roster.ge);for(var i=0;i<all.length;i++){if(root.BattleNavigation)root.BattleNavigation.releaseWindow(all[i]);all[i].root.dispose();}this.spawnAll();
   };
   BattleSim.prototype.setTimeScale=function(v){this.timeScale=Math.max(0,+v||0);};BattleSim.prototype.pause=function(){this.paused=true;};BattleSim.prototype.resume=function(){this.paused=false;};
 
@@ -91,13 +100,19 @@
   }
   function stepMovement(self,soldier,dt){
     if(soldier.dead)return;soldier.fireCooldown=Math.max(0,soldier.fireCooldown-dt);
-    var dx=soldier.destination.x-soldier.root.position.x,dz=soldier.destination.z-soldier.root.position.z,d=Math.hypot(dx,dz),wantCrouch=!soldier.prone&&((soldier.suppressedUntil>self.time)||(!!soldier.target&&d<=.6));
+    var desired=soldier.destination;if(root.BattleNavigation)desired=root.BattleNavigation.nextWaypoint(self,soldier,desired)||desired;
+    var dx=desired.x-soldier.root.position.x,dz=desired.z-soldier.root.position.z,d=Math.hypot(dx,dz),wantCrouch=!soldier.prone&&((soldier.suppressedUntil>self.time)||(!!soldier.target&&d<=.6));
     var desiredSpeed=(d>.35&&!soldier.prone)?soldier.speed*(wantCrouch?.58:1):0,cur=soldier.moveSpeed||0,rate=desiredSpeed>cur?4.2:6.5;
     soldier.moveSpeed=Math.max(0,cur+Math.max(-rate*dt,Math.min(rate*dt,desiredSpeed-cur)));
     function turnToward(yaw){var diff=Math.atan2(Math.sin(yaw-soldier.root.rotation.y),Math.cos(yaw-soldier.root.rotation.y)),maxTurn=(soldier.prone?1.1:2.8)*dt;soldier.root.rotation.y+=Math.max(-maxTurn,Math.min(maxTurn,diff));}
     if(d>.35&&soldier.moveSpeed>.025&&!soldier.prone){
       var dirx=dx/d,dirz=dz/d,steered=steerAroundObstacles(self.obstacles,soldier.root.position.x,soldier.root.position.z,dirx,dirz);if(steered){dirx=steered.x;dirz=steered.z;}
-      var step=Math.min(d,soldier.moveSpeed*dt),nx=soldier.root.position.x+dirx*step,nz=soldier.root.position.z+dirz*step;soldier.root.position.x=nx;soldier.root.position.z=nz;soldier.root.position.y=self.heightAt(nx,nz);turnToward(Math.atan2(dirx,dirz));soldier.moving=true;
+      var step=Math.min(d,soldier.moveSpeed*dt),nx=soldier.root.position.x+dirx*step,nz=soldier.root.position.z+dirz*step;
+      if(root.BattleNavigation&&!root.BattleNavigation.movementClear({x:soldier.root.position.x,z:soldier.root.position.z},{x:nx,z:nz})){
+        dirx=dx/d;dirz=dz/d;nx=soldier.root.position.x+dirx*step;nz=soldier.root.position.z+dirz*step;
+        if(!root.BattleNavigation.movementClear({x:soldier.root.position.x,z:soldier.root.position.z},{x:nx,z:nz})){soldier._navCache=null;soldier.moveSpeed=0;soldier.moving=false;return;}
+      }
+      soldier.root.position.x=nx;soldier.root.position.z=nz;soldier.root.position.y=self.heightAt(nx,nz);turnToward(Math.atan2(dirx,dirz));soldier.moving=true;
     }else{soldier.moving=false;if(soldier.target){var tx=soldier.target.root.position.x-soldier.root.position.x,tz=soldier.target.root.position.z-soldier.root.position.z;if(Math.abs(tx)+Math.abs(tz)>1e-4)turnToward(Math.atan2(tx,tz));}}
     if(wantCrouch!==soldier.crouching)BattleSoldierModel.setCrouch(soldier,wantCrouch);if(BattleSoldierModel.setProne)BattleSoldierModel.setProne(soldier,!!soldier.prone);BattleSoldierModel.animateWalk(soldier,dt,soldier.speed>0?soldier.moveSpeed/soldier.speed:0);
   }
