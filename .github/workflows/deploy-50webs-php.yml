@@ -2,12 +2,6 @@ name: Deploy Battle PHP to 50webs
 
 on:
   workflow_dispatch:
-    inputs:
-      remote_dir:
-        description: "50webs directory containing battle_sim.php"
-        required: true
-        default: "/www/test.ivandpopov.com"
-        type: string
 
 permissions:
   contents: read
@@ -49,14 +43,12 @@ jobs:
           FTP_HOST: ${{ secrets.FTP_HOST }}
           FTP_USER: ${{ secrets.FTP_USER }}
           FTP_PASSWORD: ${{ secrets.FTP_PASS }}
-          REMOTE_DIR: ${{ inputs.remote_dir }}
         run: |
           set -euo pipefail
 
           : "${FTP_HOST:?Missing repository secret FTP_HOST}"
           : "${FTP_USER:?Missing repository secret FTP_USER}"
           : "${FTP_PASSWORD:?Missing repository secret FTP_PASS}"
-          : "${REMOTE_DIR:?Missing remote directory}"
 
           lftp -u "$FTP_USER","$FTP_PASSWORD" "$FTP_HOST" <<LFTP
           set cmd:fail-exit yes
@@ -64,7 +56,8 @@ jobs:
           set net:timeout 15
           set ftp:ssl-allow no
           set ftp:passive-mode true
-          cd "$REMOTE_DIR"
+          pwd
+          cls -la
           put battle_sim.php -o battle_sim.php
           cls -l battle_sim.php
           bye
@@ -78,6 +71,5 @@ jobs:
             echo ""
             echo "- Source: \`main@$(git rev-parse --short HEAD)\`"
             echo "- File: \`battle_sim.php\`"
-            echo "- Remote directory: \`${{ inputs.remote_dir }}\`"
-            echo "- Target: \`${{ inputs.remote_dir }}/battle_sim.php\`"
+            echo "- FTP destination: login root / battle_sim.php"
           } >> "$GITHUB_STEP_SUMMARY"
