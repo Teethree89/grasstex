@@ -19,7 +19,13 @@ const grab=async(path)=>{
   if(!r.ok)throw new Error(path+' -> HTTP '+r.status);
   return r.text();
 };
-const OLD_SCRIPTS='<script src="soldier.js"></script>\n<script src="weapons.js"></script>\n<script src="squad-ai.js"></script>\n<script src="battle-sim.js"></script>';
+/* Built from split pieces rather than the closing script-tag text written out whole - this
+   whole thing sits inside a script block of its own, and the HTML parser ends that block at
+   the first literal occurrence of those bytes it finds, with no idea it's inside a JS string
+   (or, as a first draft of this very comment proved, inside a comment). Game.html hits the
+   same wall and splits the same way (see its closeScript/openScript). */
+const ET='</scr'+'ipt>',OT='<scr'+'ipt>';
+const OLD_SCRIPTS='<script src="soldier.js">'+ET+'\n<script src="weapons.js">'+ET+'\n<script src="squad-ai.js">'+ET+'\n<script src="battle-sim.js">'+ET;
 try{
   const [html,soldier,weapons,squadAi,battleSim]=await Promise.all([
     grab('battle/battle_sim.html'),
@@ -30,7 +36,7 @@ try{
   ]);
   if(html.indexOf(OLD_SCRIPTS)<0)
     throw new Error('battle/battle_sim.html script tags changed shape; refusing to boot with stale inlining');
-  const inlined='<script>'+soldier+';\n'+weapons+';\n'+squadAi+';\n'+battleSim+'</script>';
+  const inlined=OT+soldier+';\n'+weapons+';\n'+squadAi+';\n'+battleSim+ET;
   const page=html.replace(OLD_SCRIPTS,inlined);
   document.open();document.write(page);document.close();
 }catch(e){
