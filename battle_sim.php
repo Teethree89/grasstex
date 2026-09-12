@@ -172,7 +172,7 @@ if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false)
     foreach (array('soldier.js','weapons.js','terrain-features.js','squad-ai.js','battle-sim.js') as $file) $body = str_replace('<script src="'.$file.'"></script>', '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>', $body);
     $extras = '';
     foreach (array('acoustics.js','scenario-generator.js','battle-navigation.js','town-objectives.js','module-registry.js','ai-policy.js','objective-system.js','battle-telemetry.js','commander-ai.js') as $file) $extras .= '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>' . "\n";
-    foreach (array('01-capture-zone.js','10-infantry-squad.js','20-building-hardpoints.js') as $file) $extras .= '<script src="'.$base.'battle/modules/'.$file.'?v='.$version.'"></script>' . "\n";
+    foreach (array('01-capture-zone.js','10-infantry-squad.js','12-soldier-animation-events.js','15-individual-tactics.js','20-building-hardpoints.js') as $file) $extras .= '<script src="'.$base.'battle/modules/'.$file.'?v='.$version.'"></script>' . "\n";
     foreach (array('ai-trainer.js','battle-control.js') as $file) $extras .= '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>' . "\n";
     $body = preg_replace('#<script>\s*/\* Extra runtimes[\s\S]*?</script>#', $extras, $body, 1, $replacementCount);
     if ($replacementCount === 1) { header('X-Grasstex-Source: github-modular'); echo $body; exit; }
