@@ -31,7 +31,9 @@
     var state=importedState(scene);if(state.container)return Promise.resolve(true);if(state.promise)return state.promise;
     if(!BABYLON.SceneLoader||!BABYLON.SceneLoader.LoadAssetContainerAsync)return Promise.resolve(false);
     var base=assetBase||root.BATTLE_ASSET_BASE||'Assets/';if(base.charAt(base.length-1)!=='/')base+='/' ;
-    state.promise=BABYLON.SceneLoader.LoadAssetContainerAsync(base,IMPORTED_FILE,scene).then(function(container){
+    var assetVersion=root.BATTLE_SOLDIER_ASSET_VERSION||root.BATTLE_REF||'';
+    var file=IMPORTED_FILE+(assetVersion?'?v='+encodeURIComponent(assetVersion):'');
+    state.promise=BABYLON.SceneLoader.LoadAssetContainerAsync(base,file,scene).then(function(container){
       state.container=container;var groups=container.animationGroups||[];console.log('[ANIM] Human Soldier package ready · '+groups.map(function(g){return g.name;}).join(', '));return true;
     }).catch(function(error){console.warn('[ANIM] Human Soldier package unavailable; using procedural fallback',error&&error.message||error);state.promise=null;return false;});
     return state.promise;

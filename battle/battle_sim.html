@@ -27,7 +27,7 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 <body>
 <canvas id="renderCanvas"></canvas>
 <div id="hud">
-  <h1><span id="hudTitle"><span>WW2FPS AI LAB</span><span id="buildVersion">v22</span></span><button id="hudClose" type="button" title="Hide controls">&#10005;</button></h1>
+  <h1><span id="hudTitle"><span>WW2FPS AI LAB</span><span id="buildVersion">v23</span></span><button id="hudClose" type="button" title="Hide controls">&#10005;</button></h1>
   <div class="side"><span class="tag us">US</span><span class="nums" id="usNums">50 alive &middot; 0 kills</span></div>
   <div class="side"><span class="tag ge">GER</span><span class="nums" id="geNums">50 alive &middot; 0 kills</span></div>
   <div class="row"><span>Squads left</span><span id="squadsLeft">5 / 5</span></div>
@@ -56,9 +56,9 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 </script>
 <script>
 (function(){
-  /* Runtime marker is deliberately duplicated here so stale PHP opcode/cache cannot disguise a fresh v22 page. */
-  window.BATTLE_BUILD='v22';
-  var build='v22',ref=window.BATTLE_REF||'direct',buildEl=document.getElementById('buildVersion');buildEl.textContent=build;document.title='WW2FPS AI Lab '+build;
+  /* Runtime marker is deliberately duplicated here so stale PHP opcode/cache cannot disguise a fresh v23 page. */
+  window.BATTLE_BUILD='v23';
+  var build='v23',ref=window.BATTLE_REF||'direct',buildEl=document.getElementById('buildVersion');buildEl.textContent=build;document.title='WW2FPS AI Lab '+build;
   var debugConsole=document.getElementById('debugConsole');function stringify(v){if(typeof v==='string')return v;try{return JSON.stringify(v);}catch(_){return String(v);}}function writeDebug(level,args){if(!debugConsole)return;var line=document.createElement('div');if(level==='warn')line.className='debug-warn';else if(level==='error')line.className='debug-error';line.textContent='['+level.toUpperCase()+'] '+Array.prototype.map.call(args,stringify).join(' ');debugConsole.appendChild(line);debugConsole.scrollTop=debugConsole.scrollHeight;}['log','warn','error'].forEach(function(level){var original=console[level];console[level]=function(){writeDebug(level,arguments);return original.apply(console,arguments);};});window.addEventListener('error',function(e){writeDebug('error',[e.message+' @ '+e.filename+':'+e.lineno]);});window.addEventListener('unhandledrejection',function(e){writeDebug('error',['Unhandled promise rejection:',e.reason]);});
   console.log('Battle Sim',build,'ref='+ref);console.log('pageProtocol='+location.protocol);console.log('assetBase='+(window.BATTLE_ASSET_BASE||'hardcoded/default'));console.log('audioBase='+(window.BATTLE_AUDIO_BASE||'audio/'));
 
@@ -75,7 +75,7 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   window.addEventListener('keydown',function(e){if(!cameraKey(e.code))return;cameraKeys[e.code]=true;if(e.code!=='ShiftLeft'&&e.code!=='ShiftRight')e.preventDefault();},{passive:false});
   window.addEventListener('keyup',function(e){if(cameraKey(e.code))cameraKeys[e.code]=false;});window.addEventListener('blur',function(){cameraKeys=Object.create(null);});
   scene.onBeforeRenderObservable.add(function(){var f=(cameraKeys.KeyW?1:0)-(cameraKeys.KeyS?1:0),r=(cameraKeys.KeyD?1:0)-(cameraKeys.KeyA?1:0);if(!f&&!r)return;var fx=camera.target.x-camera.position.x,fz=camera.target.z-camera.position.z,len=Math.hypot(fx,fz)||1;fx/=len;fz/=len;var rx=fz,rz=-fx,dx=fx*f+rx*r,dz=fz*f+rz*r,dlen=Math.hypot(dx,dz)||1;dx/=dlen;dz/=dlen;var dt=Math.min(.05,engine.getDeltaTime()/1000),boost=(cameraKeys.ShiftLeft||cameraKeys.ShiftRight)?2.25:1,speed=Math.max(45,Math.min(300,camera.radius*.52))*boost,halfW=BattleSim.FIELD_W/2-20,halfD=BattleSim.FIELD_D/2-20;camera.target.x=Math.max(-halfW,Math.min(halfW,camera.target.x+dx*speed*dt));camera.target.z=Math.max(-halfD,Math.min(halfD,camera.target.z+dz*speed*dt));camera.target.y=BattleSim.heightAt(camera.target.x,camera.target.z)+4;});
-  console.log('[CAMERA] v22 WASD pan enabled');
+  console.log('[CAMERA] v23 WASD pan enabled');
 
   var hemi=new BABYLON.HemisphericLight('hemi',new BABYLON.Vector3(0,1,.2),scene);hemi.intensity=.85;hemi.diffuse=new BABYLON.Color3(.9,.85,.78);hemi.groundColor=new BABYLON.Color3(.32,.27,.20);var sun=new BABYLON.DirectionalLight('sun',new BABYLON.Vector3(-.6,-.5,.35),scene);sun.intensity=1.05;sun.diffuse=new BABYLON.Color3(1,.82,.58);
   var battleGround=BattleSim.buildTerrain(scene);BattleSim.buildSky(scene);if(battleGround&&battleGround.material&&battleGround.material.diffuseTexture){battleGround.material.diffuseTexture.uScale=BattleSim.FIELD_W/20;battleGround.material.diffuseTexture.vScale=BattleSim.FIELD_D/20;battleGround.material.diffuseTexture.anisotropicFilteringLevel=8;}if(battleGround&&battleGround.refreshBoundingInfo)battleGround.refreshBoundingInfo();if(battleGround&&battleGround.getBoundingInfo){var bb=battleGround.getBoundingInfo().boundingBox;console.log('terrain bounds y='+bb.minimum.y.toFixed(2)+'..'+bb.maximum.y.toFixed(2));}
