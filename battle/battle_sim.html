@@ -3,61 +3,46 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>WW2 Battle Sim</title>
+<title>WW2FPS AI Lab</title>
 <style>
 html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font-family:Arial,sans-serif}
 #renderCanvas{position:fixed;inset:0;width:100%;height:100%;display:block;outline:none;touch-action:none}
-#hud{position:fixed;top:10px;left:10px;z-index:10;width:260px;padding:10px 12px;background:rgba(14,17,12,.86);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#e7e7dc;font-size:12px;opacity:.9;transition:opacity .15s}
-#hud:hover{opacity:1}
-#hud h1{font-size:13px;margin:0 0 8px;letter-spacing:.03em;color:#fff;display:flex;justify-content:space-between;gap:8px;align-items:center}
+#hud{position:fixed;top:10px;left:10px;z-index:10;width:min(310px,calc(100vw - 36px));max-height:calc(100vh - 20px);overflow:auto;box-sizing:border-box;padding:10px 12px;background:rgba(14,17,12,.90);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#e7e7dc;font-size:12px;opacity:.94;transition:transform .22s ease,opacity .15s;box-shadow:0 7px 24px rgba(0,0,0,.22)}
+#hud:hover{opacity:1}#hud.collapsed{transform:translateX(calc(-100% - 22px));pointer-events:none}
+#hudToggle{position:fixed;top:12px;left:12px;z-index:12;display:none;padding:7px 9px;border-radius:6px;border:1px solid #596342;background:rgba(22,27,17,.93);color:#eef0df;font:700 11px Arial,sans-serif;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+#hud.collapsed+#hudToggle{display:block}#hudClose{border:0;background:transparent;color:#b9bea7;cursor:pointer;font-size:16px;line-height:1;padding:0 0 0 8px}
+#hud h1{font-size:13px;margin:0 0 8px;letter-spacing:.03em;color:#fff;display:flex;justify-content:space-between;gap:8px;align-items:center}#hudTitle{display:flex;align-items:center;gap:7px}
 #buildVersion{font-size:10px;color:#a8ab8e;font-weight:400;letter-spacing:.08em;white-space:nowrap}
-.side{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:1px solid rgba(255,255,255,.08)}
-.side:first-of-type{border-top:0}.side .tag{font-weight:700}.tag.us{color:#8fb4e8}.tag.ge{color:#e0c46a}.side .nums{color:#c7c7ba;font-variant-numeric:tabular-nums}
-#hud .row{display:flex;justify-content:space-between;margin-top:8px;color:#a8ab8e}
-#controls{display:flex;gap:6px;margin-top:10px}
-#controls button{flex:1;padding:5px 4px;background:#1c2116;border:1px solid #46512f;color:#d9dcc4;font-size:11px;border-radius:5px;cursor:pointer}
-#controls button.active{background:#3c4a26;color:#fff}#controls button:hover{background:#2a331c}
-#restartBtn{margin-top:8px;width:100%;padding:6px;background:#3a2020;border:1px solid #6b3232;color:#f1d9d9;border-radius:5px;cursor:pointer;font-size:11px}
-#restartBtn:hover{background:#4a2828}
-#startBtn{margin-top:8px;width:100%;padding:8px;background:#3c4a26;border:1px solid #6b8a44;color:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700}
-#startBtn:hover{background:#4a5c2e}#startBtn[hidden]{display:none}
-#debugPanel{margin-top:8px;border-top:1px solid rgba(255,255,255,.1);padding-top:7px}
-#debugPanel summary{cursor:pointer;color:#b9bea7;font-size:11px;user-select:none;list-style-position:inside}
-#debugConsole{margin-top:6px;height:145px;overflow:auto;background:#070907;border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:6px;color:#b8c4ad;font:10px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
-.debug-warn{color:#d8c57c}.debug-error{color:#e58d8d}
-#banner{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:rgba(6,8,6,.55)}
-#banner .card{background:rgba(18,22,14,.96);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:26px 34px;text-align:center;color:#fff;font-size:20px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
-#banner .card small{display:block;margin-top:8px;font-size:12px;color:#b7bba0}
-#banner button{margin-top:16px;padding:7px 18px;border-radius:6px;border:1px solid #6b8a44;background:#3c4a26;color:#fff;cursor:pointer;font-size:13px}
+.side{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:1px solid rgba(255,255,255,.08)}.side:first-of-type{border-top:0}.side .tag{font-weight:700}.tag.us{color:#8fb4e8}.tag.ge{color:#e0c46a}.side .nums{color:#c7c7ba;font-variant-numeric:tabular-nums}
+#hud .row{display:flex;justify-content:space-between;gap:10px;margin-top:8px;color:#a8ab8e}#seedShort{max-width:175px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c6cbb0}
+#controls{display:flex;gap:6px;margin-top:10px}#controls button{flex:1;padding:5px 4px;background:#1c2116;border:1px solid #46512f;color:#d9dcc4;font-size:11px;border-radius:5px;cursor:pointer}#controls button.active{background:#3c4a26;color:#fff}#controls button:hover{background:#2a331c}
+#restartBtn{margin-top:8px;width:100%;padding:6px;background:#3a2020;border:1px solid #6b3232;color:#f1d9d9;border-radius:5px;cursor:pointer;font-size:11px}#restartBtn:hover{background:#4a2828}
+#startBtn{margin-top:8px;width:100%;padding:8px;background:#3c4a26;border:1px solid #6b8a44;color:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700}#startBtn:hover{background:#4a5c2e}#startBtn[hidden]{display:none}
+#debugPanel{margin-top:8px;border-top:1px solid rgba(255,255,255,.1);padding-top:7px}#debugPanel summary{cursor:pointer;color:#b9bea7;font-size:11px;user-select:none;list-style-position:inside}#debugConsole{margin-top:6px;height:145px;overflow:auto;background:#070907;border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:6px;color:#b8c4ad;font:10px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}.debug-warn{color:#d8c57c}.debug-error{color:#e58d8d}
+#banner{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:rgba(6,8,6,.55)}#banner .card{background:rgba(18,22,14,.96);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:26px 34px;text-align:center;color:#fff;font-size:20px;box-shadow:0 10px 40px rgba(0,0,0,.5)}#banner .card small{display:block;margin-top:8px;font-size:12px;color:#b7bba0}#banner button{margin-top:16px;padding:7px 18px;border-radius:6px;border:1px solid #6b8a44;background:#3c4a26;color:#fff;cursor:pointer;font-size:13px}
+@media(max-width:650px){#hud{width:min(300px,calc(100vw - 28px));top:7px;left:7px;max-height:calc(100vh - 14px)}#hudToggle{top:9px;left:9px}}
 </style>
 </head>
 <body>
 <canvas id="renderCanvas"></canvas>
 <div id="hud">
-  <h1><span>WW2 BATTLE SIM &middot; 50v50</span><span id="buildVersion">dev</span></h1>
+  <h1><span id="hudTitle"><span>WW2FPS AI LAB</span><span id="buildVersion">dev</span></span><button id="hudClose" type="button" title="Hide controls">&#10005;</button></h1>
   <div class="side"><span class="tag us">US</span><span class="nums" id="usNums">50 alive &middot; 0 kills</span></div>
   <div class="side"><span class="tag ge">GER</span><span class="nums" id="geNums">50 alive &middot; 0 kills</span></div>
   <div class="row"><span>Squads left</span><span id="squadsLeft">5 / 5</span></div>
-  <div class="row"><span>Village</span><span id="objectiveStatus">contested</span></div>
+  <div class="row"><span>Objectives</span><span id="objectiveStatus">contested</span></div>
+  <div class="row"><span>Scenario seed</span><span id="seedShort">—</span></div>
   <div class="row"><span>Time</span><span id="clock">0:00</span></div>
   <button id="startBtn" type="button">&#9654; Start battle</button>
   <div id="controls"><button data-speed="1">1&times;</button><button data-speed="2" class="active">2&times;</button><button data-speed="4">4&times;</button></div>
   <button id="restartBtn" type="button">Restart battle</button>
   <details id="debugPanel"><summary>Console</summary><div id="debugConsole"></div></details>
 </div>
+<button id="hudToggle" type="button">&#9776; AI LAB</button>
 <div id="banner"><div class="card"><div id="bannerText">—</div><small id="bannerSub"></small><div><button id="bannerRestart" type="button">Run it again</button></div></div></div>
 <script src="https://cdn.jsdelivr.net/npm/babylonjs@8.26.0/babylon.js"></script>
 <script>
-/* battle-sim.js deforms a CreateGround mesh after construction. CreateGround defaults to
-   non-updatable vertex buffers, so force only this battlefield mesh to be updatable before
-   battle-sim.js builds it. This keeps the rendered GPU mesh and sampleAt() on the same hills. */
-(function(){
-  var originalCreateGround=BABYLON.MeshBuilder.CreateGround;
-  BABYLON.MeshBuilder.CreateGround=function(name,options,scene){
-    if(name==='battleField')options=Object.assign({},options||{},{updatable:true});
-    return originalCreateGround.call(BABYLON.MeshBuilder,name,options,scene);
-  };
-})();
+(function(){var originalCreateGround=BABYLON.MeshBuilder.CreateGround;BABYLON.MeshBuilder.CreateGround=function(name,options,scene){if(name==='battleField')options=Object.assign({},options||{},{updatable:true});return originalCreateGround.call(BABYLON.MeshBuilder,name,options,scene);};})();
 </script>
 <script src="soldier.js"></script>
 <script src="weapons.js"></script>
@@ -65,72 +50,34 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 <script src="squad-ai.js"></script>
 <script src="battle-sim.js"></script>
 <script>
-/* Extra runtimes use the exact immutable BATTLE_REF supplied by battle_sim.php. document.write
-   keeps execution blocking, so acoustics, village generation and command AI are all installed
-   before the scene/battle initialization below. */
-(function(){
-  var ref=window.BATTLE_REF||'main',base='https://raw.githubusercontent.com/Teethree89/grasstex/'+encodeURIComponent(ref)+'/battle/';
-  ['acoustics.js','town-objectives.js','commander-ai.js'].forEach(function(file){document.write('<script src="'+base+file+'?ts='+Date.now()+'"><\/script>');});
-})();
+/* Extra runtimes are replaced by battle_sim.php with separate local cache-busted script tags. */
 </script>
 <script>
 (function(){
-  var build=window.BATTLE_BUILD||'dev',ref=window.BATTLE_REF||'direct';
-  var buildEl=document.getElementById('buildVersion');buildEl.textContent=build;
-  document.title='WW2 Battle Sim '+build;
+  var build=window.BATTLE_BUILD||'dev',ref=window.BATTLE_REF||'direct',buildEl=document.getElementById('buildVersion');buildEl.textContent=build;document.title='WW2FPS AI Lab '+build;
+  var debugConsole=document.getElementById('debugConsole');function stringify(v){if(typeof v==='string')return v;try{return JSON.stringify(v);}catch(_){return String(v);}}function writeDebug(level,args){if(!debugConsole)return;var line=document.createElement('div');if(level==='warn')line.className='debug-warn';else if(level==='error')line.className='debug-error';line.textContent='['+level.toUpperCase()+'] '+Array.prototype.map.call(args,stringify).join(' ');debugConsole.appendChild(line);debugConsole.scrollTop=debugConsole.scrollHeight;}['log','warn','error'].forEach(function(level){var original=console[level];console[level]=function(){writeDebug(level,arguments);return original.apply(console,arguments);};});window.addEventListener('error',function(e){writeDebug('error',[e.message+' @ '+e.filename+':'+e.lineno]);});window.addEventListener('unhandledrejection',function(e){writeDebug('error',['Unhandled promise rejection:',e.reason]);});
+  console.log('Battle Sim',build,'ref='+ref);console.log('pageProtocol='+location.protocol);console.log('assetBase='+(window.BATTLE_ASSET_BASE||'hardcoded/default'));console.log('audioBase='+(window.BATTLE_AUDIO_BASE||'audio/'));
 
-  var debugConsole=document.getElementById('debugConsole');
-  function stringify(v){if(typeof v==='string')return v;try{return JSON.stringify(v);}catch(_){return String(v);}}
-  function writeDebug(level,args){if(!debugConsole)return;var line=document.createElement('div');if(level==='warn')line.className='debug-warn';else if(level==='error')line.className='debug-error';line.textContent='['+level.toUpperCase()+'] '+Array.prototype.map.call(args,stringify).join(' ');debugConsole.appendChild(line);debugConsole.scrollTop=debugConsole.scrollHeight;}
-  ['log','warn','error'].forEach(function(level){var original=console[level];console[level]=function(){writeDebug(level,arguments);return original.apply(console,arguments);};});
-  window.addEventListener('error',function(e){writeDebug('error',[e.message+' @ '+e.filename+':'+e.lineno]);});
-  window.addEventListener('unhandledrejection',function(e){writeDebug('error',['Unhandled promise rejection:',e.reason]);});
-  console.log('Battle Sim',build,'ref='+ref);
-  console.log('pageProtocol='+location.protocol);
-  console.log('assetBase='+(window.BATTLE_ASSET_BASE||'hardcoded/default'));
-  console.log('audioBase='+(window.BATTLE_AUDIO_BASE||'audio/'));
-  if(window.BATTLE_ASSET_PROBE&&window.BATTLE_ASSET_PROBE.length){
-    window.BATTLE_ASSET_PROBE.forEach(function(p){var msg=(p.ok?'OK ':'FAIL ')+p.status+' '+p.url+(p.type?' ['+p.type+']':'')+(p.error?' '+p.error:'');(p.ok?console.log:console.error)(msg);});
-  }
+  var requested=new URLSearchParams(location.search).get('seed')||window.BATTLE_SCENARIO_SEED||'',liveSeed=requested||BattleScenarioGenerator.newSeed('live'),scenario=BattleScenarioGenerator.activate(liveSeed,{mode:'live'});document.getElementById('seedShort').textContent=liveSeed;document.getElementById('seedShort').title=liveSeed;
+  if(!requested){try{var u=new URL(location.href);u.searchParams.set('seed',liveSeed);history.replaceState(null,'',u.toString());}catch(_){}}
+  console.log('[SCENARIO] live seed='+liveSeed+' id='+scenario.id+' fingerprint='+JSON.stringify(scenario.fingerprint.vector));
 
-  var canvas=document.getElementById('renderCanvas');
-  var engine=new BABYLON.Engine(canvas,true,{stencil:true,preserveDrawingBuffer:true,audioEngine:true});
-  console.log('legacyAudioEngine='+(BABYLON.Engine.audioEngine?'present':'missing'));
-  var scene=new BABYLON.Scene(engine);
-  scene.clearColor=new BABYLON.Color4(.55,.62,.68,1);
-  scene.fogMode=BABYLON.Scene.FOGMODE_LINEAR;scene.fogColor=new BABYLON.Color3(.72,.62,.52);scene.fogStart=320;scene.fogEnd=800;
-  var target=new BABYLON.Vector3(0,4,0);
-  var camera=new BABYLON.ArcRotateCamera('cam',-Math.PI/2,1.02,240,target,scene);
-  camera.lowerRadiusLimit=60;camera.upperRadiusLimit=420;camera.lowerBetaLimit=.35;camera.upperBetaLimit=1.5;camera.wheelPrecision=3;camera.panningSensibility=140;camera.attachControl(canvas,true);
-  var hemi=new BABYLON.HemisphericLight('hemi',new BABYLON.Vector3(0,1,.2),scene);hemi.intensity=.85;hemi.diffuse=new BABYLON.Color3(.9,.85,.78);hemi.groundColor=new BABYLON.Color3(.32,.27,.20);
-  var sun=new BABYLON.DirectionalLight('sun',new BABYLON.Vector3(-.6,-.5,.35),scene);sun.intensity=1.05;sun.diffuse=new BABYLON.Color3(1,.82,.58);
-  var battleGround=BattleSim.buildTerrain(scene);BattleSim.buildSky(scene);
-  if(battleGround&&battleGround.material&&battleGround.material.diffuseTexture){battleGround.material.diffuseTexture.uScale=BattleSim.FIELD_W/20;battleGround.material.diffuseTexture.vScale=BattleSim.FIELD_D/20;battleGround.material.diffuseTexture.anisotropicFilteringLevel=8;}
-  if(battleGround&&battleGround.refreshBoundingInfo)battleGround.refreshBoundingInfo();
-  if(battleGround&&battleGround.getBoundingInfo){var bb=battleGround.getBoundingInfo().boundingBox;console.log('terrain bounds y='+bb.minimum.y.toFixed(2)+'..'+bb.maximum.y.toFixed(2));}
-  var features=BattleTerrainFeatures.scatter(scene,BattleSim.heightAt,{fieldW:BattleSim.FIELD_W,fieldD:BattleSim.FIELD_D});
-  var audioBase=window.BATTLE_AUDIO_BASE||'audio/';
-  var battle=BattleSim.start(scene,{timeScale:2,obstacles:features.obstacles,audioBase:audioBase});battle.pause();
-  var usNums=document.getElementById('usNums'),geNums=document.getElementById('geNums'),squadsLeft=document.getElementById('squadsLeft'),objectiveStatus=document.getElementById('objectiveStatus'),clock=document.getElementById('clock'),banner=document.getElementById('banner'),bannerText=document.getElementById('bannerText'),bannerSub=document.getElementById('bannerSub');
-  function fmtClock(t){var m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+(s<10?'0':'')+s;}
-  function aliveSquads(faction){return faction.squads.filter(function(sq){return sq.aliveCount>0;}).length;}
-  battle.onUpdate=function(sim){var us=sim.factions.us,ge=sim.factions.ge;usNums.textContent=us.alive+' alive · '+us.kills+' kills';geNums.textContent=ge.alive+' alive · '+ge.kills+' kills';squadsLeft.textContent=aliveSquads(us)+' / '+aliveSquads(ge)+' (US/GER)';clock.textContent=fmtClock(sim.time);if(sim.objectiveControl){var u=sim.objectiveControl.us||0,g=sim.objectiveControl.ge||0;objectiveStatus.textContent=u===3?'US held':g===3?'GER held':u>g?'US '+u+' / '+g:u<g?'GER '+g+' / '+u:'contested';}};
-  battle.onWinner=function(winner,sim){var label=winner==='draw'?'Mutual annihilation':winner==='us'?'US forces win the field':'German forces win the field';bannerText.textContent=label;bannerSub.textContent='US '+sim.factions.us.alive+' alive ('+sim.factions.us.kills+' kills) · GER '+sim.factions.ge.alive+' alive ('+sim.factions.ge.kills+' kills) · '+fmtClock(sim.time);banner.style.display='flex';console.log('winner='+winner,'time='+sim.time.toFixed(1));};
-  function restart(){banner.style.display='none';battle.restart();console.log('battle restarted');}
-  document.getElementById('restartBtn').addEventListener('click',restart);document.getElementById('bannerRestart').addEventListener('click',restart);
-  var speedButtons=document.querySelectorAll('#controls button');speedButtons.forEach(function(btn){btn.addEventListener('click',function(){battle.setTimeScale(+btn.dataset.speed);speedButtons.forEach(function(b){b.classList.toggle('active',b===btn);});console.log('speed='+btn.dataset.speed+'x');});});
-  engine.runRenderLoop(function(){scene.render();});window.addEventListener('resize',function(){engine.resize();});
+  var canvas=document.getElementById('renderCanvas'),engine=new BABYLON.Engine(canvas,true,{stencil:true,preserveDrawingBuffer:true,audioEngine:true});console.log('legacyAudioEngine='+(BABYLON.Engine.audioEngine?'present':'missing'));
+  var scene=new BABYLON.Scene(engine);scene.clearColor=new BABYLON.Color4(.55,.62,.68,1);scene.fogMode=BABYLON.Scene.FOGMODE_LINEAR;scene.fogColor=new BABYLON.Color3(.72,.62,.52);scene.fogStart=850;scene.fogEnd=2250;
+  var target=new BABYLON.Vector3(scenario.center.x,4,scenario.center.z),camera=new BABYLON.ArcRotateCamera('cam',-Math.PI/2,1.02,720,target,scene);camera.lowerRadiusLimit=90;camera.upperRadiusLimit=1850;camera.lowerBetaLimit=.28;camera.upperBetaLimit=1.5;camera.wheelPrecision=3;camera.panningSensibility=120;camera.attachControl(canvas,true);
+  var hemi=new BABYLON.HemisphericLight('hemi',new BABYLON.Vector3(0,1,.2),scene);hemi.intensity=.85;hemi.diffuse=new BABYLON.Color3(.9,.85,.78);hemi.groundColor=new BABYLON.Color3(.32,.27,.20);var sun=new BABYLON.DirectionalLight('sun',new BABYLON.Vector3(-.6,-.5,.35),scene);sun.intensity=1.05;sun.diffuse=new BABYLON.Color3(1,.82,.58);
+  var battleGround=BattleSim.buildTerrain(scene);BattleSim.buildSky(scene);if(battleGround&&battleGround.material&&battleGround.material.diffuseTexture){battleGround.material.diffuseTexture.uScale=BattleSim.FIELD_W/20;battleGround.material.diffuseTexture.vScale=BattleSim.FIELD_D/20;battleGround.material.diffuseTexture.anisotropicFilteringLevel=8;}if(battleGround&&battleGround.refreshBoundingInfo)battleGround.refreshBoundingInfo();if(battleGround&&battleGround.getBoundingInfo){var bb=battleGround.getBoundingInfo().boundingBox;console.log('terrain bounds y='+bb.minimum.y.toFixed(2)+'..'+bb.maximum.y.toFixed(2));}
+  var features=BattleTerrainFeatures.scatter(scene,BattleSim.heightAt,{fieldW:BattleSim.FIELD_W,fieldD:BattleSim.FIELD_D,scenarioSeed:liveSeed}),audioBase=window.BATTLE_AUDIO_BASE||'audio/',battle=BattleSim.start(scene,{timeScale:2,obstacles:features.obstacles,audioBase:audioBase});battle.pause();
 
-  var startBtn=document.getElementById('startBtn');
-  async function unlockAudio(){
-    var ae=BABYLON.Engine.audioEngine;if(!ae){console.error('audioEngine missing');return false;}
-    try{ae.unlock();var ctx=ae.audioContext;if(ctx&&ctx.state==='suspended'&&ctx.resume)await ctx.resume();console.log('audioContext='+(ctx&&ctx.state||'unknown'));return !ctx||ctx.state==='running';}
-    catch(e){console.error('audio unlock failed',e&&e.message||e);return false;}
-  }
-  async function startBattle(){await unlockAudio();battle.resume();startBtn.hidden=true;document.removeEventListener('pointerdown',unlockAudio);document.removeEventListener('touchend',unlockAudio);console.log('battle started');}
-  startBtn.addEventListener('click',startBattle);
-  document.addEventListener('pointerdown',unlockAudio,{once:true});document.addEventListener('touchend',unlockAudio,{once:true});
-  window.__battle__=battle;console.log('Battle Sim ready; obstacles='+features.obstacles.length);
+  var usNums=document.getElementById('usNums'),geNums=document.getElementById('geNums'),squadsLeft=document.getElementById('squadsLeft'),objectiveStatus=document.getElementById('objectiveStatus'),clock=document.getElementById('clock'),seedShort=document.getElementById('seedShort'),banner=document.getElementById('banner'),bannerText=document.getElementById('bannerText'),bannerSub=document.getElementById('bannerSub');function fmtClock(t){var m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+(s<10?'0':'')+s;}function aliveSquads(faction){return faction.squads.filter(function(sq){return sq.aliveCount>0;}).length;}
+  battle.onUpdate=function(sim){var us=sim.factions.us,ge=sim.factions.ge;usNums.textContent=us.alive+' alive · '+us.kills+' kills';geNums.textContent=ge.alive+' alive · '+ge.kills+' kills';squadsLeft.textContent=aliveSquads(us)+' / '+aliveSquads(ge)+' (US/GER)';clock.textContent=fmtClock(sim.time);var sc=sim.scene.metadata&&sim.scene.metadata.battleScenario;if(sc){seedShort.textContent=sc.seed;seedShort.title=sc.seed;}if(sim.objectiveControl){var c=sim.objectiveControl.counts||{},u=c.us||0,g=c.ge||0,total=sim.objectiveControl.total||Object.keys(sim.objectiveControl.objectives||{}).length;objectiveStatus.textContent=total&&u===total?'US held':total&&g===total?'GER held':u>g?'US '+u+' / '+g:u<g?'GER '+g+' / '+u:'contested '+u+' / '+g;}};
+  battle.onWinner=function(winner,sim){var label=winner==='draw'?'Draw':winner==='us'?'US forces win the field':'German forces win the field';bannerText.textContent=label;bannerSub.textContent='US '+sim.factions.us.alive+' alive ('+sim.factions.us.kills+' kills) · GER '+sim.factions.ge.alive+' alive ('+sim.factions.ge.kills+' kills) · '+fmtClock(sim.time);banner.style.display='flex';console.log('winner='+winner,'time='+sim.time.toFixed(1));};
+  function restart(){banner.style.display='none';battle.restart();console.log('battle restarted');}document.getElementById('restartBtn').addEventListener('click',restart);document.getElementById('bannerRestart').addEventListener('click',restart);
+  var speedButtons=document.querySelectorAll('#controls button');speedButtons.forEach(function(btn){btn.addEventListener('click',function(){battle.setTimeScale(+btn.dataset.speed);speedButtons.forEach(function(b){b.classList.toggle('active',b===btn);});console.log('speed='+btn.dataset.speed+'x');});});engine.runRenderLoop(function(){scene.render();});window.addEventListener('resize',function(){engine.resize();});
+  var startBtn=document.getElementById('startBtn');async function unlockAudio(){var ae=BABYLON.Engine.audioEngine;if(!ae){console.error('audioEngine missing');return false;}try{ae.unlock();var ctx=ae.audioContext;if(ctx&&ctx.state==='suspended'&&ctx.resume)await ctx.resume();console.log('audioContext='+(ctx&&ctx.state||'unknown'));return !ctx||ctx.state==='running';}catch(e){console.error('audio unlock failed',e&&e.message||e);return false;}}async function startBattle(){await unlockAudio();battle.resume();startBtn.hidden=true;document.removeEventListener('pointerdown',unlockAudio);document.removeEventListener('touchend',unlockAudio);console.log('battle started');}startBtn.addEventListener('click',startBattle);document.addEventListener('pointerdown',unlockAudio,{once:true});document.addEventListener('touchend',unlockAudio,{once:true});
+
+  var hud=document.getElementById('hud'),hudToggle=document.getElementById('hudToggle'),hudClose=document.getElementById('hudClose');function setHudCollapsed(v){hud.classList.toggle('collapsed',!!v);hudToggle.style.display=v?'block':'none';try{localStorage.setItem('battleAiHudCollapsed',v?'1':'0');}catch(_){}}hudClose.addEventListener('click',function(){setHudCollapsed(true);});hudToggle.addEventListener('click',function(){setHudCollapsed(false);});try{setHudCollapsed(localStorage.getItem('battleAiHudCollapsed')==='1');}catch(_){}
+  window.__battle__=battle;window.__scenario__=scenario;console.log('Battle Sim ready; obstacles='+features.obstacles.length+' navWindows='+(BattleNavigation&&BattleNavigation.windowSlots?BattleNavigation.windowSlots.length:0));
 })();
 </script>
 </body>
