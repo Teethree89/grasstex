@@ -6,7 +6,8 @@ skinned-GLB compatibility.
 
 Run with Blender:
   Blender --background --factory-startup --python tools/build-procedural-soldier-animations.py -- \
-    --source /path/to/extracted-fbx --output battle/soldier-animations.js
+    --source /path/to/extracted-fbx --output /tmp/soldier-animations.js \
+    --inline-soldier battle/soldier.js
 """
 import argparse
 import json
@@ -42,6 +43,7 @@ def args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--inline-soldier", help="replace the generated-track block in soldier.js")
     parser.add_argument("--sample-rate", type=int, default=15)
     return parser.parse_args(values)
 
@@ -96,11 +98,24 @@ def main():
     baked = {name: bake_clip(os.path.join(source, relative), options.sample_rate) for name, relative in CLIPS.items()}
     payload = {"version": 1, "sampleRate": options.sample_rate, "bones": list(BONES), "clips": baked}
     os.makedirs(os.path.dirname(os.path.abspath(options.output)), exist_ok=True)
+    serialized = json.dumps(payload, separators=(",", ":"))
     with open(options.output, "w", encoding="utf-8") as output:
         output.write("/* Generated from Human Soldier Animations FREE; see build-procedural-soldier-animations.py. */\n")
         output.write("window.BattleSoldierAnimationClips=")
-        json.dump(payload, output, separators=(",", ":"))
+        output.write(serialized)
         output.write(";\n")
+    if options.inline_soldier:
+        with open(options.inline_soldier, "r", encoding="utf-8") as source_file:
+            source = source_file.read()
+        start = "  /* BAKED_TRACKS_START: generated; do not hand-edit. */"
+        end = "  /* BAKED_TRACKS_END */"
+        left, separator, rest = source.partition(start)
+        if not separator or end not in rest:
+            raise RuntimeError("Could not find baked-track markers in " + options.inline_soldier)
+        _, _, right = rest.partition(end)
+        baked_block = start + "\n  root.BattleSoldierAnimationClips=" + serialized + ";\n" + end
+        with open(options.inline_soldier, "w", encoding="utf-8") as source_file:
+            source_file.write(left + baked_block + right)
     print("Wrote", options.output, "with", len(baked), "clips")
 
 

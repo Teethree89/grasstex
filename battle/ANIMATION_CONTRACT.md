@@ -51,8 +51,8 @@ The package PDF identifies the license as the Standard Asset Store EULA: royalty
 
 ## Active baked procedural backend
 
-`battle/soldier-animations.js` contains sampled joint-rotation tracks made from the
-user-supplied Human Soldier Animations FREE package. It drives the existing low-poly procedural
+`battle/soldier.js` contains sampled joint-rotation tracks made from the user-supplied Human
+Soldier Animations FREE package. It drives the existing low-poly procedural
 body, rather than replacing that body with a skinned model. The baked tracks contain:
 
 - `idle`, `walk`, `aim`, `fire`, `reload`
@@ -62,10 +62,11 @@ body, rather than replacing that body with a skinned model. The baked tracks con
 weapon socket and faction/role geometry. The trainer can deliberately disable baked tracks so a
 24-match generation spends no time interpolating cosmetic pose data.
 
-Generate the track file with `tools/build-procedural-soldier-animations.py` and the extracted
-package. The converter exports only pose deltas for shared joints; it never exports a mesh,
-skeleton, or inverse-bind matrix. Crouch and prone/crawl still use the hand-authored procedural
-poses because the free package has no corresponding clips.
+Regenerate the embedded tracks with `tools/build-procedural-soldier-animations.py` and the
+extracted package (`--inline-soldier battle/soldier.js`). The converter exports only pose deltas
+for shared joints; it never exports a mesh, skeleton, or inverse-bind matrix. Crouch and
+prone/crawl still use the hand-authored procedural poses because the free package has no
+corresponding clips.
 
 ## Replacing the soldier with another skeletal GLTF
 
