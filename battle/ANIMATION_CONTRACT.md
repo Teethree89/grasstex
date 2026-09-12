@@ -24,14 +24,30 @@ The battle lab deliberately separates gameplay/AI state from the rendered soldie
 
 ## Current procedural rig
 
-The primitive model exposes named semantic joints under `soldier.rig`:
+The procedural test soldier uses a parented humanoid hierarchy instead of independent limb pieces:
 
-- `pelvis`, `spine`, `neck`, `head`
-- `shoulderL/R`, `elbowL/R`, `handL/R`
-- `hipL/R`, `kneeL/R`
-- `weapon`
+- `hips -> spine -> chest -> neck -> head`
+- `chest -> shoulder -> upperArm -> forearm -> hand`
+- `hips -> thigh -> shin -> foot -> toe`
+- `weapon` socket on the chest
 
-This rig is only a rendering backend. AI must not branch on these nodes.
+Runtime names are exposed through `soldier.rig`, including compatibility aliases for the earlier `hip/knee/elbow` names. The body is normalized around the ~1.7 m on-foot body scale used by ww2fps.
+
+This hierarchy is only a rendering backend. AI must not branch on these nodes.
+
+## Human Soldier Animations FREE reference pack
+
+The supplied **Human Soldier Animations 2.0 FREE** package is a useful replacement/reference rig. Its male model exposes the same major semantic chain:
+
+- `B-hips`, `B-spine`, `B-chest`, `B-neck`, `B-head`
+- `B-shoulder.L/R`, `B-upperArm.L/R`, `B-forearm.L/R`, `B-hand.L/R`
+- `B-thigh.L/R`, `B-shin.L/R`, `B-foot.L/R`, `B-toe.L/R`
+
+Useful clips in the free pack include military idle, eight-direction walk/run, rifle aim/fire/reload, damage, grenade throw and three death animations. The free pack **does not include crouch or prone/crawl locomotion**, so those states remain procedural until we add suitable clips or author them.
+
+For the AI lab, prefer the **in-place** walk/run clips, not the `[RM]` root-motion variants. Navigation/pathfinding owns soldier world position; animation should depict that motion rather than independently moving the actor.
+
+The package PDF identifies the license as the Standard Asset Store EULA: royalty-free/commercial use allowed, resale not allowed, attribution not required. Keep the source package out of the repository unless we intentionally add converted runtime assets.
 
 ## Replacing the soldier with a skeletal GLTF
 
@@ -51,7 +67,18 @@ BattleSoldierModel.bindAnimationBackend(soldier, {
 });
 ```
 
-The imported model should expose a `weaponSocket` attached to the appropriate hand/bone so `BattleWeapons.attachWeapon()` remains unchanged.
+A future importer can map the free pack approximately as follows:
+
+| Semantic tag | Candidate pack clip |
+| --- | --- |
+| `locomotion.idle` | `HumanM@MilitaryIdle01` |
+| `locomotion.walk` | `HumanM@Walk01_Forward` (in-place) |
+| `combat.aim` | `HumanM@Rifle_Aim01` / `HumanM@WeaponHold_Rifle01` |
+| `combat.fire` | `HumanM@Rifle_Aim01_Shoot01` |
+| `combat.reload` | `HumanM@Rifle_Reload01` |
+| death tags | `HumanM@Death01/02/03` |
+
+The imported model should expose a `weaponSocket` attached to the appropriate hand/bone so `BattleWeapons.attachWeapon()` remains unchanged. Hand IK or a second support-hand target can then keep the left hand on the fore-end.
 
 ## Gameplay ownership
 
