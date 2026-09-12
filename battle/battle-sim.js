@@ -58,12 +58,45 @@
     return BABYLON.Vector3.TransformCoordinates(local,w.mesh.getWorldMatrix());
   }
 
+  /* Gunfire audio: a handful of soldiers can fire in the same AI tick, and a fresh
+     BABYLON.Sound per shot would mean constant node churn for a fight that never really
+     stops. Instead each weapon kind gets a small round-robin pool of pre-created, positional
+     Sounds (see ROLES/weapons.js for which kind each role carries) - a shot just repositions
+     and replays the next idle-ish voice rather than allocating one. That caps how many
+     overlapping shots of one weapon kind you'll ever hear at once (POOL_SIZE) instead of
+     however many soldiers happen to fire in the same instant, which reads as "a battle" more
+     than "every rifle in the field clipping together" would anyway. */
+  var POOL_SIZE=6,SFX_FILES={rifle:'rifle.mp3',carbine:'carbine.mp3',lmg:'lmg.mp3',pistol:'pistol.mp3'};
+  function buildWeaponAudio(scene,audioBase){
+    var pools={},cursors={};
+    Object.keys(SFX_FILES).forEach(function(kind){
+      var voices=[];
+      for(var i=0;i<POOL_SIZE;i++){
+        voices.push(new BABYLON.Sound(kind+'Sfx'+i,audioBase+SFX_FILES[kind],scene,null,{
+          spatialSound:true,distanceModel:'linear',maxDistance:260,rolloffFactor:1,volume:.5,autoplay:false
+        }));
+      }
+      pools[kind]=voices;cursors[kind]=0;
+    });
+    return {
+      play:function(kind,position){
+        var voices=pools[kind];if(!voices)return;
+        var voice=voices[cursors[kind]];cursors[kind]=(cursors[kind]+1)%voices.length;
+        try{voice.setPosition(position);voice.play();}catch(_){/* audio context not unlocked yet */}
+      }
+    };
+  }
+
   function makeFaction(){return {alive:0,kills:0,squads:[]};}
 
   function BattleSim(scene,opts){
     opts=opts||{};
     this.scene=scene;
     this.heightAt=heightAt;
+    // Plain {x,z,radius,cover} circles from terrain-features.js - squad-ai.js reads this
+    // directly (battle.obstacles) for LOS blocking and cover, so an empty array here just
+    // means an open field rather than a special case anywhere else.
+    this.obstacles=opts.obstacles||[];
     this.time=0;this.timeScale=opts.timeScale||1.5;this.timeLimit=opts.timeLimit||DEFAULT_TIME_LIMIT;
     this.paused=false;this.winner=null;
     this.factions={us:makeFaction(),ge:makeFaction()};
@@ -184,10 +217,15 @@
   };
 
   // Fire/shot hooks used by squad-ai.js's resolveFire/tryFire, wired here so squad-ai.js
-  // stays Babylon-free: it calls battle.onFire/onShot, this is where those become meshes.
-  BattleSim.prototype._wireFx=function(){
-    var self=this;
-    this.onFire=function(soldier){spawnMuzzleFlash(self.scene,muzzleWorld(soldier));};
+  // stays Babylon-free: it calls battle.onFire/onShot, this is where those become meshes
+  // and sounds.
+  BattleSim.prototype._wireFx=function(audioBase){
+    var self=this,audio=buildWeaponAudio(this.scene,audioBase||'audio/');
+    this.onFire=function(soldier){
+      var pos=muzzleWorld(soldier);
+      spawnMuzzleFlash(self.scene,pos);
+      audio.play(soldier.weapon.kind,pos);
+    };
     this.onShot=function(shooter,target,hit){
       if(!hit)return;
       spawnTracer(self.scene,muzzleWorld(shooter),target.root.position.add(new BABYLON.Vector3(0,1.2,0)));
@@ -195,8 +233,9 @@
   };
 
   function start(scene,opts){
+    opts=opts||{};
     var sim=new BattleSim(scene,opts);
-    sim._wireFx();
+    sim._wireFx(opts.audioBase);
     return sim;
   }
 

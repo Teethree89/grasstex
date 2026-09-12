@@ -32,9 +32,39 @@
   function clamp(n,a,b){return Math.max(a,Math.min(b,n));}
   function dist2(ax,az,bx,bz){var dx=ax-bx,dz=az-bz;return Math.sqrt(dx*dx+dz*dz);}
 
-  function hasLineOfSight(a,b,heightAt){
+  /* Segment-vs-circle test in the XZ plane: does the straight line from (ax,az) to (bx,bz)
+     pass within `ob.radius` of the obstacle's center? Terrain-features.js hands out plain
+     {x,z,radius,cover} circles - trees as single circles, hedgerows as a chain of them along
+     their length - so every obstacle, tree or hedge, is checked the same way. */
+  function segmentHitsObstacle(ax,az,bx,bz,ob){
+    var dx=bx-ax,dz=bz-az,len2=dx*dx+dz*dz;
+    var t=len2>1e-6?((ob.x-ax)*dx+(ob.z-az)*dz)/len2:0;
+    t=clamp(t,0,1);
+    var px=ax+dx*t,pz=az+dz*t,ddx=px-ob.x,ddz=pz-ob.z;
+    return ddx*ddx+ddz*ddz<=ob.radius*ob.radius;
+  }
+  function obstacleBlocks(ax,az,bx,bz,obstacles){
+    if(!obstacles)return false;
+    for(var i=0;i<obstacles.length;i++)if(segmentHitsObstacle(ax,az,bx,bz,obstacles[i]))return true;
+    return false;
+  }
+  /* Best (lowest, i.e. hardest-to-hit) cover multiplier among obstacles the target is
+     standing next to - a soldier tucked against a hedge is harder to hit than one merely
+     near a lone tree, so this takes the strongest nearby cover rather than stacking them. */
+  function coverMultiplierAt(x,z,obstacles){
+    if(!obstacles)return 1;
+    var best=1;
+    for(var i=0;i<obstacles.length;i++){
+      var ob=obstacles[i],dx=x-ob.x,dz=z-ob.z,r=ob.radius+1.4;
+      if(dx*dx+dz*dz<=r*r&&ob.cover<best)best=ob.cover;
+    }
+    return best;
+  }
+
+  function hasLineOfSight(a,b,heightAt,obstacles){
     var ax=a.root.position.x,az=a.root.position.z,ay=heightAt(ax,az)+(a.crouching?EYE_HEIGHT_CROUCH:EYE_HEIGHT);
     var bx=b.root.position.x,bz=b.root.position.z,by=heightAt(bx,bz)+(b.crouching?EYE_HEIGHT_CROUCH:EYE_HEIGHT);
+    if(obstacleBlocks(ax,az,bx,bz,obstacles))return false;
     for(var i=1;i<LOS_SAMPLES;i++){
       var t=i/LOS_SAMPLES,x=ax+(bx-ax)*t,z=az+(bz-az)*t;
       var lineY=ay+(by-ay)*t,groundY=heightAt(x,z);
@@ -46,14 +76,14 @@
   /* Picks the nearest visible living enemy in range. Re-run every AI tick rather than only
      on target loss - a closer target (or a lost LOS) should be able to steal the shooter's
      attention rather than have it fixate on the first thing it ever saw. */
-  function findTarget(soldier,enemies,heightAt){
+  function findTarget(soldier,enemies,heightAt,obstacles){
     var role=ROLES[soldier.role],best=null,bestD=Infinity;
     for(var i=0;i<enemies.length;i++){
       var e=enemies[i];
       if(e.dead)continue;
       var d=dist2(soldier.root.position.x,soldier.root.position.z,e.root.position.x,e.root.position.z);
       if(d>role.visionRange||d>=bestD)continue;
-      if(!hasLineOfSight(soldier,e,heightAt))continue;
+      if(!hasLineOfSight(soldier,e,heightAt,obstacles))continue;
       best=e;bestD=d;
     }
     return best;
@@ -68,6 +98,7 @@
     if(target.suppressedUntil>battle.time)acc*=.55;
     if(shooter.role==='gunner'&&shooter.setUp)acc*=1.25;
     if(shooter.moving)acc*=.82;
+    acc*=coverMultiplierAt(target.root.position.x,target.root.position.z,battle.obstacles);
     acc=clamp(acc,.02,.95);
     var hit=Math.random()<acc;
     if(stats.suppressive){target.suppressedUntil=battle.time+SUPPRESSION_TIME;}
@@ -146,13 +177,13 @@
      soldier.speed, so this only ever needs to set intent, not move anything. */
   function updateSoldier(soldier,battle){
     if(soldier.dead)return;
-    var heightAt=battle.heightAt,enemies=battle.rosterOf(soldier.faction==='us'?'ge':'us');
+    var heightAt=battle.heightAt,obstacles=battle.obstacles,enemies=battle.rosterOf(soldier.faction==='us'?'ge':'us');
     var role=ROLES[soldier.role];
 
     var lostTarget=soldier.target&&(soldier.target.dead||
       dist2(soldier.root.position.x,soldier.root.position.z,soldier.target.root.position.x,soldier.target.root.position.z)>role.visionRange||
-      !hasLineOfSight(soldier,soldier.target,heightAt));
-    if(!soldier.target||lostTarget)soldier.target=findTarget(soldier,enemies,heightAt);
+      !hasLineOfSight(soldier,soldier.target,heightAt,obstacles));
+    if(!soldier.target||lostTarget)soldier.target=findTarget(soldier,enemies,heightAt,obstacles);
     if(soldier.squad.state==='retreat'){
       soldier.state='retreat';
       soldier.destination=formationSlot(soldier.squad,soldier,soldier.slotIndex);
@@ -204,6 +235,6 @@
     createSquad:createSquad,createSoldier:createSoldier,
     updateSquad:updateSquad,updateSoldier:updateSoldier,
     formationSlot:formationSlot,hasLineOfSight:hasLineOfSight,findTarget:findTarget,
-    dist2:dist2
+    coverMultiplierAt:coverMultiplierAt,dist2:dist2
   };
 })(typeof window!=='undefined'?window:globalThis);

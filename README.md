@@ -32,11 +32,13 @@ files above.
 The real page is `battle/battle_sim.html`; open it directly for local work (`python3 -m
 http.server` from the repo root, or just double-click it). The root `battle_sim.html` is a
 self-fetching loader in the same shape as `index.html`/`game.html` - it pulls
-`battle/battle_sim.html` and the four `battle/*.js` files straight from GitHub `main` at load
-time and inlines them, so it's the one file that needs to exist on a static host (like the
-50webs deploy this repo already uses) for the battle sim to be reachable there; nothing else
-ever needs re-uploading; a push to `main` is live immediately. Append `?ref=<branch>` to test
-a branch there before it merges, e.g. `battle_sim.html?ref=claude/model-lab-runners-commits-b9s5ll`.
+`battle/battle_sim.html` and the five `battle/*.js` files straight from GitHub `main` at load
+time and inlines them (audio gets a `window.BATTLE_AUDIO_BASE` override instead, the same
+trick `terrain-baked.js` uses for `TERRAIN_ASSET_BASE`, since binary files can't be inlined as
+text), so it's the one file that needs to exist on a static host (like the 50webs deploy this
+repo already uses) for the battle sim to be reachable there; nothing else ever needs
+re-uploading; a push to `main` is live immediately. Append `?ref=<branch>` to test a branch
+there before it merges, e.g. `battle_sim.html?ref=claude/model-lab-runners-commits-b9s5ll`.
 
 Five 10-soldier squads a side (1 captain, 1 gunner, 2
 scouts, 6 riflemen - see `battle/squad-ai.js`'s `COMPOSITION`) spawn on opposite edges of the
@@ -48,15 +50,20 @@ field and advance, engage, and retreat on their own:
 - **Scouts** - fastest, carbines, swing out to the flanks rather than advancing head-on.
 
 A squad falls back once 60% of it is down. Combat is resolved on a fixed ~6.7 Hz AI tick
-(`battle/squad-ai.js`), independent of render framerate; targeting uses a terrain-height-only
-line-of-sight check (hills can block a shot, nothing else can yet). The HUD shows alive/kill
-counts per side, a speed multiplier, and a restart button; `window.__battle__` is the live
+(`battle/squad-ai.js`), independent of render framerate. Targeting checks both a
+terrain-height line-of-sight (hills can block a shot) and `battle/terrain-features.js`'s
+scattered tree clumps and gapped hedgerows, which also knock down a target's hit chance while
+it's fighting from near one (a hedge more than a lone tree) - see `coverMultiplierAt`. Weapon
+fire plays a positional gunshot sound per weapon kind (`battle/audio/*.mp3`, ElevenLabs
+sound-generation) through a small round-robin `BABYLON.Sound` pool per kind, so a firefight
+doesn't spawn an unbounded number of overlapping audio nodes. The HUD shows alive/kill counts
+per side, a speed multiplier, and a restart button; `window.__battle__` is the live
 `BattleSim` instance for poking at from the console.
 
 Known limitations, since this is a starting point for further modeling/AI work rather than a
-finished sim: no soldier-blocks-soldier occlusion, no cover objects, no pathfinding around
-terrain (everything steers straight at its destination), and the models/weapons are
-placeholder primitives rather than real assets.
+finished sim: no soldier-blocks-soldier occlusion, trees/hedges block sightlines and grant
+cover but don't block movement (soldiers path straight through them), no pathfinding around
+terrain otherwise, and the models/weapons are placeholder primitives rather than real assets.
 
 ## Main files
 

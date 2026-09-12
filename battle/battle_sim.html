@@ -66,6 +66,7 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 <script src="https://cdn.jsdelivr.net/npm/babylonjs@8.26.0/babylon.js"></script>
 <script src="soldier.js"></script>
 <script src="weapons.js"></script>
+<script src="terrain-features.js"></script>
 <script src="squad-ai.js"></script>
 <script src="battle-sim.js"></script>
 <script>
@@ -91,7 +92,12 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   sun.intensity=1.0;sun.diffuse=new BABYLON.Color3(1,.98,.9);
 
   BattleSim.buildTerrain(scene);
-  var battle=BattleSim.start(scene,{timeScale:2});
+  var features=BattleTerrainFeatures.scatter(scene,BattleSim.heightAt,{fieldW:BattleSim.FIELD_W,fieldD:BattleSim.FIELD_D});
+  /* Overridden by the root loader (battle_sim.html) before it document.writes this page in,
+     so audio keeps resolving against the git repo instead of whatever host is showing this -
+     same trick terrain-baked.js uses for window.TERRAIN_ASSET_BASE. */
+  var audioBase=window.BATTLE_AUDIO_BASE||'audio/';
+  var battle=BattleSim.start(scene,{timeScale:2,obstacles:features.obstacles,audioBase:audioBase});
 
   // ---------- HUD wiring ----------
   var usNums=document.getElementById('usNums'),geNums=document.getElementById('geNums'),
