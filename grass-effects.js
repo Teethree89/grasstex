@@ -1,6 +1,10 @@
 /* v55 projected grass-image shadows with terrain-height support. */
 (function(){
   if(typeof BABYLON==='undefined'||typeof scene==='undefined'||typeof camera==='undefined'||typeof engine==='undefined'||typeof generateChunk==='undefined'||typeof perChunkCount==='undefined'||typeof V==='undefined'||typeof A==='undefined')return;
+  /* Grass shadow decals are pure grass simulation (nothing else reads this file's exports -
+     it has none, it only adds its own render hook), so the whole thing is skipped here
+     rather than made inert piecemeal. See grass-api.js for the flag this reads. */
+  if(!(window.GrassSimulation&&window.GrassSimulation.guard('grass-effects')))return;
 
   /* Shadow alpha must reach 0 by SHADOW_END. The old code hard-discarded at 165 while
      alpha was still .19, so every streaming rebuild made a whole ring's worth of

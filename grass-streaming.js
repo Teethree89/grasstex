@@ -97,6 +97,12 @@
   }
 
   window.rebuildWorld=function(force){
+    /* Gated off: stay a real, callable no-op rather than disappearing. The base page's
+       render loop calls this every frame unconditionally (that's the "amortized" part of
+       amortized streaming), so the gate lives inside the function, not as an early return
+       for the whole file - `window.rebuildWorld` and `window.GrassStream` must keep existing
+       or that call site throws. See grass-api.js for the flag this reads. */
+    if(!(window.GrassSimulation&&window.GrassSimulation.guard('grass-streaming')))return;
     var den=+density.value,dx=camera.position.x-builtX,dz=camera.position.z-builtZ,moved=Math.sqrt(dx*dx+dz*dz),jump=!haveWorld||moved>MED_D;
     if(force||den!==builtDen)startJob(den);else if(!job&&moved>HYST)startJob(den);
     if(job){window.__grassStreamBusy=true;step(jump);window.__grassStreamBusy=!!job;}

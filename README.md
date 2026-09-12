@@ -4,6 +4,24 @@ Reusable Babylon.js grass rendering prototype with deterministic chunk generatio
 
 Current demo build: **v64**.
 
+## Grass simulation is gated off by default
+
+Grass rendering (from this repo) has been ported over to and tuned inside `ww2fps`, so
+`grass-streaming.js` (chunk streaming/instance placement) and `grass-effects.js` (projected
+grass shadow decals) no longer do anything unless asked to. The terrain, its road, and the
+lighting/fog/sky setup in `grass-realism.js` are unaffected and keep working as before - only
+the grass blades themselves are gated.
+
+To turn the simulation back on for reference or prototyping, either open the page with
+`?grass=1` or set `window.GRASS_SIM_ENABLED = true` before `grass-api.js` loads:
+
+```html
+<script>window.GRASS_SIM_ENABLED = true;</script>
+<script src="grass-api.js"></script>
+```
+
+See `window.GrassSimulation` in `grass-api.js` for the flag itself.
+
 ## Main files
 
 - `game.html` — current demo loader/build.
