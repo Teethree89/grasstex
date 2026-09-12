@@ -38,6 +38,7 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   <div class="side"><span class="tag us">US</span><span class="nums" id="usNums">50 alive &middot; 0 kills</span></div>
   <div class="side"><span class="tag ge">GER</span><span class="nums" id="geNums">50 alive &middot; 0 kills</span></div>
   <div class="row"><span>Squads left</span><span id="squadsLeft">5 / 5</span></div>
+  <div class="row"><span>Village</span><span id="objectiveStatus">contested</span></div>
   <div class="row"><span>Time</span><span id="clock">0:00</span></div>
   <button id="startBtn" type="button">&#9654; Start battle</button>
   <div id="controls"><button data-speed="1">1&times;</button><button data-speed="2" class="active">2&times;</button><button data-speed="4">4&times;</button></div>
@@ -53,9 +54,7 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 (function(){
   var originalCreateGround=BABYLON.MeshBuilder.CreateGround;
   BABYLON.MeshBuilder.CreateGround=function(name,options,scene){
-    if(name==='battleField'){
-      options=Object.assign({},options||{},{updatable:true});
-    }
+    if(name==='battleField')options=Object.assign({},options||{},{updatable:true});
     return originalCreateGround.call(BABYLON.MeshBuilder,name,options,scene);
   };
 })();
@@ -66,13 +65,12 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 <script src="squad-ai.js"></script>
 <script src="battle-sim.js"></script>
 <script>
-/* The root loader inlines the five battle scripts above. This sixth runtime stays separate so
-   its URL can use the exact immutable BATTLE_REF resolved by battle_sim.php. document.write
-   here is intentional: during parser execution it makes this external script blocking, so
-   the acoustics overrides are installed before the scene/battle initialization below. */
+/* Extra runtimes use the exact immutable BATTLE_REF supplied by battle_sim.php. document.write
+   keeps execution blocking, so acoustics, village generation and command AI are all installed
+   before the scene/battle initialization below. */
 (function(){
-  var ref=window.BATTLE_REF||'main';
-  document.write('<script src="https://raw.githubusercontent.com/Teethree89/grasstex/'+encodeURIComponent(ref)+'/battle/acoustics.js?ts='+Date.now()+'"><\/script>');
+  var ref=window.BATTLE_REF||'main',base='https://raw.githubusercontent.com/Teethree89/grasstex/'+encodeURIComponent(ref)+'/battle/';
+  ['acoustics.js','town-objectives.js','commander-ai.js'].forEach(function(file){document.write('<script src="'+base+file+'?ts='+Date.now()+'"><\/script>');});
 })();
 </script>
 <script>
@@ -92,10 +90,7 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   console.log('assetBase='+(window.BATTLE_ASSET_BASE||'hardcoded/default'));
   console.log('audioBase='+(window.BATTLE_AUDIO_BASE||'audio/'));
   if(window.BATTLE_ASSET_PROBE&&window.BATTLE_ASSET_PROBE.length){
-    window.BATTLE_ASSET_PROBE.forEach(function(p){
-      var msg=(p.ok?'OK ':'FAIL ')+p.status+' '+p.url+(p.type?' ['+p.type+']':'')+(p.error?' '+p.error:'');
-      (p.ok?console.log:console.error)(msg);
-    });
+    window.BATTLE_ASSET_PROBE.forEach(function(p){var msg=(p.ok?'OK ':'FAIL ')+p.status+' '+p.url+(p.type?' ['+p.type+']':'')+(p.error?' '+p.error:'');(p.ok?console.log:console.error)(msg);});
   }
 
   var canvas=document.getElementById('renderCanvas');
@@ -110,23 +105,16 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   var hemi=new BABYLON.HemisphericLight('hemi',new BABYLON.Vector3(0,1,.2),scene);hemi.intensity=.85;hemi.diffuse=new BABYLON.Color3(.9,.85,.78);hemi.groundColor=new BABYLON.Color3(.32,.27,.20);
   var sun=new BABYLON.DirectionalLight('sun',new BABYLON.Vector3(-.6,-.5,.35),scene);sun.intensity=1.05;sun.diffuse=new BABYLON.Color3(1,.82,.58);
   var battleGround=BattleSim.buildTerrain(scene);BattleSim.buildSky(scene);
-  if(battleGround&&battleGround.material&&battleGround.material.diffuseTexture){
-    battleGround.material.diffuseTexture.uScale=BattleSim.FIELD_W/20;
-    battleGround.material.diffuseTexture.vScale=BattleSim.FIELD_D/20;
-    battleGround.material.diffuseTexture.anisotropicFilteringLevel=8;
-  }
+  if(battleGround&&battleGround.material&&battleGround.material.diffuseTexture){battleGround.material.diffuseTexture.uScale=BattleSim.FIELD_W/20;battleGround.material.diffuseTexture.vScale=BattleSim.FIELD_D/20;battleGround.material.diffuseTexture.anisotropicFilteringLevel=8;}
   if(battleGround&&battleGround.refreshBoundingInfo)battleGround.refreshBoundingInfo();
-  if(battleGround&&battleGround.getBoundingInfo){
-    var bb=battleGround.getBoundingInfo().boundingBox;
-    console.log('terrain bounds y='+bb.minimum.y.toFixed(2)+'..'+bb.maximum.y.toFixed(2));
-  }
+  if(battleGround&&battleGround.getBoundingInfo){var bb=battleGround.getBoundingInfo().boundingBox;console.log('terrain bounds y='+bb.minimum.y.toFixed(2)+'..'+bb.maximum.y.toFixed(2));}
   var features=BattleTerrainFeatures.scatter(scene,BattleSim.heightAt,{fieldW:BattleSim.FIELD_W,fieldD:BattleSim.FIELD_D});
   var audioBase=window.BATTLE_AUDIO_BASE||'audio/';
   var battle=BattleSim.start(scene,{timeScale:2,obstacles:features.obstacles,audioBase:audioBase});battle.pause();
-  var usNums=document.getElementById('usNums'),geNums=document.getElementById('geNums'),squadsLeft=document.getElementById('squadsLeft'),clock=document.getElementById('clock'),banner=document.getElementById('banner'),bannerText=document.getElementById('bannerText'),bannerSub=document.getElementById('bannerSub');
+  var usNums=document.getElementById('usNums'),geNums=document.getElementById('geNums'),squadsLeft=document.getElementById('squadsLeft'),objectiveStatus=document.getElementById('objectiveStatus'),clock=document.getElementById('clock'),banner=document.getElementById('banner'),bannerText=document.getElementById('bannerText'),bannerSub=document.getElementById('bannerSub');
   function fmtClock(t){var m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+(s<10?'0':'')+s;}
   function aliveSquads(faction){return faction.squads.filter(function(sq){return sq.aliveCount>0;}).length;}
-  battle.onUpdate=function(sim){var us=sim.factions.us,ge=sim.factions.ge;usNums.textContent=us.alive+' alive · '+us.kills+' kills';geNums.textContent=ge.alive+' alive · '+ge.kills+' kills';squadsLeft.textContent=aliveSquads(us)+' / '+aliveSquads(ge)+' (US/GER)';clock.textContent=fmtClock(sim.time);};
+  battle.onUpdate=function(sim){var us=sim.factions.us,ge=sim.factions.ge;usNums.textContent=us.alive+' alive · '+us.kills+' kills';geNums.textContent=ge.alive+' alive · '+ge.kills+' kills';squadsLeft.textContent=aliveSquads(us)+' / '+aliveSquads(ge)+' (US/GER)';clock.textContent=fmtClock(sim.time);if(sim.objectiveControl){var u=sim.objectiveControl.us||0,g=sim.objectiveControl.ge||0;objectiveStatus.textContent=u===3?'US held':g===3?'GER held':u>g?'US '+u+' / '+g:u<g?'GER '+g+' / '+u:'contested';}};
   battle.onWinner=function(winner,sim){var label=winner==='draw'?'Mutual annihilation':winner==='us'?'US forces win the field':'German forces win the field';bannerText.textContent=label;bannerSub.textContent='US '+sim.factions.us.alive+' alive ('+sim.factions.us.kills+' kills) · GER '+sim.factions.ge.alive+' alive ('+sim.factions.ge.kills+' kills) · '+fmtClock(sim.time);banner.style.display='flex';console.log('winner='+winner,'time='+sim.time.toFixed(1));};
   function restart(){banner.style.display='none';battle.restart();console.log('battle restarted');}
   document.getElementById('restartBtn').addEventListener('click',restart);document.getElementById('bannerRestart').addEventListener('click',restart);
@@ -135,25 +123,13 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 
   var startBtn=document.getElementById('startBtn');
   async function unlockAudio(){
-    var ae=BABYLON.Engine.audioEngine;
-    if(!ae){console.error('audioEngine missing');return false;}
-    try{
-      ae.unlock();
-      var ctx=ae.audioContext;
-      if(ctx&&ctx.state==='suspended'&&ctx.resume)await ctx.resume();
-      console.log('audioContext='+(ctx&&ctx.state||'unknown'));
-      return !ctx||ctx.state==='running';
-    }catch(e){console.error('audio unlock failed',e&&e.message||e);return false;}
+    var ae=BABYLON.Engine.audioEngine;if(!ae){console.error('audioEngine missing');return false;}
+    try{ae.unlock();var ctx=ae.audioContext;if(ctx&&ctx.state==='suspended'&&ctx.resume)await ctx.resume();console.log('audioContext='+(ctx&&ctx.state||'unknown'));return !ctx||ctx.state==='running';}
+    catch(e){console.error('audio unlock failed',e&&e.message||e);return false;}
   }
-  async function startBattle(){
-    await unlockAudio();
-    battle.resume();startBtn.hidden=true;
-    document.removeEventListener('pointerdown',unlockAudio);document.removeEventListener('touchend',unlockAudio);
-    console.log('battle started');
-  }
+  async function startBattle(){await unlockAudio();battle.resume();startBtn.hidden=true;document.removeEventListener('pointerdown',unlockAudio);document.removeEventListener('touchend',unlockAudio);console.log('battle started');}
   startBtn.addEventListener('click',startBattle);
-  document.addEventListener('pointerdown',unlockAudio,{once:true});
-  document.addEventListener('touchend',unlockAudio,{once:true});
+  document.addEventListener('pointerdown',unlockAudio,{once:true});document.addEventListener('touchend',unlockAudio,{once:true});
   window.__battle__=battle;console.log('Battle Sim ready; obstacles='+features.obstacles.length);
 })();
 </script>
