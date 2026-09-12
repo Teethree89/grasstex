@@ -1,33 +1,15 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>WW2 Battle Sim — loading</title></head><body><div id="boot" style="font-family:Arial,sans-serif;color:#fff;background:#0f141c;position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">Loading battle sim…</div><script>(async()=>{
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>WW2 Battle Sim — loading</title></head><body><div id="boot" style="font-family:Arial,sans-serif;color:#fff;background:#0f141c;position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px">Loading battle sim v2…</div><script>(async()=>{
 /* Same self-fetching shape as index.html/game.html: this file is the only thing that has to
    live on the static host. It pulls the real page (battle/battle_sim.html), its five
-   battle/*.js scripts, and points its audio at GitHub straight from GitHub at load time, so
-   pushing to `main` is enough to update what visitors see here - nothing else ever needs
-   re-uploading.
-
-   The real page's relative <script src="soldier.js"> tags resolve against wherever THIS file
-   is hosted, not against the git repo, so on a host that doesn't also have those files (every
-   host but a raw GitHub checkout) they'd 404. Rather than rewrite src attributes to absolute
-   raw.githubusercontent.com URLs (and fight classic-script MIME sniffing on files GitHub
-   serves as text/plain), this fetches all five as text and inlines them as one <script>
-   block in the same spot, exactly like game.html already does for its own scripts. Audio
-   files can't be inlined the same way (they're binary, not text a browser will execute), so
-   those instead get an absolute base URL through window.BATTLE_AUDIO_BASE - the same
-   override trick terrain-baked.js already uses for window.TERRAIN_ASSET_BASE. */
+   battle/*.js scripts, and points its binary assets at their hosted locations. */
 const REPO='https://raw.githubusercontent.com/Teethree89/grasstex/';
-/* ?ref= overrides for testing a branch live before it merges to main - e.g.
-   battle_sim.html?ref=claude/model-lab-runners-commits-b9s5ll */
 const REF=new URLSearchParams(location.search).get('ref')||'main';
+const BUILD='v2';
 const grab=async(path)=>{
   const r=await fetch(REPO+REF+'/'+path+'?ts='+Date.now(),{cache:'no-store'});
   if(!r.ok)throw new Error(path+' -> HTTP '+r.status);
   return r.text();
 };
-/* Built from split pieces rather than the closing script-tag text written out whole - this
-   whole thing sits inside a script block of its own, and the HTML parser ends that block at
-   the first literal occurrence of those bytes it finds, with no idea it's inside a JS string
-   (or, as a first draft of this very comment proved, inside a comment). Game.html hits the
-   same wall and splits the same way (see its closeScript/openScript). */
 const ET='</scr'+'ipt>',OT='<scr'+'ipt>';
 const OLD_SCRIPTS='<script src="soldier.js">'+ET+'\n<script src="weapons.js">'+ET+'\n<script src="terrain-features.js">'+ET+'\n<script src="squad-ai.js">'+ET+'\n<script src="battle-sim.js">'+ET;
 try{
@@ -43,9 +25,12 @@ try{
     throw new Error('battle/battle_sim.html script tags changed shape; refusing to boot with stale inlining');
   const inlined=OT+soldier+';\n'+weapons+';\n'+terrainFeatures+';\n'+squadAi+';\n'+battleSim+ET;
   const page=html.replace(OLD_SCRIPTS,inlined);
+  window.BATTLE_BUILD=BUILD;
+  window.BATTLE_REF=REF;
   window.BATTLE_AUDIO_BASE=REPO+REF+'/battle/audio/';
+  window.BATTLE_ASSET_BASE='https://test.ivandpopov.com/grasstex/Assets/';
   document.open();document.write(page);document.close();
 }catch(e){
-  document.getElementById('boot').textContent='Battle sim failed to load ('+REF+'): '+(e.message||e);
+  document.getElementById('boot').textContent='Battle sim '+BUILD+' failed to load ('+REF+'): '+(e.message||e);
 }
 })();</script></body></html>
