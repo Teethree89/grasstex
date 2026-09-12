@@ -1,0 +1,84 @@
+name: Deploy Battle PHP to 50webs
+
+on:
+  workflow_dispatch:
+    inputs:
+      remote_dir:
+        description: "50webs directory containing battle_sim.php"
+        required: true
+        default: "/www/test.ivandpopov.com"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-50webs-battle-php
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Upload battle_sim.php
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Validate deployment file
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s battle_sim.php
+          php -l battle_sim.php
+          echo "Deploying commit: $(git rev-parse HEAD)"
+          sha256sum battle_sim.php
+
+      - name: Install FTP client
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lftp
+
+      - name: Upload battle_sim.php to 50webs
+        shell: bash
+        env:
+          FTP_HOST: ${{ secrets.FIFTYWEBS_FTP_HOST }}
+          FTP_USER: ${{ secrets.FIFTYWEBS_FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FIFTYWEBS_FTP_PASSWORD }}
+          REMOTE_DIR: ${{ inputs.remote_dir }}
+        run: |
+          set -euo pipefail
+
+          : "${FTP_HOST:?Missing repository secret FIFTYWEBS_FTP_HOST}"
+          : "${FTP_USER:?Missing repository secret FIFTYWEBS_FTP_USER}"
+          : "${FTP_PASSWORD:?Missing repository secret FIFTYWEBS_FTP_PASSWORD}"
+          : "${REMOTE_DIR:?Missing remote directory}"
+
+          lftp <<'LFTP'
+          set cmd:fail-exit yes
+          set net:max-retries 2
+          set net:timeout 15
+          set ftp:ssl-allow no
+          set ftp:passive-mode true
+          open -u "$FTP_USER","$FTP_PASSWORD" "$FTP_HOST"
+          cd "$REMOTE_DIR"
+          put battle_sim.php -o battle_sim.php
+          cls -l battle_sim.php
+          bye
+          LFTP
+
+      - name: Deployment summary
+        shell: bash
+        run: |
+          {
+            echo "### 50webs PHP deployment"
+            echo ""
+            echo "- Source: \`main@$(git rev-parse --short HEAD)\`"
+            echo "- File: \`battle_sim.php\`"
+            echo "- Remote directory: \`${{ inputs.remote_dir }}\`"
+            echo "- Target: \`${{ inputs.remote_dir }}/battle_sim.php\`"
+          } >> "$GITHUB_STEP_SUMMARY"
