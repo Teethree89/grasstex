@@ -35,10 +35,19 @@ self-fetching loader in the same shape as `index.html`/`game.html` - it pulls
 `battle/battle_sim.html` and the five `battle/*.js` files straight from GitHub `main` at load
 time and inlines them (audio gets a `window.BATTLE_AUDIO_BASE` override instead, the same
 trick `terrain-baked.js` uses for `TERRAIN_ASSET_BASE`, since binary files can't be inlined as
-text), so it's the one file that needs to exist on a static host (like the 50webs deploy this
-repo already uses) for the battle sim to be reachable there; nothing else ever needs
-re-uploading; a push to `main` is live immediately. Append `?ref=<branch>` to test a branch
-there before it merges, e.g. `battle_sim.html?ref=claude/model-lab-runners-commits-b9s5ll`.
+text). Append `?ref=<branch>` to test a branch there before it merges, e.g.
+`battle_sim.html?ref=claude/model-lab-runners-commits-b9s5ll`.
+
+**`battle_sim.php` is the URL to actually use on a static host** (like the 50webs deploy this
+repo already uses) - same `index.php`-proxies-`index.html` idea one layer further: it fetches
+`battle_sim.html`'s current content from GitHub `main` server-side on every request (falling
+back to a local copy if GitHub is unreachable) and serves that. `battle_sim.html`'s own job is
+knowing which battle/*.js files exist right now - that list went stale once already the plain
+`.html` way, refusing to boot on the host until someone re-uploaded it, because a *static*
+upload only knows the files that existed at upload time. Proxying it through `.php` fetches
+that list fresh on every request instead, so once `battle_sim.php` itself is uploaded, nothing
+ever needs re-uploading again, no matter how the set of battle/*.js files changes - exactly
+like `index.php` already does for the grass demo.
 
 Five 10-soldier squads a side (1 captain, 1 gunner, 2
 scouts, 6 riflemen - see `battle/squad-ai.js`'s `COMPOSITION`) spawn on opposite edges of the
