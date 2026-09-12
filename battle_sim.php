@@ -2,12 +2,13 @@
 /* Live Battle Sim proxy plus asset mirroring.
 
    GitHub remains the source of the live loader and any files committed under Assets/.
-   Every request resolves the requested branch/ref to one immutable commit SHA first. That
-   SHA is then used for the loader, JS source and mirrored Assets so a deployment can never
-   mix objects from different cached resolutions of a moving branch such as main. */
+   Normal play always follows main. An immutable commit/tag is honored only when the URL
+   explicitly opts into diagnostic pinning with ?pin=1&ref=<ref>. This prevents stale ref
+   query strings from freezing normal play on an old build. */
 
 $repo = 'Teethree89/grasstex';
-$requestedRef = isset($_GET['ref']) && $_GET['ref'] !== '' ? $_GET['ref'] : 'main';
+$pinRequested = isset($_GET['pin']) && $_GET['pin'] === '1';
+$requestedRef = ($pinRequested && isset($_GET['ref']) && $_GET['ref'] !== '') ? $_GET['ref'] : 'main';
 $root = dirname(__FILE__);
 $stateFile = $root . '/.battle-assets-state.json';
 $syncInterval = 60;
@@ -45,7 +46,7 @@ function asset_path_safe($path) {
     return strpos($path, 'Assets/') === 0 && strpos($path, '..') === false && strpos($path, "\0") === false;
 }
 
-/* Resolve the moving ref once. All downstream GitHub URLs use this immutable SHA. */
+/* Resolve the selected ref once. In normal mode that ref is always main. */
 $resolvedRef = $requestedRef;
 $commitUrl = 'https://api.github.com/repos/' . $repo . '/commits/' . rawurlencode($requestedRef) . '?cb=' . microtime(true);
 $commitBody = gh_get($commitUrl);
@@ -149,8 +150,16 @@ header('Expires: 0');
 header('Surrogate-Control: no-store');
 header('X-Grasstex-Asset-Sync: ' . $syncStatus);
 header('X-Grasstex-Texture-Bootstrap: ' . $textureBootstrapStatus);
+header('X-Grasstex-Pinned: ' . ($pinRequested ? '1' : '0'));
 header('X-Grasstex-Requested-Ref: ' . preg_replace('/[^0-9A-Za-z._\/-]/', '', $requestedRef));
 header('X-Grasstex-Resolved-Ref: ' . preg_replace('/[^0-9A-Fa-f]/', '', $resolvedRef));
+
+/* Force the client loader to use the exact server-resolved SHA. We intentionally replace the
+   entire query-ref expression, not only its fallback, so stale ?ref= values cannot override
+   normal live mode. Pinned diagnostics are already resolved server-side above. */
+function pin_loader_ref($body, $resolvedRef) {
+    return str_replace("new URLSearchParams(location.search).get('ref')||'main'", "'" . $resolvedRef . "'", $body);
+}
 
 /* Fetch the loader by immutable SHA through GitHub's Contents API. */
 $apiUrl = 'https://api.github.com/repos/' . $repo . '/contents/battle_sim.html?ref=' . rawurlencode($resolvedRef) . '&cb=' . microtime(true);
@@ -160,9 +169,7 @@ if ($apiBody !== false) {
     if (is_array($api) && isset($api['content'], $api['encoding']) && $api['encoding'] === 'base64') {
         $body = base64_decode(str_replace(array("\r", "\n"), '', $api['content']), true);
         if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false) {
-            /* Make the loader's default REF the exact SHA we resolved server-side. Explicit
-               ?ref= still wins because the loader checks the query parameter first. */
-            $body = str_replace("get('ref')||'main'", "get('ref')||'" . $resolvedRef . "'", $body);
+            $body = pin_loader_ref($body, $resolvedRef);
             header('X-Grasstex-Source: github-contents-api');
             if (isset($api['sha'])) header('X-Grasstex-Loader-SHA: ' . $api['sha']);
             echo $body;
@@ -175,7 +182,7 @@ if ($apiBody !== false) {
 $rawUrl = 'https://raw.githubusercontent.com/' . $repo . '/' . rawurlencode($resolvedRef) . '/battle_sim.html?cb=' . microtime(true);
 $body = gh_get($rawUrl);
 if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false) {
-    $body = str_replace("get('ref')||'main'", "get('ref')||'" . $resolvedRef . "'", $body);
+    $body = pin_loader_ref($body, $resolvedRef);
     header('X-Grasstex-Source: github-raw-fallback');
     echo $body;
     exit;
@@ -185,7 +192,7 @@ $fallback = $root . '/battle_sim.html';
 if (is_file($fallback) && is_readable($fallback)) {
     $body = @file_get_contents($fallback);
     if ($body !== false) {
-        $body = str_replace("get('ref')||'main'", "get('ref')||'" . $resolvedRef . "'", $body);
+        $body = pin_loader_ref($body, $resolvedRef);
         header('X-Grasstex-Source: local-fallback');
         echo $body;
         exit;
