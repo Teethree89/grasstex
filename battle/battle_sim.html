@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>WW2 Battle Sim — 50v50</title>
+<style>
+/* Same dark-viewport-plus-one-faded-panel shape as the rest of this repo's demo pages:
+   the thing being tested is the AI, so nothing here should compete with the battlefield
+   for attention until you actually want to read a number. */
+html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font-family:Arial,sans-serif}
+#renderCanvas{position:fixed;inset:0;width:100%;height:100%;display:block;outline:none;touch-action:none}
+#hud{position:fixed;top:10px;left:10px;z-index:10;width:240px;padding:10px 12px;
+  background:rgba(14,17,12,.86);border:1px solid rgba(255,255,255,.14);border-radius:8px;
+  color:#e7e7dc;font-size:12px;opacity:.88;transition:opacity .15s}
+#hud:hover{opacity:1}
+#hud h1{font-size:13px;margin:0 0 8px;letter-spacing:.03em;color:#fff}
+.side{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:1px solid rgba(255,255,255,.08)}
+.side:first-of-type{border-top:0}
+.side .tag{font-weight:700}
+.tag.us{color:#8fb4e8}
+.tag.ge{color:#e0c46a}
+.side .nums{color:#c7c7ba;font-variant-numeric:tabular-nums}
+#hud .row{display:flex;justify-content:space-between;margin-top:8px;color:#a8ab8e}
+#controls{display:flex;gap:6px;margin-top:10px}
+#controls button{flex:1;padding:5px 4px;background:#1c2116;border:1px solid #46512f;color:#d9dcc4;
+  font-size:11px;border-radius:5px;cursor:pointer}
+#controls button.active{background:#3c4a26;color:#fff}
+#controls button:hover{background:#2a331c}
+#restartBtn{margin-top:8px;width:100%;padding:6px;background:#3a2020;border:1px solid #6b3232;
+  color:#f1d9d9;border-radius:5px;cursor:pointer;font-size:11px}
+#restartBtn:hover{background:#4a2828}
+#banner{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;
+  background:rgba(6,8,6,.55)}
+#banner .card{background:rgba(18,22,14,.96);border:1px solid rgba(255,255,255,.18);border-radius:10px;
+  padding:26px 34px;text-align:center;color:#fff;font-size:20px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+#banner .card small{display:block;margin-top:8px;font-size:12px;color:#b7bba0}
+#banner button{margin-top:16px;padding:7px 18px;border-radius:6px;border:1px solid #6b8a44;
+  background:#3c4a26;color:#fff;cursor:pointer;font-size:13px}
+</style>
+</head>
+<body>
+
+<canvas id="renderCanvas"></canvas>
+
+<div id="hud">
+  <h1>WW2 BATTLE SIM &middot; 50v50</h1>
+  <div class="side"><span class="tag us">US</span><span class="nums" id="usNums">50 alive &middot; 0 kills</span></div>
+  <div class="side"><span class="tag ge">GER</span><span class="nums" id="geNums">50 alive &middot; 0 kills</span></div>
+  <div class="row"><span>Squads left</span><span id="squadsLeft">5 / 5</span></div>
+  <div class="row"><span>Time</span><span id="clock">0:00</span></div>
+  <div id="controls">
+    <button data-speed="1">1&times;</button>
+    <button data-speed="2" class="active">2&times;</button>
+    <button data-speed="4">4&times;</button>
+  </div>
+  <button id="restartBtn" type="button">Restart battle</button>
+</div>
+
+<div id="banner"><div class="card">
+  <div id="bannerText">—</div>
+  <small id="bannerSub"></small>
+  <div><button id="bannerRestart" type="button">Run it again</button></div>
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/babylonjs@8.26.0/babylon.js"></script>
+<script src="soldier.js"></script>
+<script src="weapons.js"></script>
+<script src="squad-ai.js"></script>
+<script src="battle-sim.js"></script>
+<script>
+(function(){
+  var canvas=document.getElementById('renderCanvas');
+  var engine=new BABYLON.Engine(canvas,true,{stencil:true,preserveDrawingBuffer:true});
+  var scene=new BABYLON.Scene(engine);
+  scene.clearColor=new BABYLON.Color4(.55,.62,.68,1);
+  scene.fogMode=BABYLON.Scene.FOGMODE_LINEAR;
+  scene.fogColor=new BABYLON.Color3(.55,.62,.68);
+  scene.fogStart=180;scene.fogEnd=420;
+
+  var target=new BABYLON.Vector3(0,4,0);
+  var camera=new BABYLON.ArcRotateCamera('cam',-Math.PI/2,1.02,240,target,scene);
+  camera.lowerRadiusLimit=60;camera.upperRadiusLimit=420;
+  camera.lowerBetaLimit=.35;camera.upperBetaLimit=1.5;
+  camera.wheelPrecision=3;camera.panningSensibility=140;
+  camera.attachControl(canvas,true);
+
+  var hemi=new BABYLON.HemisphericLight('hemi',new BABYLON.Vector3(0,1,.2),scene);
+  hemi.intensity=.85;hemi.diffuse=new BABYLON.Color3(.85,.88,.9);hemi.groundColor=new BABYLON.Color3(.30,.30,.24);
+  var sun=new BABYLON.DirectionalLight('sun',new BABYLON.Vector3(-.5,-.85,.3),scene);
+  sun.intensity=1.0;sun.diffuse=new BABYLON.Color3(1,.98,.9);
+
+  BattleSim.buildTerrain(scene);
+  var battle=BattleSim.start(scene,{timeScale:2});
+
+  // ---------- HUD wiring ----------
+  var usNums=document.getElementById('usNums'),geNums=document.getElementById('geNums'),
+    squadsLeft=document.getElementById('squadsLeft'),clock=document.getElementById('clock'),
+    banner=document.getElementById('banner'),bannerText=document.getElementById('bannerText'),
+    bannerSub=document.getElementById('bannerSub');
+
+  function fmtClock(t){var m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+(s<10?'0':'')+s;}
+  function aliveSquads(faction){return faction.squads.filter(function(sq){return sq.aliveCount>0;}).length;}
+
+  battle.onUpdate=function(sim){
+    var us=sim.factions.us,ge=sim.factions.ge;
+    usNums.textContent=us.alive+' alive · '+us.kills+' kills';
+    geNums.textContent=ge.alive+' alive · '+ge.kills+' kills';
+    squadsLeft.textContent=aliveSquads(us)+' / '+aliveSquads(ge)+' (US/GER)';
+    clock.textContent=fmtClock(sim.time);
+  };
+  battle.onWinner=function(winner,sim){
+    var label=winner==='draw'?'Mutual annihilation':winner==='us'?'US forces win the field':'German forces win the field';
+    bannerText.textContent=label;
+    bannerSub.textContent='US '+sim.factions.us.alive+' alive ('+sim.factions.us.kills+' kills) · '+
+      'GER '+sim.factions.ge.alive+' alive ('+sim.factions.ge.kills+' kills) · '+fmtClock(sim.time);
+    banner.style.display='flex';
+  };
+
+  function restart(){banner.style.display='none';battle.restart();}
+  document.getElementById('restartBtn').addEventListener('click',restart);
+  document.getElementById('bannerRestart').addEventListener('click',restart);
+
+  var speedButtons=document.querySelectorAll('#controls button');
+  speedButtons.forEach(function(btn){
+    btn.addEventListener('click',function(){
+      battle.setTimeScale(+btn.dataset.speed);
+      speedButtons.forEach(function(b){b.classList.toggle('active',b===btn);});
+    });
+  });
+
+  engine.runRenderLoop(function(){scene.render();});
+  window.addEventListener('resize',function(){engine.resize();});
+
+  // Same debug door the model lab uses, for headless/manual poking from the console.
+  window.__battle__=battle;
+})();
+</script>
+</body>
+</html>
