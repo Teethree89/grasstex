@@ -1,0 +1,28 @@
+{
+  "us": {
+    "contact": ["us/contact-1.mp3", "us/contact-2.mp3"],
+    "advance": ["us/advance-1.mp3", "us/advance-2.mp3"],
+    "engage": ["us/engage-1.mp3", "us/engage-2.mp3"],
+    "retreat": ["us/retreat-1.mp3", "us/retreat-2.mp3"]
+  },
+  "ge": {
+    "contact": ["ge/contact-1.mp3", "ge/contact-2.mp3"],
+    "advance": ["ge/advance-1.mp3", "ge/advance-2.mp3"],
+    "engage": ["ge/engage-1.mp3", "ge/engage-2.mp3"],
+    "retreat": ["ge/retreat-1.mp3", "ge/retreat-2.mp3"]
+  },
+  "scripts": {
+    "us": {
+      "contact": ["Enemy spotted!", "Contact!"],
+      "advance": ["Move up!", "Keep moving!"],
+      "engage": ["Open fire!", "Take cover!"],
+      "retreat": ["Fall back!", "Pull back!"]
+    },
+    "ge": {
+      "contact": ["Feind gesichtet!", "Kontakt!"],
+      "advance": ["Vorwärts!", "Weiter!"],
+      "engage": ["Feuer frei!", "In Deckung!"],
+      "retreat": ["Zurück!", "Rückzug!"]
+    }
+  }
+}
