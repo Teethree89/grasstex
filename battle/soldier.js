@@ -46,6 +46,14 @@
     var rig=soldier.rig,nodes=soldier._bakedNodes||[];for(var i=0;i<nodes.length;i++)nodes[i].rotationQuaternion=null;
     soldier._bakedClip=null;if(rig&&rig.weapon)rig.weapon.rotationQuaternion=null;
   }
+  function retargetPackageRotation(jointName,clipName,values,offset){
+    var x=values[offset],y=values[offset+1],z=values[offset+2],w=values[offset+3];
+    /* The package arm bones rest sideways, whereas procedural arm boxes rest downward.
+       Idle/walk rotate around the source Z axis; map that swing onto our forward X axis.
+       Rifle clips already animate around the compatible forward axis and stay unmodified. */
+    if((clipName==='idle'||clipName==='walk')&&(jointName==='upperArmR'||jointName==='forearmR'||jointName==='upperArmL'||jointName==='forearmL'))return new BABYLON.Quaternion(z,-y,x,w);
+    return new BABYLON.Quaternion(x,y,z,w);
+  }
   function updateBakedAnimation(soldier,state){
     var data=bakedData(),name=clipName(soldier,state);if(!data||!name||!data.clips[name]){resetBakedPose(soldier);return false;}
     var clip=data.clips[name],now=(typeof performance!=='undefined'?performance.now():Date.now())/1000;
@@ -53,8 +61,8 @@
     var elapsed=Math.max(0,now-soldier._bakedStarted),loop=name==='idle'||name==='walk'||name==='aim';
     var duration=Math.max(.001,clip.duration),time=loop?elapsed%duration:Math.min(duration,elapsed),frame=time*data.sampleRate,index=Math.floor(frame),frames=clip.frames,last=frames.length-1,next=Math.min(last,index+1),mix=Math.min(1,frame-index),rig=soldier.rig;
     for(var i=0;i<data.bones.length;i++){
-      var joint=rig[data.bones[i]];if(!joint)continue;var offset=i*4,a=frames[index][offset],b=frames[next][offset];
-      var from=new BABYLON.Quaternion(a,frames[index][offset+1],frames[index][offset+2],frames[index][offset+3]),to=new BABYLON.Quaternion(b,frames[next][offset+1],frames[next][offset+2],frames[next][offset+3]);
+      var jointName=data.bones[i],joint=rig[jointName];if(!joint)continue;var offset=i*4;
+      var from=retargetPackageRotation(jointName,name,frames[index],offset),to=retargetPackageRotation(jointName,name,frames[next],offset);
       joint.rotationQuaternion=BABYLON.Quaternion.Slerp(from,to,mix);
     }
     return true;
