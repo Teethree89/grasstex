@@ -1,4 +1,4 @@
-name: Deploy Battle PHP to 50webs
+name: Deploy Battle Runtime to 50webs
 
 on:
   workflow_dispatch:
@@ -7,12 +7,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-50webs-battle-php
+  group: deploy-50webs-battle-runtime
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Upload battle_sim.php
+    name: Upload Battle Sim runtime
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -22,14 +22,25 @@ jobs:
         with:
           ref: main
 
-      - name: Validate deployment file
+      - name: Validate deployment files
         shell: bash
         run: |
           set -euo pipefail
-          test -s battle_sim.php
           php -l battle_sim.php
+          for f in \
+            battle_sim.html \
+            battle/battle_sim.html \
+            battle/soldier.js \
+            battle/weapons.js \
+            battle/terrain-features.js \
+            battle/squad-ai.js \
+            battle/battle-sim.js \
+            battle/acoustics.js \
+            battle/town-objectives.js \
+            battle/commander-ai.js; do
+            test -s "$f"
+          done
           echo "Deploying commit: $(git rev-parse HEAD)"
-          sha256sum battle_sim.php
 
       - name: Install FTP client
         shell: bash
@@ -37,7 +48,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq lftp
 
-      - name: Upload battle_sim.php to 50webs
+      - name: Upload runtime to 50webs
         shell: bash
         env:
           FTP_HOST: ${{ secrets.FTP_HOST }}
@@ -45,7 +56,6 @@ jobs:
           FTP_PASSWORD: ${{ secrets.FTP_PASS }}
         run: |
           set -euo pipefail
-
           : "${FTP_HOST:?Missing repository secret FTP_HOST}"
           : "${FTP_USER:?Missing repository secret FTP_USER}"
           : "${FTP_PASSWORD:?Missing repository secret FTP_PASS}"
@@ -56,12 +66,21 @@ jobs:
           set net:timeout 15
           set ftp:ssl-allow no
           set ftp:passive-mode true
-          pwd
-          cls -la
           cd grasstex
-          pwd
           put battle_sim.php -o battle_sim.php
-          cls -l battle_sim.php
+          put battle_sim.html -o battle_sim.html
+          mkdir -p battle
+          cd battle
+          put battle/battle_sim.html -o battle_sim.html
+          put battle/soldier.js -o soldier.js
+          put battle/weapons.js -o weapons.js
+          put battle/terrain-features.js -o terrain-features.js
+          put battle/squad-ai.js -o squad-ai.js
+          put battle/battle-sim.js -o battle-sim.js
+          put battle/acoustics.js -o acoustics.js
+          put battle/town-objectives.js -o town-objectives.js
+          put battle/commander-ai.js -o commander-ai.js
+          cls -l
           bye
           LFTP
 
@@ -69,9 +88,10 @@ jobs:
         shell: bash
         run: |
           {
-            echo "### 50webs PHP deployment"
+            echo "### 50webs Battle Sim deployment"
             echo ""
             echo "- Source: \`main@$(git rev-parse --short HEAD)\`"
-            echo "- File: \`battle_sim.php\`"
-            echo "- FTP destination: login root / grasstex / battle_sim.php"
+            echo "- PHP: \`/grasstex/battle_sim.php\`"
+            echo "- Loader: \`/grasstex/battle_sim.html\`"
+            echo "- Runtime code: \`/grasstex/battle/\`"
           } >> "$GITHUB_STEP_SUMMARY"
