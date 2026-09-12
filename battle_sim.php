@@ -1,15 +1,12 @@
 <?php
-/* Live Battle Sim proxy plus best-effort asset mirroring.
+/* Live Battle Sim proxy plus asset mirroring.
 
-   The page itself is still fetched fresh from GitHub main on every request. Asset sync is
-   deliberately throttled: at most once per 60 seconds this script asks GitHub for the
-   recursive main tree, filters entries under Assets/, compares their Git blob SHAs with a
-   tiny local state file, and downloads only changed/new files into this host's Assets/
-   directory. If 50webs cannot write there, or GitHub has no Assets/ directory yet, the page
-   still serves normally and X-Grasstex-Asset-Sync explains why.
-
-   Once Assets/ is committed to this repo, pushing a changed asset is therefore enough; the
-   next battle_sim.php request after the throttle window mirrors it to 50webs automatically. */
+   GitHub remains the source of the live loader and any files committed under Assets/.
+   50webs mirrors changed GitHub assets locally. The two Battle Sim textures are a special
+   bootstrap case: their last known-good compact JPEG copies only existed inside historical
+   battle-sim.js as data URIs, so this script extracts those bytes once and materializes them
+   as ordinary Assets/dirttex.jpg and Assets/skytex.jpg files on the host. Runtime code then
+   loads normal files; it does not use data URIs. */
 
 $repo = 'Teethree89/grasstex';
 $branch = 'main';
@@ -17,6 +14,7 @@ $root = dirname(__FILE__);
 $stateFile = $root . '/.battle-assets-state.json';
 $syncInterval = 60;
 $syncStatus = 'skipped';
+$textureBootstrapStatus = 'already-present';
 
 function gh_get($url, $binary = false) {
     if (!function_exists('curl_init')) return false;
@@ -24,8 +22,9 @@ function gh_get($url, $binary = false) {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
-    curl_setopt($ch, CURLOPT_TIMEOUT, $binary ? 30 : 15);
+    curl_setopt($ch, CURLOPT_TIMEOUT, $binary ? 30 : 20);
     curl_setopt($ch, CURLOPT_USERAGENT, 'grasstex-50webs');
+    /* Public read-only GitHub content; 50webs' legacy CA bundle has caused validation issues. */
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
     $body = curl_exec($ch);
@@ -35,8 +34,46 @@ function gh_get($url, $binary = false) {
     return $body;
 }
 
+function atomic_write($dest, $bytes) {
+    $dir = dirname($dest);
+    if (!is_dir($dir) && !@mkdir($dir, 0775, true)) return false;
+    $tmp = $dest . '.tmp';
+    if (@file_put_contents($tmp, $bytes, LOCK_EX) === false) { @unlink($tmp); return false; }
+    if (!@rename($tmp, $dest)) { @unlink($tmp); return false; }
+    return true;
+}
+
 function asset_path_safe($path) {
     return strpos($path, 'Assets/') === 0 && strpos($path, '..') === false && strpos($path, "\0") === false;
+}
+
+/* Materialize the known-good compact Battle textures as REAL files. This is deliberately
+   only a migration/bootstrap path. Once written, Babylon loads dirttex.jpg/skytex.jpg just
+   like any other ordinary asset. */
+$dirtDest = $root . '/Assets/dirttex.jpg';
+$skyDest = $root . '/Assets/skytex.jpg';
+if (!is_file($dirtDest) || @filesize($dirtDest) < 1024 || !is_file($skyDest) || @filesize($skyDest) < 1024) {
+    $legacyCommit = '77968e5a83012003ca122831095e0cf945ac2116';
+    $legacyUrl = 'https://raw.githubusercontent.com/' . $repo . '/' . $legacyCommit . '/battle/battle-sim.js?ts=' . time();
+    $legacy = gh_get($legacyUrl);
+    if ($legacy === false) {
+        $textureBootstrapStatus = 'source-fetch-failed';
+    } else {
+        $made = 0; $failed = 0;
+        $jobs = array(
+            array('name' => 'DIRT_TEXTURE_URL', 'dest' => $dirtDest),
+            array('name' => 'SKY_TEXTURE_URL', 'dest' => $skyDest)
+        );
+        foreach ($jobs as $job) {
+            if (is_file($job['dest']) && @filesize($job['dest']) >= 1024) continue;
+            $pattern = "/var\\s+" . preg_quote($job['name'], '/') . "='data:image\\/jpeg;base64,([^']+)'/s";
+            if (!preg_match($pattern, $legacy, $m)) { $failed++; continue; }
+            $bytes = base64_decode($m[1], true);
+            if ($bytes === false || strlen($bytes) < 1024 || !atomic_write($job['dest'], $bytes)) { $failed++; continue; }
+            $made++;
+        }
+        $textureBootstrapStatus = $failed ? ('partial-' . $made . '-written-' . $failed . '-failed') : ($made . '-written');
+    }
 }
 
 $state = array('checked_at' => 0, 'files' => array());
@@ -45,7 +82,15 @@ if (is_file($stateFile) && is_readable($stateFile)) {
     if (is_array($decoded)) $state = array_merge($state, $decoded);
 }
 
-if (time() - intval($state['checked_at']) >= $syncInterval) {
+/* If the newly canonical audio files are not local yet, bypass the normal throttle so one
+   page load is enough to populate them. */
+$requiredAudio = array('rifle.mp3','carbine.mp3','lmg.mp3','pistol.mp3');
+$missingRequiredAsset = false;
+foreach ($requiredAudio as $audioFile) {
+    if (!is_file($root . '/Assets/audio/' . $audioFile)) { $missingRequiredAsset = true; break; }
+}
+
+if ($missingRequiredAsset || time() - intval($state['checked_at']) >= $syncInterval) {
     $treeUrl = 'https://api.github.com/repos/' . $repo . '/git/trees/' . rawurlencode($branch) . '?recursive=1&ts=' . time();
     $treeBody = gh_get($treeUrl);
     if ($treeBody === false) {
@@ -79,13 +124,7 @@ if (time() - intval($state['checked_at']) >= $syncInterval) {
                     $rawUrl = 'https://raw.githubusercontent.com/' . $repo . '/' . rawurlencode($branch) . '/' . implode('/', $encoded) . '?ts=' . time();
                     $bytes = gh_get($rawUrl, true);
                     if ($bytes === false) { $failed++; continue; }
-
-                    $dir = dirname($dest);
-                    if (!is_dir($dir) && !@mkdir($dir, 0775, true)) { $failed++; continue; }
-                    $tmp = $dest . '.tmp';
-                    if (@file_put_contents($tmp, $bytes, LOCK_EX) === false || !@rename($tmp, $dest)) {
-                        @unlink($tmp); $failed++; continue;
-                    }
+                    if (!atomic_write($dest, $bytes)) { $failed++; continue; }
                     $state['files'][$path] = $sha;
                     $changed++;
                 }
@@ -105,6 +144,7 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: 0');
 header('X-Grasstex-Asset-Sync: ' . $syncStatus);
+header('X-Grasstex-Texture-Bootstrap: ' . $textureBootstrapStatus);
 
 $body = gh_get($github);
 if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false) {
