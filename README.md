@@ -4,6 +4,51 @@ Reusable Babylon.js grass rendering prototype with deterministic chunk generatio
 
 Current demo build: **v64**.
 
+## Grass simulation is gated off by default
+
+Grass rendering (from this repo) has been ported over to and tuned inside `ww2fps`, so
+`grass-streaming.js` (chunk streaming/instance placement) and `grass-effects.js` (projected
+grass shadow decals) no longer do anything unless asked to. The terrain, its road, and the
+lighting/fog/sky setup in `grass-realism.js` are unaffected and keep working as before - only
+the grass blades themselves are gated.
+
+To turn the simulation back on for reference or prototyping, either open the page with
+`?grass=1` or set `window.GRASS_SIM_ENABLED = true` before `grass-api.js` loads:
+
+```html
+<script>window.GRASS_SIM_ENABLED = true;</script>
+<script src="grass-api.js"></script>
+```
+
+See `window.GrassSimulation` in `grass-api.js` for the flag itself.
+
+## Battle sim (WW2 squad AI prototype)
+
+`battle_sim.html` is a 50v50 US-vs-German battle sim used to test squad AI, not to look
+good - the terrain reuses this repo's rolling-landscape shape and the soldiers/weapons are
+rudimentary low-poly primitives built at runtime (see `battle/soldier.js`). It does not load
+any of the grass files above.
+
+Open `battle_sim.html` directly. Five 10-soldier squads a side (1 captain, 1 gunner, 2
+scouts, 6 riflemen - see `battle/squad-ai.js`'s `COMPOSITION`) spawn on opposite edges of the
+field and advance, engage, and retreat on their own:
+
+- **Captain** - pistol, formation anchor; the squad's accuracy drops if it dies.
+- **Riflemen** - the bulk of the squad, hold a loose line either side of the captain.
+- **Gunner** - LMG, stops and "sets up" once engaged for an accuracy bonus, otherwise slow.
+- **Scouts** - fastest, carbines, swing out to the flanks rather than advancing head-on.
+
+A squad falls back once 60% of it is down. Combat is resolved on a fixed ~6.7 Hz AI tick
+(`battle/squad-ai.js`), independent of render framerate; targeting uses a terrain-height-only
+line-of-sight check (hills can block a shot, nothing else can yet). The HUD shows alive/kill
+counts per side, a speed multiplier, and a restart button; `window.__battle__` is the live
+`BattleSim` instance for poking at from the console.
+
+Known limitations, since this is a starting point for further modeling/AI work rather than a
+finished sim: no soldier-blocks-soldier occlusion, no cover objects, no pathfinding around
+terrain (everything steers straight at its destination), and the models/weapons are
+placeholder primitives rather than real assets.
+
 ## Main files
 
 - `game.html` — current demo loader/build.

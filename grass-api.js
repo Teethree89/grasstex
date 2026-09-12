@@ -116,6 +116,40 @@
   GrassPlacementAPI.prototype.requestRebuild=function(){if(typeof root.rebuildWorld==='function')root.rebuildWorld(true);return this;};
   GrassPlacementAPI.prototype.snapshot=function(){return {revision:this.revision,includes:this.includes.slice(),excludes:this.excludes.slice(),allowedSurfaces:Array.from(this.allowedSurfaces),excludedSurfaces:Array.from(this.excludedSurfaces),maxSlope:this.maxSlope,hasTerrainSampler:!!this.terrainSampler};};
 
+  /* Gate for the grass simulation itself (chunk streaming + the projected shadow decals
+     in grass-effects.js) - NOT for the terrain, its road, or the lighting/fog/sky setup in
+     grass-realism.js, all of which other pages still need. Grass rendering has been ported
+     into ww2fps and tuned there, so nothing here should spend a frame budget streaming
+     blades by default any more; the code stays for reference/reuse rather than running.
+
+     Off by default. Either script sets `window.GRASS_SIM_ENABLED=true` before this file
+     loads, or a `?grass=1` (anything but `0`/`false`/`off`) query flag on the page - the
+     query flag is read here, once, rather than in every gated file, so the four grass
+     scripts don't each need their own copy of this parsing. */
+  var queryGrassFlag=(function(){
+    try{
+      var v=new URLSearchParams(root.location.search).get('grass');
+      if(v===null)return null;
+      return v!=='0'&&v!==''+false&&v.toLowerCase()!=='off';
+    }catch(_){return null;}
+  })();
+  var grassSimEnabled=typeof root.GRASS_SIM_ENABLED==='boolean'?root.GRASS_SIM_ENABLED:!!queryGrassFlag;
+  root.GrassSimulation={
+    get enabled(){return grassSimEnabled;},
+    setEnabled:function(v){grassSimEnabled=!!v;return this;},
+    /* Gated scripts call this instead of rolling their own console.info - keeps the "why
+       is there no grass" answer in one place no matter which of the four files runs first. */
+    guard:function(name){
+      if(grassSimEnabled)return true;
+      if(!root.__grassGateLogged__){
+        root.__grassGateLogged__=true;
+        console.info('grasstex: grass simulation is gated off by default (ported to ww2fps). '+
+          'Pass ?grass=1 or set window.GRASS_SIM_ENABLED=true before the grass scripts load to run it here again.');
+      }
+      return false;
+    }
+  };
+
   root.GrassPlacementAPI=GrassPlacementAPI;
   if(!root.GrassAPI)root.GrassAPI=new GrassPlacementAPI();
 })(typeof window!=='undefined'?window:globalThis);
