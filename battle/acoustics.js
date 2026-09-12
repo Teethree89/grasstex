@@ -59,7 +59,9 @@
     return {enqueue:enqueue,get queued(){return q.length;}};
   })();
 
-  root.BattleVoiceScheduler=(function(){
+  /* squad-ai.js owns the ready-aware voice scheduler; retain this implementation only as a
+     fallback for older pages that did not load it. */
+  if(!root.BattleVoiceScheduler)root.BattleVoiceScheduler=(function(){
     var cache={},failed={},q=[],running=false,lastGlobal=0,squadLast={};
     function ensure(file,soldier){
       if(cache[file]||failed[file])return cache[file]||null;

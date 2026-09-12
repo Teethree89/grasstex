@@ -27,7 +27,7 @@ function atomic_json($path,$value){$dir=dirname($path);if(!is_dir($dir)&&!@mkdir
 function jsonl_records($path,$limit=0){$out=array();if(!is_file($path)||!is_readable($path))return $out;$fh=@fopen($path,'rb');if(!$fh)return $out;while(($line=fgets($fh))!==false){$e=json_decode(trim($line),true);if(is_array($e)){$out[]=$e;if($limit>0&&count($out)>$limit)array_shift($out);}}fclose($fh);return $out;}
 
 if($_SERVER['REQUEST_METHOD']==='POST'){
-    $origin=isset($_SERVER['HTTP_ORIGIN'])?$_SERVER['HTTP_ORIGIN']:'';if($origin!==''&&parse_url($origin,PHP_URL_HOST)!=='test.ivandpopov.com'){http_response_code(403);echo json_encode(array('ok'=>false,'error'=>'origin rejected'));exit;}
+    $origin=isset($_SERVER['HTTP_ORIGIN'])?$_SERVER['HTTP_ORIGIN']:'';if($origin===''||parse_url($origin,PHP_URL_HOST)!=='test.ivandpopov.com'){http_response_code(403);echo json_encode(array('ok'=>false,'error'=>'same-origin request required'));exit;}
     $raw=file_get_contents('php://input');if($raw===false||strlen($raw)<2||strlen($raw)>196608){http_response_code(400);echo json_encode(array('ok'=>false,'error'=>'invalid payload'));exit;}$data=json_decode($raw,true);
     if(!is_array($data)||arrv($data,'type','')!=='experience'||!isset($data['experience'])||!is_array($data['experience'])){http_response_code(400);echo json_encode(array('ok'=>false,'error'=>'experience required'));exit;}
     $e=$data['experience'];$fp=clean_fingerprint(arrv($e,'fingerprint',null));$gsrc=isset($e['genome'])?$e['genome']:(isset($e['policy'])?$e['policy']:null);$genome=clean_genome($gsrc);if(!$fp||!$genome){http_response_code(400);echo json_encode(array('ok'=>false,'error'=>'fingerprint and genome required'));exit;}

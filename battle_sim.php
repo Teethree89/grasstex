@@ -24,8 +24,6 @@ function gh_get($url, $binary = false) {
     curl_setopt($ch, CURLOPT_TIMEOUT, $binary ? 30 : 20);
     curl_setopt($ch, CURLOPT_USERAGENT, 'grasstex-50webs');
     curl_setopt($ch, CURLOPT_HTTPHEADER, array('Cache-Control: no-cache', 'Pragma: no-cache'));
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
     $body = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
@@ -154,51 +152,35 @@ header('X-Grasstex-Pinned: ' . ($pinRequested ? '1' : '0'));
 header('X-Grasstex-Requested-Ref: ' . preg_replace('/[^0-9A-Za-z._\/-]/', '', $requestedRef));
 header('X-Grasstex-Resolved-Ref: ' . preg_replace('/[^0-9A-Fa-f]/', '', $resolvedRef));
 
-/* Force the client loader to use the exact server-resolved SHA. We intentionally replace the
-   entire query-ref expression, not only its fallback, so stale ?ref= values cannot override
-   normal live mode. Pinned diagnostics are already resolved server-side above. */
-function pin_loader_ref($body, $resolvedRef) {
-    return str_replace("new URLSearchParams(location.search).get('ref')||'main'", "'" . $resolvedRef . "'", $body);
-}
-
-/* Fetch the loader by immutable SHA through GitHub's Contents API. */
-$apiUrl = 'https://api.github.com/repos/' . $repo . '/contents/battle_sim.html?ref=' . rawurlencode($resolvedRef) . '&cb=' . microtime(true);
-$apiBody = gh_get($apiUrl);
-if ($apiBody !== false) {
-    $api = json_decode($apiBody, true);
-    if (is_array($api) && isset($api['content'], $api['encoding']) && $api['encoding'] === 'base64') {
-        $body = base64_decode(str_replace(array("\r", "\n"), '', $api['content']), true);
-        if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false) {
-            $body = pin_loader_ref($body, $resolvedRef);
-            header('X-Grasstex-Source: github-contents-api');
-            if (isset($api['sha'])) header('X-Grasstex-Loader-SHA: ' . $api['sha']);
-            echo $body;
-            exit;
-        }
-    }
-}
-
-/* Raw fallback is still immutable because it also uses the resolved commit SHA. */
-$rawUrl = 'https://raw.githubusercontent.com/' . $repo . '/' . rawurlencode($resolvedRef) . '/battle_sim.html?cb=' . microtime(true);
-$body = gh_get($rawUrl);
+/* Serve the modular page directly. The retired root loader patched source strings at runtime,
+   so it broke whenever the battle code changed and never loaded the full trainer stack. */
+$base = 'https://raw.githubusercontent.com/' . $repo . '/' . rawurlencode($resolvedRef) . '/';
+$body = gh_get($base . 'battle/battle_sim.html?cb=' . microtime(true));
 if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false) {
-    $body = pin_loader_ref($body, $resolvedRef);
-    header('X-Grasstex-Source: github-raw-fallback');
-    echo $body;
-    exit;
+    $manifest = null;
+    $manifestBody = gh_get($base . 'Assets/audio/manifest.json?cb=' . microtime(true));
+    if ($manifestBody !== false) { $decodedManifest = json_decode($manifestBody, true); if (is_array($decodedManifest)) $manifest = $decodedManifest; }
+    $policyState = null; $policyPath = $root . '/state/ai-policy.json';
+    if (is_file($policyPath) && is_readable($policyPath)) { $decodedPolicy = json_decode(@file_get_contents($policyPath), true); if (is_array($decodedPolicy)) $policyState = $decodedPolicy; }
+    $memoryState = array('version'=>1,'experiences'=>array()); $memoryPath = $root . '/state/scenario-memory.json';
+    if (is_file($memoryPath) && is_readable($memoryPath)) { $decodedMemory = json_decode(@file_get_contents($memoryPath), true); if (is_array($decodedMemory) && isset($decodedMemory['experiences']) && is_array($decodedMemory['experiences'])) { $decodedMemory['experiences'] = array_slice($decodedMemory['experiences'], -180); $memoryState = $decodedMemory; } }
+    $requestedSeed = isset($_GET['seed']) ? substr(preg_replace('/[^a-zA-Z0-9_.-]/','-',strval($_GET['seed'])),0,100) : '';
+    $bootstrap = '<script>window.BATTLE_BUILD="v22";window.BATTLE_REF='.json_encode($resolvedRef).';window.BATTLE_ASSET_BASE="https://test.ivandpopov.com/grasstex/Assets/";window.BATTLE_AUDIO_BASE="https://test.ivandpopov.com/grasstex/Assets/audio/";window.BATTLE_API_BASE="/grasstex/";window.BATTLE_AUDIO_MANIFEST='.json_encode($manifest).';window.BATTLE_AI_POLICY='.json_encode($policyState).';window.BATTLE_AI_MEMORY='.json_encode($memoryState).';window.BATTLE_SCENARIO_SEED='.json_encode($requestedSeed).';</script>';
+    $cdnTag = '<script src="https://cdn.jsdelivr.net/npm/babylonjs@8.26.0/babylon.js"></script>';
+    if (strpos($body, $cdnTag) !== false) $body = str_replace($cdnTag, $bootstrap."\n".$cdnTag, $body);
+    $version = rawurlencode($resolvedRef);
+    foreach (array('soldier.js','weapons.js','terrain-features.js','squad-ai.js','battle-sim.js') as $file) $body = str_replace('<script src="'.$file.'"></script>', '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>', $body);
+    $extras = '';
+    foreach (array('acoustics.js','scenario-generator.js','battle-navigation.js','town-objectives.js','module-registry.js','ai-policy.js','objective-system.js','battle-telemetry.js','commander-ai.js') as $file) $extras .= '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>' . "\n";
+    foreach (array('01-capture-zone.js','10-infantry-squad.js','20-building-hardpoints.js') as $file) $extras .= '<script src="'.$base.'battle/modules/'.$file.'?v='.$version.'"></script>' . "\n";
+    foreach (array('ai-trainer.js','battle-control.js') as $file) $extras .= '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>' . "\n";
+    $body = preg_replace('#<script>\s*/\* Extra runtimes[\s\S]*?</script>#', $extras, $body, 1, $replacementCount);
+    if ($replacementCount === 1) { header('X-Grasstex-Source: github-modular'); echo $body; exit; }
 }
 
-$fallback = $root . '/battle_sim.html';
-if (is_file($fallback) && is_readable($fallback)) {
-    $body = @file_get_contents($fallback);
-    if ($body !== false) {
-        $body = pin_loader_ref($body, $resolvedRef);
-        header('X-Grasstex-Source: local-fallback');
-        echo $body;
-        exit;
-    }
-}
-
+/* A full local deployment can still render itself if GitHub is temporarily unavailable. */
+$localEntry = $root . '/battle_sim_local.php';
+if (is_file($localEntry) && is_readable($localEntry)) { require $localEntry; exit; }
 header('HTTP/1.1 503 Service Unavailable');
-echo '<!doctype html><html><body style="font-family:Arial;background:#111;color:#fff;padding:30px"><h1>Battle sim unavailable</h1><p>GitHub could not be reached and local battle_sim.html was not found.</p></body></html>';
+echo '<!doctype html><html><body style="font-family:Arial;background:#111;color:#fff;padding:30px"><h1>Battle sim unavailable</h1><p>The modular battle page could not be loaded.</p></body></html>';
 ?>

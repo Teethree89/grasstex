@@ -10,9 +10,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';
-if ($origin !== '' && parse_url($origin, PHP_URL_HOST) !== 'test.ivandpopov.com') {
+if ($origin === '' || parse_url($origin, PHP_URL_HOST) !== 'test.ivandpopov.com') {
     http_response_code(403);
-    echo json_encode(array('ok'=>false,'error'=>'origin rejected'));
+    echo json_encode(array('ok'=>false,'error'=>'same-origin request required'));
     exit;
 }
 
