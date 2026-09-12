@@ -1,11 +1,11 @@
-/* Hierarchical tactical coordinator for Battle Sim v16.
+/* Hierarchical tactical coordinator for Battle Sim v17.
    This is intentionally a game-AI command layer: it coordinates the five existing squads,
    assigns roles/routes, enforces cohesion, pauses at urban corners and adapts after losses.
    Individual fire/LOS/hit logic stays in squad-ai.js. */
 (function(root){
   'use strict';
-  root.BATTLE_BUILD='v16';
-  console.log('[COMMAND] runtime v16 loaded');
+  root.BATTLE_BUILD='v17';
+  console.log('[COMMAND] runtime v17 loaded');
   if(!root.BattleSim||!root.SquadAI)return;
 
   var oldStart=root.BattleSim.start;
@@ -139,7 +139,7 @@
       var dt=scene.getEngine().getDeltaTime()/1000*sim.timeScale;sim._commandAccum+=Math.min(.25,Math.max(0,dt));
       if(sim._commandAccum>=COMMAND_TICK){sim._commandAccum-=COMMAND_TICK;updateCommander(sim,town);}
     });
-    console.log('[COMMAND] v16 hierarchical AI active; village sectors + coordinated routes loaded');
+    console.log('[COMMAND] v17 hierarchical AI active; village sectors + coordinated routes loaded');
     return sim;
   };
 
