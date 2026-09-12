@@ -4,6 +4,7 @@
    Individual fire/LOS/hit logic stays in squad-ai.js. */
 (function(root){
   'use strict';
+  root.BATTLE_BUILD='v15';
   if(!root.BattleSim||!root.SquadAI)return;
 
   var oldStart=root.BattleSim.start;
