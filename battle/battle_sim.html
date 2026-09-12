@@ -66,6 +66,16 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 <script src="squad-ai.js"></script>
 <script src="battle-sim.js"></script>
 <script>
+/* The root loader inlines the five battle scripts above. This sixth runtime stays separate so
+   its URL can use the exact immutable BATTLE_REF resolved by battle_sim.php. document.write
+   here is intentional: during parser execution it makes this external script blocking, so
+   the acoustics overrides are installed before the scene/battle initialization below. */
+(function(){
+  var ref=window.BATTLE_REF||'main';
+  document.write('<script src="https://raw.githubusercontent.com/Teethree89/grasstex/'+encodeURIComponent(ref)+'/battle/acoustics.js?ts='+Date.now()+'"><\/script>');
+})();
+</script>
+<script>
 (function(){
   var build=window.BATTLE_BUILD||'dev',ref=window.BATTLE_REF||'direct';
   var buildEl=document.getElementById('buildVersion');buildEl.textContent=build;
