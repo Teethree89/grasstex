@@ -31,8 +31,8 @@ jobs:
           set -euo pipefail
           php -l battle_sim_local.php
           php -l battle_log.php
+          test -s battle/battle_sim.html
           for f in \
-            battle/battle_sim.html \
             battle/soldier.js \
             battle/weapons.js \
             battle/terrain-features.js \
@@ -44,6 +44,7 @@ jobs:
             battle/commander-ai.js \
             battle/battle-control.js; do
             test -s "$f"
+            node --check "$f"
           done
           echo "Deploying commit: $(git rev-parse HEAD)"
 
