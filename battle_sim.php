@@ -2,12 +2,12 @@
 /* Live Battle Sim proxy plus asset mirroring.
 
    GitHub remains the source of the live loader and any files committed under Assets/.
-   50webs mirrors changed GitHub assets locally. The live loader is fetched from GitHub's
-   Contents API first so branch updates do not depend on raw.githubusercontent.com's CDN
-   propagation; raw GitHub remains a fallback. */
+   Every request resolves the requested branch/ref to one immutable commit SHA first. That
+   SHA is then used for the loader, JS source and mirrored Assets so a deployment can never
+   mix objects from different cached resolutions of a moving branch such as main. */
 
 $repo = 'Teethree89/grasstex';
-$branch = 'main';
+$requestedRef = isset($_GET['ref']) && $_GET['ref'] !== '' ? $_GET['ref'] : 'main';
 $root = dirname(__FILE__);
 $stateFile = $root . '/.battle-assets-state.json';
 $syncInterval = 60;
@@ -22,6 +22,7 @@ function gh_get($url, $binary = false) {
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
     curl_setopt($ch, CURLOPT_TIMEOUT, $binary ? 30 : 20);
     curl_setopt($ch, CURLOPT_USERAGENT, 'grasstex-50webs');
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array('Cache-Control: no-cache', 'Pragma: no-cache'));
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
     $body = curl_exec($ch);
@@ -44,12 +45,23 @@ function asset_path_safe($path) {
     return strpos($path, 'Assets/') === 0 && strpos($path, '..') === false && strpos($path, "\0") === false;
 }
 
+/* Resolve the moving ref once. All downstream GitHub URLs use this immutable SHA. */
+$resolvedRef = $requestedRef;
+$commitUrl = 'https://api.github.com/repos/' . $repo . '/commits/' . rawurlencode($requestedRef) . '?cb=' . microtime(true);
+$commitBody = gh_get($commitUrl);
+if ($commitBody !== false) {
+    $commit = json_decode($commitBody, true);
+    if (is_array($commit) && isset($commit['sha']) && preg_match('/^[0-9a-f]{40}$/i', $commit['sha'])) {
+        $resolvedRef = $commit['sha'];
+    }
+}
+
 /* Keep the historical compact texture bootstrap for old deployments that still need it. */
 $dirtDest = $root . '/Assets/dirttex.jpg';
 $skyDest = $root . '/Assets/skytex.jpg';
 if (!is_file($dirtDest) || @filesize($dirtDest) < 1024 || !is_file($skyDest) || @filesize($skyDest) < 1024) {
     $legacyCommit = '77968e5a83012003ca122831095e0cf945ac2116';
-    $legacyUrl = 'https://raw.githubusercontent.com/' . $repo . '/' . $legacyCommit . '/battle/battle-sim.js?ts=' . time();
+    $legacyUrl = 'https://raw.githubusercontent.com/' . $repo . '/' . $legacyCommit . '/battle/battle-sim.js?cb=' . microtime(true);
     $legacy = gh_get($legacyUrl);
     if ($legacy === false) {
         $textureBootstrapStatus = 'source-fetch-failed';
@@ -71,7 +83,7 @@ if (!is_file($dirtDest) || @filesize($dirtDest) < 1024 || !is_file($skyDest) || 
     }
 }
 
-$state = array('checked_at' => 0, 'files' => array());
+$state = array('checked_at' => 0, 'files' => array(), 'resolved_ref' => '');
 if (is_file($stateFile) && is_readable($stateFile)) {
     $decoded = json_decode(@file_get_contents($stateFile), true);
     if (is_array($decoded)) $state = array_merge($state, $decoded);
@@ -83,8 +95,10 @@ foreach ($requiredAudio as $audioFile) {
     if (!is_file($root . '/Assets/audio/' . $audioFile)) { $missingRequiredAsset = true; break; }
 }
 
-if ($missingRequiredAsset || time() - intval($state['checked_at']) >= $syncInterval) {
-    $treeUrl = 'https://api.github.com/repos/' . $repo . '/git/trees/' . rawurlencode($branch) . '?recursive=1&ts=' . time();
+/* A new resolved commit bypasses the normal 60-second sync interval immediately. */
+$refChanged = !isset($state['resolved_ref']) || $state['resolved_ref'] !== $resolvedRef;
+if ($missingRequiredAsset || $refChanged || time() - intval($state['checked_at']) >= $syncInterval) {
+    $treeUrl = 'https://api.github.com/repos/' . $repo . '/git/trees/' . rawurlencode($resolvedRef) . '?recursive=1&cb=' . microtime(true);
     $treeBody = gh_get($treeUrl);
     if ($treeBody === false) {
         $syncStatus = 'tree-fetch-failed';
@@ -112,7 +126,7 @@ if ($missingRequiredAsset || time() - intval($state['checked_at']) >= $syncInter
                     $segments = explode('/', $path);
                     $encoded = array();
                     foreach ($segments as $segment) $encoded[] = rawurlencode($segment);
-                    $rawUrl = 'https://raw.githubusercontent.com/' . $repo . '/' . rawurlencode($branch) . '/' . implode('/', $encoded) . '?ts=' . time();
+                    $rawUrl = 'https://raw.githubusercontent.com/' . $repo . '/' . rawurlencode($resolvedRef) . '/' . implode('/', $encoded) . '?cb=' . microtime(true);
                     $bytes = gh_get($rawUrl, true);
                     if ($bytes === false) { $failed++; continue; }
                     if (!atomic_write($dest, $bytes)) { $failed++; continue; }
@@ -124,25 +138,31 @@ if ($missingRequiredAsset || time() - intval($state['checked_at']) >= $syncInter
         }
     }
     $state['checked_at'] = time();
+    $state['resolved_ref'] = $resolvedRef;
     @file_put_contents($stateFile, json_encode($state), LOCK_EX);
 }
 
 header('Content-Type: text/html; charset=utf-8');
-header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: 0');
+header('Surrogate-Control: no-store');
 header('X-Grasstex-Asset-Sync: ' . $syncStatus);
 header('X-Grasstex-Texture-Bootstrap: ' . $textureBootstrapStatus);
+header('X-Grasstex-Requested-Ref: ' . preg_replace('/[^0-9A-Za-z._\/-]/', '', $requestedRef));
+header('X-Grasstex-Resolved-Ref: ' . preg_replace('/[^0-9A-Fa-f]/', '', $resolvedRef));
 
-/* Resolve current main through GitHub's Contents API first. This avoids the occasional lag
-   observed when raw.githubusercontent.com/main still serves the preceding object briefly. */
-$apiUrl = 'https://api.github.com/repos/' . $repo . '/contents/battle_sim.html?ref=' . rawurlencode($branch) . '&ts=' . time();
+/* Fetch the loader by immutable SHA through GitHub's Contents API. */
+$apiUrl = 'https://api.github.com/repos/' . $repo . '/contents/battle_sim.html?ref=' . rawurlencode($resolvedRef) . '&cb=' . microtime(true);
 $apiBody = gh_get($apiUrl);
 if ($apiBody !== false) {
     $api = json_decode($apiBody, true);
     if (is_array($api) && isset($api['content'], $api['encoding']) && $api['encoding'] === 'base64') {
         $body = base64_decode(str_replace(array("\r", "\n"), '', $api['content']), true);
         if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false) {
+            /* Make the loader's default REF the exact SHA we resolved server-side. Explicit
+               ?ref= still wins because the loader checks the query parameter first. */
+            $body = str_replace("get('ref')||'main'", "get('ref')||'" . $resolvedRef . "'", $body);
             header('X-Grasstex-Source: github-contents-api');
             if (isset($api['sha'])) header('X-Grasstex-Loader-SHA: ' . $api['sha']);
             echo $body;
@@ -151,9 +171,11 @@ if ($apiBody !== false) {
     }
 }
 
-$rawUrl = 'https://raw.githubusercontent.com/' . $repo . '/' . $branch . '/battle_sim.html?pull=' . time();
+/* Raw fallback is still immutable because it also uses the resolved commit SHA. */
+$rawUrl = 'https://raw.githubusercontent.com/' . $repo . '/' . rawurlencode($resolvedRef) . '/battle_sim.html?cb=' . microtime(true);
 $body = gh_get($rawUrl);
 if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false) {
+    $body = str_replace("get('ref')||'main'", "get('ref')||'" . $resolvedRef . "'", $body);
     header('X-Grasstex-Source: github-raw-fallback');
     echo $body;
     exit;
@@ -161,9 +183,13 @@ if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false)
 
 $fallback = $root . '/battle_sim.html';
 if (is_file($fallback) && is_readable($fallback)) {
-    header('X-Grasstex-Source: local-fallback');
-    readfile($fallback);
-    exit;
+    $body = @file_get_contents($fallback);
+    if ($body !== false) {
+        $body = str_replace("get('ref')||'main'", "get('ref')||'" . $resolvedRef . "'", $body);
+        header('X-Grasstex-Source: local-fallback');
+        echo $body;
+        exit;
+    }
 }
 
 header('HTTP/1.1 503 Service Unavailable');
