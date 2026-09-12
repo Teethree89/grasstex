@@ -38,6 +38,7 @@
     var status=document.createElement('div');status.id='aiTestStatus';status.style.cssText='margin-top:6px;color:#a8ab8e;font-size:10px;line-height:1.35';status.textContent='AI log: active';box.appendChild(status);
     var objective=document.createElement('div');objective.id='objectiveDetail';objective.style.cssText='margin-top:5px;color:#b9bea7;font-size:10px;line-height:1.35';box.appendChild(objective);
     hud.appendChild(box);
+    setInterval(function(){var o=document.getElementById('objectiveDetail');if(o)o.textContent=objectiveText(sim);},500);
   }
 
   function endBattle(sim,reason){
@@ -93,10 +94,8 @@
     if(root.BattleTelemetry)root.BattleTelemetry.ensure(sim,'live');
     sim.spawnReinforcement=function(faction){return spawnReinforcement(sim,faction);};
     sim.endBattle=function(reason){endBattle(sim,reason);};
-    sim.restart=function(){var wasPaused=sim.paused;if(root.BattleTelemetry)root.BattleTelemetry.end(sim,'restart');rawRestart();sim.manualEnded=false;sim.paused=wasPaused;if(root.BattleTelemetry)root.BattleTelemetry.start(sim,'live',{restart:true});var s=document.getElementById('aiTestStatus');if(s)s.textContent='AI log: active';};
+    sim.restart=function(){var resumeAfter=sim.manualEnded||!sim.paused;if(root.BattleTelemetry)root.BattleTelemetry.end(sim,'restart');rawRestart();sim.manualEnded=false;sim.paused=!resumeAfter;if(root.BattleTelemetry)root.BattleTelemetry.start(sim,'live',{restart:true});var s=document.getElementById('aiTestStatus');if(s)s.textContent='AI log: active';};
     installUi(sim);
-    var previousUpdate=sim.onUpdate;
-    sim.onUpdate=function(s){if(previousUpdate)previousUpdate(s);var o=document.getElementById('objectiveDetail');if(o)o.textContent=objectiveText(s);};
     telemetry(sim,'battle-start',{usAlive:sim.factions.us.alive,geAlive:sim.factions.ge.alive});
     return sim;
   };
