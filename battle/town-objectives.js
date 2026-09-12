@@ -1,10 +1,11 @@
-/* Central village/objective layer for Battle Sim v15.
+/* Central village/objective layer for Battle Sim v16.
    Wraps BattleTerrainFeatures.scatter so existing callers automatically receive a small
    village, its collision/cover obstacles, urban corner nodes and capture sectors. */
 (function(root){
   'use strict';
   if(typeof BABYLON==='undefined'||!root.BattleTerrainFeatures)return;
-  root.BATTLE_BUILD='v15';
+  root.BATTLE_BUILD='v16';
+  console.log('[TOWN] runtime v16 loaded');
 
   var oldScatter=root.BattleTerrainFeatures.scatter;
   var WALL=new BABYLON.Color3(.52,.48,.39),ROOF=new BABYLON.Color3(.28,.19,.14),ROAD=new BABYLON.Color3(.24,.23,.21),SQUARE=new BABYLON.Color3(.36,.34,.29);
@@ -41,7 +42,7 @@
   root.BattleTerrainFeatures.scatter=function(scene,heightAt,opts){
     opts=opts||{};var base=oldScatter(scene,heightAt,Object.assign({},opts,{clumpCount:opts.clumpCount||17,hedgeRows:opts.hedgeRows||3}));
     var town=buildTown(scene,heightAt),oldDispose=base.dispose;base.obstacles=base.obstacles.concat(town.obstacles);base.town=town;base.dispose=function(){oldDispose&&oldDispose();town.dispose();};
-    console.log('[TOWN] village built; buildings=6 sectors=3 obstacles='+town.obstacles.length);return base;
+    console.log('[TOWN] v16 village built; buildings=6 sectors=3 obstacles='+town.obstacles.length);return base;
   };
 
   root.BattleTownObjectives={build:buildTown};
