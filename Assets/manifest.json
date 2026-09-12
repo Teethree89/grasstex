@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "base": "Assets/",
   "files": [
     "grasstex0.png",
@@ -16,13 +16,17 @@
     "terrain/terrain.bin",
     "terrain/splat.png",
     "terrain/roaduv.png",
+    "audio/manifest.json",
     "audio/rifle.mp3",
     "audio/carbine.mp3",
     "audio/lmg.mp3",
     "audio/pistol.mp3"
   ],
+  "manifests": {
+    "audio": "audio/manifest.json"
+  },
   "notes": {
-    "audio": "Tracked in Git and mirrored to 50webs by battle_sim.php.",
+    "audio": "Assets/audio/manifest.json is the canonical runtime/event contract. Existing weapon MP3s remain at the audio root until their runtime paths migrate into category folders.",
     "textures": "Legacy deployment filenames reconstructed from the current and pinned loaders. Existing hosted texture files remain authoritative until their exact binaries are imported into Git.",
     "terrain": "Baked terrain pack expected by terrain-baked.js. Existing hosted terrain files remain authoritative until their exact binaries are imported into Git."
   }
