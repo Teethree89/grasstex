@@ -33,6 +33,20 @@
   }
 
   root.BattleModules.registerSystem('building-hardpoints',{version:'20',onCommanderTick:function(sim){assignWindows(sim);},beforeBattleRestart:function(sim){['us','ge'].forEach(function(f){(sim._roster[f]||[]).forEach(function(s){root.BattleNavigation.releaseWindow(s);});});}});
+
+  /* Modules are intentionally loaded after commander-ai in v20. This final wrapper lets a
+     hardpoint claim override ordinary formation movement without teaching commander-ai what a
+     window is. */
+  if(root.SquadAI&&root.SquadAI.updateSoldier){
+    var oldUpdate=root.SquadAI.updateSoldier;
+    root.SquadAI.updateSoldier=function(soldier,battle){
+      oldUpdate(soldier,battle);
+      var d=directive(soldier,battle);if(!d)return;
+      soldier.destination={x:d.x,z:d.z};soldier.prone=false;
+      if(d.arrived){soldier.destination={x:soldier.root.position.x,z:soldier.root.position.z};if(soldier.role==='gunner'){soldier.setUpSince=soldier.setUpSince||battle.time;soldier.setUp=battle.time-soldier.setUpSince>1.0;}}
+    };
+  }
+
   root.BattleBuildingHardpoints={assign:assignWindows,directive:directive};
   console.log('[HARDPOINT] window occupation tactics v20 loaded');
 })(typeof window!=='undefined'?window:globalThis);
