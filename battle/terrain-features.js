@@ -1,17 +1,14 @@
 /* Battlefield clutter: the cover field. Hedgerow network, tree copses and low cover (rocks,
-   fallen logs, field-wall stubs), built the same way as soldier.js/weapons.js (merged primitives,
-   vertex colors, one shared material) and then merged again per grid cell so a dense field still
-   costs only a handful of draw calls.
+   fallen logs, field-wall stubs), built from merged primitives so a dense field remains cheap.
 
-   These are more than scenery. Each one registers a plain-data circular obstacle carrying its
-   ground height and its physical height, which obstacle-field.js uses to answer sight and cover
-   questions per stance: a knee-high rock hides a prone man and not a standing one. That is what
-   gives the engagement pipeline a reason to put soldiers on the ground. Nothing here blocks
-   MOVEMENT - soldiers steer around obstacles but can walk through the space a tree occupies;
-   only building walls are hard barriers (see battle-navigation.js).
+   Every feature publishes TWO representations:
+     1. circular tactical obstacles used by BattleObstacleField for LOS / cover scoring;
+     2. mesh-aligned physical footprints used by navigation for actual movement clearance.
 
-   Deterministic (seeded RNG) so the same seed always produces the same field - useful for
-   comparing two AI changes on identical terrain rather than a different battlefield each time. */
+   Keeping those separate matters. A hedge may influence cover several metres from its leaves, but
+   its movement blocker should match the long thin hedge mesh rather than a row of giant circles.
+   Physical footprints describe the ground-contact geometry before the soldier clearance margin is
+   added by navigation. */
 (function(root){
   'use strict';
   if(typeof BABYLON==='undefined')return;
@@ -53,7 +50,6 @@
     return sharedMat;
   }
 
-  // A cheap deterministic PRNG (mulberry32) so a given seed always lays out the same field.
   function mulberry32(seed){
     var a=seed>>>0;
     return function(){
@@ -69,23 +65,13 @@
     var trunk=cylinder(scene,.22*scale,trunkH,TRUNK,[0,trunkH/2,0]);
     var foliage=cone(scene,2.4*scale,2.6*scale,leafColor,[0,trunkH+1.1*scale,0]);
     var mesh=BABYLON.Mesh.MergeMeshes([trunk,foliage],true,true,undefined,false,false);
-    mesh.material=featureMaterial(scene);mesh.isPickable=false;
-    mesh.position.set(x,y,z);
-    return mesh;
+    mesh.material=featureMaterial(scene);mesh.isPickable=false;mesh.position.set(x,y,z);return mesh;
   }
-
   function buildHedgeSegment(scene,ax,az,bx,bz,y){
-    var dx=bx-ax,dz=bz-az,len=Math.hypot(dx,dz);
-    var mesh=box(scene,[len,1.5,1.1],HEDGE,[0,.75,0]);
-    mesh.material=featureMaterial(scene);mesh.isPickable=false;
-    mesh.position.set((ax+bx)/2,y,(az+bz)/2);
-    mesh.rotation.y=-Math.atan2(dz,dx);
-    return mesh;
+    var dx=bx-ax,dz=bz-az,len=Math.hypot(dx,dz),mesh=box(scene,[len,1.5,1.1],HEDGE,[0,.75,0]);
+    mesh.material=featureMaterial(scene);mesh.isPickable=false;mesh.position.set((ax+bx)/2,y,(az+bz)/2);mesh.rotation.y=-Math.atan2(dz,dx);return mesh;
   }
 
-  /* Merged buckets: the field is scattered densely enough for infantry to always have something
-     to get behind, so the meshes are combined per grid cell. One draw call per cell keeps the
-     clutter cheap while frustum culling still works. */
   var MERGE_CELL=260;
   function mergeBuckets(scene,entries){
     var buckets={},out=[];
@@ -97,119 +83,81 @@
       var list=buckets[key];
       if(list.length===1){out.push(list[0]);return;}
       var merged=BABYLON.Mesh.MergeMeshes(list,true,true,undefined,false,false);
-      if(merged){merged.material=featureMaterial(scene);merged.isPickable=false;merged.freezeWorldMatrix&&merged.freezeWorldMatrix();out.push(merged);}
-      else out.push.apply(out,list);
+      if(merged){merged.material=featureMaterial(scene);merged.isPickable=false;merged.freezeWorldMatrix&&merged.freezeWorldMatrix();out.push(merged);}else out.push.apply(out,list);
     });
     return out;
   }
 
-  function buildRock(scene,x,y,z,size,rng){
-    var m=box(scene,[size*1.8,size,size*1.5],ROCK,[0,size/2,0],[0,rng()*Math.PI,0]);
-    m.position.set(x,y,z);
-    return m;
-  }
-  function buildLog(scene,x,y,z,len,rng){
-    var m=cylinder(scene,.55,len,TRUNK,null);
-    m.rotation.z=Math.PI/2;m.rotation.y=rng()*Math.PI;m.bakeCurrentTransformIntoVertices();
-    m.position.set(x,y+.28,z);
-    return m;
-  }
-  function buildWallStub(scene,x,y,z,len,rot){
-    var m=box(scene,[len,1.05,.5],STONE,[0,.52,0],[0,rot,0]);
-    m.position.set(x,y,z);
-    return m;
-  }
+  function buildRock(scene,x,y,z,size,rot){var m=box(scene,[size*1.8,size,size*1.5],ROCK,[0,size/2,0],[0,rot,0]);m.position.set(x,y,z);return m;}
+  function buildLog(scene,x,y,z,len,rot){var m=cylinder(scene,.55,len,TRUNK,null);m.rotation.z=Math.PI/2;m.rotation.y=rot;m.bakeCurrentTransformIntoVertices();m.position.set(x,y+.28,z);return m;}
+  function buildWallStub(scene,x,y,z,len,rot){var m=box(scene,[len,1.05,.5],STONE,[0,.52,0],[0,rot,0]);m.position.set(x,y,z);return m;}
 
-  /* Scatters a whole battlefield's worth of cover: a gapped hedgerow network across both axes,
-     tree copses, and low cover (rocks, fallen logs, field-wall stubs) in between.
-
-     The old version only ever filled a ~190 m band of z and laid its hedgerow segments from one
-     edge with no wrap, so a 2000 x 1200 m field ended up with about a hundred trees and a few
-     hedge stubs in one corner. With nothing to get behind, the AI's cover drills could never fire
-     and every soldier fought standing in the open - which is what made the battle look like a
-     walking-and-aiming loop rather than a firefight. Density here is derived from the actual field
-     area so any map size gets usable cover.
-
-     Every obstacle carries its ground height y and its physical height, so obstacle-field.js can
-     answer "does this hide a standing man / a crouching man / a prone man" rather than treating a
-     knee-high rock as a wall. */
   function scatter(scene,heightAt,opts){
     opts=opts||{};
-    var fieldW=opts.fieldW||360,fieldD=opts.fieldD||(opts.keepoutZ?opts.keepoutZ*2.2:190);
-    var keepoutZ=opts.keepoutZ||fieldD*.46;
-    var rng=mulberry32(opts.seed||1337);
-    var halfW=fieldW*.46,entries=[],obstacles=[];
-    var area=(halfW*2)*(keepoutZ*2);
+    var fieldW=opts.fieldW||360,fieldD=opts.fieldD||(opts.keepoutZ?opts.keepoutZ*2.2:190),keepoutZ=opts.keepoutZ||fieldD*.46;
+    var rng=mulberry32(opts.seed||1337),halfW=fieldW*.46,entries=[],obstacles=[],physical=[],area=(halfW*2)*(keepoutZ*2),physicalSeq=0;
 
     function place(mesh,x,z){entries.push({mesh:mesh,x:x,z:z});}
-    function addObstacle(x,z,radius,cover,height,type){obstacles.push({x:x,z:z,y:heightAt(x,z),radius:radius,cover:cover,height:height,type:type});}
+    function addObstacle(x,z,radius,cover,height,type,physicalId){obstacles.push({x:x,z:z,y:heightAt(x,z),radius:radius,cover:cover,height:height,type:type,physicalId:physicalId||null});}
+    function axes(rot){var c=Math.cos(rot||0),s=Math.sin(rot||0);return{ux:c,uz:-s,vx:s,vz:c};}
+    function addObb(x,z,hx,hz,rot,type,id){var a=axes(rot),fp={id:id||('physical-'+physicalSeq++),type:type,shape:'obb',x:x,z:z,hx:hx,hz:hz,ux:a.ux,uz:a.uz,vx:a.vx,vz:a.vz};physical.push(fp);return fp;}
+    function addSegmentObb(ax,az,bx,bz,width,type,id){var dx=bx-ax,dz=bz-az,len=Math.hypot(dx,dz)||.001,ux=dx/len,uz=dz/len,fp={id:id||('physical-'+physicalSeq++),type:type,shape:'obb',x:(ax+bx)/2,z:(az+bz)/2,hx:len/2,hz:width/2,ux:ux,uz:uz,vx:-uz,vz:ux};physical.push(fp);return fp;}
+    function addCircle(x,z,radius,type,id){var fp={id:id||('physical-'+physicalSeq++),type:type,shape:'circle',x:x,z:z,radius:radius};physical.push(fp);return fp;}
 
-    /* --- hedgerow network: the spine of the field's cover and of its sight lines --------------- */
+    /* Hedgerow meshes are long thin boxes. Cover still uses point samples for cheap LOS math, but
+       physical navigation gets ONE oriented rectangle per rendered hedge segment. */
     var rowGap=opts.hedgeRowGap||140,colGap=opts.hedgeColGap||260;
     function hedgeLine(along,fixed,horizontal){
       var span=horizontal?halfW*2:keepoutZ*2,cursor=-span/2+rng()*40;
       while(cursor<span/2-14){
-        var segLen=26+rng()*34,gap=14+rng()*26;
-        if(cursor+segLen>span/2)segLen=span/2-cursor;
-        if(segLen<10)break;
-        var jag=(rng()-.5)*7;
-        var ax=horizontal?cursor:fixed,az=horizontal?fixed+jag:cursor;
-        var bx=horizontal?cursor+segLen:fixed-jag,bz=horizontal?fixed-jag:cursor+segLen;
-        var y=heightAt((ax+bx)/2,(az+bz)/2);
+        var segLen=26+rng()*34,gap=14+rng()*26;if(cursor+segLen>span/2)segLen=span/2-cursor;if(segLen<10)break;
+        var jag=(rng()-.5)*7,ax=horizontal?cursor:fixed,az=horizontal?fixed+jag:cursor,bx=horizontal?cursor+segLen:fixed-jag,bz=horizontal?fixed-jag:cursor+segLen;
+        var y=heightAt((ax+bx)/2,(az+bz)/2),fp=addSegmentObb(ax,az,bx,bz,1.1,'hedge','hedge-'+physicalSeq++);
         place(buildHedgeSegment(scene,ax,az,bx,bz,y),(ax+bx)/2,(az+bz)/2);
-        /* A handful of point obstacles along the segment stand in for its whole length, rather
-           than one long thin one, so every blocking test only reasons about circles. */
         var steps=Math.max(1,Math.round(segLen/7));
-        for(var p=0;p<=steps;p++){
-          var u=p/steps;
-          addObstacle(ax+(bx-ax)*u,az+(bz-az)*u,3.4,.62,1.5,'hedge');
-        }
+        for(var p=0;p<=steps;p++){var u=p/steps;addObstacle(ax+(bx-ax)*u,az+(bz-az)*u,3.4,.62,1.5,'hedge',fp.id);}
         cursor+=segLen+gap;
       }
     }
     for(var rz=-keepoutZ+rowGap*.5;rz<keepoutZ;rz+=rowGap)hedgeLine(0,rz+(rng()-.5)*22,true);
     for(var cx=-halfW+colGap*.5;cx<halfW;cx+=colGap)hedgeLine(0,cx+(rng()-.5)*30,false);
 
-    /* --- tree copses -------------------------------------------------------------------------- */
+    /* Trees physically block at the trunk; their much larger foliage/cover radius remains tactical. */
     var copses=opts.clumpCount||Math.max(8,Math.round(area/16000));
     for(var i=0;i<copses;i++){
       var ccx=(rng()-.5)*halfW*2,ccz=(rng()-.5)*keepoutZ*2,n=2+Math.floor(rng()*3);
       for(var t=0;t<n;t++){
-        var tx=ccx+(rng()-.5)*11,tz=ccz+(rng()-.5)*11,scale=.85+rng()*.7,ty=heightAt(tx,tz);
-        place(buildTree(scene,tx,ty,tz,scale,LEAF[Math.floor(rng()*LEAF.length)]),tx,tz);
-        addObstacle(tx,tz,1.15*scale,.72,2.2*scale,'tree');
+        var tx=ccx+(rng()-.5)*11,tz=ccz+(rng()-.5)*11,scale=.85+rng()*.7,ty=heightAt(tx,tz),treeFp=addCircle(tx,tz,.11*scale,'tree','tree-'+physicalSeq++);
+        place(buildTree(scene,tx,ty,tz,scale,LEAF[Math.floor(rng()*LEAF.length)]),tx,tz);addObstacle(tx,tz,1.15*scale,.72,2.2*scale,'tree',treeFp.id);
       }
     }
 
-    /* --- low cover: the stuff a man actually drops behind -------------------------------------- */
     var lowCover=opts.lowCoverCount||Math.max(12,Math.round(area/3000));
     for(i=0;i<lowCover;i++){
       var lx=(rng()-.5)*halfW*2,lz=(rng()-.5)*keepoutZ*2,ly=heightAt(lx,lz),roll=rng();
       if(roll<.45){
-        var size=.7+rng()*.5;
-        place(buildRock(scene,lx,ly,lz,size,rng),lx,lz);
-        addObstacle(lx,lz,size*1.1,.55,size,'rock');
+        var size=.7+rng()*.5,rockRot=rng()*Math.PI,rockFp=addObb(lx,lz,size*.9,size*.75,rockRot,'rock','rock-'+physicalSeq++);
+        place(buildRock(scene,lx,ly,lz,size,rockRot),lx,lz);addObstacle(lx,lz,size*1.1,.55,size,'rock',rockFp.id);
       }else if(roll<.75){
-        var len=2.6+rng()*2.4;
-        place(buildLog(scene,lx,ly,lz,len,rng),lx,lz);
-        addObstacle(lx,lz,len*.42,.60,.62,'log');
+        var len=2.6+rng()*2.4,logRot=rng()*Math.PI,logFp=addObb(lx,lz,len/2,.275,logRot,'log','log-'+physicalSeq++);
+        place(buildLog(scene,lx,ly,lz,len,logRot),lx,lz);addObstacle(lx,lz,len*.42,.60,.62,'log',logFp.id);
       }else{
-        var wl=4+rng()*7,rot=rng()*Math.PI;
+        var wl=4+rng()*7,rot=rng()*Math.PI,wallFp=addObb(lx,lz,wl/2,.25,rot,'wall','wall-'+physicalSeq++);
         place(buildWallStub(scene,lx,ly,lz,wl,rot),lx,lz);
         var steps2=Math.max(1,Math.round(wl/3));
-        for(var q=0;q<=steps2;q++){
-          var v=(q/steps2-.5)*wl;
-          addObstacle(lx+Math.cos(rot)*v,lz-Math.sin(rot)*v,1.6,.50,1.05,'wall');
-        }
+        for(var q=0;q<=steps2;q++){var v=(q/steps2-.5)*wl;addObstacle(lx+Math.cos(rot)*v,lz-Math.sin(rot)*v,1.6,.50,1.05,'wall',wallFp.id);}
       }
     }
 
+    /* Array sidecars preserve all existing call sites while giving navigation the exact ground
+       footprint. They are intentionally separate from obstacle.length so BattleObstacleField's
+       spatial index continues indexing tactical cover samples only. */
+    obstacles.__physicalFootprints=physical;
+    obstacles.__physicalVersion=2;
+
     var meshes=mergeBuckets(scene,entries);
-    console.log('[TERRAIN] cover field: '+obstacles.length+' obstacles in '+meshes.length+' merged meshes over '+Math.round(halfW*2)+'x'+Math.round(keepoutZ*2)+'m');
-    return {
-      obstacles:obstacles,
-      dispose:function(){for(var i=0;i<meshes.length;i++){try{meshes[i].dispose();}catch(_){}}meshes.length=0;}
-    };
+    console.log('[TERRAIN] cover field: '+obstacles.length+' tactical obstacles · '+physical.length+' mesh footprints in '+meshes.length+' merged meshes over '+Math.round(halfW*2)+'x'+Math.round(keepoutZ*2)+'m');
+    return{obstacles:obstacles,physicalFootprints:physical,dispose:function(){for(var i=0;i<meshes.length;i++){try{meshes[i].dispose();}catch(_){}}meshes.length=0;}};
   }
 
   root.BattleTerrainFeatures={scatter:scatter};
