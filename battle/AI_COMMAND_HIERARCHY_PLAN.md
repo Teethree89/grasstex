@@ -24,6 +24,8 @@ Definition of done: a person reading the graph can answer "who owns this decisio
 
 ## Step 2 - Add order provenance and writer-conflict telemetry
 
+Status: **implemented observationally; no AI behavior change.**
+
 Instrument the fields that currently define intent and movement:
 
 - squad `commandPhase`
@@ -34,6 +36,15 @@ Instrument the fields that currently define intent and movement:
 - soldier final `destination`
 
 For every meaningful change record: value, owner/system, reason, timestamp and previous owner. Loop Watch should flag two systems alternately writing the same decision class even if the resulting positions are only a few meters apart.
+
+Implementation notes:
+
+- `36-order-provenance.js` instruments the live squad/soldier objects without changing their decision logic.
+- Writer attribution identifies Force Command, Capture Zone, Squad Stability, Prepared Defense, Building Hardpoints, Squad Orders and Engagement from the actual assignment call site.
+- In-place point mutations that bypass a property assignment are detected by a commander-tick sampler and marked explicitly as unknown in-place writes instead of being silently attributed.
+- Loop Watch cards gain an **ORDER PROVENANCE** trace showing recent owner transitions and exact field/value changes for the implicated squad or soldier.
+- The **Order Trace** panel reports only rapid multi-owner churn or `A -> B -> A` writer ping-pong as conflicts; normal one-way ownership handoffs remain visible but are not treated as bugs.
+- Conflict telemetry is emitted as `order-writer-conflict` for later causal analysis.
 
 Definition of done: every suspicious movement can be traced to the system that requested it and the system that finally executed it.
 
