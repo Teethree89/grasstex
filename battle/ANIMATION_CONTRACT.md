@@ -51,26 +51,50 @@ The package PDF identifies the license as the Standard Asset Store EULA: royalty
 
 ## Active baked procedural backend
 
-`battle/soldier.js` contains sampled joint-rotation tracks made from the user-supplied Human
-Soldier Animations FREE package. It drives the existing low-poly procedural
-body, rather than replacing that body with a skinned model. The baked tracks contain:
+`battle/soldier.js` contains rig-local joint-rotation tracks made from the user-supplied Human
+Soldier Animations FREE package. It drives the existing low-poly procedural body, rather than
+replacing that body with a skinned model. The baked tracks (format `version: 2`) contain:
 
 - `idle`, `walk`, `aim`, `fire`, `reload`
 - `death.front`, `death.back`, `death.side`
 
-`battle/soldier.js` interpolates those tracks on the procedural joints and keeps the existing
-weapon socket and faction/role geometry. The trainer can deliberately disable baked tracks so a
-24-match generation spends no time interpolating cosmetic pose data.
+Each frame stores one parent-relative quaternion per procedural joint plus the pelvis offset.
+The runtime applies them directly; it does not layer them over procedural poses.
 
 Regenerate the embedded tracks with `tools/build-procedural-soldier-animations.py` and the
-extracted package (`--inline-soldier battle/soldier.js`). The converter exports only pose deltas
-for shared joints; it never exports a mesh, skeleton, or inverse-bind matrix. Crouch and
-prone/crawl still use the hand-authored procedural poses because the free package has no
-corresponding clips.
+extracted package (`--inline-soldier battle/soldier.js`). The package FBX files do **not** share
+one rest pose (the idle/walk files and the rifle files differ), so the converter never exports
+`matrix_basis` deltas. It reads each bone's posed world orientation, converts it to soldier space
+(X right, Y up, Z forward), rebuilds the matching procedural joint frame (limbs hang along -Y,
+torso bones point along +Y, +Z faces forward) and stores the local rotation. It never exports a
+mesh, skeleton, or inverse-bind matrix.
 
-The in-page **Motion Lab** exposes every active package track alongside the procedural crouch
-and prone states. Use it to review a pose independently of live combat before enabling a new
-retarget mapping.
+Runtime rules:
+
+- **Layering.** Legs and pelvis play `walk` while moving; the torso, neck and head play the combat
+  clip (`aim`, `fire`, `reload`). Standing still, both halves play the same clip.
+- **Cross-fades.** When the lower or upper clip changes, that half of the pose is snapshotted and
+  eased into the new clip over 0.3 s, so a single shot never interrupts the walking legs.
+- **Deaths.** The clip's pelvis travel lowers the body to the ground. The pose root is not also
+  tipped over, which is what previously over-rotated deaths.
+- **Weapon hold (all living states, baked or procedural).** The weapon pose is chosen in body space,
+  with the butt anchored to the right shoulder: port-arms carry for idle/walk/crouch,
+  shouldered for aim/fire and prone, and tilted for reload. Two-bone IK then puts the right hand on
+  the grip and the left hand on the fore-end, or on the magazine well during reload. Package arm
+  tracks are used only for deaths, and there the rifle follows the right forearm.
+- Crouch and prone/crawl stay hand-authored because the free package has no such clips. A crouched
+  soldier with a target blades the torso so the support hand can reach the fore-end.
+
+Babylon zeroes a node's Euler `rotation` whenever `rotationQuaternion` is assigned. Returning from
+package clips to the Euler-driven crouch/prone poses therefore converts each joint's quaternion
+back to Euler first.
+
+The trainer can deliberately disable baked tracks so a 24-match generation spends no time
+interpolating cosmetic pose data. The weapon-hold IK still runs in that mode.
+
+The in-page **Motion Lab** exposes every package track, the layered walk + aim state, and the
+procedural crouch/crouch-aim/prone states. One-shot clips replay automatically. Use it to review a
+pose independently of live combat before enabling a new retarget mapping.
 
 ## Replacing the soldier with another skeletal GLTF
 
