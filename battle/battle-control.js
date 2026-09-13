@@ -11,6 +11,24 @@
   function scenario(sim){return sim&&sim.scene&&sim.scene.metadata&&(sim.scene.metadata.battleScenario||sim.scene.metadata.battleTown)||null;}
 
   function spawnUnit(sim,faction,typeId){if(sim._trainingRunning)return null;if(!root.BattleModules)throw new Error('Battle module registry unavailable');var result=root.BattleModules.spawnUnitType(typeId,sim,faction,{}),count=result&&result.count!=null?result.count:(result&&result.units?result.units.length:1);telemetry(sim,'reinforcement',{faction:faction,unitType:typeId,count:count,totalAlive:sim.factions[faction]&&sim.factions[faction].alive});return result;}
+  /* Live engagement readout. "Are they actually fighting or just walking about" should be
+     answerable from the HUD, not only from the telemetry log. */
+  function engagementText(sim){
+    if(!root.BattleEngagement)return'Engagement pipeline not loaded';
+    var counts={},contact=0,total=0;
+    ['us','ge'].forEach(function(f){
+      (sim._roster&&sim._roster[f]||[]).forEach(function(s){
+        if(s.dead)return;total++;
+        var st=root.BattleEngagement.stateOf(s).state||'advance';
+        counts[st]=(counts[st]||0)+1;
+      });
+      (sim.factions&&sim.factions[f]&&sim.factions[f].squads||[]).forEach(function(sq){if(sq.inContact)contact++;});
+    });
+    var order=['advance','alert','orient','bound','engage','pinned','assault','station','withdraw'];
+    var parts=order.filter(function(k){return counts[k];}).map(function(k){return k+' '+counts[k];});
+    Object.keys(counts).forEach(function(k){if(order.indexOf(k)<0)parts.push(k+' '+counts[k]);});
+    return contact+' squads in contact · '+(parts.join(' · ')||'no men')+' ('+total+' alive)';
+  }
   function objectiveText(sim){var control=sim.objectiveControl,objects=control&&(control.objectives||control.sectors);if(!objects)return'';var parts=[];Object.keys(objects).forEach(function(id){var x=objects[id]||{},owner=x.owner==='neutral'?'N':String(x.owner||'?').toUpperCase(),push=x.active?(' '+String(x.active).toUpperCase()+'→'+(x.progress||0)+'%'):'';parts.push((x.label||id)+': '+owner+push);});return parts.join(' · ');}
   function endBattle(sim,reason){if(sim._trainingRunning)return;sim.pause();sim.manualEnded=true;if(root.BattleTelemetry)root.BattleTelemetry.end(sim,reason||'manual',{usAlive:sim.factions.us.alive,geAlive:sim.factions.ge.alive,objectives:sim.objectiveControl||null,policyRevision:root.BattleAIPolicy?root.BattleAIPolicy.revision:0});var s=document.getElementById('aiTestStatus');if(s)s.textContent='Battle ended · decision logging stopped';console.log('[CONTROL] battle ended; telemetry flushed');}
   function formatStats(j){if(!j||!j.ok)return'Log stats unavailable';var p=j.policy&&j.policy.revision!=null?(' · genome r'+j.policy.revision):'';return'Logs: '+j.records+' events · '+j.battles+' battles · '+j.captures+' captures · '+j.sessions+' sessions'+p;}
@@ -29,8 +47,9 @@
     var status=document.createElement('div');status.id='aiTestStatus';status.style.cssText='margin-top:6px;color:#a8ab8e;font-size:10px;line-height:1.35';status.textContent='AI log: active · genome r'+(root.BattleAIPolicy?root.BattleAIPolicy.revision:0);box.appendChild(status);
     var scenarioInfo=document.createElement('div');scenarioInfo.id='scenarioInfo';scenarioInfo.style.cssText='margin-top:4px;color:#b9bea7;font-size:10px;line-height:1.35;word-break:break-all';box.appendChild(scenarioInfo);
     var logStats=document.createElement('div');logStats.id='logStats';logStats.style.cssText='margin-top:4px;color:#a8ab8e;font-size:10px;line-height:1.35';logStats.textContent='Logs: loading…';box.appendChild(logStats);
+    var engagement=document.createElement('div');engagement.id='engagementDetail';engagement.style.cssText='margin-top:5px;color:#cfd6b6;font-size:10px;line-height:1.35';box.appendChild(engagement);
     var objective=document.createElement('div');objective.id='objectiveDetail';objective.style.cssText='margin-top:5px;color:#b9bea7;font-size:10px;line-height:1.35';box.appendChild(objective);hud.appendChild(box);
-    setInterval(function(){var o=document.getElementById('objectiveDetail');if(o)o.textContent=objectiveText(sim);var sc=scenario(sim),e=document.getElementById('scenarioInfo');if(e&&sc)e.textContent='Scenario '+sc.id+' · seed '+sc.seed+' · '+sc.buildings.length+' buildings · '+sc.objectives.length+' objectives';},500);refreshStats(logStats);setInterval(function(){refreshStats(logStats);},15000);
+    setInterval(function(){var o=document.getElementById('objectiveDetail');if(o)o.textContent=objectiveText(sim);var eg=document.getElementById('engagementDetail');if(eg)eg.textContent=engagementText(sim);var sc=scenario(sim),e=document.getElementById('scenarioInfo');if(e&&sc)e.textContent='Scenario '+sc.id+' · seed '+sc.seed+' · '+sc.buildings.length+' buildings · '+sc.objectives.length+' objectives';},500);refreshStats(logStats);setInterval(function(){refreshStats(logStats);},15000);
   }
 
   function showTrainingDialog(sim,trainButton){

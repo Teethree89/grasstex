@@ -141,6 +141,38 @@ if ($missingRequiredAsset || $refChanged || time() - intval($state['checked_at']
     @file_put_contents($stateFile, json_encode($state), LOCK_EX);
 }
 
+/* Extension modules are DISCOVERED, never hand-listed. The previous hard-coded list silently
+   froze production on five of the ten modules in battle/modules, so fire discipline, squad plan
+   stability and stance commitment were dead code in normal play while working fine in the local
+   deployment (which globs the directory). The listing is cached per resolved commit so this costs
+   one extra API call per deploy, not one per request. */
+$moduleFallback = array('01-capture-zone.js','09-voice-runtime.js','10-infantry-squad.js','11-voice-variation.js','12-soldier-animation-events.js','13-captain-command-throttle.js','16-squad-plan-stability.js','20-building-hardpoints.js');
+$moduleFiles = null;
+$moduleSource = 'cache';
+if (isset($state['modules_ref'], $state['modules']) && $state['modules_ref'] === $resolvedRef && is_array($state['modules']) && count($state['modules'])) {
+    $moduleFiles = $state['modules'];
+} else {
+    $listing = gh_get('https://api.github.com/repos/' . $repo . '/contents/battle/modules?ref=' . rawurlencode($resolvedRef) . '&cb=' . microtime(true));
+    $entries = ($listing === false) ? null : json_decode($listing, true);
+    if (is_array($entries)) {
+        $found = array();
+        foreach ($entries as $entry) {
+            if (!isset($entry['type'], $entry['name']) || $entry['type'] !== 'file') continue;
+            if (!preg_match('/^[0-9A-Za-z._-]+\.js$/', $entry['name'])) continue;
+            $found[] = $entry['name'];
+        }
+        if (count($found)) {
+            sort($found, SORT_STRING);
+            $moduleFiles = $found;
+            $moduleSource = 'github';
+            $state['modules'] = $found;
+            $state['modules_ref'] = $resolvedRef;
+            @file_put_contents($stateFile, json_encode($state), LOCK_EX);
+        }
+    }
+}
+if (!$moduleFiles) { $moduleFiles = $moduleFallback; $moduleSource = 'fallback'; }
+
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
 header('Pragma: no-cache');
@@ -149,6 +181,7 @@ header('Surrogate-Control: no-store');
 header('X-Grasstex-Asset-Sync: ' . $syncStatus);
 header('X-Grasstex-Texture-Bootstrap: ' . $textureBootstrapStatus);
 header('X-Grasstex-Pinned: ' . ($pinRequested ? '1' : '0'));
+header('X-Grasstex-Modules: ' . count($moduleFiles) . '/' . $moduleSource);
 header('X-Grasstex-Requested-Ref: ' . preg_replace('/[^0-9A-Za-z._\/-]/', '', $requestedRef));
 header('X-Grasstex-Resolved-Ref: ' . preg_replace('/[^0-9A-Fa-f]/', '', $resolvedRef));
 
@@ -169,10 +202,10 @@ if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false)
     $cdnTag = '<script src="https://cdn.jsdelivr.net/npm/babylonjs@8.26.0/babylon.js"></script>';
     if (strpos($body, $cdnTag) !== false) $body = str_replace($cdnTag, $bootstrap."\n".$cdnTag, $body);
     $version = rawurlencode($resolvedRef);
-    foreach (array('soldier.js','weapons.js','terrain-features.js','squad-ai.js','battle-sim.js') as $file) $body = str_replace('<script src="'.$file.'"></script>', '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>', $body);
+    foreach (array('soldier.js','weapons.js','obstacle-field.js','terrain-features.js','squad-ai.js','engagement.js','battle-sim.js') as $file) $body = str_replace('<script src="'.$file.'"></script>', '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>', $body);
     $extras = '';
-    foreach (array('acoustics.js','scenario-generator.js','battle-navigation.js','town-objectives.js','module-registry.js','ai-policy.js','objective-system.js','battle-telemetry.js','commander-ai.js') as $file) $extras .= '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>' . "\n";
-    foreach (array('01-capture-zone.js','10-infantry-squad.js','12-soldier-animation-events.js','15-individual-tactics.js','20-building-hardpoints.js') as $file) $extras .= '<script src="'.$base.'battle/modules/'.$file.'?v='.$version.'"></script>' . "\n";
+    foreach (array('acoustics.js','scenario-generator.js','battle-navigation.js','town-objectives.js','module-registry.js','ai-policy.js','objective-system.js','battle-telemetry.js','commander-doctrine.js','commander-routes.js','commander-ai.js') as $file) $extras .= '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>' . "\n";
+    foreach ($moduleFiles as $file) $extras .= '<script src="'.$base.'battle/modules/'.rawurlencode($file).'?v='.$version.'"></script>' . "\n";
     foreach (array('ai-trainer.js','battle-control.js') as $file) $extras .= '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>' . "\n";
     $body = preg_replace('#<script>\s*/\* Extra runtimes[\s\S]*?</script>#', $extras, $body, 1, $replacementCount);
     if ($replacementCount === 1) { header('X-Grasstex-Source: github-modular'); echo $body; exit; }
