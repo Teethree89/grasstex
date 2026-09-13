@@ -67,6 +67,7 @@ jobs:
 
           python3 -m json.tool Assets/audio/manifest.json >/dev/null
           python3 scripts/validate_voice_manifest.py Assets/audio/manifest.json Assets/audio
+          python3 -m py_compile scripts/prepare_incremental_deploy.py
           echo "Deploying commit: $(git rev-parse HEAD)"
 
       - name: Install FTP and audio tools
@@ -74,6 +75,36 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq lftp ffmpeg
+
+      - name: Fetch deployed hash state
+        shell: bash
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASS }}
+        run: |
+          set -u
+          : "${FTP_HOST:?Missing repository secret FTP_HOST}"
+          : "${FTP_USER:?Missing repository secret FTP_USER}"
+          : "${FTP_PASSWORD:?Missing repository secret FTP_PASS}"
+          rm -f .deploy-remote.sha256.tsv
+
+          if lftp -u "$FTP_USER","$FTP_PASSWORD" "$FTP_HOST" <<LFTP
+          set cmd:fail-exit yes
+          set net:max-retries 2
+          set net:timeout 15
+          set ftp:ssl-allow no
+          set ftp:passive-mode true
+          cd grasstex
+          get .battle-deploy.sha256.tsv -o "$GITHUB_WORKSPACE/.deploy-remote.sha256.tsv"
+          bye
+          LFTP
+          then
+            echo "Remote deployment hash state loaded: $(wc -l < .deploy-remote.sha256.tsv) managed entries"
+          else
+            rm -f .deploy-remote.sha256.tsv
+            echo "No usable remote deployment hash state. This run will bootstrap it with one full managed-runtime upload."
+          fi
 
       - name: Inventory deployed voice files
         shell: bash
@@ -99,7 +130,6 @@ jobs:
           bye
           LFTP
           then
-            # Normalize lftp output to plain Assets/audio-relative paths.
             sed -e 's#^\./##' -e 's#/$##' .audio-remote-files.raw \
               | grep '^voices/' \
               | sort -u > .audio-remote-files.txt || true
@@ -132,9 +162,6 @@ jobs:
           upload_count=0
           skip_count=0
 
-          # Directories are cheap/idempotent; MP3 PUT commands are generated only for paths
-          # that do not already exist on the server. We intentionally use existence, not mtime,
-          # because derived pitch files should be immutable once deployed.
           printf '%s\n' 'mkdir -p voices/us' 'mkdir -p voices/ge' >> .audio-upload.lftp
 
           while IFS= read -r -d '' src; do
@@ -143,7 +170,6 @@ jobs:
               skip_count=$((skip_count+1))
               continue
             fi
-            # Voice filenames are controlled by the manifest and validated before this step.
             printf 'put "%s" -o "%s"\n' "$src" "$rel" >> .audio-upload.lftp
             upload_count=$((upload_count+1))
           done < <(find .audio-deploy/voices -type f -name '*.mp3' -print0 | sort -z)
@@ -154,7 +180,17 @@ jobs:
             echo "Remote inventory unavailable: all staged MP3s queued as safe fallback."
           fi
 
-      - name: Upload runtime to 50webs
+      - name: Prepare content-hash deployment plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/prepare_incremental_deploy.py \
+            --remote-manifest .deploy-remote.sha256.tsv \
+            --audio-manifest .audio-deploy/manifest.json \
+            --output .deploy-plan
+          cat .deploy-plan/summary.json
+
+      - name: Upload changed runtime to 50webs
         shell: bash
         env:
           FTP_HOST: ${{ secrets.FTP_HOST }}
@@ -173,35 +209,26 @@ jobs:
           set ftp:ssl-allow no
           set ftp:passive-mode true
           cd grasstex
-          put battle_sim_local.php -o battle_sim.php
-          put battle_log.php -o battle_log.php
-          put battle_log_stats.php -o battle_log_stats.php
-          put battle_policy.php -o battle_policy.php
-          put battle_learning.php -o battle_learning.php
-          put battle_metrics.php -o battle_metrics.php
-          cd battle
-          put battle/battle_sim.html -o battle_sim.html
-          put battle/soldier.js -o soldier.js
-          put battle/weapons.js -o weapons.js
-          put battle/terrain-features.js -o terrain-features.js
-          put battle/squad-ai.js -o squad-ai.js
-          put battle/battle-sim.js -o battle-sim.js
-          put battle/acoustics.js -o acoustics.js
-          put battle/scenario-generator.js -o scenario-generator.js
-          put battle/battle-navigation.js -o battle-navigation.js
-          put battle/town-objectives.js -o town-objectives.js
-          put battle/module-registry.js -o module-registry.js
-          put battle/ai-policy.js -o ai-policy.js
-          put battle/objective-system.js -o objective-system.js
-          put battle/battle-telemetry.js -o battle-telemetry.js
-          put battle/commander-ai.js -o commander-ai.js
-          put battle/ai-trainer.js -o ai-trainer.js
-          put battle/battle-control.js -o battle-control.js
-          mirror -R --delete --verbose battle/modules modules
-          cd ../Assets/audio
+
+          # Deletes are limited to module files previously recorded in our managed hash state.
+          source "$GITHUB_WORKSPACE/.deploy-plan/deletes.lftp"
+
+          # Runtime PHP/JS/HTML: only content hashes that changed are PUT.
+          source "$GITHUB_WORKSPACE/.deploy-plan/uploads.lftp"
+
+          # Voice MP3s are immutable by path and upload only when the path is absent remotely.
+          cd Assets/audio
           source "$GITHUB_WORKSPACE/.audio-upload.lftp"
-          put .audio-deploy/manifest.json -o manifest.json
-          cd ../../battle
+          cd ../..
+
+          # Audio manifest is hash-managed but deliberately publishes after any new MP3s.
+          source "$GITHUB_WORKSPACE/.deploy-plan/post-uploads.lftp"
+
+          # Commit deployment state last. A failed partial deploy therefore keeps the old
+          # state and the next run will safely retry every unfinished changed file.
+          put "$GITHUB_WORKSPACE/.deploy-plan/current.sha256.tsv" -o ".battle-deploy.sha256.tsv"
+
+          cd battle
           cls -l scenario-generator.js
           cls -l battle-navigation.js
           cls -l ai-trainer.js
@@ -213,19 +240,23 @@ jobs:
       - name: Deployment summary
         shell: bash
         run: |
+          set -euo pipefail
+          runtime_uploads="$(python3 -c 'import json; print(json.load(open(".deploy-plan/summary.json"))["runtimeUploads"])')"
+          post_uploads="$(python3 -c 'import json; print(json.load(open(".deploy-plan/summary.json"))["postUploads"])')"
+          unchanged="$(python3 -c 'import json; print(json.load(open(".deploy-plan/summary.json"))["unchanged"])')"
+          deletes="$(python3 -c 'import json; print(json.load(open(".deploy-plan/summary.json"))["deletes"])')"
           {
             echo "### 50webs Battle Sim AI lab deployment"
             echo ""
             echo "- Source: \`main@$(git rev-parse --short HEAD)\`"
             echo "- Battle: \`/grasstex/battle_sim.php\`"
             echo "- Review: \`/grasstex/battle_metrics.php\`"
-            echo "- Telemetry: \`/grasstex/battle_log.php\`"
-            echo "- Aggregate stats: \`/grasstex/battle_log_stats.php\`"
-            echo "- Genome state: \`/grasstex/battle_policy.php\`"
-            echo "- Scenario memory: \`/grasstex/battle_learning.php\`"
-            echo "- Runtime modules: exact mirror of \`/grasstex/battle/modules/\`"
-            echo "- Voice manifest: validated against committed neutral/base MP3s"
-            echo "- Voice pitch: remote-aware incremental build"
-            echo "- Voice upload: existence-based; already-deployed MP3s are never re-uploaded"
+            echo "- Runtime uploads: **$runtime_uploads**"
+            echo "- Post-runtime uploads: **$post_uploads**"
+            echo "- Unchanged managed files skipped: **$unchanged**"
+            echo "- Managed stale files deleted: **$deletes**"
+            echo "- Runtime deploy comparison: SHA-256 content hash, not timestamps"
+            echo "- Voice MP3 upload: existence-based; already-deployed MP3s are never re-uploaded"
+            echo "- Deployment state: \`/grasstex/.battle-deploy.sha256.tsv\` published last"
             echo "- Trigger: every push to \`main\` plus manual dispatch"
           } >> "$GITHUB_STEP_SUMMARY"
