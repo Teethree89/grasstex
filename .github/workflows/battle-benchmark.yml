@@ -3,10 +3,10 @@ name: 100 Battle Benchmark
 on:
   workflow_dispatch:
     inputs:
-      battles:
-        description: Number of headless battles
+      battles_per_shard:
+        description: Battles per parallel shard (5 shards; 20 = 100 total)
         required: false
-        default: '100'
+        default: '20'
       seed:
         description: Deterministic seed prefix
         required: false
@@ -15,6 +15,7 @@ on:
     paths:
       - '.github/workflows/battle-benchmark.yml'
       - 'scripts/run_battle_benchmark.mjs'
+      - 'scripts/merge_battle_benchmarks.mjs'
       - 'benchmarks/run-request.txt'
 
 permissions:
@@ -22,11 +23,15 @@ permissions:
 
 jobs:
   benchmark:
+    name: Battle shard ${{ matrix.shard }}/5
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
     env:
-      BATTLE_BENCHMARK_COUNT: ${{ github.event.inputs.battles || '100' }}
-      BATTLE_BENCHMARK_SEED: ${{ github.event.inputs.seed || format('push-{0}', github.run_number) }}
+      BATTLE_BENCHMARK_COUNT: ${{ github.event.inputs.battles_per_shard || '20' }}
       BATTLE_BENCHMARK_URL: http://127.0.0.1:8765/grasstex/battle_sim_local.php
       BATTLE_BENCHMARK_OUTPUT: reports
       BATTLE_BENCHMARK_TIME_LIMIT: '600'
@@ -61,26 +66,19 @@ jobs:
           cat /tmp/battle-php.log
           exit 1
 
-      - name: Run headless battle benchmark
-        run: node scripts/run_battle_benchmark.mjs
-
-      - name: Publish benchmark summary
-        if: always()
+      - name: Run headless battle shard
+        env:
+          BASE_SEED: ${{ github.event.inputs.seed || format('push-{0}', github.run_number) }}
+          SHARD: ${{ matrix.shard }}
         run: |
-          if [ -f reports/battle-benchmark.md ]; then
-            cat reports/battle-benchmark.md >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo '## Battle benchmark did not produce a report' >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            tail -n 200 /tmp/battle-php.log 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || true
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-          fi
+          export BATTLE_BENCHMARK_SEED="${BASE_SEED}-s${SHARD}"
+          node scripts/run_battle_benchmark.mjs
 
-      - name: Upload benchmark reports
+      - name: Upload shard report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: battle-benchmark-${{ github.run_number }}
+          name: battle-benchmark-shard-${{ matrix.shard }}-${{ github.run_number }}
           path: reports/
           if-no-files-found: warn
           retention-days: 30
@@ -88,3 +86,45 @@ jobs:
       - name: Show server log on failure
         if: failure()
         run: tail -n 300 /tmp/battle-php.log || true
+
+  merge:
+    name: Merge 100-battle report
+    needs: benchmark
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Download shard reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: battle-benchmark-shard-*-${{ github.run_number }}
+          path: shard-reports
+
+      - name: Merge benchmark reports
+        run: node scripts/merge_battle_benchmarks.mjs
+
+      - name: Publish benchmark summary
+        if: always()
+        run: |
+          if [ -f reports/battle-benchmark.md ]; then
+            cat reports/battle-benchmark.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '## Battle benchmark did not produce a merged report' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload merged benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: battle-benchmark-merged-${{ github.run_number }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 30
