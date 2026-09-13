@@ -10,11 +10,10 @@ var rootEl=document.getElementById('aiGraph'),view=document.getElementById('agVi
 if(!rootEl||!view||!world||!svg)return;
 
 function cap(s){return String(s||'').replace(/([a-z])([A-Z])/g,'$1 $2').replace(/[-_]/g,' ').replace(/^./,function(c){return c.toUpperCase();});}
-function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c];});}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function editorOpen(){return !rootEl.hidden;}
 function setStatus(text,bad){var el=document.getElementById('agStatus');if(!el)return;el.textContent=text;el.classList.toggle('bad',!!bad);}
 function draft(){try{return root.BattleAIGraphEditor.draft();}catch(_){return null;}}
-function ruleById(id){var d=draft(),rules=d&&d.rules||[];for(var i=0;i<rules.length;i++)if(rules[i].id===id)return rules[i];return null;}
 function nodeInfo(el){var n=el&&el.closest&&el.closest('.ag-node');if(!n)return null;var k=n.dataset.k||'',i=k.indexOf(':');return{el:n,key:k,type:i<0?'':k.slice(0,i),id:i<0?'':k.slice(i+1)};}
 function compatible(source,target){return!!(source&&target&&((source.type==='condition'&&target.type==='rule')||(source.type==='rule'&&target.type==='action')));}
 
@@ -35,7 +34,7 @@ function installStyle(){
 function ensureHelp(){
   if(document.getElementById('agLogicHelp'))return;
   var d=document.createElement('div');d.id='agLogicHelp';d.className='ag-logic-help';
-  d.innerHTML='<b>READ RULES LEFT → RIGHT</b><span class="if"><em>IF</em> blue condition(s)</span> → <span class="and"><em>AND</em> pink rule</span> → <span class="then"><em>THEN</em> orange action</span><br>Every condition entering one rule must be true. If several rules match, the highest <b style="display:inline;font-size:9px">Priority</b> wins.<small>Need OR? Use another rule with the same THEN action.</small>';
+  d.innerHTML='<b>READ RULES LEFT → RIGHT</b><span class="if"><em>IF</em> blue condition(s)</span> → <span class="and"><em>AND</em> pink rule</span> → <span class="then"><em>THEN</em> orange action</span><br>Every condition entering one rule must be true. If several rules match, the highest <b style="display:inline;font-size:9px">Priority</b> wins.<small>Need OR? Use another rule with the same THEN action. No rule match = Assault fallback.</small>';
   view.appendChild(d);
 }
 
@@ -53,8 +52,8 @@ function decorateRules(){
     html+='<div class="ag-rule-priority"><b>PRIORITY '+Math.round((+r.weight||0)*100)+'%</b> · higher wins when multiple rules match</div></div>';
     body.innerHTML=html;
   }
-  var conds=rootEl.querySelectorAll('.ag-node.condition .ag-head small');for(i=0;i<conds.length;i++)conds[i].textContent='condition';
-  var acts=rootEl.querySelectorAll('.ag-node.action .ag-head small');for(i=0;i<acts.length;i++)acts[i].textContent='action';
+  var conds=rootEl.querySelectorAll('.ag-node.condition .ag-head small');for(i=0;i<conds.length;i++)if(conds[i].textContent!=='condition')conds[i].textContent='condition';
+  var acts=rootEl.querySelectorAll('.ag-node.action .ag-head small');for(i=0;i<acts.length;i++)if(acts[i].textContent!=='action')acts[i].textContent='action';
 }
 
 function decorateInspector(){
@@ -66,7 +65,7 @@ function decorateInspector(){
   if(isRule){var labels=body.querySelectorAll('.ag-row label');for(var i=0;i<labels.length;i++)if(labels[i].textContent.trim()==='Weight')labels[i].textContent='Priority';}
 }
 
-function decorate(){if(!editorOpen())return;ensureHelp();decorateRules();decorateInspector();var legend=rootEl.querySelector('.ag-legend');if(legend)legend.textContent='drag output socket → input socket · wheel zoom · middle drag / Space+drag pan · drag headers · Ctrl/Cmd+S saves';}
+function decorate(){if(!editorOpen())return;ensureHelp();decorateRules();decorateInspector();var legend=rootEl.querySelector('.ag-legend'),text='drag output socket → input socket · wheel zoom · middle drag / Space+drag pan · drag headers · Ctrl/Cmd+S saves';if(legend&&legend.textContent!==text)legend.textContent=text;}
 function scheduleDecorate(){if(state.scheduled)return;state.scheduled=true;requestAnimationFrame(function(){state.scheduled=false;decorate();});}
 
 function worldPoint(clientX,clientY){var r=world.getBoundingClientRect(),sx=r.width/(world.offsetWidth||2380),sy=r.height/(world.offsetHeight||1750);return{x:(clientX-r.left)/(sx||1),y:(clientY-r.top)/(sy||1)};}
@@ -103,7 +102,7 @@ function installWireDrag(){
 }
 
 installStyle();ensureHelp();installWireDrag();
-state.observer=new MutationObserver(scheduleDecorate);state.observer.observe(rootEl,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['hidden','class']});
+state.observer=new MutationObserver(scheduleDecorate);state.observer.observe(rootEl,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['hidden']});
 scheduleDecorate();
 root.BattleAIGraphLogic={decorate:decorate,cancelDrag:cancelDrag};
 console.log('[AI-GRAPH] IF/AND/THEN logic view + drag wiring loaded');
