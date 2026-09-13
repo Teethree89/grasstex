@@ -46,6 +46,44 @@
     };
     telemetry(sim,'decision-plan-commit',{faction:sq.faction,squad:sq.id,phase:sq.commandPhase,targetObjective:sq.targetObjective||null,seconds:planSeconds(sq.commandPhase)});
   }
+  function priorityDefenseRequest(sq){
+    var r=sq&&sq._preparedDefenseRequest;
+    if(r&&r.objectiveId)return{kind:'prepared-defense',request:r};
+    r=sq&&sq._captureZoneDefenseRequest;
+    if(r&&r.objectiveId)return{kind:'objective-security',request:r};
+    return null;
+  }
+  /* Force Command accepts objective-security / prepared-defense requests before this module's
+     commander-tick hook runs. Once that higher-priority request has become the live `defend`
+     intent, the old committed assault plan must be retired rather than restored over it. */
+  function supersedeCommittedPlan(sim,sq){
+    var plan=sq&&sq._stablePlan,source=priorityDefenseRequest(sq);
+    if(!plan||!source||sq.commandPhase!=='defend')return false;
+    var target=source.request.objectiveId!=null?String(source.request.objectiveId):null;
+    if(plan.phase==='defend'&&String(plan.targetObjective||'')===String(target||''))return false;
+    telemetry(sim,'decision-plan-supersede',{
+      faction:sq.faction,squad:sq.id,request:source.kind,
+      fromPhase:plan.phase,fromTarget:plan.targetObjective||null,
+      toPhase:'defend',toTarget:target,remaining:Math.max(0,(+plan.until||0)-sim.time)
+    });
+    clearPlan(sq);return true;
+  }
+  function updateRegroupRecovery(sim,sq){
+    if(!sq||!sim)return;
+    var active=sq.commandPhase==='regroup'&&sq.state!=='retreat';
+    if(active){
+      if(!sq._regroupRecovery){
+        var serial=(sq._regroupRecoverySerial||0)+1;sq._regroupRecoverySerial=serial;
+        sq._regroupRecovery={serial:serial,startedAt:sim.time,anchor:copyPoint(sq.orderAnchor||sq.rally||sq.objective),objective:copyPoint(sq.objective)};
+        telemetry(sim,'decision-regroup-commit',{faction:sq.faction,squad:sq.id,serial:serial,anchor:copyPoint(sq._regroupRecovery.anchor)});
+      }
+      return;
+    }
+    if(sq._regroupRecovery){
+      telemetry(sim,'decision-regroup-release',{faction:sq.faction,squad:sq.id,serial:sq._regroupRecovery.serial,duration:+Math.max(0,sim.time-sq._regroupRecovery.startedAt).toFixed(2),reason:sq.state==='retreat'?'retreat':'phase-exit'});
+      sq._regroupRecovery=null;
+    }
+  }
   /* Called before Force Command evaluates a squad. It keeps the accepted plan authoritative for
      its commitment window, so the commander never writes a competing intent only for this module
      to restore it later in the same tick. Retreat/regroup remains the explicit escape hatch. */
@@ -60,8 +98,10 @@
   }
   function stabilizePlan(sim,sq){
     if(!sq||!sim)return;
+    updateRegroupRecovery(sim,sq);
     var phase=sq.commandPhase||'';
     if(sq.state==='retreat'||EMERGENCY[phase]){if(sq._stablePlan)clearPlan(sq);return;}
+    if(sq._stablePlan&&supersedeCommittedPlan(sim,sq))phase=sq.commandPhase||'';
     var plan=sq._stablePlan;
     if(!plan){if(TACTICAL[phase])commitPlan(sim,sq);return;}
     if(sim.time>=plan.until){clearPlan(sq);if(TACTICAL[phase])commitPlan(sim,sq);return;}
@@ -95,7 +135,10 @@
     for(var i=0;i<members.length;i++){var rootNode=members[i]&&members[i].root;if(!rootNode)continue;x+=+rootNode.position.x||0;z+=+rootNode.position.z||0;n++;}
     return n?{x:x/n,z:z/n}:null;
   }
-  function intentSignature(sq){var p=sq.objective||{};return[sq.commandPhase||'',sq.targetObjective||'',Math.round((+p.x||0)/4),Math.round((+p.z||0)/4),sq._stablePlanSerial||0].join('|');}
+  function intentSignature(sq){
+    if(sq.commandPhase==='regroup'&&sq._regroupRecovery)return'regroup|'+sq._regroupRecovery.serial;
+    var p=sq.objective||{};return[sq.commandPhase||'',sq.targetObjective||'',Math.round((+p.x||0)/4),Math.round((+p.z||0)/4),sq._stablePlanSerial||0].join('|');
+  }
   function formationForward(sq){
     if(sq._formationForward)return sq._formationForward;
     var a=sq.orderAnchor||sq.rally||{x:0,z:0},g=sq.objective||sq.home||a,dx=g.x-a.x,dz=g.z-a.z,l=Math.hypot(dx,dz)||1;
@@ -121,17 +164,23 @@
   function updateFireteamOrders(sq,battle){
     if(!sq||!battle)return;
     sq._fireteamOrders=sq._fireteamOrders||{};
-    var defensive=!!DEFENSIVE[sq.commandPhase]&&!sq.inContact,serial=sq._stablePlanSerial||0;
+    var defensive=!!DEFENSIVE[sq.commandPhase]&&!sq.inContact,serial=sq._stablePlanSerial||0,regroup=sq.commandPhase==='regroup'&&sq.state!=='retreat';
     ['command','alpha','bravo','charlie'].forEach(function(key){
       var members=aliveTeamMembers(sq,key);if(!members.length)return;
       var desired=desiredTeamAnchor(sq,members);if(!desired)return;
-      var current=sq._fireteamOrders[key],urgent=sq.state==='retreat'||EMERGENCY[sq.commandPhase],signature=intentSignature(sq),live=averagePosition(members);
+      /* Retreat is physically urgent. Regroup is not: it is a bounded formation recovery and must
+         keep one set of slots until cohesion returns instead of refreshing every update. */
+      var current=sq._fireteamOrders[key],urgent=sq.state==='retreat',signature=intentSignature(sq),live=averagePosition(members);
       if(!current||urgent||current.signature!==signature){
-        current=sq._fireteamOrders[key]={anchor:copyPoint(desired),origin:copyPoint(live),signature:signature,until:battle.time+(urgent?0:TEAM_ORDER_SECONDS)};
+        current=sq._fireteamOrders[key]={anchor:copyPoint(desired),origin:copyPoint(live),signature:signature,until:battle.time+(urgent?0:TEAM_ORDER_SECONDS),blocked:false};
+      }else if(regroup){
+        /* Keep the original recovery slot. Sliding/rotating it while the team converges is exactly
+           what produced the high-travel/low-progress regroup loops in diagnostics. */
+        current.until=battle.time+TEAM_ORDER_SECONDS;
       }else if(battle.time>=current.until||dist(current.anchor,desired)>20){
         var moved=live&&current.origin&&dist(live,current.origin)>=2.5,arrived=live&&dist(live,current.anchor)<=4.5;
         if(moved||arrived){
-          current=sq._fireteamOrders[key]={anchor:copyPoint(desired),origin:copyPoint(live),signature:signature,until:battle.time+TEAM_ORDER_SECONDS};
+          current=sq._fireteamOrders[key]={anchor:copyPoint(desired),origin:copyPoint(live),signature:signature,until:battle.time+TEAM_ORDER_SECONDS,blocked:false};
         }else{
           /* Do not keep reissuing a shifted formation slot to a team that has made no progress.
              Retain the last viable order long enough for movement/contact logic to resolve it and
@@ -167,12 +216,12 @@
   function reset(sim){
     ['us','ge'].forEach(function(f){
       var squads=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];
-      squads.forEach(function(sq){sq._stablePlan=null;sq._stablePlanSerial=0;sq._fireteamOrders={};(sq.members||[]).forEach(function(s){s._defensePost=null;s._fireteamDestination=null;s._fireteamKey=null;});});
+      squads.forEach(function(sq){sq._stablePlan=null;sq._stablePlanSerial=0;sq._fireteamOrders={};sq._regroupRecovery=null;sq._regroupRecoverySerial=0;(sq.members||[]).forEach(function(s){s._defensePost=null;s._fireteamDestination=null;s._fireteamKey=null;});});
     });
   }
 
   root.BattleModules.registerSystem('squad-plan-stability',{
-    version:'29-engagement',
+    version:'63-regroup-stability',
     onBattleStart:function(sim){reset(sim);},
     beforeBattleRestart:function(sim){reset(sim);},
     onCommanderTick:function(sim){['us','ge'].forEach(function(f){var squads=sim.factions[f].squads||[];for(var i=0;i<squads.length;i++)stabilizePlan(sim,squads[i]);});}
@@ -182,7 +231,7 @@
     planSeconds:{assault:ASSAULT_PLAN_SECONDS,defense:DEFENSE_PLAN_SECONDS},
     teamOrderSeconds:TEAM_ORDER_SECONDS,
     defensePostSeconds:DEFENSE_POST_SECONDS,
-    teamKeyFor:teamKeyFor,holdCommittedPlan:holdCommittedPlan
+    teamKeyFor:teamKeyFor,holdCommittedPlan:holdCommittedPlan,supersedeCommittedPlan:supersedeCommittedPlan
   };
-  console.log('[TACTICS] committed plans + 2-3 man fireteam slots active');
+  console.log('[TACTICS] committed plans + bounded regroup recovery + 2-3 man fireteam slots active');
 })(typeof window!=='undefined'?window:globalThis);
