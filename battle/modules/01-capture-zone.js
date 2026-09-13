@@ -1,6 +1,6 @@
 /* Built-in modular objective: timed occupation/capture zone.
-   Capture zones also own their battlefield marker and the squad-level "secure the objective"
-   behavior that stops infantry from orbiting through a capture point after arrival. */
+   Capture zones own marker/control state and publish a short post-capture security request. Force
+   Command consumes that request and remains the sole writer of squad objective/phase/target fields. */
 (function(root){
   'use strict';
   if(!root.BattleModules)return;
@@ -119,7 +119,7 @@
   }
 
   function objectiveForSquad(sim,sq){
-    var preferred=sq._objectiveDefenseId||sq.targetObjective,objs=sim._objectives||[],i,obj,p,r,d,best=null;
+    var request=sq._captureZoneDefenseRequest,preferred=request&&request.objectiveId||sq._objectiveDefenseId||sq.targetObjective,objs=sim._objectives||[],i,obj,p,r,d,best=null;
     if(preferred&&root.BattleObjectiveSystem){obj=root.BattleObjectiveSystem.get(sim,preferred);if(obj&&obj.type==='capture-zone')return obj;}
     p=squadAverage(sq);
     for(i=0;i<objs.length;i++){
@@ -128,19 +128,17 @@
     }
     return best&&best.instance||null;
   }
-  function enterDefense(sim,sq,obj,p,why){
-    var point=objectivePoint(obj),changed=sq._objectiveDefenseId!==obj.id;
-    sq._objectiveDefenseId=obj.id;sq.targetObjective=obj.id;sq.commandPhase='defend';sq.commandHoldUntil=Math.max(sq.commandHoldUntil||0,(sim.time||0)+.9);
-    sq.objective={x:point.x,z:point.z};
+  function requestDefense(sim,sq,obj,p,why){
+    var point=objectivePoint(obj),prior=sq._captureZoneDefenseRequest,changed=!prior||prior.objectiveId!==obj.id;
+    sq._captureZoneDefenseRequest={objectiveId:obj.id,point:{x:point.x,z:point.z},anchor:changed?{x:p.x,z:p.z}:prior.anchor,requestedAt:+(sim.time||0),reason:why||'secure'};
     if(changed){
-      sq._objectiveDefenseAnchor={x:p.x,z:p.z};sq.orderAnchor={x:p.x,z:p.z};sq.rally={x:p.x,z:p.z};sq._orderGoal=null;
-      if(root.BattleTelemetry)root.BattleTelemetry.record('objective-defense-enter',{faction:sq.faction,squad:sq.id,objective:obj.id,reason:why||'secure'},sim);
-    }else if(sq._objectiveDefenseAnchor){sq.orderAnchor={x:sq._objectiveDefenseAnchor.x,z:sq._objectiveDefenseAnchor.z};sq.rally={x:sq._objectiveDefenseAnchor.x,z:sq._objectiveDefenseAnchor.z};}
+      if(root.BattleTelemetry)root.BattleTelemetry.record('objective-defense-request',{faction:sq.faction,squad:sq.id,objective:obj.id,reason:why||'secure'},sim);
+    }
   }
   function releaseDefense(sim,sq,reason){
-    if(!sq._objectiveDefenseId)return;
-    if(root.BattleTelemetry)root.BattleTelemetry.record('objective-defense-exit',{faction:sq.faction,squad:sq.id,objective:sq._objectiveDefenseId,reason:reason||'released'},sim);
-    sq._objectiveDefenseId=null;sq._objectiveDefenseAnchor=null;sq._objectiveSecureUntil=0;
+    var request=sq._captureZoneDefenseRequest;if(!request)return;
+    if(root.BattleTelemetry)root.BattleTelemetry.record('objective-defense-release',{faction:sq.faction,squad:sq.id,objective:request.objectiveId,reason:reason||'released'},sim);
+    sq._captureZoneDefenseRequest=null;sq._captureZoneSecureUntil=0;
   }
   function defendCaptureZones(sim){
     ['us','ge'].forEach(function(faction){
@@ -149,15 +147,15 @@
         if(!sq||sq.state==='retreat'){releaseDefense(sim,sq,'retreat');return;}
         var obj=objectiveForSquad(sim,sq);if(!obj){releaseDefense(sim,sq,'left objective');return;}
         var st=root.BattleObjectiveSystem&&root.BattleObjectiveSystem.status(sim,obj.id)||obj.state||{},p=squadAverage(sq),point=objectivePoint(obj),r=+obj.def.radius||20,d=distance(p,point),enemy=enemyFaction(faction),friendlyWeight=+(st[faction]||0),enemyWeight=+(st[enemy]||0);
-        var inside=d<=r*DEFENSE_ENTER_RATIO,already=sq._objectiveDefenseId===obj.id,enemyPresent=enemyWeight>0,ours=st.owner===faction,taking=!ours&&inside&&(friendlyWeight>0||st.active===faction),contested=inside&&friendlyWeight>0&&enemyPresent;
+        var request=sq._captureZoneDefenseRequest,inside=d<=r*DEFENSE_ENTER_RATIO,already=!!(request&&request.objectiveId===obj.id),enemyPresent=enemyWeight>0,ours=st.owner===faction,taking=!ours&&inside&&(friendlyWeight>0||st.active===faction),contested=inside&&friendlyWeight>0&&enemyPresent;
         if(taking||contested){
-          sq._objectiveSecureUntil=Math.max(sq._objectiveSecureUntil||0,(sim.time||0)+POST_CAPTURE_HOLD);enterDefense(sim,sq,obj,p,contested?'contested objective':'capturing objective');return;
+          sq._captureZoneSecureUntil=Math.max(sq._captureZoneSecureUntil||0,(sim.time||0)+POST_CAPTURE_HOLD);requestDefense(sim,sq,obj,p,contested?'contested objective':'capturing objective');return;
         }
         if(ours&&inside){
-          if(!sq._objectiveSecureUntil)sq._objectiveSecureUntil=(sim.time||0)+POST_CAPTURE_HOLD;
-          if(enemyPresent||already&&(sim.time||0)<sq._objectiveSecureUntil){enterDefense(sim,sq,obj,p,enemyPresent?'defending pressure':'securing captured objective');return;}
+          if(!sq._captureZoneSecureUntil)sq._captureZoneSecureUntil=(sim.time||0)+POST_CAPTURE_HOLD;
+          if(enemyPresent||already&&(sim.time||0)<sq._captureZoneSecureUntil){requestDefense(sim,sq,obj,p,enemyPresent?'defending pressure':'securing captured objective');return;}
         }
-        if(already&&ours&&d<=r*DEFENSE_RELEASE_RATIO&&(sim.time||0)<(sq._objectiveSecureUntil||0)){enterDefense(sim,sq,obj,p,'securing perimeter');return;}
+        if(already&&ours&&d<=r*DEFENSE_RELEASE_RATIO&&(sim.time||0)<(sq._captureZoneSecureUntil||0)){requestDefense(sim,sq,obj,p,'securing perimeter');return;}
         releaseDefense(sim,sq,ours?'objective secure':'objective lost');
       });
     });
@@ -168,7 +166,7 @@
     version:'29-objective-defense',
     onBattleStart:function(sim,payload){ensureMarkers(sim,payload);updateMarkers(sim,payload);},
     onBattleRestart:function(sim,payload){
-      ['us','ge'].forEach(function(f){(sim.factions&&sim.factions[f]&&sim.factions[f].squads||[]).forEach(function(sq){sq._objectiveDefenseId=null;sq._objectiveDefenseAnchor=null;sq._objectiveSecureUntil=0;});});
+      ['us','ge'].forEach(function(f){(sim.factions&&sim.factions[f]&&sim.factions[f].squads||[]).forEach(function(sq){sq._captureZoneDefenseRequest=null;sq._captureZoneSecureUntil=0;});});
       updateMarkers(sim,payload);
     },
     onCommanderTick:function(sim,payload){defendCaptureZones(sim);updateMarkers(sim,payload);}

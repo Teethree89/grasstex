@@ -90,6 +90,12 @@
     }
     return n?{x:x/n,z:z/n}:null;
   }
+  function averagePosition(members){
+    var x=0,z=0,n=0;
+    for(var i=0;i<members.length;i++){var rootNode=members[i]&&members[i].root;if(!rootNode)continue;x+=+rootNode.position.x||0;z+=+rootNode.position.z||0;n++;}
+    return n?{x:x/n,z:z/n}:null;
+  }
+  function intentSignature(sq){var p=sq.objective||{};return[sq.commandPhase||'',sq.targetObjective||'',Math.round((+p.x||0)/4),Math.round((+p.z||0)/4),sq._stablePlanSerial||0].join('|');}
   function formationForward(sq){
     if(sq._formationForward)return sq._formationForward;
     var a=sq.orderAnchor||sq.rally||{x:0,z:0},g=sq.objective||sq.home||a,dx=g.x-a.x,dz=g.z-a.z,l=Math.hypot(dx,dz)||1;
@@ -119,9 +125,20 @@
     ['command','alpha','bravo','charlie'].forEach(function(key){
       var members=aliveTeamMembers(sq,key);if(!members.length)return;
       var desired=desiredTeamAnchor(sq,members);if(!desired)return;
-      var current=sq._fireteamOrders[key],urgent=sq.state==='retreat'||EMERGENCY[sq.commandPhase];
-      if(!current||urgent||battle.time>=current.until||dist(current.anchor,desired)>20){
-        current=sq._fireteamOrders[key]={anchor:copyPoint(desired),until:battle.time+(urgent?0:TEAM_ORDER_SECONDS)};
+      var current=sq._fireteamOrders[key],urgent=sq.state==='retreat'||EMERGENCY[sq.commandPhase],signature=intentSignature(sq),live=averagePosition(members);
+      if(!current||urgent||current.signature!==signature){
+        current=sq._fireteamOrders[key]={anchor:copyPoint(desired),origin:copyPoint(live),signature:signature,until:battle.time+(urgent?0:TEAM_ORDER_SECONDS)};
+      }else if(battle.time>=current.until||dist(current.anchor,desired)>20){
+        var moved=live&&current.origin&&dist(live,current.origin)>=2.5,arrived=live&&dist(live,current.anchor)<=4.5;
+        if(moved||arrived){
+          current=sq._fireteamOrders[key]={anchor:copyPoint(desired),origin:copyPoint(live),signature:signature,until:battle.time+TEAM_ORDER_SECONDS};
+        }else{
+          /* Do not keep reissuing a shifted formation slot to a team that has made no progress.
+             Retain the last viable order long enough for movement/contact logic to resolve it and
+             publish the block once for diagnostics instead of creating a position-seeking loop. */
+          current.until=battle.time+TEAM_ORDER_SECONDS;
+          if(!current.blocked){current.blocked=true;telemetry(battle,'decision-team-no-progress',{faction:sq.faction,squad:sq.id,team:key,phase:sq.commandPhase||null,targetObjective:sq.targetObjective||null});}
+        }
       }
       for(var i=0;i<members.length;i++){
         var s=members[i],d=teamSlot(sq,key,s,i,members.length,current.anchor);

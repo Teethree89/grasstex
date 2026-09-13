@@ -12,6 +12,7 @@ function clone(v){
   try{return JSON.parse(JSON.stringify(v));}catch(_){return null;}
 }
 function point(v){return v&&isFinite(+v.x)&&isFinite(+v.z)?{x:+v.x,z:+v.z}:null;}
+function defenseRequest(sq){var r=sq&&sq._captureZoneDefenseRequest;return r&&r.objectiveId?{objectiveId:String(r.objectiveId),point:point(r.point),requestedAt:isFinite(+r.requestedAt)?+r.requestedAt:null,reason:r.reason||null}:null;}
 function isoStamp(){return new Date().toISOString().replace(/[:.]/g,'-');}
 function safeName(s){return String(s||'battle-ai').replace(/[^a-z0-9._-]+/gi,'-').replace(/^-+|-+$/g,'').toLowerCase();}
 function downloadJson(name,data){
@@ -28,7 +29,7 @@ function factionSummary(sim,faction){
       return{
         id:sq.id!=null?String(sq.id):null,role:sq.commandRole||null,phase:sq.commandPhase||null,state:sq.state||null,
         targetObjective:sq.targetObjective!=null?String(sq.targetObjective):null,objective:point(sq.objective),rally:point(sq.rally),orderAnchor:point(sq.orderAnchor),
-        inContact:!!sq.inContact,aliveCount:isFinite(+sq.aliveCount)?+sq.aliveCount:null,lastDoctrineRule:sq._lastDoctrineRule||null,
+        inContact:!!sq.inContact,aliveCount:isFinite(+sq.aliveCount)?+sq.aliveCount:null,lastDoctrineRule:sq._lastDoctrineRule||null,objectiveDefenseRequest:defenseRequest(sq),
         strategicDefenseObjective:sq._strategicDefenseObjective!=null?String(sq._strategicDefenseObjective):null
       };
     })
