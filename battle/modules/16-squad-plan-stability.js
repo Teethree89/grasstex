@@ -147,7 +147,7 @@
   }
 
   root.BattleModules.registerSystem('squad-plan-stability',{
-    version:'30-engagement',
+    version:'29-engagement',
     onBattleStart:function(sim){reset(sim);},
     beforeBattleRestart:function(sim){reset(sim);},
     onCommanderTick:function(sim){['us','ge'].forEach(function(f){var squads=sim.factions[f].squads||[];for(var i=0;i<squads.length;i++)stabilizePlan(sim,squads[i]);});}

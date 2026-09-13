@@ -1,8 +1,9 @@
-/* Battle Sim / ww2fps AI lab v22 operator controls. */
+/* Battle Sim / ww2fps AI lab operator controls. */
 (function(root){
   'use strict';
-  root.BATTLE_BUILD='v22';
-  try{var buildEl=document.getElementById('buildVersion');if(buildEl)buildEl.textContent='v22';document.title='WW2FPS AI Lab v22';}catch(_){}
+  /* No build stamp here. This file used to set BATTLE_BUILD and rewrite the HUD label and title to
+     its own hard-coded version, which is how a v28 page ended up displaying v22. The page owns the
+     build id; see battle/battle_sim.html. */
   if(!root.BattleSim)return;
   var oldStart=root.BattleSim.start,API_BASE=root.BATTLE_API_BASE||'/grasstex/';
   function telemetry(sim,type,data){if(root.BattleTelemetry)root.BattleTelemetry.record(type,data,sim);}
@@ -70,5 +71,5 @@
     sim.restart=function(){var resumeAfter=sim.manualEnded||!sim.paused;if(root.BattleTelemetry)root.BattleTelemetry.end(sim,'restart');rawRestart();sim.manualEnded=false;sim.paused=!resumeAfter;var sc=scenario(sim);if(root.BattleTelemetry)root.BattleTelemetry.start(sim,'live',{restart:true,policyRevision:root.BattleAIPolicy?root.BattleAIPolicy.revision:0,scenarioSeed:sc&&sc.seed,scenarioId:sc&&sc.id});var s=document.getElementById('aiTestStatus');if(s)s.textContent='AI log: active · genome r'+(root.BattleAIPolicy?root.BattleAIPolicy.revision:0);};
     installUi(sim);var sc=scenario(sim);telemetry(sim,'battle-start',{usAlive:sim.factions.us.alive,geAlive:sim.factions.ge.alive,policyRevision:root.BattleAIPolicy?root.BattleAIPolicy.revision:0,scenarioSeed:sc&&sc.seed,scenarioId:sc&&sc.id,fingerprint:sc&&sc.fingerprint,unitModules:root.BattleModules?root.BattleModules.listUnitTypes().map(function(x){return x.id;}):[]});return sim;
   };
-  root.BattleControl={spawnUnit:spawnUnit,endBattle:endBattle,refreshStats:refreshStats,newScenario:newScenario,runScenarios:function(sim){return root.BattleAITrainer&&root.BattleAITrainer.train(sim,{candidates:4,scenarios:3,headless:true,renderLoop:root.__battleRenderLoop__});}};console.log('[CONTROL] AI lab controls v22 loaded');
+  root.BattleControl={spawnUnit:spawnUnit,endBattle:endBattle,refreshStats:refreshStats,newScenario:newScenario,runScenarios:function(sim){return root.BattleAITrainer&&root.BattleAITrainer.train(sim,{candidates:4,scenarios:3,headless:true,renderLoop:root.__battleRenderLoop__});}};console.log('[CONTROL] AI lab controls loaded · build '+(root.BATTLE_BUILD||'dev'));
 })(typeof window!=='undefined'?window:globalThis);

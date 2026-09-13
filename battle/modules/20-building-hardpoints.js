@@ -36,7 +36,7 @@
     });
   }
   root.BattleModules.registerSystem('building-hardpoints',{
-    version:'30-engagement',
+    version:'29-engagement',
     onCommanderTick:function(sim){assignStations(sim);},
     beforeBattleRestart:function(sim){['us','ge'].forEach(function(f){(sim._roster[f]||[]).forEach(function(s){root.BattleNavigation.releaseFiringPosition(s);});});}
   });

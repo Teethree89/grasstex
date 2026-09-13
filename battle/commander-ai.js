@@ -12,8 +12,8 @@
    destination or stance, so it cannot pull a squad backwards out of a firefight. */
 (function(root){
   'use strict';
-  root.BATTLE_BUILD='v20';
-  console.log('[COMMAND] Genome v2 commander v20 loaded');
+  /* The build id belongs to the page, not to a runtime: stamping one here overwrote it. */
+  console.log('[COMMAND] Genome v2 commander loaded');
   if(!root.BattleSim||!root.SquadAI||!root.BattleCommanderDoctrine||!root.BattleCommanderRoutes){
     console.warn('[COMMAND] doctrine/route modules missing; hierarchical AI disabled');return;
   }
@@ -160,7 +160,7 @@
       sim._commandAccum+=dt;
       while(sim._commandAccum>=COMMAND_TICK&&!sim.winner){sim._commandAccum-=COMMAND_TICK;updateCommander(sim,town,COMMAND_TICK);}
     });
-    console.log('[COMMAND] v20 Genome v2 doctrine + modular objectives active');return sim;
+    console.log('[COMMAND] Genome v2 doctrine + modular objectives active · build '+(root.BATTLE_BUILD||'dev'));return sim;
   };
 
   root.BattleCommanderAI={

@@ -7,6 +7,15 @@
    query strings from freezing normal play on an old build. */
 
 $repo = 'Teethree89/grasstex';
+/* Build id and cache epoch.
+   Script URLs are already busted by the resolved commit sha, which covers a normal deploy. The
+   epoch is the manual override for what the sha cannot reach: a rollback onto an older commit a
+   client has already cached, a proxy holding a query string it has seen before, or a state file
+   whose cached module listing needs discarding. Bump $cacheEpoch to force every client to refetch
+   every runtime and to rediscover the module list. $build is reported in headers only - the page
+   itself stamps the build the operator sees (see battle/battle_sim.html). */
+$build = 'v29';
+$cacheEpoch = 'v29-1';
 $pinRequested = isset($_GET['pin']) && $_GET['pin'] === '1';
 $requestedRef = ($pinRequested && isset($_GET['ref']) && $_GET['ref'] !== '') ? $_GET['ref'] : 'main';
 $root = dirname(__FILE__);
@@ -149,7 +158,8 @@ if ($missingRequiredAsset || $refChanged || time() - intval($state['checked_at']
 $moduleFallback = array('01-capture-zone.js','09-voice-runtime.js','10-infantry-squad.js','11-voice-variation.js','12-soldier-animation-events.js','13-captain-command-throttle.js','16-squad-plan-stability.js','20-building-hardpoints.js');
 $moduleFiles = null;
 $moduleSource = 'cache';
-if (isset($state['modules_ref'], $state['modules']) && $state['modules_ref'] === $resolvedRef && is_array($state['modules']) && count($state['modules'])) {
+$moduleCacheKey = $resolvedRef . '|' . $cacheEpoch;
+if (isset($state['modules_ref'], $state['modules']) && $state['modules_ref'] === $moduleCacheKey && is_array($state['modules']) && count($state['modules'])) {
     $moduleFiles = $state['modules'];
 } else {
     $listing = gh_get('https://api.github.com/repos/' . $repo . '/contents/battle/modules?ref=' . rawurlencode($resolvedRef) . '&cb=' . microtime(true));
@@ -166,7 +176,7 @@ if (isset($state['modules_ref'], $state['modules']) && $state['modules_ref'] ===
             $moduleFiles = $found;
             $moduleSource = 'github';
             $state['modules'] = $found;
-            $state['modules_ref'] = $resolvedRef;
+            $state['modules_ref'] = $moduleCacheKey;
             @file_put_contents($stateFile, json_encode($state), LOCK_EX);
         }
     }
@@ -182,6 +192,8 @@ header('X-Grasstex-Asset-Sync: ' . $syncStatus);
 header('X-Grasstex-Texture-Bootstrap: ' . $textureBootstrapStatus);
 header('X-Grasstex-Pinned: ' . ($pinRequested ? '1' : '0'));
 header('X-Grasstex-Modules: ' . count($moduleFiles) . '/' . $moduleSource);
+header('X-Grasstex-Build: ' . $build);
+header('X-Grasstex-Cache-Epoch: ' . $cacheEpoch);
 header('X-Grasstex-Requested-Ref: ' . preg_replace('/[^0-9A-Za-z._\/-]/', '', $requestedRef));
 header('X-Grasstex-Resolved-Ref: ' . preg_replace('/[^0-9A-Fa-f]/', '', $resolvedRef));
 
@@ -198,10 +210,10 @@ if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false)
     $memoryState = array('version'=>1,'experiences'=>array()); $memoryPath = $root . '/state/scenario-memory.json';
     if (is_file($memoryPath) && is_readable($memoryPath)) { $decodedMemory = json_decode(@file_get_contents($memoryPath), true); if (is_array($decodedMemory) && isset($decodedMemory['experiences']) && is_array($decodedMemory['experiences'])) { $decodedMemory['experiences'] = array_slice($decodedMemory['experiences'], -180); $memoryState = $decodedMemory; } }
     $requestedSeed = isset($_GET['seed']) ? substr(preg_replace('/[^a-zA-Z0-9_.-]/','-',strval($_GET['seed'])),0,100) : '';
-    $bootstrap = '<script>window.BATTLE_BUILD="v28";window.BATTLE_REF='.json_encode($resolvedRef).';window.BATTLE_ASSET_BASE="https://test.ivandpopov.com/grasstex/Assets/";window.BATTLE_AUDIO_BASE="https://test.ivandpopov.com/grasstex/Assets/audio/";window.BATTLE_API_BASE="/grasstex/";window.BATTLE_AUDIO_MANIFEST='.json_encode($manifest).';window.BATTLE_AI_POLICY='.json_encode($policyState).';window.BATTLE_AI_MEMORY='.json_encode($memoryState).';window.BATTLE_SCENARIO_SEED='.json_encode($requestedSeed).';</script>';
+    $bootstrap = '<script>window.BATTLE_BUILD=' . json_encode($build) . ';window.BATTLE_REF='.json_encode($resolvedRef).';window.BATTLE_ASSET_BASE="https://test.ivandpopov.com/grasstex/Assets/";window.BATTLE_AUDIO_BASE="https://test.ivandpopov.com/grasstex/Assets/audio/";window.BATTLE_API_BASE="/grasstex/";window.BATTLE_AUDIO_MANIFEST='.json_encode($manifest).';window.BATTLE_AI_POLICY='.json_encode($policyState).';window.BATTLE_AI_MEMORY='.json_encode($memoryState).';window.BATTLE_SCENARIO_SEED='.json_encode($requestedSeed).';</script>';
     $cdnTag = '<script src="https://cdn.jsdelivr.net/npm/babylonjs@8.26.0/babylon.js"></script>';
     if (strpos($body, $cdnTag) !== false) $body = str_replace($cdnTag, $bootstrap."\n".$cdnTag, $body);
-    $version = rawurlencode($resolvedRef);
+    $version = rawurlencode($resolvedRef) . '&c=' . rawurlencode($cacheEpoch);
     foreach (array('soldier.js','weapons.js','obstacle-field.js','terrain-features.js','squad-ai.js','engagement.js','battle-sim.js') as $file) $body = str_replace('<script src="'.$file.'"></script>', '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>', $body);
     $extras = '';
     foreach (array('acoustics.js','scenario-generator.js','battle-navigation.js','town-objectives.js','module-registry.js','ai-policy.js','objective-system.js','battle-telemetry.js','commander-doctrine.js','commander-routes.js','commander-ai.js') as $file) $extras .= '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>' . "\n";
