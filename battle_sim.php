@@ -7,18 +7,32 @@
    query strings from freezing normal play on an old build. */
 
 $repo = 'Teethree89/grasstex';
-/* Build id and cache epoch.
-   Script URLs are already busted by the resolved commit sha, which covers a normal deploy. The
-   epoch is the manual override for what the sha cannot reach: a rollback onto an older commit a
-   client has already cached, a proxy holding a query string it has seen before, or a state file
-   whose cached module listing needs discarding. Bump $cacheEpoch to force every client to refetch
-   every runtime and to rediscover the module list. $build is reported in headers only - the page
-   itself stamps the build the operator sees (see battle/battle_sim.html). */
-$build = 'v29';
-$cacheEpoch = 'v29-1';
 $pinRequested = isset($_GET['pin']) && $_GET['pin'] === '1';
 $requestedRef = ($pinRequested && isset($_GET['ref']) && $_GET['ref'] !== '') ? $_GET['ref'] : 'main';
 $root = dirname(__FILE__);
+/* Build identity.
+   The deploy workflow owns the build number: it reads the highest build-v<N> git tag, stamps N+1
+   into battle/build-version.json, uploads that with the runtime, and only tags N+1 once the deploy
+   has succeeded. So the file next to this loader is what is actually live, and the constants below
+   are just the fallback for a hand-placed deployment with no version file.
+   The cache epoch carries the commit, so every deploy busts every client's cached runtime and a
+   redeploy of the same version number still busts it. */
+$build = 'v29-dev';
+$cacheEpoch = 'v29-dev';
+$buildSource = 'fallback';
+$versionFile = $root . '/battle/build-version.json';
+if (is_file($versionFile) && is_readable($versionFile)) {
+    $decodedVersion = json_decode(@file_get_contents($versionFile), true);
+    if (is_array($decodedVersion) && isset($decodedVersion['version']) && preg_match('/^[0-9A-Za-z._-]{1,32}$/', $decodedVersion['version'])) {
+        $build = $decodedVersion['version'];
+        $epoch = isset($decodedVersion['cacheEpoch']) ? $decodedVersion['cacheEpoch'] : $build;
+        $cacheEpoch = preg_match('/^[0-9A-Za-z._-]{1,64}$/', $epoch) ? $epoch : $build;
+        $buildSource = 'tag';
+    }
+}
+/* This loader follows the repository rather than the deployed snapshot, so the resolved commit sha
+   also goes into the script query string; the epoch above covers a rollback onto a commit a client
+   has already cached and keys the cached module listing. */
 $stateFile = $root . '/.battle-assets-state.json';
 $syncInterval = 60;
 $syncStatus = 'skipped';
@@ -193,6 +207,7 @@ header('X-Grasstex-Texture-Bootstrap: ' . $textureBootstrapStatus);
 header('X-Grasstex-Pinned: ' . ($pinRequested ? '1' : '0'));
 header('X-Grasstex-Modules: ' . count($moduleFiles) . '/' . $moduleSource);
 header('X-Grasstex-Build: ' . $build);
+header('X-Grasstex-Build-Source: ' . $buildSource);
 header('X-Grasstex-Cache-Epoch: ' . $cacheEpoch);
 header('X-Grasstex-Requested-Ref: ' . preg_replace('/[^0-9A-Za-z._\/-]/', '', $requestedRef));
 header('X-Grasstex-Resolved-Ref: ' . preg_replace('/[^0-9A-Fa-f]/', '', $resolvedRef));
@@ -210,7 +225,7 @@ if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false)
     $memoryState = array('version'=>1,'experiences'=>array()); $memoryPath = $root . '/state/scenario-memory.json';
     if (is_file($memoryPath) && is_readable($memoryPath)) { $decodedMemory = json_decode(@file_get_contents($memoryPath), true); if (is_array($decodedMemory) && isset($decodedMemory['experiences']) && is_array($decodedMemory['experiences'])) { $decodedMemory['experiences'] = array_slice($decodedMemory['experiences'], -180); $memoryState = $decodedMemory; } }
     $requestedSeed = isset($_GET['seed']) ? substr(preg_replace('/[^a-zA-Z0-9_.-]/','-',strval($_GET['seed'])),0,100) : '';
-    $bootstrap = '<script>window.BATTLE_BUILD=' . json_encode($build) . ';window.BATTLE_REF='.json_encode($resolvedRef).';window.BATTLE_ASSET_BASE="https://test.ivandpopov.com/grasstex/Assets/";window.BATTLE_AUDIO_BASE="https://test.ivandpopov.com/grasstex/Assets/audio/";window.BATTLE_API_BASE="/grasstex/";window.BATTLE_AUDIO_MANIFEST='.json_encode($manifest).';window.BATTLE_AI_POLICY='.json_encode($policyState).';window.BATTLE_AI_MEMORY='.json_encode($memoryState).';window.BATTLE_SCENARIO_SEED='.json_encode($requestedSeed).';</script>';
+    $bootstrap = '<script>window.BATTLE_BUILD_DEPLOYED=' . json_encode($build) . ';window.BATTLE_REF='.json_encode($resolvedRef).';window.BATTLE_ASSET_BASE="https://test.ivandpopov.com/grasstex/Assets/";window.BATTLE_AUDIO_BASE="https://test.ivandpopov.com/grasstex/Assets/audio/";window.BATTLE_API_BASE="/grasstex/";window.BATTLE_AUDIO_MANIFEST='.json_encode($manifest).';window.BATTLE_AI_POLICY='.json_encode($policyState).';window.BATTLE_AI_MEMORY='.json_encode($memoryState).';window.BATTLE_SCENARIO_SEED='.json_encode($requestedSeed).';</script>';
     $cdnTag = '<script src="https://cdn.jsdelivr.net/npm/babylonjs@8.26.0/babylon.js"></script>';
     if (strpos($body, $cdnTag) !== false) $body = str_replace($cdnTag, $bootstrap."\n".$cdnTag, $body);
     $version = rawurlencode($resolvedRef) . '&c=' . rawurlencode($cacheEpoch);

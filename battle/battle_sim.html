@@ -61,11 +61,14 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 </script>
 <script>
 (function(){
-  /* The page is the single source of truth for the build id. A loader may inject its own
-     window.BATTLE_BUILD before the scripts run, but this line executes after every runtime has
-     loaded, so no runtime can leave a stale version stamped on the HUD or on telemetry - which is
-     how the HUD ended up reading v22 while the page was v28. Bump BUILD here and nowhere else. */
-  var BUILD='v29';
+  /* Build id: the deploy workflow owns it (highest build-v<N> git tag + 1, published as a tag once
+     the deploy succeeds - see scripts/build_version.py). The loader injects it as
+     BATTLE_BUILD_DEPLOYED before any runtime loads; the literal below is only what an unversioned
+     checkout opened directly shows.
+     It is re-stamped onto BATTLE_BUILD here, after every runtime has loaded, so no runtime can
+     leave a stale version on the HUD or on telemetry - which is how the HUD ended up reading v22
+     while the page was v28. Runtimes read BATTLE_BUILD; nothing but the loader writes DEPLOYED. */
+  var BUILD=window.BATTLE_BUILD_DEPLOYED||'v29-dev';
   window.BATTLE_BUILD=BUILD;
   var build=BUILD,ref=window.BATTLE_REF||'direct',buildEl=document.getElementById('buildVersion');buildEl.textContent=build;document.title='WW2FPS AI Lab '+build;
   var debugConsole=document.getElementById('debugConsole');function stringify(v){if(typeof v==='string')return v;try{return JSON.stringify(v);}catch(_){return String(v);}}function writeDebug(level,args){if(!debugConsole)return;var line=document.createElement('div');if(level==='warn')line.className='debug-warn';else if(level==='error')line.className='debug-error';line.textContent='['+level.toUpperCase()+'] '+Array.prototype.map.call(args,stringify).join(' ');debugConsole.appendChild(line);debugConsole.scrollTop=debugConsole.scrollHeight;}['log','warn','error'].forEach(function(level){var original=console[level];console[level]=function(){writeDebug(level,arguments);return original.apply(console,arguments);};});window.addEventListener('error',function(e){writeDebug('error',[e.message+' @ '+e.filename+':'+e.lineno]);});window.addEventListener('unhandledrejection',function(e){writeDebug('error',['Unhandled promise rejection:',e.reason]);});
