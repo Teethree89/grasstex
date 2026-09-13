@@ -13,7 +13,7 @@ STATIC_FILES = [
 ]
 BATTLE_FILES = [
     "battle_sim.html","soldier.js","weapons.js","terrain-features.js","squad-ai.js",
-    "battle-sim.js","acoustics.js","scenario-generator.js","battle-navigation.js",
+    "battle-sim.js","camera-controls.js","acoustics.js","scenario-generator.js","battle-navigation.js",
     "town-objectives.js","module-registry.js","ai-policy.js","objective-system.js",
     "battle-telemetry.js","commander-ai.js","ai-trainer.js","battle-control.js",
 ]
