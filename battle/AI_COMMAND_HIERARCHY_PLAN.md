@@ -321,10 +321,50 @@ The invariant remains: higher echelon assigns mission and priority; lower echelo
 
 ---
 
+## Comparative benchmark and historical quality bar
+
+The detailed research record is in [`AI_COMPARATIVE_BENCHMARKS.md`](./AI_COMPARATIVE_BENCHMARKS.md).
+
+The score below is an **architecture-coverage score, not a claim that one game's AI is better than another**. Each system is scored 0-5 across seven dimensions: individual adaptation, squad coordination, hierarchy, physical navigation/positioning, systemic/world simulation, decision explainability, and developer observability. A low score can mean that a capability was outside the game's scope or is not publicly documented.
+
+| System | Coverage / 35 | Dimensions scoring >=4 |
+| --- | ---: | ---: |
+| F.E.A.R. | **19** | **3 / 7** |
+| Halo 2 | **24** | **3 / 7** |
+| Arma 3 | **21** | **2 / 7** |
+| S.T.A.L.K.E.R.: Shadow of Chernobyl | **20** | **2 / 7** |
+| Alien: Isolation | **18** | **2 / 7** |
+| **Battle Sim - current architecture** | **28** | **5 / 7** |
+| **Battle Sim - roadmap target** | **34** | **7 / 7** |
+
+Useful quantified reference points recorded in the benchmark document:
+
+- **F.E.A.R.** used a three-state FSM with A* used for action planning as well as paths; its GDC material describes coordinated suppression, advance, formation/search behavior and dynamic replanning.
+- **Halo 2** documented a core behavior DAG on the order of 50 behaviors, with squad `orders` exposing groups of firing positions and broad behavior/style constraints.
+- **Arma 3** exposes five named group combat modes plus waypoint, formation, behavior and High Command semantics.
+- **S.T.A.L.K.E.R.** documented two simulation modes (online/offline), usually about a 150 m detailed-online radius, global offline movement/goals, and a development philosophy of per-component debug drawing for paths, visibility and cover.
+- **Alien: Isolation** used two distinct macro/micro AI systems; public descriptions put the Alien behavior tree at more than 100 nodes with roughly 30 high-level selectors.
+
+The comparison is useful because the Battle Sim target is not to copy one predecessor. The design is deliberately combining **F.E.A.R.-style tactical adaptation**, **Halo-style squad/order abstraction**, **Arma-style military command semantics**, **S.T.A.L.K.E.R.-style systemic/debug thinking**, and **Alien-style macro/micro authority separation**, while making ownership and causality explicit through `SquadIntent`, leases, Movement Resolver, provenance and Loop Watch.
+
+By the end of Steps 3-7, the architecture target is also quantitatively testable:
+
+- **1** authoritative strategic `SquadIntent` per squad;
+- **1** final normal-runtime writer of `soldier.destination`;
+- **0** normal-match strategic-field ownership conflicts;
+- **100%** of active command holds represented by named owner-visible leases/constraints;
+- **100%** of Captain local plans linked to a parent Force Intent version;
+- **100%** of resolver winners attributable to an order or combat proposal;
+- loop diagnostics able to identify the active intent, lease, local plan, proposal owner and no-progress condition that produced a pathological cycle.
+
+These are internal engineering targets, not marketing claims. Actual AI quality still has to be validated through fixed-seed regression battles and player-observable behavior.
+
+---
+
 ## Recommended implementation order from current `main`
 
 1. **Step 3A:** create `BattleSquadIntent` contract/resolver and mirror current Force Command output into it without changing behavior.
-2. **Step 3B:** migrate Prepared Defense/garrison strategic writes into constraints/advisories; keep the newly migrated Capture Zone request model.
+2. **Step 3B:** migrate remaining strategic peer writers/task systems into constraints/advisories; preserve the already-migrated Capture Zone and Prepared Defense request model.
 3. **Step 3C:** migrate Squad Stability from raw-field restore behavior into intent commitment/acceptance semantics.
 4. **Step 4A:** introduce the generic named lease registry and migrate existing durations one system at a time without changing their values.
 5. **Step 4B:** render active leases, owner, reason and expiry in AI Graph and diagnostics export.
