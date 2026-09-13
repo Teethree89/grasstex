@@ -2,31 +2,50 @@
 
 ## Goal
 
-Eliminate competing-order and short-loop behavior by giving each layer one explicit responsibility and one authoritative output. The long-term hierarchy is:
+Eliminate competing-order and short-loop behavior by giving each layer one explicit responsibility and one authoritative output.
 
-**Force / Company Command decides WHAT -> Captain decides HOW LOCALLY -> Squad Orders organize the formation -> Engagement decides HOW EACH SOLDIER FIGHTS -> Soldier executes.**
+The current target hierarchy is:
 
-No two layers should own the same class of decision.
+**Force / Company Command decides WHAT -> Captain decides HOW LOCALLY -> Squad Orders organize -> Engagement produces combat decisions/proposals -> Movement Resolver owns the final soldier destination -> Soldier executes.**
+
+No two live systems should own the same decision class.
+
+## Current status summary
+
+| Step | Status | Current reality |
+| --- | --- | --- |
+| 1. Truthful hierarchy graph | **DONE** | Force Command, Captain Leadership, Squad Orders and Engagement ownership are represented in the AI graph. |
+| 2. Order provenance | **DONE** | Strategic/movement writes are traceable; Loop Watch and Order Trace expose writer churn and diagnostics can be exported. |
+| 3. Versioned `SquadIntent` | **PARTIAL / NEXT** | Capture Zone has already been converted to publish a defense request consumed by Force Command, but the general versioned intent contract and central constraint resolver do not yet exist. Prepared Defense and other systems still write strategic fields directly. |
+| 4. Owned leases | **PARTIAL** | Most durations already exist, but they remain separate raw timers/`until` fields rather than one named lease system with owner/priority/release/progress semantics. |
+| 5. Captain local planner | **NOT DONE** | Captain is still primarily a leadership/status/voice influence, not a tactical planning agent. |
+| 6. Final movement ownership | **DONE / SUPERSEDED ORIGINAL DESIGN** | `BattleMovementResolver` is now the sole normal-runtime writer of `soldier.destination`; Squad Orders and Engagement submit proposals. Preserve this architecture rather than moving final destination ownership back into Engagement. |
+| 7. Causal loop prevention/trace | **PARTIAL** | Loop Watch, provenance, writer-conflict detection, exports, destination churn detection and a no-progress formation-renewal guard exist. Missing: full Force Intent -> Captain Plan -> Squad Plan -> Engagement -> Resolver causal chain and lease-aware causes. |
+| 8. Larger command hierarchy | **PARTIAL FOUNDATION** | Attacker/defender doctrine, echelon metadata, sectors, reserve behavior, fallback metadata, prepared defenses and engineers exist. Active higher-command coordination, fallback/counterattack execution, succession/comms and combined arms remain future work. |
+
+---
 
 ## Step 1 - Make the current hierarchy truthful in the graph
 
-Status: **implemented first; no behavior change.**
+Status: **DONE.**
 
-- Rename the current abstract `Commander Decision` graph node to **Force Command**.
-- State its ownership explicitly: objective, route, command phase, doctrine action.
-- Add a **Captain Leadership** node, but show it as an influence/status source rather than a second order authority.
-- Show the captain's current real effects: normal vs captainless cohesion, extra corner delay, `captainDead` policy condition, formation slot, and voice callouts.
-- State Squad Orders ownership: formation, order anchor, member slots / fireteam organization.
-- State Engagement ownership: individual cover, stance, bounds, firing and personal combat movement.
-- Keep the step observational so it cannot create another movement writer.
+- Rename the abstract commander node to **Force Command**.
+- State its ownership explicitly: mission/objective, route, command phase, doctrine action.
+- Show **Captain Leadership** as an influence/status source rather than a second order authority.
+- Show the captain's current real effects: normal vs captainless cohesion, additional corner delay, `captainDead` policy condition, formation slot and voice callouts.
+- State Squad Orders ownership: formation, order anchor, member slots and fireteam organization.
+- State Engagement ownership: cover choice, stance, bounds, firing behavior and combat-movement proposals.
+- State Movement Resolver ownership: final live `soldier.destination` selection.
 
 Definition of done: a person reading the graph can answer "who owns this decision?" without reading source code.
 
+---
+
 ## Step 2 - Add order provenance and writer-conflict telemetry
 
-Status: **implemented observationally; no AI behavior change.**
+Status: **DONE observationally.**
 
-Instrument the fields that currently define intent and movement:
+Tracked decision/movement state includes:
 
 - squad `commandPhase`
 - squad `targetObjective` / `objective`
@@ -35,112 +54,300 @@ Instrument the fields that currently define intent and movement:
 - soldier `orderDestination`
 - soldier final `destination`
 
-For every meaningful change record: value, owner/system, reason, timestamp and previous owner. Loop Watch should flag two systems alternately writing the same decision class even if the resulting positions are only a few meters apart.
+For meaningful changes record value, owner/system, reason, timestamp and previous owner.
 
-Implementation notes:
+Existing implementation includes:
 
-- `36-order-provenance.js` instruments the live squad/soldier objects without changing their decision logic.
-- Writer attribution identifies Force Command, Capture Zone, Squad Stability, Prepared Defense, Building Hardpoints, Squad Orders and Engagement from the actual assignment call site.
-- In-place point mutations that bypass a property assignment are detected by a commander-tick sampler and marked explicitly as unknown in-place writes instead of being silently attributed.
-- Loop Watch cards gain an **ORDER PROVENANCE** trace showing recent owner transitions and exact field/value changes for the implicated squad or soldier.
-- The **Order Trace** panel reports only rapid multi-owner churn or `A -> B -> A` writer ping-pong as conflicts; normal one-way ownership handoffs remain visible but are not treated as bugs.
-- Conflict telemetry is emitted as `order-writer-conflict` for later causal analysis.
+- order-provenance instrumentation and low-overhead owner contexts;
+- Force Command, Capture Zone, Squad Stability, Prepared Defense, Building Hardpoints, Squad Orders, Engagement and Movement Resolver attribution;
+- explicit marking of unattributed/in-place mutations rather than silently assigning blame;
+- `A -> B -> A` writer-ping-pong and multi-owner churn detection;
+- Loop Watch cards enriched with order provenance;
+- Order Trace UI;
+- loop, order and combined diagnostics JSON exports.
 
 Definition of done: every suspicious movement can be traced to the system that requested it and the system that finally executed it.
 
-## Step 3 - Introduce one versioned SquadIntent contract
+---
 
-Force Command stops sharing mutable squad fields as its implicit API. It emits a versioned intent such as:
+## Step 3 - Introduce one versioned `SquadIntent` contract
 
-- mission / action
-- objective id and command point
-- route / approach
-- strategic role
-- commitment / urgency
-- reason / rule id
+Status: **PARTIAL / NEXT IMPLEMENTATION STEP.**
 
-Objective capture, prepared defense and engineer systems stop directly competing for the same command fields. They submit explicit constraints or advisories to the intent resolver instead.
+### Already migrated
 
-Definition of done: there is one authoritative strategic intent per squad at a time.
+Capture Zone no longer needs to become a second strategic commander. It publishes a short objective-security request (`_captureZoneDefenseRequest`), and Force Command decides whether to accept that request and remains the writer of the squad's strategic objective/phase/target fields.
+
+This is the migration pattern Step 3 should generalize.
+
+### Still required
+
+Force Command must stop using mutable squad fields as its implicit strategic API and instead emit one versioned intent object, for example:
+
+```js
+{
+  version,
+  issuedAt,
+  owner: 'force-command',
+  mission,              // assault | defend | hold | support | regroup | reserve ...
+  objectiveId,
+  commandPoint,
+  route,
+  approach,
+  strategicRole,
+  commitment,
+  urgency,
+  ruleId,
+  reason,
+  constraints: []
+}
+```
+
+Add one authoritative resolver/API for strategic intent:
+
+- Force Command publishes/replaces the current intent.
+- Objective Capture submits an objective-security constraint/request.
+- Prepared Defense submits garrison/post/sector constraints rather than rewriting strategic state.
+- Engineers submit task/readiness constraints rather than becoming alternate commanders.
+- Squad Stability commits or rejects intent changes through the same API instead of restoring raw fields after another writer changes them.
+- Existing compatibility fields (`commandPhase`, `objective`, `targetObjective`, etc.) may remain temporarily as **derived mirrors** during migration, but only one intent resolver writes them.
+
+### Known remaining direct-writer problem
+
+Prepared defender/garrison code still directly writes fields such as `commandPhase`, `targetObjective`, `objective`, `orderAnchor` and related state. Those writes must migrate behind the intent/constraint API.
+
+Definition of done: there is one authoritative versioned strategic intent per squad at a time, and normal-match provenance reports no peer systems competing over strategic fields.
+
+---
 
 ## Step 4 - Convert overlapping timers into owned leases
 
-Replace the ambiguous stack of raw timers with named leases/constraints that have:
+Status: **PARTIAL - behavior exists, lease architecture does not.**
 
-- owner
-- purpose
-- priority
-- start time / expiry
-- release condition
-- whether contact can interrupt it
+Do **not** invent new timings first. Preserve and migrate the timings already governing the simulation, including:
 
-Map the existing behavior rather than inventing new durations first: capture secure window, assault/defense plan commitment, defensive-post freeze, alert hold, bound cycle, engineer build and persistent garrison. The graph should show which lease is currently blocking an intent change.
+- ~18 s objective-security window;
+- ~26 s assault-plan commitment;
+- ~38 s defensive-plan commitment;
+- ~12 s fireteam/order renewal;
+- ~45 s defensive-post commitment;
+- persistent strategic garrison behavior;
+- commander regroup/support/corner holds;
+- Engagement alert/review/bound timing;
+- engineer construction time;
+- Movement Resolver proposal TTL/commit timing;
+- firing-station/contact grace timing.
 
-Definition of done: an 18 s capture secure lease, 38 s plan lease and 45 s post lease cannot silently fight each other.
+Create a named lease/constraint contract such as:
+
+```js
+{
+  id,
+  owner,
+  kind,
+  intentVersion,
+  priority,
+  startedAt,
+  expiresAt,
+  interruptibleByContact,
+  progressTest,
+  releaseCondition,
+  reason,
+  status
+}
+```
+
+The central resolver must be able to answer:
+
+- which lease currently prevents an intent change;
+- which system owns it;
+- why it remains active;
+- whether progress is being made;
+- what event releases or supersedes it.
+
+The graph should render active leases and remaining time.
+
+Definition of done: objective security, plan commitment, defensive-post commitment and garrison behavior cannot silently fight each other, and each hold has one visible owner/release path.
+
+---
 
 ## Step 5 - Make Captain a real local tactical planner
 
-This is the first major behavioral hierarchy change.
+Status: **NOT DONE.**
 
-Force Command owns **WHAT**: take/defend/support objective X.
+This is the first major hierarchy behavior addition after intent/lease ownership is clean.
 
-Captain owns **HOW LOCALLY** inside that mission:
+Force Command owns **WHAT**:
 
-- approach side / local axis
-- formation choice
-- rally / local anchor
-- base-of-fire selection
-- which fireteam bounds
-- occupy building hardpoints / prepared defenses
-- local secure / regroup decision within the mission
+- assault/defend/support/hold objective X;
+- strategic priority and commitment;
+- broad route/role.
 
-The captain may not replace the strategic objective or assign individual soldier cover points. If the captain is killed, deterministic degraded squad defaults take over and cohesion/coordination penalties remain visible.
+Captain owns **HOW LOCALLY** within the accepted Force Intent:
 
-Definition of done: captain behavior adds tactical execution without becoming a second Force Command.
+- local approach side / axis;
+- formation selection;
+- rally / local anchor;
+- base-of-fire selection;
+- maneuver/support/security task allocation;
+- which fireteam bounds;
+- building/door/window/hardpoint usage;
+- prepared-defense occupation;
+- local secure/recover/handoff decision that remains within the parent mission.
 
-## Step 6 - Harden Engagement as the sole individual movement/combat owner
+The Captain may **not**:
 
-Formalize the input contract to Engagement. Squad/Captain/Defense may provide tactical goals, posts, sectors and permission to assault; only Engagement may decide an individual soldier's final combat destination, cover, stance, bound and firing behavior.
+- replace the strategic objective;
+- write an individual soldier's final destination;
+- assign personal cover points directly;
+- silently extend a strategic lease.
 
-Remove or migrate any remaining post-hoc `soldier.destination` writers outside setup/teleport initialization.
+When the captain is killed:
 
-Definition of done: during live combat there is one writer for personal movement.
+1. retain the last still-valid local plan while its lease remains valid;
+2. expose degraded coordination/cohesion;
+3. fall back to deterministic conservative squad behavior until Force Command issues a replacement intent or command succession is implemented.
 
-## Step 7 - Loop prevention and live execution trace
+Definition of done: Captain behavior materially changes local execution without becoming a second Force Command or another movement writer.
 
-Upgrade Loop Watch from symptom detection to causal tracing:
+---
 
-- A <-> B and A -> B -> C -> A phase cycles
-- repeated destination/post swaps
-- low net progress with high travel
-- lease/owner changes that trigger the loop
-- active Force Intent -> Captain Plan -> Squad Order -> Engagement state chain
+## Step 6 - Preserve and harden Movement Resolver as the sole final movement authority
 
-Add hysteresis/progress gates only where traces demonstrate a real loop. Normal fire-and-movement bounds remain recognized as intentional loops.
+Status: **DONE IN NORMAL RUNTIME; ORIGINAL STEP SUPERSEDED.**
 
-Definition of done: a position-seeking trap names the exact transition and owner that caused it.
+The architecture has evolved past the original plan that placed final personal movement ownership inside Engagement.
 
-## Step 8 - Long-term command hierarchy and larger-unit tactics
+Current correct model:
 
-Once ownership is clean, expand upward rather than adding more peer writers:
+```text
+Squad Orders ───────┐
+                    ├─> Movement Resolver -> soldier.destination
+Engagement proposal ┘
+```
 
-- platoon/company command entities
-- multiple squads under one commander
-- reserve commitment and counterattack
-- fallback sectors / withdrawal plans
-- engineer tasking from command rather than opportunistic-only construction
-- command casualties and succession
-- communication / order delay and stale orders
-- doctrine by echelon
-- eventual armor/support/combined-arms tasking through the same intent contract
+- Squad Orders submits stable formation/fireteam/order proposals.
+- Engagement owns individual combat logic: cover, stance, bounds, firing-station use, fire decisions and short-lived combat-movement proposals.
+- `BattleMovementResolver` chooses the winning proposal and is the sole normal-runtime writer of `soldier.destination`.
+- Setup/teleport initialization may set a destination directly before normal live ownership begins.
+- Fallback direct writes in Squad AI / Engagement are allowed only for deployments where Movement Resolver failed to load and must remain outside the healthy runtime path.
 
-The invariant remains: higher echelon assigns mission; lower echelon chooses execution within that mission; Engagement owns the individual fight.
+Remaining work here is enforcement, not redesign:
+
+- add assertions/telemetry if a live non-initialization system directly writes final destination;
+- include winning proposal owner/kind in graph/live diagnostics;
+- keep navigation/pathfinding downstream of the selected destination rather than making navigation another command writer.
+
+Definition of done: healthy live combat has exactly one final destination writer, and violations are immediately observable.
+
+---
+
+## Step 7 - Finish causal loop prevention and live execution tracing
+
+Status: **PARTIAL - substantial diagnostics already exist.**
+
+Already implemented:
+
+- repeating 2-3 step command-cycle detection;
+- squad order churn detection;
+- soldier position-seeking detection using high travel / low net progress;
+- writer ping-pong and multi-owner provenance conflicts;
+- graph-path highlighting;
+- loop/order/combined diagnostic exports;
+- movement-resolver ownership summaries;
+- a progress gate on fireteam-order renewal so a non-progressing team does not receive endlessly shifted formation slots.
+
+Finish the causal chain once Steps 3-5 exist:
+
+```text
+Force Intent
+  -> active strategic constraint/lease
+  -> Captain Local Plan
+  -> Squad / Fireteam Plan
+  -> Engagement proposal
+  -> Movement Resolver winner
+  -> Navigation path / waypoint queue
+  -> observed progress
+```
+
+Add/finish diagnostics for:
+
+- `A <-> B` and `A -> B -> C -> A` strategic/tactical state cycles;
+- repeated post/window/cover swaps;
+- intent-version churn;
+- lease acquire/release/supersede cycles;
+- Captain-plan churn;
+- resolver proposal ping-pong;
+- no-progress route/path replans;
+- progress since lease/plan start;
+- intentional fire-and-movement loops distinguished from pathological loops.
+
+Only add hysteresis or progress gates where the trace demonstrates an actual pathological cycle.
+
+Definition of done: a position-seeking or decision trap names the exact intent, plan, lease, proposal and transition that caused it.
+
+---
+
+## Step 8 - Expand the higher command hierarchy and larger-unit tactics
+
+Status: **PARTIAL FOUNDATION.**
+
+Already present as useful groundwork:
+
+- attacker/defender asymmetry;
+- command-echelon metadata (`sergeant`, `lieutenant`, `captain`, `major`, `general`);
+- contact/security/main/depth defensive sectors;
+- defender span-of-control limits;
+- fallback-sector metadata;
+- reserve-sector metadata;
+- an actual Force Command reserve role with release logic;
+- prepared defensive works and post claiming;
+- engineer soldier role and runtime fortification;
+- objective/sector control and command telemetry.
+
+Still to implement after Steps 3-7 stabilize ownership:
+
+- explicit platoon/company command entities above squads;
+- several squads intentionally coordinated under one commander/main effort;
+- active reserve commitment tied to Force Intent and leases;
+- counterattack plans;
+- active fallback/withdrawal execution through fallback sectors;
+- engineer tasking from command rather than opportunistic-only construction;
+- command casualty succession;
+- communications, acknowledgement, delay and stale-order behavior;
+- doctrine by echelon;
+- support requests/effect windows;
+- armor, indirect fire, reconnaissance and eventual combined-arms coordination through the same intent/lease architecture.
+
+The invariant remains: higher echelon assigns mission and priority; lower echelon chooses bounded execution; asset controllers own their assets; Movement Resolver owns the infantry final destination; Engagement owns the individual fight.
+
+---
+
+## Recommended implementation order from current `main`
+
+1. **Step 3A:** create `BattleSquadIntent` contract/resolver and mirror current Force Command output into it without changing behavior.
+2. **Step 3B:** migrate Prepared Defense/garrison strategic writes into constraints/advisories; keep the newly migrated Capture Zone request model.
+3. **Step 3C:** migrate Squad Stability from raw-field restore behavior into intent commitment/acceptance semantics.
+4. **Step 4A:** introduce the generic named lease registry and migrate existing durations one system at a time without changing their values.
+5. **Step 4B:** render active leases, owner, reason and expiry in AI Graph and diagnostics export.
+6. **Step 5:** add Captain Local Plan on top of stable Force Intent + leases.
+7. **Step 6 enforcement:** assertions/telemetry for illegal final-destination writers; otherwise leave Movement Resolver architecture intact.
+8. **Step 7:** connect Loop Watch/provenance to intent versions, Captain plans and leases; add only evidence-based anti-loop gates.
+9. **Step 8:** expand higher-command coordination, fallback/counterattack and combined arms.
+
+---
 
 ## Non-negotiable architecture rules
 
 1. No two live systems own the same decision class.
 2. Strategic objective selection never writes individual soldier movement.
-3. Captain local planning never changes the strategic objective without a new Force Command intent.
-4. Objective/defense modules constrain or inform; they do not secretly become alternate commanders.
-5. Every timer/hold has an owner and a visible release condition.
-6. Every loop diagnostic must distinguish intentional tactical repetition from pathological no-progress cycling.
+3. Force Command owns the authoritative strategic `SquadIntent`.
+4. Captain Local Plan may interpret an intent locally but may not replace its strategic objective.
+5. Objective/defense/engineer modules publish constraints, opportunities or task requests; they do not secretly become alternate commanders.
+6. Squad Orders publishes organization/order proposals, not final physical movement.
+7. Engagement owns individual combat decisions and combat-movement proposals, not the final destination field.
+8. Movement Resolver is the sole normal-runtime writer of `soldier.destination`.
+9. Navigation/pathfinding consumes the resolved destination; it does not become another command authority.
+10. Every timer/hold becomes a named owner-visible lease with a release/progress condition.
+11. Every loop diagnostic must distinguish intentional tactical repetition from pathological no-progress cycling.
+12. Existing working movement/navigation behavior should be preserved while command ownership is migrated above it.
