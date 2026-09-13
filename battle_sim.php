@@ -229,7 +229,7 @@ if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false)
     $cdnTag = '<script src="https://cdn.jsdelivr.net/npm/babylonjs@8.26.0/babylon.js"></script>';
     if (strpos($body, $cdnTag) !== false) $body = str_replace($cdnTag, $bootstrap."\n".$cdnTag, $body);
     $version = rawurlencode($resolvedRef) . '&c=' . rawurlencode($cacheEpoch);
-    foreach (array('soldier.js','weapons.js','obstacle-field.js','terrain-features.js','squad-ai.js','engagement.js','battle-sim.js') as $file) $body = str_replace('<script src="'.$file.'"></script>', '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>', $body);
+    foreach (array('soldier.js','weapons.js','obstacle-field.js','terrain-features.js','squad-ai.js','movement-resolver.js','engagement.js','battle-sim.js') as $file) $body = str_replace('<script src="'.$file.'"></script>', '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>', $body);
     $extras = '';
     foreach (array('acoustics.js','scenario-generator.js','battle-navigation.js','town-objectives.js','module-registry.js','ai-policy.js','objective-system.js','battle-telemetry.js','commander-doctrine.js','commander-routes.js','commander-ai.js') as $file) $extras .= '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>' . "\n";
     foreach ($moduleFiles as $file) $extras .= '<script src="'.$base.'battle/modules/'.rawurlencode($file).'?v='.$version.'"></script>' . "\n";

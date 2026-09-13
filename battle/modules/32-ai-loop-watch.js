@@ -121,7 +121,7 @@ function renderLoopPanel(){
   var cards=list.querySelectorAll('[data-lw]');for(var i=0;i<cards.length;i++)cards[i].onclick=function(){var idx=+this.dataset.lw,a=alerts[idx];if(a)traceAlert(a);};
 }
 function traceAlert(a){
-  var keys=['system:squad','system:engagement'];if(a.kind==='position-seeking')keys.push('system:soldier');if((a.phases||[]).some(function(p){return p==='capture'||p==='defend'||p==='hold';}))keys.push('defense:defense');var d=graphDraft();(a.rules||[]).forEach(function(id){keys.push('rule:'+id);var r=d&&d.rules&&d.rules.find(function(x){return x.id===id;});if(r)keys.push('action:'+r.action);});highlightKeys(Array.from(new Set(keys)));if(ui.panel)ui.panel.hidden=true;var status=document.getElementById('agStatus');if(status)status.textContent='Tracing '+a.kind+' · '+a.faction.toUpperCase()+' '+a.squadId+(a.soldierId==null?'':' soldier '+a.soldierId);}
+  var keys=['system:squad','system:engagement'];if(a.kind==='position-seeking')keys.push('system:resolver','system:soldier');if((a.phases||[]).some(function(p){return p==='capture'||p==='defend'||p==='hold';}))keys.push('defense:defense');var d=graphDraft();(a.rules||[]).forEach(function(id){keys.push('rule:'+id);var r=d&&d.rules&&d.rules.find(function(x){return x.id===id;});if(r)keys.push('action:'+r.action);});highlightKeys(Array.from(new Set(keys)));if(ui.panel)ui.panel.hidden=true;var status=document.getElementById('agStatus');if(status)status.textContent='Tracing '+a.kind+' · '+a.faction.toUpperCase()+' '+a.squadId+(a.soldierId==null?'':' soldier '+a.soldierId);}
 
 root.BattleModules.registerSystem('ai-loop-watch',{
   version:'1.0',

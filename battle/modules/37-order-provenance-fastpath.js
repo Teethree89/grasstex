@@ -30,7 +30,7 @@ function source(target,kind,field){
   else if(field==='_defensePost')owner='squad-stability';
   else if(field==='_fireteamDestination')owner=target._preparedDefensePost?'prepared-defense':'squad-stability';
   else if(field==='orderDestination')owner=target._preparedDefensePost?'prepared-defense':(target._fireteamDestination?'squad-stability':'squad-orders');
-  else if(field==='destination')owner='squad-orders';
+  else if(field==='destination')owner=target._movementResolvedOwner||'squad-orders';
   return{owner:owner,key:KEYS[owner]||null,site:'fast field ownership'};
 }
 function store(target){return target&&target.__orderProvenance||null;}

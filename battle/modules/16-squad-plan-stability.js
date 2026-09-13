@@ -127,7 +127,8 @@
         s._fireteamDestination=post?{x:post.x,z:post.z}:d;
         /* Arrival/cohesion accounting should use the fireteam slot, not the obsolete individual
            formation slot that was averaged to create it. */
-        s.orderDestination=copyPoint(s._fireteamDestination);
+        if(root.BattleMovementResolver)root.BattleMovementResolver.proposeOrder(s,s._fireteamDestination,battle,urgent);
+        else s.orderDestination=copyPoint(s._fireteamDestination);
       }
     });
   }

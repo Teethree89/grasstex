@@ -230,6 +230,7 @@
 
   function setDestination(soldier,next,battle,urgent){
     if(!next)return;
+    if(root.BattleMovementResolver)return root.BattleMovementResolver.proposeOrder(soldier,next,battle,urgent);
     soldier.orderDestination={x:next.x,z:next.z};
     var current=soldier.destination,atCurrent=current&&dist2(soldier.root.position.x,soldier.root.position.z,current.x,current.z)<1.8,changed=!current||dist2(current.x,current.z,next.x,next.z)>2.4;
     if(urgent||atCurrent||(changed&&battle.time>=(soldier._destinationCommitUntil||0))){
@@ -297,8 +298,9 @@
   function updateSoldier(soldier,battle){
     if(soldier.dead)return;
     var role=perceive(soldier,battle);
-    if(root.BattleEngagement)return root.BattleEngagement.updateSoldier(soldier,battle);
-    return fallbackBehavior(soldier,battle,role);
+    if(root.BattleEngagement)root.BattleEngagement.updateSoldier(soldier,battle);
+    else fallbackBehavior(soldier,battle,role);
+    if(root.BattleMovementResolver)root.BattleMovementResolver.resolve(soldier,battle);
   }
 
   /* Minimal stand-in used only when engagement.js failed to load, so a broken deployment still

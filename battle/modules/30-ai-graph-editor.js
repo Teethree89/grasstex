@@ -23,9 +23,9 @@ var ACTION_HELP={
 };
 var SYSTEM_HELP={
   objective:'Objective System owns capture state, pressure and control counts.',commander:'Commander resolves doctrine, thresholds and the highest-weight matching rule into squad intent.',
-  squad:'Squad AI turns commander intent into formation anchors, routes and stable orders.',engagement:'Engagement is the single owner of individual combat movement, stance, cover and permission to fire.',
+  squad:'Squad AI turns commander intent into formation anchors, routes and stable orders.',engagement:'Engagement proposes short-lived combat movement, stance, cover and permission to fire.',resolver:'Movement Resolver is the single writer of the physical destination. It gives an active combat proposal priority over the stable squad order.',
   engineer:'Engineers fortify friendly occupied objectives when safe to work.',defense:'Prepared-position planner supplies cover obstacles and persistent claimable fighting posts.',
-  soldier:'Final soldier behavior: move, seek cover, aim, suppress and fire.'
+  soldier:'Executes the resolved destination: move, seek cover, aim, suppress and fire.'
 };
 var NODE_COLORS={condition:'#286f91',rule:'#8a3e69',action:'#996329',doctrine:'#77731f',param:'#267986',system:'#4e5d68',defense:'#5f6735'};
 var STORAGE_KEY='battleAiGraphLayoutV2';
@@ -78,7 +78,7 @@ function defaultPositions(){
   S.draft.rules.forEach(function(r,i){p[key('rule',r.id)]={x:380,y:45+i*110};});
   ACTIONS.forEach(function(a,i){p[key('action',a)]={x:720,y:55+i*120};});
   p[key('doctrine','main')]={x:40,y:940};p[key('param','0')]={x:300,y:940};p[key('param','1')]={x:560,y:940};
-  p[key('system','objective')]={x:1020,y:430};p[key('system','commander')]={x:1020,y:115};p[key('system','squad')]={x:1325,y:115};p[key('system','engagement')]={x:1625,y:115};p[key('system','soldier')]={x:1915,y:115};p[key('defense','engineer')]={x:1325,y:430};p[key('defense','defense')]={x:1625,y:430};
+  p[key('system','objective')]={x:1020,y:430};p[key('system','commander')]={x:1020,y:115};p[key('system','squad')]={x:1325,y:115};p[key('system','engagement')]={x:1585,y:115};p[key('system','resolver')]={x:1845,y:115};p[key('system','soldier')]={x:2100,y:115};p[key('defense','engineer')]={x:1325,y:430};p[key('defense','defense')]={x:1625,y:430};
   try{var saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');Object.keys(saved).forEach(function(k){if(saved[k]&&isFinite(saved[k].x)&&isFinite(saved[k].y))p[k]=saved[k];});}catch(_){}
   return p;
 }
@@ -108,7 +108,8 @@ function buildGraph(){
   createNode({type:'system',id:'objective',title:'Objective System',badge:'runtime',body:systemBody('objective'),color:NODE_COLORS.system,input:false,output:true},p[key('system','objective')]);
   createNode({type:'system',id:'commander',title:'Commander Decision',badge:'runtime',body:systemBody('commander'),color:NODE_COLORS.system,input:true,output:true},p[key('system','commander')]);
   createNode({type:'system',id:'squad',title:'Squad Orders',badge:'runtime',body:systemBody('squad'),color:NODE_COLORS.system,input:true,output:true},p[key('system','squad')]);
-  createNode({type:'system',id:'engagement',title:'Engagement',badge:'single owner',body:systemBody('engagement'),color:NODE_COLORS.system,input:true,output:true},p[key('system','engagement')]);
+  createNode({type:'system',id:'engagement',title:'Engagement',badge:'combat proposal',body:systemBody('engagement'),color:NODE_COLORS.system,input:true,output:true},p[key('system','engagement')]);
+  createNode({type:'system',id:'resolver',title:'Movement Resolver',badge:'final writer',body:systemBody('resolver'),color:NODE_COLORS.system,input:true,output:true},p[key('system','resolver')]);
   createNode({type:'system',id:'soldier',title:'Move / Aim / Fire',badge:'runtime',body:systemBody('soldier'),color:NODE_COLORS.system,input:true,output:false},p[key('system','soldier')]);
   createNode({type:'defense',id:'engineer',title:'Engineer',badge:'runtime',body:systemBody('engineer'),color:NODE_COLORS.defense,input:true,output:true},p[key('defense','engineer')]);
   createNode({type:'defense',id:'defense',title:'Prepared Defense',badge:'runtime',body:systemBody('defense'),color:NODE_COLORS.defense,input:true,output:true},p[key('defense','defense')]);
@@ -118,7 +119,7 @@ function renderNodes(){
   CONDITIONS.forEach(function(c){var n=S.nodes[key('condition',c)];if(n)n.el.querySelector('.ag-body').innerHTML=conditionBody(c);});
   S.draft.rules.forEach(function(r){var n=S.nodes[key('rule',r.id)];if(n)n.el.querySelector('.ag-body').innerHTML=ruleBody(r);});
   ACTIONS.forEach(function(a){var n=S.nodes[key('action',a)];if(n)n.el.querySelector('.ag-body').innerHTML=actionBody(a);});
-  ['objective','commander','squad','engagement','soldier'].forEach(function(id){var n=S.nodes[key('system',id)];if(n)n.el.querySelector('.ag-body').innerHTML=systemBody(id);});
+  ['objective','commander','squad','engagement','resolver','soldier'].forEach(function(id){var n=S.nodes[key('system',id)];if(n)n.el.querySelector('.ag-body').innerHTML=systemBody(id);});
   ['engineer','defense'].forEach(function(id){var n=S.nodes[key('defense',id)];if(n)n.el.querySelector('.ag-body').innerHTML=systemBody(id);});
 }
 
@@ -129,7 +130,7 @@ function renderWires(){
   S.draft.rules.forEach(function(r){var rk=key('rule',r.id);r.when.forEach(function(c){addWire(socketCenter(key('condition',c),'out'),socketCenter(rk,'in'),'cond');});addWire(socketCenter(rk,'out'),socketCenter(key('action',r.action),'in'),'act');});
   ACTIONS.forEach(function(a){addWire(socketCenter(key('action',a),'out'),socketCenter(key('system','commander'),'in'),'core');});
   addWire(socketCenter(key('doctrine','main'),'out'),socketCenter(key('system','commander'),'in'),'core');addWire(socketCenter(key('param','0'),'out'),socketCenter(key('system','commander'),'in'),'core');addWire(socketCenter(key('param','1'),'out'),socketCenter(key('system','commander'),'in'),'core');addWire(socketCenter(key('system','objective'),'out'),socketCenter(key('system','commander'),'in'),'runtime');
-  addWire(socketCenter(key('system','commander'),'out'),socketCenter(key('system','squad'),'in'),'runtime');addWire(socketCenter(key('system','squad'),'out'),socketCenter(key('system','engagement'),'in'),'runtime');addWire(socketCenter(key('system','engagement'),'out'),socketCenter(key('system','soldier'),'in'),'runtime');
+  addWire(socketCenter(key('system','commander'),'out'),socketCenter(key('system','squad'),'in'),'runtime');addWire(socketCenter(key('system','squad'),'out'),socketCenter(key('system','engagement'),'in'),'runtime');addWire(socketCenter(key('system','squad'),'out'),socketCenter(key('system','resolver'),'in'),'runtime');addWire(socketCenter(key('system','engagement'),'out'),socketCenter(key('system','resolver'),'in'),'runtime');addWire(socketCenter(key('system','resolver'),'out'),socketCenter(key('system','soldier'),'in'),'runtime');
   addWire(socketCenter(key('system','squad'),'out'),socketCenter(key('defense','engineer'),'in'),'runtime');addWire(socketCenter(key('defense','engineer'),'out'),socketCenter(key('defense','defense'),'in'),'runtime');addWire(socketCenter(key('defense','defense'),'out'),socketCenter(key('system','engagement'),'in'),'runtime');
 }
 
@@ -184,9 +185,10 @@ function renderInspector(){
 function liveSystemSummary(id){
   var b=root.__battle__,out=[];if(!b)return['battle: not initialized'];
   if(id==='objective'){var c=b.objectiveControl&&b.objectiveControl.counts||{};out.push('US: '+(c.us||0),'GER: '+(c.ge||0),'total: '+(b.objectiveControl&&b.objectiveControl.total||0));}
-  else if(id==='commander'){out.push('revision: '+A.revision,'strategy: '+(S.draft.doctrine&&S.draft.doctrine.objectiveStrategy||'—'),'rules: '+S.draft.rules.length);}
+  else if(id==='commander'){var h=b._coordinationHealth&&b._coordinationHealth.sides||{},due=['us','ge'].filter(function(f){return h[f]&&h[f].replanDue;}).map(function(f){return f.toUpperCase();});out.push('revision: '+A.revision,'strategy: '+(S.draft.doctrine&&S.draft.doctrine.objectiveStrategy||'—'),'rules: '+S.draft.rules.length,'replan due: '+(due.join('/')||'none'));}
   else if(id==='squad'){var us=b.factions&&b.factions.us&&b.factions.us.squads||[],ge=b.factions&&b.factions.ge&&b.factions.ge.squads||[];out.push('US squads: '+us.filter(function(s){return s.aliveCount>0;}).length,'GER squads: '+ge.filter(function(s){return s.aliveCount>0;}).length);}
   else if(id==='engagement'){var squads=[];['us','ge'].forEach(function(f){squads=squads.concat(b.factions&&b.factions[f]&&b.factions[f].squads||[]);});out.push('in contact: '+squads.filter(function(s){return !!s.inContact;}).length,'time: '+(b.time||0).toFixed(1)+'s');}
+  else if(id==='resolver'){var r=root.BattleMovementResolver&&root.BattleMovementResolver.summary?root.BattleMovementResolver.summary(b):null;out.push('combat override: '+(r?r.combat:0),'squad order: '+(r?r.orders:0),'destination changes: '+(r?r.changed:0));}
   else if(id==='engineer'){var n=0;['us','ge'].forEach(function(f){(b._roster&&b._roster[f]||[]).forEach(function(s){if(!s.dead&&s.role==='engineer')n++;});});out.push('alive: '+n,'active builds: '+Object.keys(b._engineerBuild&&b._engineerBuild.progress||{}).length);}
   else if(id==='defense'){var plan=b._defensePlan||{},sides=b._sides||{};out.push('defender: '+(sides.defender||'meeting'),'works: '+((plan.works||[]).length),'posts: '+((plan.posts||[]).length));}
   else if(id==='soldier'){out.push('US alive: '+(b.factions&&b.factions.us?b.factions.us.alive:0),'GER alive: '+(b.factions&&b.factions.ge?b.factions.ge.alive:0));}

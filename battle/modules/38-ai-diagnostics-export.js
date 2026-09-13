@@ -56,6 +56,9 @@ function orderEvents(sim){
 function orderConflicts(sim){
   try{return root.BattleOrderProvenance&&root.BattleOrderProvenance.conflicts?root.BattleOrderProvenance.conflicts(sim)||[]:[];}catch(_){return[];}
 }
+function coordinationHealth(sim){
+  try{return root.BattleAICoordinationHealth&&root.BattleAICoordinationHealth.summary?clone(root.BattleAICoordinationHealth.summary(sim)):null;}catch(_){return null;}
+}
 function sameId(a,b){return a!=null&&b!=null&&String(a)===String(b);}
 function matchesAlert(item,alert){
   if(!item||!alert)return false;
@@ -77,7 +80,7 @@ function enrichLoops(alerts,events,conflicts){
 function loopSnapshot(sim){
   sim=sim||root.__battle__;var alerts=loopAlerts(sim),events=orderEvents(sim),conflicts=orderConflicts(sim);
   return{
-    type:'battle-ai-loop-trace',meta:meta(sim),policy:policySnapshot(),
+    type:'battle-ai-loop-trace',meta:meta(sim),policy:policySnapshot(),coordinationHealth:coordinationHealth(sim),movementResolver:clone(root.BattleMovementResolver&&root.BattleMovementResolver.summary?root.BattleMovementResolver.summary(sim):null),
     loopWatch:{count:alerts.length,alerts:enrichLoops(alerts,events,conflicts)},
     provenanceContext:{eventCount:events.length,conflictCount:conflicts.length}
   };
@@ -85,14 +88,14 @@ function loopSnapshot(sim){
 function orderSnapshot(sim){
   sim=sim||root.__battle__;var events=orderEvents(sim),conflicts=orderConflicts(sim);
   return{
-    type:'battle-ai-order-trace',meta:meta(sim),policy:policySnapshot(),
+    type:'battle-ai-order-trace',meta:meta(sim),policy:policySnapshot(),coordinationHealth:coordinationHealth(sim),movementResolver:clone(root.BattleMovementResolver&&root.BattleMovementResolver.summary?root.BattleMovementResolver.summary(sim):null),
     orderProvenance:{version:root.BattleOrderProvenance&&root.BattleOrderProvenance.version||null,eventCount:events.length,conflictCount:conflicts.length,events:clone(events)||[],conflicts:clone(conflicts)||[]}
   };
 }
 function combinedSnapshot(sim){
   sim=sim||root.__battle__;var alerts=loopAlerts(sim),events=orderEvents(sim),conflicts=orderConflicts(sim);
   return{
-    type:'battle-ai-diagnostics',meta:meta(sim),policy:policySnapshot(),
+    type:'battle-ai-diagnostics',meta:meta(sim),policy:policySnapshot(),coordinationHealth:coordinationHealth(sim),movementResolver:clone(root.BattleMovementResolver&&root.BattleMovementResolver.summary?root.BattleMovementResolver.summary(sim):null),
     loopWatch:{count:alerts.length,alerts:enrichLoops(alerts,events,conflicts)},
     orderProvenance:{version:root.BattleOrderProvenance&&root.BattleOrderProvenance.version||null,eventCount:events.length,conflictCount:conflicts.length,events:clone(events)||[],conflicts:clone(conflicts)||[]}
   };

@@ -222,7 +222,9 @@
     }
     e.until=battle.time+(seconds||0);
   }
-  function holdPosition(s){var p=posOf(s);s.destination={x:p.x,z:p.z};s._navCache=null;}
+  /* Engagement supplies a short-lived combat proposal; the resolver owns the physical destination. */
+  function move(s,battle,p,kind,ttl){if(root.BattleMovementResolver)return root.BattleMovementResolver.proposeCombat(s,p,battle,kind,ttl);s.destination={x:p.x,z:p.z};s._navCache=null;return null;}
+  function holdPosition(s,battle){var p=posOf(s);move(s,battle,{x:p.x,z:p.z},'hold');}
   function orderPoint(s){
     if(s._fireteamDestination)return s._fireteamDestination;
     if(s.orderDestination)return s.orderDestination;
@@ -287,7 +289,7 @@
     var e=state(s);
     s.state='engage';
     if(!s.target){enter(s,battle,'alert',ALERT_HOLD,'target lost');return alert(s,battle);}
-    holdPosition(s);
+    holdPosition(s,battle);
     commitStance(s,battle,'crouch',Math.max(.8,e.until-battle.time));
     e.fireReadyAt=Math.max(e.fireReadyAt,e.since+(REACT[s.role]||.7));
     if(battle.time>=e.until)decide(s,battle,'oriented');
@@ -324,13 +326,13 @@
     if(!cover){decide(s,battle,'bound without cover');return;}
     var p=posOf(s),d=dist(p.x,p.z,cover.x,cover.z);
     if(d<=COVER_ARRIVED||battle.time>=e.until){
-      holdPosition(s);
+      holdPosition(s,battle);
       enter(s,battle,'engage',0,d<=COVER_ARRIVED?'reached cover':'bound timed out');
       return engage(s,battle);
     }
     var suppressed=s.suppressedUntil>battle.time,crawl=suppressed&&d<14&&PRONE_ROLES[s.role];
     commitStance(s,battle,crawl?'crawl':'crouch',Math.max(1,e.until-battle.time));
-    s.destination={x:cover.x,z:cover.z};
+    move(s,battle,{x:cover.x,z:cover.z},'cover-bound');
   }
 
   function engage(s,battle){
@@ -348,7 +350,7 @@
     }
 
     var d=dist(p.x,p.z,posOf(s.target).x,posOf(s.target).z);
-    holdPosition(s);
+    holdPosition(s,battle);
     if(!holdStance(s,battle))commitStance(s,battle,fightingStance(s,battle,d,here));
     if(s.role==='gunner'){
       if(!e.setUpSince)e.setUpSince=battle.time;
@@ -362,7 +364,7 @@
   function pinned(s,battle){
     var e=state(s);
     s.state='pinned';s.setUp=false;
-    holdPosition(s);
+    holdPosition(s,battle);
     commitStance(s,battle,PRONE_ROLES[s.role]?'prone':'crouch',PRONE_HOLD);
     if(s.suppressedUntil-battle.time<.4)tryFire(s,battle);
     if(s.suppressedUntil<=battle.time){
@@ -377,7 +379,7 @@
     if(!s.target){enter(s,battle,'alert',ALERT_HOLD,'target lost');return alert(s,battle);}
     var p=posOf(s),t=posOf(s.target),d=dist(p.x,p.z,t.x,t.z);
     commitStance(s,battle,'crouch',Math.max(1,e.until-battle.time));
-    s.destination={x:p.x+(t.x-p.x)*.55,z:p.z+(t.z-p.z)*.55};
+    move(s,battle,{x:p.x+(t.x-p.x)*.55,z:p.z+(t.z-p.z)*.55},'assault-rush');
     if(d<12||battle.time>=e.until){enter(s,battle,'engage',0,'assault complete');return engage(s,battle);}
     tryFire(s,battle);
   }
@@ -388,7 +390,7 @@
     var e=state(s);
     s.state='alert';s.setUp=false;
     if(s.target){enter(s,battle,'orient',reactTime(s,battle)*.6,'re-acquired');return orient(s,battle);}
-    holdPosition(s);
+    holdPosition(s,battle);
     if(!holdStance(s,battle))commitStance(s,battle,'crouch',2.0);
     /* The squad's shared contact outranks this man's own last sighting: somebody else may have
        eyes on right now. */
@@ -419,10 +421,10 @@
     var p=posOf(s),d=dist(p.x,p.z,st.x,st.z);
     commitStance(s,battle,'crouch',2.0);
     if(d<.75){
-      holdPosition(s);
+      holdPosition(s,battle);
       if(s.role==='gunner'){if(!e.setUpSince)e.setUpSince=battle.time;s.setUp=battle.time-e.setUpSince>GUNNER_SETUP;}
       tryFire(s,battle);
-    }else s.destination={x:st.x,z:st.z};
+    }else move(s,battle,{x:st.x,z:st.z},'firing-station');
   }
 
   /* ---- per-squad update ------------------------------------------------------------------- */
