@@ -13,7 +13,6 @@ on:
         default: 'manual-benchmark'
   push:
     paths:
-      - '.github/workflows/battle-benchmark.yml'
       - 'scripts/run_battle_benchmark.mjs'
       - 'scripts/merge_battle_benchmarks.mjs'
       - 'benchmarks/run-request.txt'
@@ -93,9 +92,16 @@ jobs:
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: battle-benchmark-results-publish
+      cancel-in-progress: false
     steps:
       - name: Checkout current main
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -110,6 +116,33 @@ jobs:
 
       - name: Merge benchmark reports
         run: node scripts/merge_battle_benchmarks.mjs
+
+      - name: Prepare persistent report bundle
+        if: success()
+        run: |
+          set -euo pipefail
+          rm -rf persistent-result
+          mkdir -p persistent-result
+          cp reports/battle-benchmark.md persistent-result/
+          cp reports/battle-benchmark.csv persistent-result/
+          node <<'NODE'
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('reports/battle-benchmark.json', 'utf8'));
+          const compact = {
+            status: 'complete',
+            runNumber: Number(process.env.GITHUB_RUN_NUMBER),
+            runId: Number(process.env.GITHUB_RUN_ID),
+            sourceSha: process.env.GITHUB_SHA,
+            actionsUrl: `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+            summary: report.summary || {},
+            policy: report.policy ? {
+              source: report.policy.source || null,
+              revision: report.policy.revision ?? null,
+              genomeVersion: report.policy.genome && report.policy.genome.version || null
+            } : null
+          };
+          fs.writeFileSync('persistent-result/battle-benchmark-summary.json', JSON.stringify(compact, null, 2) + '\n');
+          NODE
 
       - name: Publish benchmark summary
         if: always()
@@ -128,3 +161,70 @@ jobs:
           path: reports/
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Publish persistent benchmark result
+        if: success()
+        env:
+          RESULTS_BRANCH: benchmark-results
+        run: |
+          set -euo pipefail
+          bundle="$(mktemp -d)"
+          cp -a persistent-result/. "$bundle/"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          if git ls-remote --exit-code --heads origin "$RESULTS_BRANCH" >/dev/null 2>&1; then
+            git fetch origin "$RESULTS_BRANCH:refs/remotes/origin/$RESULTS_BRANCH"
+            git switch -C "$RESULTS_BRANCH" "origin/$RESULTS_BRANCH"
+          else
+            git switch --orphan "$RESULTS_BRANCH"
+            git rm -rf . || true
+          fi
+
+          run_dir="benchmarks/results/runs/${GITHUB_RUN_NUMBER}"
+          mkdir -p "$run_dir"
+          cp -a "$bundle/." "$run_dir/"
+
+          existing=0
+          if [ -f benchmarks/results/status.json ]; then
+            existing="$(node -e "try{const x=require('./benchmarks/results/status.json');process.stdout.write(String(Number(x.runNumber)||0))}catch(e){process.stdout.write('0')}")"
+          fi
+
+          if [ "${GITHUB_RUN_NUMBER}" -ge "$existing" ]; then
+            rm -rf benchmarks/results/latest
+            mkdir -p benchmarks/results/latest
+            cp -a "$bundle/." benchmarks/results/latest/
+            node <<'NODE'
+            const fs = require('fs');
+            const compact = JSON.parse(fs.readFileSync('benchmarks/results/latest/battle-benchmark-summary.json', 'utf8'));
+            const s = compact.summary || {};
+            const status = {
+              status: 'complete',
+              runNumber: compact.runNumber,
+              runId: compact.runId,
+              sourceSha: compact.sourceSha,
+              completedAt: s.generatedAt || new Date().toISOString(),
+              requestedBattles: s.requestedBattles ?? null,
+              completedBattles: s.completedBattles ?? null,
+              usWins: s.winners && s.winners.us || 0,
+              geWins: s.winners && s.winners.ge || 0,
+              vacantObjectiveStalls: s.vacantObjectiveStalls ?? null,
+              movementStalls: s.movementStalls ?? null,
+              actionsUrl: compact.actionsUrl,
+              markdownPath: 'benchmarks/results/latest/battle-benchmark.md',
+              csvPath: 'benchmarks/results/latest/battle-benchmark.csv',
+              summaryPath: 'benchmarks/results/latest/battle-benchmark-summary.json',
+              historyPath: `benchmarks/results/runs/${compact.runNumber}/`
+            };
+            fs.writeFileSync('benchmarks/results/status.json', JSON.stringify(status, null, 2) + '\n');
+            NODE
+          fi
+
+          git add benchmarks/results
+          if git diff --cached --quiet; then
+            echo 'No benchmark result changes to publish.'
+            exit 0
+          fi
+          git commit -m "Benchmark results #${GITHUB_RUN_NUMBER}"
+          git push origin "HEAD:${RESULTS_BRANCH}"
