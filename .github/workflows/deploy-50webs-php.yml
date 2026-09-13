@@ -162,8 +162,6 @@ jobs:
           upload_count=0
           skip_count=0
 
-          printf '%s\n' 'mkdir -p voices/us' 'mkdir -p voices/ge' >> .audio-upload.lftp
-
           while IFS= read -r -d '' src; do
             rel="${src#.audio-deploy/}"
             if [[ "$inventory_available" -eq 1 ]] && grep -Fqx "$rel" .audio-remote-files.txt; then
@@ -210,22 +208,16 @@ jobs:
           set ftp:passive-mode true
           cd grasstex
 
-          # Deletes are limited to module files previously recorded in our managed hash state.
           source "$GITHUB_WORKSPACE/.deploy-plan/deletes.lftp"
-
-          # Runtime PHP/JS/HTML: only content hashes that changed are PUT.
           source "$GITHUB_WORKSPACE/.deploy-plan/uploads.lftp"
 
-          # Voice MP3s are immutable by path and upload only when the path is absent remotely.
           cd Assets/audio
           source "$GITHUB_WORKSPACE/.audio-upload.lftp"
           cd ../..
 
-          # Audio manifest is hash-managed but deliberately publishes after any new MP3s.
           source "$GITHUB_WORKSPACE/.deploy-plan/post-uploads.lftp"
 
-          # Commit deployment state last. A failed partial deploy therefore keeps the old
-          # state and the next run will safely retry every unfinished changed file.
+          # Publish state last so a failed partial deployment is retried next run.
           put "$GITHUB_WORKSPACE/.deploy-plan/current.sha256.tsv" -o ".battle-deploy.sha256.tsv"
 
           cd battle
