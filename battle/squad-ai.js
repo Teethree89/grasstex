@@ -27,6 +27,10 @@
   /* How much of a man each stance leaves visible. Going prone is a real way to avoid being seen,
      which is what gives the engagement pipeline something to gain by getting down. */
   var VISIBILITY={stand:1,crouch:.72,prone:.45},MOVING_VISIBILITY_BONUS=.22;
+  /* How long a squad keeps acting on a last-known enemy position after nobody can see him. */
+  var CONTACT_MEMORY=12;
+  /* Suppressing fire lands in a cone, not on a point: the further out, the looser the group. */
+  var AREA_SPREAD_MIN=3,AREA_SPREAD_PER_M=.05,AREA_SPREAD_MAX=12,AREA_FIRE_RATE=1.55,AREA_AIM_HEIGHT=.85;
 
   function clamp(n,a,b){return Math.max(a,Math.min(b,n));}
   function dist2(ax,az,bx,bz){var dx=ax-bx,dz=az-bz;return Math.sqrt(dx*dx+dz*dz);}
@@ -90,6 +94,73 @@
     return hasLineOfSight(soldier,t,heightAt,obstacles);
   }
 
+  /* Shared contact.
+     Men used to acquire targets entirely on their own, so a squad had no collective idea where the
+     enemy was: the moment a man lost line of sight he held his own last-seen point and everyone
+     else carried on as if nothing had happened. One record per squad, written by whoever can
+     currently see the enemy, gives the other nine a direction to face, a position to put fire on,
+     and a reason to be already looking the right way when their own turn comes. */
+  /* The record is the NEAREST enemy the squad currently knows about, not whichever man happened to
+     write last. A scout's eyes reach 175 m and routinely mark someone a rifleman cannot even shoot
+     at, so last-writer-wins pointed the whole squad at the furthest contact. Fresh news still
+     always gets in: an entry older than CONTACT_REFRESH is replaced regardless of distance. */
+  var CONTACT_REFRESH=2;
+  function shareContact(soldier,battle){
+    var sq=soldier.squad,t=soldier.target;
+    if(!sq||!t||t.dead)return null;
+    var p=t.root.position,anchor=sq.orderAnchor||sq.rally||p,held=sq.contact;
+    if(held&&!held.unit.dead&&battle.time-held.at<=CONTACT_REFRESH&&held.unit!==t&&
+       dist2(anchor.x,anchor.z,held.x,held.z)<=dist2(anchor.x,anchor.z,p.x,p.z))return held;
+    sq.contact={unit:t,x:p.x,z:p.z,at:battle.time,seenBy:soldier.id,stance:stanceOf(t)};
+    return sq.contact;
+  }
+  function squadContact(squad,battle){
+    var c=squad&&squad.contact;
+    if(!c)return null;
+    /* Intel expires, and a confirmed casualty stops being intel at all - anyone still there will
+       be seen again and rewrite the record. */
+    if(battle.time-c.at>CONTACT_MEMORY||(c.unit&&c.unit.dead)){squad.contact=null;return null;}
+    return c;
+  }
+
+  /* Suppressing fire at a POSITION rather than at a man.
+     Deliberately deals no damage: the shooter has no line of sight to a body, so a round that
+     would have hit is stopped by whatever is hiding him. What it does do is pin whoever is there,
+     which is the whole tactical point - it is what makes a bound survivable and what stops a
+     squad falling silent the instant line of sight breaks. No damage also means it can never be
+     used to farm kills through cover. */
+  /* Can this man put rounds on that spot at all - in range, and with something other than a hill
+     in the way? Asked during suppression assignment as well as at the trigger, because a man who
+     cannot reach the position should be left to get on with the advance rather than stood in the
+     open pointing at something 180 m away. The scout's eyes routinely mark contacts further out
+     than a rifle will carry, so this is the common case, not the edge case. */
+  function canSuppress(shooter,point,battle){
+    if(!point||!shooter||shooter.dead||!shooter.weapon)return false;
+    var stats=shooter.weapon.stats,p=shooter.root.position,d=dist2(p.x,p.z,point.x,point.z);
+    if(d>stats.range*.95)return false;
+    var eyeY=battle.heightAt(p.x,p.z)+eyeHeight(shooter),aimY=battle.heightAt(point.x,point.z)+AREA_AIM_HEIGHT,F=field();
+    /* The obstacle field lets him shoot at the cover a man is behind without letting him shoot
+       through a hill. */
+    if(F&&F.sightBlocked(battle.obstacles,{x:p.x,z:p.z,y:eyeY},{x:point.x,z:point.z,y:aimY}))return false;
+    if(root.BattleNavigation&&root.BattleNavigation.lineOfSightBlocked({x:p.x,z:p.z},{x:point.x,z:point.z},eyeY,aimY))return false;
+    return true;
+  }
+  function areaFire(shooter,point,battle){
+    if(shooter.fireCooldown>0||!canSuppress(shooter,point,battle))return 0;
+    var stats=shooter.weapon.stats,p=shooter.root.position,d=dist2(p.x,p.z,point.x,point.z);
+    var spread=clamp(AREA_SPREAD_MIN+d*AREA_SPREAD_PER_M,AREA_SPREAD_MIN,AREA_SPREAD_MAX);
+    var enemies=battle.rosterOf(shooter.faction==='us'?'ge':'us'),hold=SUPPRESSION_TIME*(stats.suppressive?1.25:.85),hit=0;
+    for(var i=0;i<enemies.length;i++){
+      var e=enemies[i];if(e.dead)continue;
+      if(dist2(e.root.position.x,e.root.position.z,point.x,point.z)>spread)continue;
+      e.suppressedUntil=Math.max(e.suppressedUntil||0,battle.time+hold);hit++;
+    }
+    shooter.fireCooldown=1/stats.rof*AREA_FIRE_RATE*(.85+rand(battle)*.3);
+    battle.onFire&&battle.onFire(shooter);
+    battle.onSuppressiveShot&&battle.onSuppressiveShot(shooter,point,hit);
+    return hit;
+  }
+
   function resolveFire(shooter,target,battle){
     var stats=shooter.weapon.stats,d=dist2(shooter.root.position.x,shooter.root.position.z,target.root.position.x,target.root.position.z);
     if(d>stats.range)return null;
@@ -111,7 +182,7 @@
     return hit;
   }
 
-  function createSquad(id,faction,homePoint,objective){return {id:id,faction:faction,members:[],state:'advance',home:homePoint,objective:objective,rally:{x:homePoint.x,z:homePoint.z},orderAnchor:{x:homePoint.x,z:homePoint.z},formation:'wedge',accuracyMultiplier:1,captainAlive:true,inContact:false,contactCount:0,contactSince:null,_orderGoal:{x:homePoint.x,z:homePoint.z},_orderVersion:0};}
+  function createSquad(id,faction,homePoint,objective){return {id:id,faction:faction,members:[],state:'advance',home:homePoint,objective:objective,rally:{x:homePoint.x,z:homePoint.z},orderAnchor:{x:homePoint.x,z:homePoint.z},formation:'wedge',accuracyMultiplier:1,captainAlive:true,inContact:false,contactCount:0,contactSince:null,contact:null,suppressorCount:0,_orderGoal:{x:homePoint.x,z:homePoint.z},_orderVersion:0};}
   function formationDirection(squad){
     var anchor=squad.orderAnchor||squad.rally,goal=squad.state==='retreat'?squad.home:squad.objective||squad.home,dx=goal.x-anchor.x,dz=goal.z-anchor.z,len=Math.hypot(dx,dz);
     if(len<.1&&squad._formationForward){return squad._formationForward;}
@@ -211,6 +282,7 @@
       soldier._scanAt=battle.time+SCAN_INTERVAL+((+soldier.id||0)%5)*.04;
       soldier.target=findTarget(soldier,battle.rosterOf(soldier.faction==='us'?'ge':'us'),heightAt,obstacles);
     }
+    if(soldier.target)shareContact(soldier,battle);
     if(!had&&soldier.target)callout(soldier,battle,'contact');
     if(soldier.lastSquadState!==soldier.squad.state){
       if(soldier.role==='captain')callout(soldier,battle,soldier.squad.state==='retreat'?'retreat':(soldier.squad.state==='advance'?'advance':'engage'));
@@ -252,5 +324,5 @@
 
   function tryFire(soldier,battle){if(soldier.fireCooldown>0)return false;var stats=soldier.weapon.stats;resolveFire(soldier,soldier.target,battle);soldier.fireCooldown=1/stats.rof*(.85+rand(battle)*.3);battle.onFire&&battle.onFire(soldier);return true;}
 
-  root.SquadAI={ROLES:ROLES,COMPOSITION:COMPOSITION,createSquad:createSquad,createSoldier:createSoldier,updateSquad:updateSquad,updateSoldier:updateSoldier,perceive:perceive,issueOrders:issueOrders,formationSlot:formationSlot,formationFor:formationFor,setDestination:setDestination,hasLineOfSight:hasLineOfSight,detectionRange:detectionRange,findTarget:findTarget,tryFire:tryFire,resolveFire:resolveFire,coverMultiplierAt:coverMultiplierAt,coverPotentialAt:coverPotentialAt,stanceOf:stanceOf,eyeHeight:eyeHeight,dist2:dist2};
+  root.SquadAI={ROLES:ROLES,COMPOSITION:COMPOSITION,createSquad:createSquad,createSoldier:createSoldier,updateSquad:updateSquad,updateSoldier:updateSoldier,perceive:perceive,issueOrders:issueOrders,formationSlot:formationSlot,formationFor:formationFor,setDestination:setDestination,hasLineOfSight:hasLineOfSight,detectionRange:detectionRange,findTarget:findTarget,tryFire:tryFire,resolveFire:resolveFire,areaFire:areaFire,canSuppress:canSuppress,shareContact:shareContact,squadContact:squadContact,CONTACT_MEMORY:CONTACT_MEMORY,CONTACT_REFRESH:CONTACT_REFRESH,coverMultiplierAt:coverMultiplierAt,coverPotentialAt:coverPotentialAt,stanceOf:stanceOf,eyeHeight:eyeHeight,dist2:dist2};
 })(typeof window!=='undefined'?window:globalThis);

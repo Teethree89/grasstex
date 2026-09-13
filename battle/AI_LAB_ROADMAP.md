@@ -26,13 +26,50 @@ it position inputs; they no longer wrap `SquadAI.updateSoldier` to override stan
 Sight and cover are stance-aware (`battle/obstacle-field.js`), so going prone is a real tactical
 choice rather than a pose.
 
-Next steps for this layer:
+### Squad situational awareness
 
-- grenades and smoke as suppression/assault enablers, which the bound cycle can then spend;
-- casualty reaction (drag to cover, call out a man down) once a medic concept exists;
-- per-role engagement profiles in the scenario memory, so terrain type can shift reaction and
-  bounding behavior;
-- stance-aware LOS for vehicles and windows so armor and hardpoints use the same contract.
+A squad keeps one shared contact record: the nearest enemy any member can currently see, written by
+whoever has eyes on and held for a short memory window. It is what a man without his own target
+faces, what he puts fire on, and what lets him react faster than the man who found the enemy — the
+squad calls the contact, so the rest are already looking the right way.
+
+Suppressing fire is aimed at that position rather than at a man. It deals no damage by design (the
+shooter has no line of sight to a body, so the round is stopped by whatever is hiding him) and
+instead pins whoever is near the impact point. That is the tactical purpose: it is what makes a
+bound survivable, and it is what stops a squad falling silent the moment line of sight breaks. The
+job is capped per squad and assigned to men who can actually reach the position — machine gun first,
+then whoever held it last tick — so it reads as suppressing fire rather than everyone emptying
+magazines into a hedge.
+
+### Concepts we want next
+
+Behaviours worth having, in rough order of value. Each is a concept to build here, not a port:
+
+- **Overwatch positioning.** A bound currently authorises who moves but not who covers. The base of
+  fire should be positioned deliberately — a man picked and placed to watch the objective while the
+  other team crosses — instead of whoever happens to be static.
+- **Cover as a query language.** `findCover` is a hand-tuned scoring loop. A composable query
+  ("hide spot with a firing posture toward the current threat, at least N metres from it, reachable
+  inside T seconds") would let doctrine ask for different kinds of position without rewriting the
+  scorer, and would serve armour and hardpoints from the same mechanism.
+- **A mode above the drills.** Individual behaviour is reactive: it only has answers once there is a
+  target or a known position. Explicit patrol and ambush modes — deliberately occupying a spot the
+  enemy cannot see into, facing the approach they are expected to use — would give a squad something
+  to do with terrain before contact rather than after it.
+- **Capped simultaneous attackers.** Letting every man who can see a target shoot at it makes a
+  firefight a burst of fire followed by silence. Reserving a limited number of attack slots per
+  target, with the rest holding or repositioning, paces an engagement and is cheap to implement on
+  top of the existing squad layer.
+- **Grenades and smoke** as suppression and assault enablers the bound cycle can spend.
+- **Casualty reaction** (drag to cover, call out a man down) once a medic concept exists.
+- **Per-role engagement profiles in scenario memory**, so terrain family can shift reaction times
+  and bounding tempo rather than one global tuning table.
+- **Stance-aware sight for vehicles and windows**, so armour and building hardpoints use the same
+  contract as infantry.
+
+The hierarchical split we already run — one commander per faction, squad leaders under it, drills
+under those — is the shape shipped tactical shooters converge on, so the layering itself is not the
+thing to change; the gaps above are all inside a layer.
 
 ## Buildings / hardpoints
 

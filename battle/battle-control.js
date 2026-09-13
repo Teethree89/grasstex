@@ -16,19 +16,22 @@
      answerable from the HUD, not only from the telemetry log. */
   function engagementText(sim){
     if(!root.BattleEngagement)return'Engagement pipeline not loaded';
-    var counts={},contact=0,total=0;
+    var counts={},contact=0,known=0,suppressing=0,total=0;
     ['us','ge'].forEach(function(f){
       (sim._roster&&sim._roster[f]||[]).forEach(function(s){
         if(s.dead)return;total++;
-        var st=root.BattleEngagement.stateOf(s).state||'advance';
+        var e=root.BattleEngagement.stateOf(s);
+        /* A designated suppressor sits in the alert state while he works, so label the job rather
+           than the state - "alert" would read as idle. */
+        var st=(e.suppressOrder&&e.state==='alert'?'suppress':e.state)||'advance';
         counts[st]=(counts[st]||0)+1;
       });
-      (sim.factions&&sim.factions[f]&&sim.factions[f].squads||[]).forEach(function(sq){if(sq.inContact)contact++;});
+      (sim.factions&&sim.factions[f]&&sim.factions[f].squads||[]).forEach(function(sq){if(sq.inContact)contact++;if(sq.contact)known++;suppressing+=sq.suppressorCount||0;});
     });
-    var order=['advance','alert','orient','bound','engage','pinned','assault','station','withdraw'];
+    var order=['advance','alert','orient','bound','engage','suppress','pinned','assault','station','withdraw'];
     var parts=order.filter(function(k){return counts[k];}).map(function(k){return k+' '+counts[k];});
     Object.keys(counts).forEach(function(k){if(order.indexOf(k)<0)parts.push(k+' '+counts[k]);});
-    return contact+' squads in contact · '+(parts.join(' · ')||'no men')+' ('+total+' alive)';
+    return contact+' in contact · '+known+' tracking a position · '+suppressing+' suppressing\n'+(parts.join(' · ')||'no men')+' ('+total+' alive)';
   }
   function objectiveText(sim){var control=sim.objectiveControl,objects=control&&(control.objectives||control.sectors);if(!objects)return'';var parts=[];Object.keys(objects).forEach(function(id){var x=objects[id]||{},owner=x.owner==='neutral'?'N':String(x.owner||'?').toUpperCase(),push=x.active?(' '+String(x.active).toUpperCase()+'→'+(x.progress||0)+'%'):'';parts.push((x.label||id)+': '+owner+push);});return parts.join(' · ');}
   function endBattle(sim,reason){if(sim._trainingRunning)return;sim.pause();sim.manualEnded=true;if(root.BattleTelemetry)root.BattleTelemetry.end(sim,reason||'manual',{usAlive:sim.factions.us.alive,geAlive:sim.factions.ge.alive,objectives:sim.objectiveControl||null,policyRevision:root.BattleAIPolicy?root.BattleAIPolicy.revision:0});var s=document.getElementById('aiTestStatus');if(s)s.textContent='Battle ended · decision logging stopped';console.log('[CONTROL] battle ended; telemetry flushed');}
