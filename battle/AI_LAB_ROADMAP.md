@@ -17,6 +17,23 @@
 - Successful scenario/genome pairs are stored as compact experiences. New scenarios may blend doctrine from several similar successful experiences.
 - Unit/objective/system modules are registered through `BattleModules` so future unit classes do not require hard-coding in the commander.
 
+## Individual engagement
+
+Per-soldier combat behavior is a single state machine in `battle/engagement.js`
+(advance -> orient -> cover/bound -> engage -> pinned/assault -> alert), documented in
+`battle/AI_ENGAGEMENT.md` and tested headless with `node tools/ai-sim-harness/run.js`. Modules feed
+it position inputs; they no longer wrap `SquadAI.updateSoldier` to override stance or destination.
+Sight and cover are stance-aware (`battle/obstacle-field.js`), so going prone is a real tactical
+choice rather than a pose.
+
+Next steps for this layer:
+
+- grenades and smoke as suppression/assault enablers, which the bound cycle can then spend;
+- casualty reaction (drag to cover, call out a man down) once a medic concept exists;
+- per-role engagement profiles in the scenario memory, so terrain type can shift reaction and
+  bounding behavior;
+- stance-aware LOS for vehicles and windows so armor and hardpoints use the same contract.
+
 ## Buildings / hardpoints
 
 ### Current v20

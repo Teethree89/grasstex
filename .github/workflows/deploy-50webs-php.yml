@@ -7,7 +7,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # Write access is needed for one thing only: pushing the build-v<N> tag once a deploy succeeds.
+  contents: write
 
 concurrency:
   group: deploy-50webs-battle-runtime
@@ -24,6 +25,22 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
+          # Full history and tags: the build number is derived from the highest build-v<N> tag.
+          fetch-depth: 0
+
+      - name: Resolve and stamp build version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force --quiet origin
+          echo "Published build versions: $(git tag --list 'build-v*' | tr '\n' ' ' )"
+          echo "Currently live: $(python3 scripts/build_version.py show)"
+          python3 scripts/build_version.py stamp \
+            --run-id "${{ github.run_id }}" \
+            --github-output "$GITHUB_OUTPUT"
+          test -s battle/build-version.json
+          echo "This run will publish: $(python3 -c 'import json;print(json.load(open("battle/build-version.json"))["version"])')"
 
       - name: Validate deployment files
         shell: bash
@@ -40,9 +57,12 @@ jobs:
           for f in \
             battle/soldier.js \
             battle/weapons.js \
+            battle/obstacle-field.js \
             battle/terrain-features.js \
             battle/squad-ai.js \
+            battle/engagement.js \
             battle/battle-sim.js \
+            battle/camera-controls.js \
             battle/acoustics.js \
             battle/scenario-generator.js \
             battle/battle-navigation.js \
@@ -51,12 +71,21 @@ jobs:
             battle/ai-policy.js \
             battle/objective-system.js \
             battle/battle-telemetry.js \
+            battle/commander-doctrine.js \
+            battle/commander-routes.js \
             battle/commander-ai.js \
             battle/ai-trainer.js \
             battle/battle-control.js; do
             test -s "$f"
             node --check "$f"
           done
+
+          # Three lists have to agree: the page's script tags, the loader's runtime lists and the
+          # deploy plan. When they drift the deployed loader just 404s.
+          python3 scripts/check_deploy_coverage.py
+
+          # The AI decision stack has to still behave before it is published.
+          node tools/ai-sim-harness/run.js
 
           test -d battle/modules
           find battle/modules -maxdepth 1 -type f -name '*.js' -print0 | sort -z | while IFS= read -r -d '' f; do
@@ -68,7 +97,8 @@ jobs:
           python3 -m json.tool Assets/audio/manifest.json >/dev/null
           python3 scripts/validate_voice_manifest.py Assets/audio/manifest.json Assets/audio
           python3 -m py_compile scripts/prepare_incremental_deploy.py
-          echo "Deploying commit: $(git rev-parse HEAD)"
+          python3 -m py_compile scripts/build_version.py
+          echo "Deploying commit: $(git rev-parse HEAD) as build ${{ steps.version.outputs.version }}"
 
       - name: Install FTP and audio tools
         shell: bash
@@ -229,6 +259,21 @@ jobs:
           bye
           LFTP
 
+      - name: Publish build version tag
+        shell: bash
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          # Only reached when every upload step above succeeded, so the tag means "this is live".
+          # A failed or cancelled run skips a version number rather than reusing one.
+          python3 scripts/build_version.py tag \
+            --message "Battle runtime ${{ steps.version.outputs.version }} deployed from ${{ github.sha }} (run ${{ github.run_id }})"
+          echo "Published tag: build-${{ steps.version.outputs.version }}"
+
       - name: Deployment summary
         shell: bash
         run: |
@@ -240,6 +285,7 @@ jobs:
           {
             echo "### 50webs Battle Sim AI lab deployment"
             echo ""
+            echo "- Build: **${{ steps.version.outputs.version }}** (tag \`build-${{ steps.version.outputs.version }}\`, cache epoch \`${{ steps.version.outputs.cacheEpoch }}\`)"
             echo "- Source: \`main@$(git rev-parse --short HEAD)\`"
             echo "- Battle: \`/grasstex/battle_sim.php\`"
             echo "- Review: \`/grasstex/battle_metrics.php\`"
@@ -251,4 +297,5 @@ jobs:
             echo "- Voice MP3 upload: existence-based; already-deployed MP3s are never re-uploaded"
             echo "- Deployment state: \`/grasstex/.battle-deploy.sha256.tsv\` published last"
             echo "- Trigger: every push to \`main\` plus manual dispatch"
+            echo "- Build number: highest \`build-v<N>\` tag + 1 at start; the tag is pushed only after a successful deploy"
           } >> "$GITHUB_STEP_SUMMARY"
