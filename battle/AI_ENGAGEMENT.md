@@ -61,6 +61,43 @@ A shot is resolved only when all of these hold (`BattleEngagement.fireAllowed`):
 - facing the target within `AIM_CONE` (~12.6°);
 - a gunner in `engage` has finished emplacing (`GUNNER_SETUP`).
 
+## Shared contact and suppressing fire
+
+`squad.contact` is one record per squad: `{unit, x, z, at, seenBy, stance}`, written by
+`SquadAI.shareContact` for the enemy **nearest the squad's order anchor** that any member can
+currently see, and read through `SquadAI.squadContact(squad, battle)`, which expires it after
+`CONTACT_MEMORY` seconds or as soon as that man is confirmed dead. Last-writer-wins was wrong: a
+scout sees 175 m and would repeatedly point the whole squad at a contact a rifleman cannot reach, so
+a fresher-than-`CONTACT_REFRESH` record is only displaced by something closer.
+
+It does three things:
+
+- `alert` faces it in preference to the man's own last sighting — somebody else may have eyes on now;
+- `reactTime()` shortens recognition to `PREWARNED_REACT` of normal for anyone who did not find the
+  enemy himself, so the squad that was told reacts faster than the man who found them;
+- it is the aim point for suppressing fire.
+
+`SquadAI.areaFire(shooter, point, battle)` puts rounds on a position rather than a man. It **deals no
+damage on purpose**: the shooter has no line of sight to a body, so a round that would have hit is
+stopped by whatever is hiding him — and no damage means it can never be used to farm kills through
+cover. What it does is set `suppressedUntil` on everyone within a distance-scaled spread, which is
+the whole tactical point. `SquadAI.canSuppress` gates it on weapon range and a clear shot at the
+point itself (the obstacle field's used-as-cover exception means he can shoot at the hedge a man is
+behind, but not through a hill).
+
+`BattleEngagement.assignSuppressors` picks at most `MAX_SUPPRESSORS` men per squad, preferring the
+machine gun, then whoever held the job last tick, then by slot. Excluded: men with their own target,
+men moving/pinned/withdrawing/assaulting, men holding a firing station, men currently suppressed, the
+movers during a bound, and — importantly — anyone who cannot reach the position, who is left to get
+on with the advance rather than stood in the open pointing at something 180 m away. It runs *before*
+the in-contact early-out in `updateSquad`, because suppression matters most in the gap where nobody
+can see anyone.
+
+A suppressor holds the firing line while the contact is current instead of lapsing out of `alert`
+mid-burst, and fires in bursts of `SUPPRESS_BURST` with a `SUPPRESS_PAUSE` gap so a firefight has a
+rhythm. `battle.onSuppressiveShot` draws the tracer to the aimed position, so the operator can see a
+soldier is firing at a place and not at nothing.
+
 ## Fire and movement
 
 `BattleEngagement.updateSquad` counts contacts, effective shooters and pinned men. While a squad is

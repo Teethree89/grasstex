@@ -169,6 +169,122 @@ section('contact broken is held, not forgotten');
     'state='+root.BattleEngagement.stateOf(man).state);
 }
 
+section('a squad shares one contact');
+{
+  const {root,battle,us,ge}=duel({gap:60});
+  H.run(root,battle,3);
+  const c=root.SquadAI.squadContact(us,battle);
+  check('the squad records a last known enemy position',!!c,'no shared contact');
+  if(c){
+    const nearest=ge.members.reduce((best,s)=>{
+      const d=Math.hypot(s.root.position.x-c.x,s.root.position.z-c.z);
+      return best===null||d<best?d:best;},null);
+    check('the recorded position is where an enemy actually is',nearest<6,'nearest enemy is '+nearest.toFixed(1)+'m from the record');
+    check('it names the man who saw them',us.members.some(m=>m.id===c.seenBy),'seenBy='+c.seenBy);
+  }
+  /* Intel expires rather than being believed forever. */
+  battle.time+=root.SquadAI.CONTACT_MEMORY+1;
+  check('intel goes stale',!root.SquadAI.squadContact(us,battle),'contact survived '+root.SquadAI.CONTACT_MEMORY+'s');
+}
+
+section('a shared contact pre-warns the rest of the squad');
+{
+  const {root,battle,us}=duel({gap:60});
+  const man=rifleman(us);
+  const base=root.BattleEngagement.reactTime(man,battle);
+  us.contact={unit:{dead:false},x:0,z:30,at:battle.time,seenBy:999,stance:'stand'};
+  const warned=root.BattleEngagement.reactTime(man,battle);
+  check('a man whose squad called the contact reacts faster',warned<base,'base='+base.toFixed(2)+'s warned='+warned.toFixed(2)+'s');
+  us.contact={unit:{dead:false},x:0,z:30,at:battle.time,seenBy:man.id,stance:'stand'};
+  check('the man who found them gets no head start',root.BattleEngagement.reactTime(man,battle)===base,
+    'own sighting shortened his own reaction');
+}
+
+section('men without a target suppress the position the squad knows about');
+{
+  const {root,battle,us}=duel({gap:60});
+  H.run(root,battle,3);
+  const before=battle.events.suppressiveShots;
+  /* Nobody can see anyone any more, but the squad still knows where they were. */
+  us.members.forEach(s=>{s.target=null;s._scanAt=battle.time+999;});
+  H.run(root,battle,6);
+  check('suppressing fire goes out with nobody in sight',battle.events.suppressiveShots>before,
+    'suppressive shots='+(battle.events.suppressiveShots-before));
+  check('it reaches men near the aimed position',battle.events.suppressed>0,'nobody was suppressed');
+  check('at most '+root.BattleEngagement.tuning.MAX_SUPPRESSORS+' men suppress at once',
+    (us.suppressorCount||0)<=root.BattleEngagement.tuning.MAX_SUPPRESSORS,'suppressors='+us.suppressorCount);
+}
+
+section('the machine gun gets the suppression job first');
+{
+  /* Assignment tested directly: after a lethal 10-v-10 the gunner may be dead or pinned, which
+     says nothing about the preference order. */
+  const {root,battle,us}=duel({gap:60});
+  H.run(root,battle,2);
+  const alive=us.members.filter(s=>!s.dead);
+  alive.forEach(s=>{s.target=null;s.suppressedUntil=0;root.BattleEngagement.stateOf(s).state='alert';});
+  us.contact={unit:{dead:false,root:{position:{x:0,z:28}}},x:0,z:28,at:battle.time,seenBy:999,stance:'stand'};
+  const chosen=root.BattleEngagement.assignSuppressors(us,battle,us.members);
+  const gunner=alive.find(s=>s.role==='gunner');
+  check('somebody is given the job',chosen>0,'nobody assigned');
+  check('the machine gun is first in line',!gunner||root.BattleEngagement.stateOf(gunner).suppressOrder,
+    'gunner not assigned; assigned were '+alive.filter(s=>root.BattleEngagement.stateOf(s).suppressOrder).map(s=>s.role).join(','));
+  check('a man out of reach is left alone',(()=>{
+    alive.forEach(s=>{root.BattleEngagement.stateOf(s).suppressOrder=false;});
+    us.contact={unit:{dead:false,root:{position:{x:0,z:400}}},x:0,z:400,at:battle.time,seenBy:999,stance:'stand'};
+    return root.BattleEngagement.assignSuppressors(us,battle,us.members)===0;
+  })(),'men were told to suppress a position 400m away');
+}
+
+section('suppressing fire pins but does not kill through cover');
+{
+  const {root,battle,us,ge}=duel({gap:60});
+  H.run(root,battle,2);
+  const man=rifleman(us),victim=ge.members.find(s=>!s.dead);
+  man.target=null;man.fireCooldown=0;man.moving=false;man.moveSpeed=0;
+  const point={x:victim.root.position.x,z:victim.root.position.z};
+  const hpBefore=victim.hp,killsBefore=battle.events.kills;
+  const reached=root.SquadAI.areaFire(man,point,battle);
+  check('rounds on the position pin whoever is there',reached>0&&victim.suppressedUntil>battle.time,
+    'reached='+reached+' suppressedUntil='+victim.suppressedUntil.toFixed(1)+' now='+battle.time.toFixed(1));
+  check('and do no damage',victim.hp===hpBefore&&battle.events.kills===killsBefore,
+    'hp '+hpBefore+' -> '+victim.hp+', kills +'+(battle.events.kills-killsBefore));
+  check('it costs a shot like any other',man.fireCooldown>0,'no cooldown applied');
+}
+
+section('suppressing fire needs a shot at the position');
+{
+  /* A bank of tall cover right in front of the firing line: he cannot put a round on the spot. */
+  const obstacles=[];
+  for(let x=-30;x<=30;x+=4)obstacles.push({x:x,z:-20,y:0,radius:4,cover:.35,height:6,type:'bank'});
+  const {root,battle,us}=duel({gap:60,obstacles});
+  us.contact={unit:{dead:false},x:0,z:30,at:battle.time,seenBy:999,stance:'stand'};
+  const man=rifleman(us);
+  man.target=null;man.fireCooldown=0;
+  man.root.rotation.y=Math.atan2(0-man.root.position.x,30-man.root.position.z);
+  const before=battle.events.suppressiveShots;
+  root.SquadAI.areaFire(man,{x:0,z:30},battle);
+  check('a soldier will not fire into a hill',battle.events.suppressiveShots===before,'he fired anyway');
+}
+
+section('the firing line holds while the contact is current');
+{
+  const {root,battle,us}=duel({gap:60});
+  H.run(root,battle,3);
+  us.members.forEach(s=>{s.target=null;s._scanAt=battle.time+999;});
+  H.run(root,battle,root.BattleEngagement.tuning.ALERT_HOLD+2);
+  const suppressors=us.members.filter(s=>!s.dead&&root.BattleEngagement.stateOf(s).suppressOrder);
+  check('a suppressor does not wander off when the alert timer lapses',
+    suppressors.every(s=>root.BattleEngagement.stateOf(s).state==='alert'),
+    'states: '+suppressors.map(s=>root.BattleEngagement.stateOf(s).state).join(','));
+  /* Once the intel is stale everyone goes back to the advance. */
+  us.contact=null;
+  H.run(root,battle,root.BattleEngagement.tuning.ALERT_HOLD+2);
+  const advancing=us.members.filter(s=>!s.dead&&root.BattleEngagement.stateOf(s).state==='advance').length;
+  const alive=us.members.filter(s=>!s.dead).length;
+  check('stale intel releases the squad',advancing===alive,advancing+' of '+alive+' resumed the advance');
+}
+
 section('full fight still resolves');
 {
   const obstacles=[];

@@ -37,6 +37,13 @@
   var OPEN_COVER=.92,USEFUL_COVER=.88;
   var PRONE_ROLES={rifleman:1,gunner:1};
   var BOUND_CYCLE=9.0,BOUND_DURATION=3.6,BOUND_TEAMS=['alpha','bravo','charlie'];
+  /* Suppressing a known position. Capped per squad so it reads as suppressing fire rather than
+     everyone emptying magazines into a hedge, and fired in short bursts so the sound of a
+     firefight has a rhythm. */
+  var MAX_SUPPRESSORS=2,SUPPRESS_BURST=3,SUPPRESS_PAUSE=2.6,SUPPRESS_HOLD=1.5;
+  /* A man whose squad already knows where the enemy is reacts faster than the man who found them:
+     he is looking the right way before his own target resolves. */
+  var PREWARNED_REACT=.55;
 
   function SA(){return root.SquadAI;}
   function field(){return root.BattleObstacleField;}
@@ -49,7 +56,8 @@
 
   function state(s){
     if(!s.eng)s.eng={state:'advance',since:0,until:0,stance:'stand',stanceUntil:0,fireReadyAt:0,
-      threatSector:null,cover:null,lastSeen:null,lastSeenAt:-999,contactAt:-999,reviewAt:0,setUpSince:0,boundOrder:false};
+      threatSector:null,cover:null,lastSeen:null,lastSeenAt:-999,contactAt:-999,reviewAt:0,setUpSince:0,boundOrder:false,
+      suppressOrder:false,burstLeft:SUPPRESS_BURST,burstPauseUntil:0};
     return s.eng;
   }
   function threatSector(s,target){
@@ -64,6 +72,23 @@
     if(Math.abs(dx)+Math.abs(dz)<1e-5)return 0;
     var diff=Math.atan2(dx,dz)-(s.root.rotation.y||0);
     return Math.abs(Math.atan2(Math.sin(diff),Math.cos(diff)));
+  }
+
+  function squadContact(s,battle){
+    var api=SA();
+    return api&&api.squadContact?api.squadContact(s.squad,battle):null;
+  }
+  /* Recognition time, shortened when the squad has already called the contact. */
+  function reactTime(s,battle){
+    var base=(REACT[s.role]||.7)+jitter(s,.06),contact=squadContact(s,battle);
+    return contact&&contact.seenBy!==s.id?base*PREWARNED_REACT:base;
+  }
+  /* Where a man without his own target should be looking and shooting. */
+  function knownThreat(s,battle){
+    var contact=squadContact(s,battle);
+    if(contact)return{x:contact.x,z:contact.z};
+    var e=state(s);
+    return e.lastSeen||null;
   }
 
   /* ---- stance ------------------------------------------------------------------------------- */
@@ -172,6 +197,19 @@
     return true;
   }
 
+  /* Rounds into a known position. Facing and settling still gate it, so a man turns onto the
+     sector before he fires into it. */
+  function suppress(s,battle,point){
+    var e=state(s);
+    if(!point||s.reloading||movingTooFast(s)||s.crawling)return false;
+    if(battle.time<e.burstPauseUntil||battle.time<e.fireReadyAt)return false;
+    if(facingError(s,point)>AIM_CONE)return false;
+    if(!SA().areaFire(s,point,battle))return false;
+    e.burstLeft=(e.burstLeft||SUPPRESS_BURST)-1;
+    if(e.burstLeft<=0){e.burstLeft=SUPPRESS_BURST;e.burstPauseUntil=battle.time+SUPPRESS_PAUSE+jitter(s,.2);}
+    return true;
+  }
+
   /* ---- transitions ------------------------------------------------------------------------- */
 
   function enter(s,battle,next,seconds,why){
@@ -238,7 +276,7 @@
   function advance(s,battle){
     var e=state(s);
     s.state='advance';s.setUp=false;
-    if(s.target){enter(s,battle,'orient',(REACT[s.role]||.7)+jitter(s,.06),'contact');return orient(s,battle);}
+    if(s.target){enter(s,battle,'orient',reactTime(s,battle),'contact');return orient(s,battle);}
     if(!holdStance(s,battle))commitStance(s,battle,'stand',1.0);
     followOrders(s,battle,false);
   }
@@ -349,11 +387,21 @@
   function alert(s,battle){
     var e=state(s);
     s.state='alert';s.setUp=false;
-    if(s.target){enter(s,battle,'orient',(REACT[s.role]||.7)*.6,'re-acquired');return orient(s,battle);}
+    if(s.target){enter(s,battle,'orient',reactTime(s,battle)*.6,'re-acquired');return orient(s,battle);}
     holdPosition(s);
     if(!holdStance(s,battle))commitStance(s,battle,'crouch',2.0);
-    if(e.lastSeen&&facingError(s,e.lastSeen)>AIM_CONE)s._faceHint=e.lastSeen;else s._faceHint=null;
-    if(battle.time>=e.until){e.cover=null;e.threatSector=null;s._faceHint=null;enter(s,battle,'advance',0,'sector clear');}
+    /* The squad's shared contact outranks this man's own last sighting: somebody else may have
+       eyes on right now. */
+    var aim=knownThreat(s,battle);
+    s._faceHint=aim&&facingError(s,aim)>AIM_CONE?aim:null;
+    if(e.suppressOrder&&aim){
+      /* A designated suppressor holds the firing line for as long as the contact is current,
+         rather than wandering off mid-burst when the alert timer lapses. */
+      e.until=Math.max(e.until,battle.time+SUPPRESS_HOLD);
+      s.state='suppress';
+      suppress(s,battle,aim);
+    }
+    if(battle.time>=e.until){e.cover=null;e.threatSector=null;s._faceHint=null;e.suppressOrder=false;enter(s,battle,'advance',0,'sector clear');}
   }
 
   function withdraw(s,battle){
@@ -379,6 +427,43 @@
 
   /* ---- per-squad update ------------------------------------------------------------------- */
 
+  /* Who puts fire on the last known position. Preference order: the machine gun first (it is the
+     suppressive weapon and it is already static), then whoever was doing it last tick so the job
+     does not hop around the squad, then by slot. Men who can see a target of their own, men who
+     are moving, pinned, withdrawing or holding a firing station are all excluded - and during a
+     bound the movers never double as the base of fire. */
+  function assignSuppressors(sq,battle,members){
+    var contact=SA().squadContact?SA().squadContact(sq,battle):null,i,s,chosen=0;
+    for(i=0;i<members.length;i++){s=members[i];if(!s.dead)state(s).suppressOrder=false;}
+    if(contact){
+      var bounding=battle.time<(sq._boundUntil||0),candidates=[];
+      var point={x:contact.x,z:contact.z},api=SA();
+      for(i=0;i<members.length;i++){
+        s=members[i];
+        if(s.dead||s.target||s._firingStation)continue;
+        if(s.suppressedUntil>battle.time)continue;
+        var es=state(s);
+        if(es.state==='bound'||es.state==='pinned'||es.state==='withdraw'||es.state==='assault')continue;
+        if(bounding&&es.boundOrder)continue;
+        /* No job for a man who cannot reach it - he keeps advancing instead of standing still. */
+        if(api.canSuppress&&!api.canSuppress(s,point,battle))continue;
+        candidates.push(s);
+      }
+      candidates.sort(function(a,b){
+        var ga=a.role==='gunner'?0:1,gb=b.role==='gunner'?0:1;
+        if(ga!==gb)return ga-gb;
+        var sa=state(a).suppressOrder?0:1,sb=state(b).suppressOrder?0:1;
+        if(sa!==sb)return sa-sb;
+        return(+a.slotIndex||0)-(+b.slotIndex||0);
+      });
+      for(i=0;i<candidates.length&&chosen<MAX_SUPPRESSORS;i++){state(candidates[i]).suppressOrder=true;chosen++;}
+    }
+    if(chosen!==(sq.suppressorCount||0)&&(chosen||sq.suppressorCount))
+      telemetry(battle,'decision-suppress',{faction:sq.faction,squad:sq.id,suppressors:chosen,contactAge:contact?+(battle.time-contact.at).toFixed(1):null});
+    sq.suppressorCount=chosen;
+    return chosen;
+  }
+
   /* Fire and movement: a squad in contact stops walking, shoots, and then moves one fireteam at a
      time. Without this the commander kept marching the whole squad through a firefight. */
   function updateSquad(sq,battle){
@@ -398,6 +483,10 @@
     sq.inContact=contact>0;
     if(sq.inContact&&!wasInContact){sq.contactSince=battle.time;sq._boundUntil=0;sq._nextBoundAt=battle.time+BOUND_CYCLE;
       telemetry(battle,'decision-contact',{faction:sq.faction,squad:sq.id,phase:sq.commandPhase||'',contacts:contact});}
+    /* Suppression is assigned off the shared contact, not off current visibility, so it keeps
+       working in the gap where nobody can see anyone - which is exactly when a squad used to fall
+       silent. It therefore runs before the in-contact early-out below. */
+    assignSuppressors(sq,battle,members);
     if(!sq.inContact){sq.contactSince=null;sq._boundUntil=0;sq._assaultAuthorized=false;return;}
 
     var phase=sq.commandPhase||'';
@@ -422,16 +511,18 @@
     s.eng=null;s._faceHint=null;s.prone=false;s.crawling=false;s.tacticalCrouch=false;s.setUp=false;
   }
   function resetSquad(sq){
-    sq.inContact=false;sq.contactSince=null;sq.contactCount=0;sq._boundUntil=0;sq._nextBoundAt=0;
+    sq.inContact=false;sq.contactSince=null;sq.contactCount=0;sq.contact=null;sq.suppressorCount=0;sq._boundUntil=0;sq._nextBoundAt=0;
     sq._boundTeam=null;sq._boundTurn=null;sq._coverClaims=null;sq._assaultAuthorized=false;
   }
 
   root.BattleEngagement={
     updateSoldier:updateSoldier,updateSquad:updateSquad,decide:decide,
+    suppress:suppress,assignSuppressors:assignSuppressors,reactTime:reactTime,knownThreat:knownThreat,
     findCover:findCover,threatSector:threatSector,sectorDistance:sectorDistance,
     facingError:facingError,fireAllowed:fireAllowed,commitStance:commitStance,applyStance:applyStance,
     resetSoldier:resetSoldier,resetSquad:resetSquad,stateOf:state,
-    tuning:{REACT:REACT,AIM_CONE:AIM_CONE,ALERT_HOLD:ALERT_HOLD,COVER_RANGE:COVER_RANGE,BOUND_CYCLE:BOUND_CYCLE,BOUND_DURATION:BOUND_DURATION,USEFUL_COVER:USEFUL_COVER,OPEN_COVER:OPEN_COVER}
+    tuning:{REACT:REACT,AIM_CONE:AIM_CONE,ALERT_HOLD:ALERT_HOLD,COVER_RANGE:COVER_RANGE,BOUND_CYCLE:BOUND_CYCLE,BOUND_DURATION:BOUND_DURATION,USEFUL_COVER:USEFUL_COVER,OPEN_COVER:OPEN_COVER,
+      MAX_SUPPRESSORS:MAX_SUPPRESSORS,SUPPRESS_BURST:SUPPRESS_BURST,SUPPRESS_PAUSE:SUPPRESS_PAUSE,PREWARNED_REACT:PREWARNED_REACT}
   };
   if(typeof console!=='undefined')console.log('[ENGAGE] contact pipeline loaded: orient -> cover -> aimed fire -> bound');
 })(typeof window!=='undefined'?window:globalThis);

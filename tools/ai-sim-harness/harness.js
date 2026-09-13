@@ -76,7 +76,7 @@ function makeBattle(root,opts){
     heightAt:opts.heightAt||function(){return 0;},
     _roster:{us:[],ge:[]},
     factions:{us:{alive:0,kills:0,squads:[]},ge:{alive:0,kills:0,squads:[]}},
-    events:{fired:0,hits:0,kills:0,callouts:[]},
+    events:{fired:0,hits:0,kills:0,suppressiveShots:0,suppressed:0,callouts:[]},
     rosterOf(f){return this._roster[f];},
     random(){seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff;},
     killSoldier(s,killer){
@@ -88,6 +88,7 @@ function makeBattle(root,opts){
     },
     onFire(){battle.events.fired++;},
     onShot(shooter,target,hit){if(hit)battle.events.hits++;},
+    onSuppressiveShot(shooter,point,count){battle.events.suppressiveShots++;battle.events.suppressed+=count||0;},
     onCallout(s,type){battle.events.callouts.push(type);}
   };
   return battle;
