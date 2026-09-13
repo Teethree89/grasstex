@@ -117,9 +117,12 @@
   function squadContact(squad,battle){
     var c=squad&&squad.contact;
     if(!c)return null;
-    /* Intel expires, and a confirmed casualty stops being intel at all - anyone still there will
-       be seen again and rewrite the record. */
-    if(battle.time-c.at>CONTACT_MEMORY||(c.unit&&c.unit.dead)){squad.contact=null;return null;}
+    /* Intel expires. Dropping the one man the squad had eyes on decays it faster - the reason for
+       the record is gone - but it does NOT erase it: there are usually nine more enemies right
+       there, and wiping the squad's whole picture because it scored a hit left it blind at exactly
+       the moment it was winning. Any new sighting overwrites the record anyway. */
+    var limit=(c.unit&&c.unit.dead)?CONTACT_MEMORY/3:CONTACT_MEMORY;
+    if(battle.time-c.at>limit){squad.contact=null;return null;}
     return c;
   }
 

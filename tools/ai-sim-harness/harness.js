@@ -47,6 +47,26 @@ function load(root,rel){
   new Function('window','globalThis','console','BABYLON',code+'\n//# sourceURL='+rel)(root,root,console,root.BABYLON);
 }
 
+/* The shipping code seeds a couple of per-soldier values from Math.random (fire and voice
+   cooldowns). Those look harmless, but a voice cooldown decides whether a callout fires, and a
+   callout draws from the battle's seeded RNG - so one unseeded value shifts the shared stream and
+   the whole battle diverges. Pinning Math.random makes a harness run reproducible, and keeps it
+   reproducible if more unseeded randomness appears in the sources later. */
+function seededRandom(seed){
+  let a=seed>>>0;
+  return function(){
+    a=(a+0x6D2B79F5)|0;
+    let t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t;
+    return((t^t>>>14)>>>0)/4294967296;
+  };
+}
+function withSeededRandom(seed,fn){
+  const real=Math.random;
+  Math.random=seededRandom(seed);
+  try{return fn();}finally{Math.random=real;}
+}
+
 function bootstrap(opts){
   opts=opts||{};
   const root={};
@@ -95,10 +115,14 @@ function makeBattle(root,opts){
 }
 
 let nextId=0;
+/* Soldier ids feed slot jitter and scan stagger, so letting them run on across tests would make
+   every test depend on how many tests ran before it. Each scenario starts from zero. */
+function resetIds(){nextId=0;}
 function addSquad(root,battle,opts){
   const SquadAI=root.SquadAI;
   const squad=SquadAI.createSquad(opts.id,opts.faction,{x:opts.x,z:opts.z},{x:opts.objective.x,z:opts.objective.z});
   const composition=opts.composition||SquadAI.COMPOSITION;
+  withSeededRandom((opts.seed||7331)+composition.length,function(){
   composition.forEach(function(role,slot){
     const jx=opts.x+((slot%5)-2)*2.5,jz=opts.z+(Math.floor(slot/5)-1)*2.5;
     const model={root:{position:vec(jx,battle.heightAt(jx,jz),jz),rotation:{x:0,y:opts.facing==null?0:opts.facing,z:0}}};
@@ -108,6 +132,7 @@ function addSquad(root,battle,opts){
     squad.members.push(soldier);
     battle._roster[opts.faction].push(soldier);
     battle.factions[opts.faction].alive++;
+  });
   });
   battle.factions[opts.faction].squads.push(squad);
   return squad;
@@ -162,4 +187,4 @@ function run(root,battle,seconds,onTick){
   }
 }
 
-module.exports={bootstrap,makeBattle,addSquad,run,stepMovement,vec,AI_TICK,REPO};
+module.exports={bootstrap,makeBattle,addSquad,run,stepMovement,vec,resetIds,seededRandom,withSeededRandom,AI_TICK,REPO};
