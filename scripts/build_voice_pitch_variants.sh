@@ -62,7 +62,14 @@ PY
 
     # asetrate changes pitch and tempo together; atempo inversely compensates tempo,
     # leaving the spoken duration effectively unchanged while retaining the pitch shift.
-    ffmpeg -hide_banner -loglevel error -y -i "$src" \
+    #
+    # -nostdin is required here: this call sits inside a `while read` loop fed by
+    # a process substitution (see the bottom of this file). Without -nostdin,
+    # ffmpeg polls its inherited stdin for interactive keyboard commands (q/?/etc.)
+    # even when running non-interactively, silently consuming bytes from that
+    # same pipe. That corrupts the loop's next NUL-delimited `read`, truncating
+    # the next filename by however many bytes ffmpeg ate.
+    ffmpeg -nostdin -hide_banner -loglevel error -y -i "$src" \
       -af "asetrate=${sample_rate}*${ratio},aresample=${sample_rate},atempo=${tempo}" \
       -codec:a libmp3lame -q:a 4 "$out"
 
