@@ -68,6 +68,8 @@ jobs:
             battle/battle-navigation.js \
             battle/town-objectives.js \
             battle/module-registry.js \
+            battle/battle-sides.js \
+            battle/defense-plan.js \
             battle/ai-policy.js \
             battle/objective-system.js \
             battle/battle-telemetry.js \

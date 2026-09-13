@@ -19,6 +19,9 @@ const REPO=path.resolve(__dirname,'..','..');
 function stubBabylon(root){
   function Color3(r,g,b){this.r=r;this.g=g;this.b=b;}
   Color3.Black=function(){return new Color3(0,0,0);};
+  Color3.prototype.scale=function(k){return new Color3(this.r*k,this.g*k,this.b*k);};
+  function Vector3(x,y,z){this.x=x;this.y=y;this.z=z;}
+  Vector3.prototype.add=function(v){return new Vector3(this.x+v.x,this.y+v.y,this.z+v.z);};
   function mesh(){
     return{
       position:{x:0,y:0,z:0,set(x,y,z){this.x=x;this.y=y;this.z=z;}},
@@ -32,7 +35,7 @@ function stubBabylon(root){
     };
   }
   root.BABYLON={
-    Color3:Color3,
+    Color3:Color3,Vector3:Vector3,
     VertexBuffer:{ColorKind:'color',PositionKind:'position',NormalKind:'normal'},
     MeshBuilder:{CreateBox:mesh,CreateCylinder:mesh,CreateSphere:mesh,CreateLines:mesh,CreateGround:mesh},
     Mesh:{MergeMeshes(){return mesh();}},
@@ -76,6 +79,23 @@ function bootstrap(opts){
   load(root,'battle/obstacle-field.js');
   load(root,'battle/squad-ai.js');
   load(root,'battle/engagement.js');
+  if(opts.sides){
+    /* The attacker/defender stack. The real module registry and objective service come along
+       because the defence is only meaningful against real objective ownership - a garrison that
+       cannot be told whether it still holds its ground cannot be tested. Rendering in these
+       modules is guarded on `sim.scene`, which the fake battle does not have, so nothing here
+       needs Babylon beyond the stub weapons.js already requires. */
+    load(root,'battle/scenario-generator.js');
+    load(root,'battle/module-registry.js');
+    load(root,'battle/battle-sides.js');
+    load(root,'battle/defense-plan.js');
+    load(root,'battle/objective-system.js');
+    load(root,'battle/modules/01-capture-zone.js');
+    load(root,'battle/modules/16-squad-plan-stability.js');
+    load(root,'battle/modules/21-defense-works.js');
+    load(root,'battle/modules/22-engineer-works.js');
+    return root;
+  }
   if(opts.modules!==false){
     root.BattleModules={registerSystem(){},registerUnitType(){},registerObjectiveType(){},runHook(){},unitsFor(){return[];}};
     load(root,'battle/modules/16-squad-plan-stability.js');
@@ -174,6 +194,77 @@ function stepMovement(battle,s,dt){
   setProne(s,!!s.prone);
 }
 
+/* ---- a whole seeded battlefield, with sides -------------------------------------------------- */
+
+/* Mirrors what battle_sim.html plus commander-ai.js set up for a live battle, minus anything that
+   needs a renderer: a generated scenario, a cover field, five squads a side on the spawn lanes,
+   the objective service attached, and the module hooks fired. Squads are NOT given commander
+   routes - the tests that need intent set the phase they are testing directly, which keeps each
+   check about one mechanism. */
+function battlefield(root,opts){
+  opts=opts||{};
+  const seed=opts.seed||'harness-sides';
+  const scenario=root.BattleScenarioGenerator.create(seed);
+  const heightAt=opts.heightAt||function(x,z){
+    return Math.sin(x*.0030)*4.6+Math.cos(z*.0045)*3.7+Math.sin((x+z)*.00235)*2.7;
+  };
+  /* A cover field with the same rough density terrain-features.js produces, laid out from the
+     scenario seed so a given seed is a given battlefield. */
+  const obstacles=[],rng=seededRandom(root.BattleScenarioGenerator.hashSeed(seed+'|clutter'));
+  for(let i=0;i<(opts.clutter==null?700:opts.clutter);i++){
+    const x=(rng()-.5)*1800,z=(rng()-.5)*1000;
+    obstacles.push({x:x,z:z,y:heightAt(x,z),radius:3.4,cover:.62,height:1.5,type:'hedge'});
+  }
+  const battle=makeBattle(root,{obstacles:obstacles,heightAt:heightAt,seed:opts.combatSeed||4242});
+  /* metadata but no scene object: the modules read the scenario from here and skip every
+     rendering path because `sim.scene` is absent. */
+  battle.scene={metadata:{battleScenario:scenario}};
+  const lanes=(scenario.spawnZones.us.lanes||[-700,-350,0,350,700]);
+  const squads={us:[],ge:[]};
+  lanes.forEach(function(x,i){
+    ['us','ge'].forEach(function(f){
+      squads[f].push(addSquad(root,battle,{id:f+'-'+i,faction:f,x:x,z:scenario.spawnZones[f].z,
+        objective:{x:scenario.center.x,z:scenario.center.z},facing:f==='us'?0:Math.PI,seed:(f==='us'?100:200)+i}));
+    });
+  });
+  /* Stand-in for modules/10-infantry-squad.js, whose real spawn needs Babylon soldier models. The
+     attacker-superiority top-up in modules/21-defense-works.js goes through this. */
+  let reinforcementIndex=0;
+  root.BattleModules.registerUnitType('infantry-squad',{label:'Infantry squad',operatorSpawn:true,
+    spawn:function(sim,faction){
+      const n=reinforcementIndex++;
+      const sq=addSquad(root,battle,{id:faction+'-r'+n,faction:faction,
+        x:lanes[n%lanes.length]+(Math.floor(n/lanes.length)-1)*22,z:scenario.spawnZones[faction].z,
+        objective:{x:scenario.center.x,z:scenario.center.z},facing:faction==='us'?0:Math.PI,seed:900+n});
+      squads[faction].push(sq);
+      return{squad:sq,units:sq.members,count:sq.members.length};
+    }});
+  root.BattleObjectiveSystem.attach(battle,scenario.objectives,{town:scenario});
+  root.BATTLE_DEFENDER=opts.defender||null;
+  battle._defenderChoice=opts.defender||null;
+  root.BattleModules.runHook('onBattleStart',battle,{town:scenario});
+  return{battle,scenario,squads,obstacles,heightAt};
+}
+
+const COMMAND_TICK=.45;
+/* Runs AI ticks and commander ticks in the same ratio commander-ai.js does, so module hooks -
+   objective capture, garrison intent, engineer jobs - actually fire. */
+function runCommanded(root,world,seconds,onTick){
+  const battle=world.battle;
+  let accum=world._commandAccum||0,elapsed=0;
+  while(elapsed<seconds){
+    run(root,battle,AI_TICK);
+    elapsed+=AI_TICK;accum+=AI_TICK;
+    while(accum>=COMMAND_TICK){
+      accum-=COMMAND_TICK;
+      root.BattleObjectiveSystem.tick(battle,COMMAND_TICK);
+      root.BattleModules.runHook('onCommanderTick',battle,{town:world.scenario});
+    }
+    if(onTick)onTick(battle);
+  }
+  world._commandAccum=accum;
+}
+
 const AI_TICK=.15;
 function run(root,battle,seconds,onTick){
   const SquadAI=root.SquadAI;
@@ -187,4 +278,4 @@ function run(root,battle,seconds,onTick){
   }
 }
 
-module.exports={bootstrap,makeBattle,addSquad,run,stepMovement,vec,resetIds,seededRandom,withSeededRandom,AI_TICK,REPO};
+module.exports={bootstrap,makeBattle,addSquad,battlefield,run,runCommanded,stepMovement,vec,resetIds,seededRandom,withSeededRandom,AI_TICK,COMMAND_TICK,REPO};

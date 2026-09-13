@@ -14,6 +14,11 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 #hud h1{font-size:13px;margin:0 0 8px;letter-spacing:.03em;color:#fff;display:flex;justify-content:space-between;gap:8px;align-items:center}#hudTitle{display:flex;align-items:center;gap:7px}
 #buildVersion{font-size:10px;color:#a8ab8e;font-weight:400;letter-spacing:.08em;white-space:nowrap}
 .side{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-top:1px solid rgba(255,255,255,.08)}.side:first-of-type{border-top:0}.side .tag{font-weight:700}.tag.us{color:#8fb4e8}.tag.ge{color:#e0c46a}.side .nums{color:#c7c7ba;font-variant-numeric:tabular-nums}
+.side .right{display:flex;align-items:center;gap:9px}
+.defend{display:flex;align-items:center;gap:4px;color:#9aa284;font-size:10px;letter-spacing:.04em;cursor:pointer;user-select:none;white-space:nowrap}
+.defend input{width:12px;height:12px;margin:0;accent-color:#8fb45c;cursor:pointer}
+.defend.on{color:#cfe0a6}
+#sidesNote{margin-top:5px;color:#9aa284;font-size:10px;line-height:1.35}
 #hud .row{display:flex;justify-content:space-between;gap:10px;margin-top:8px;color:#a8ab8e}#seedShort{max-width:175px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c6cbb0}
 #cameraHint{margin-top:7px;color:#7f876f;font-size:10px;text-align:center;letter-spacing:.01em}
 #controls{display:flex;gap:6px;margin-top:10px}#controls button{flex:1;padding:5px 4px;background:#1c2116;border:1px solid #46512f;color:#d9dcc4;font-size:11px;border-radius:5px;cursor:pointer}#controls button.active{background:#3c4a26;color:#fff}#controls button:hover{background:#2a331c}
@@ -29,8 +34,9 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
 <canvas id="renderCanvas"></canvas>
 <div id="hud">
   <h1><span id="hudTitle"><span>WW2FPS AI LAB</span><span id="buildVersion">v29</span></span><button id="hudClose" type="button" title="Hide controls">&#10005;</button></h1>
-  <div class="side"><span class="tag us">US</span><span class="nums" id="usNums">50 alive &middot; 0 kills</span></div>
-  <div class="side"><span class="tag ge">GER</span><span class="nums" id="geNums">50 alive &middot; 0 kills</span></div>
+  <div class="side"><span class="tag us">US</span><span class="right"><span class="nums" id="usNums">50 alive &middot; 0 kills</span><label class="defend" for="defendUs" title="US holds prepared positions; GER attacks"><input type="checkbox" id="defendUs">defend</label></span></div>
+  <div class="side"><span class="tag ge">GER</span><span class="right"><span class="nums" id="geNums">50 alive &middot; 0 kills</span><label class="defend" for="defendGe" title="GER holds prepared positions; US attacks"><input type="checkbox" id="defendGe">defend</label></span></div>
+  <div id="sidesNote">Meeting engagement &mdash; tick a side to make it dig in before the battle.</div>
   <div class="row"><span>Squads left</span><span id="squadsLeft">5 / 5</span></div>
   <div class="row"><span>Objectives</span><span id="objectiveStatus">contested</span></div>
   <div class="row"><span>Scenario seed</span><span id="seedShort">—</span></div>
@@ -74,6 +80,15 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   var debugConsole=document.getElementById('debugConsole');function stringify(v){if(typeof v==='string')return v;try{return JSON.stringify(v);}catch(_){return String(v);}}function writeDebug(level,args){if(!debugConsole)return;var line=document.createElement('div');if(level==='warn')line.className='debug-warn';else if(level==='error')line.className='debug-error';line.textContent='['+level.toUpperCase()+'] '+Array.prototype.map.call(args,stringify).join(' ');debugConsole.appendChild(line);debugConsole.scrollTop=debugConsole.scrollHeight;}['log','warn','error'].forEach(function(level){var original=console[level];console[level]=function(){writeDebug(level,arguments);return original.apply(console,arguments);};});window.addEventListener('error',function(e){writeDebug('error',[e.message+' @ '+e.filename+':'+e.lineno]);});window.addEventListener('unhandledrejection',function(e){writeDebug('error',['Unhandled promise rejection:',e.reason]);});
   console.log('Battle Sim',build,'ref='+ref);console.log('pageProtocol='+location.protocol);console.log('assetBase='+(window.BATTLE_ASSET_BASE||'hardcoded/default'));console.log('audioBase='+(window.BATTLE_AUDIO_BASE||'audio/'));
 
+  /* Which side is dug in is picked before the battle and is part of the scenario, so it travels in
+     the URL beside the seed and is remembered between visits. Nothing about it is read again once
+     the sim exists: modules/21-defense-works.js owns applying it. */
+  (function(){
+    var q=new URLSearchParams(location.search).get('defender'),stored=null;
+    try{stored=localStorage.getItem('battleDefender');}catch(_){}
+    var chosen=q!=null?q:(stored||'');
+    window.BATTLE_DEFENDER=(chosen==='us'||chosen==='ge')?chosen:null;
+  })();
   var requested=new URLSearchParams(location.search).get('seed')||window.BATTLE_SCENARIO_SEED||'',liveSeed=requested||BattleScenarioGenerator.newSeed('live'),scenario=BattleScenarioGenerator.activate(liveSeed,{mode:'live'});document.getElementById('seedShort').textContent=liveSeed;document.getElementById('seedShort').title=liveSeed;
   if(!requested){try{var u=new URL(location.href);u.searchParams.set('seed',liveSeed);history.replaceState(null,'',u.toString());}catch(_){}}
   console.log('[SCENARIO] live seed='+liveSeed+' id='+scenario.id+' fingerprint='+JSON.stringify(scenario.fingerprint.vector));
@@ -134,6 +149,38 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
     toggle.addEventListener('click',function(){open(true);});close.addEventListener('click',function(){open(false);});select.addEventListener('change',function(){labPose=select.value;source.textContent=sourceText[labPose]||'';if(labScene)makePreview();});
   })();
   var startBtn=document.getElementById('startBtn');async function unlockAudio(){var ae=BABYLON.Engine.audioEngine;if(!ae){console.error('audioEngine missing');return false;}try{ae.unlock();var ctx=ae.audioContext;if(ctx&&ctx.state==='suspended'&&ctx.resume)await ctx.resume();console.log('audioContext='+(ctx&&ctx.state||'unknown'));return !ctx||ctx.state==='running';}catch(e){console.error('audio unlock failed',e&&e.message||e);return false;}}async function startBattle(){await unlockAudio();battle.resume();startBtn.hidden=true;document.removeEventListener('pointerdown',unlockAudio);document.removeEventListener('touchend',unlockAudio);console.log('battle started');}startBtn.addEventListener('click',startBattle);document.addEventListener('pointerdown',unlockAudio,{once:true});document.addEventListener('touchend',unlockAudio,{once:true});
+
+  /* The defender checkboxes. Two mutually exclusive ticks rather than a three-way select, because
+     "neither" is a real and useful answer - it is the meeting engagement the sim has always run. */
+  (function setupSides(){
+    var usBox=document.getElementById('defendUs'),geBox=document.getElementById('defendGe'),note=document.getElementById('sidesNote');
+    function current(){return usBox.checked?'us':(geBox.checked?'ge':null);}
+    function describe(result){
+      var works=window.BattleDefenseWorks;
+      if(!works){note.textContent='Defence modules not loaded; meeting engagement only.';return;}
+      var text=works.summary(battle);
+      if(result&&result.applied===false)text+=' · change applies on restart';
+      note.textContent=text;
+    }
+    function paint(){
+      usBox.parentNode.classList.toggle('on',usBox.checked);
+      geBox.parentNode.classList.toggle('on',geBox.checked);
+    }
+    function choose(faction){
+      usBox.checked=faction==='us';geBox.checked=faction==='ge';paint();
+      try{localStorage.setItem('battleDefender',faction||'');}catch(_){}
+      try{var u=new URL(location.href);if(faction)u.searchParams.set('defender',faction);else u.searchParams.delete('defender');history.replaceState(null,'',u.toString());}catch(_){}
+      if(!window.BattleDefenseWorks){describe(null);return;}
+      var result=window.BattleDefenseWorks.setDefender(battle,faction);
+      describe(result);
+      console.log('[SIDES] defender='+(faction||'none')+(result&&result.applied?'':' (pending restart)'));
+    }
+    usBox.addEventListener('change',function(){choose(usBox.checked?'us':null);});
+    geBox.addEventListener('change',function(){choose(geBox.checked?'ge':null);});
+    var initial=window.BATTLE_DEFENDER;
+    usBox.checked=initial==='us';geBox.checked=initial==='ge';paint();
+    describe(null);
+  })();
 
   var hud=document.getElementById('hud'),hudToggle=document.getElementById('hudToggle'),hudClose=document.getElementById('hudClose');function setHudCollapsed(v){hud.classList.toggle('collapsed',!!v);hudToggle.style.display=v?'block':'none';try{localStorage.setItem('battleAiHudCollapsed',v?'1':'0');}catch(_){}}hudClose.addEventListener('click',function(){setHudCollapsed(true);});hudToggle.addEventListener('click',function(){setHudCollapsed(false);});try{setHudCollapsed(localStorage.getItem('battleAiHudCollapsed')==='1');}catch(_){}
   window.__battle__=battle;window.__scenario__=scenario;console.log('Battle Sim ready; obstacles='+features.obstacles.length+' navWindows='+(BattleNavigation&&BattleNavigation.windowSlots?BattleNavigation.windowSlots.length:0));

@@ -40,6 +40,23 @@
        to drag men out of cover and back into the open. */
     if(spread>cohesionLimit&&!sq.inContact){setPhase(sim,sq,'regroup','spread '+spread.toFixed(1));sq.commandHoldUntil=Math.max(sq.commandHoldUntil,now+cfg.regroupHold);sq.objective={x:p.x,z:p.z};return;}
 
+    /* A garrison squad has already been given its ground by the defence plan. While the objective
+       is still its side's, the commander proposes nothing else for it: walking a prepared position
+       off its own objective to go and take another one is how a defence evaporates. Losing the
+       objective releases it, and it rejoins normal doctrine as a counterattack. */
+    if(sq.commandRole==='garrison'){
+      var gid=sq.garrisonObjective,gs=gid&&root.BattleObjectiveSystem?root.BattleObjectiveSystem.status(sim,gid):null;
+      var lost=gs&&gs.owner===enemyFaction(sq.faction);
+      if(!lost){
+        if(sq.garrisonPoint)sq.objective={x:sq.garrisonPoint.x,z:sq.garrisonPoint.z};
+        sq.targetObjective=gid||sq.targetObjective;
+        setPhase(sim,sq,'defend','garrison '+(gid||'sector'));
+        return;
+      }
+      sq.commandRole='center';sq._objectiveSecureUntil=0;
+      setPhase(sim,sq,'assault','garrison released; '+gid+' lost');
+      telemetry(sim,'decision-garrison-release',{faction:sq.faction,squad:sq.id,objective:gid,time:+now.toFixed(1)});
+    }
     if(sq.commandRole==='reserve'){
       var counts=sim.objectiveControl&&sim.objectiveControl.counts||{},own=counts[sq.faction]||0,enemyCount=counts[enemyFaction(sq.faction)]||0;
       var release=now>45*(1-doc.riskTolerance)||enemyCount>own||enemy.distance<cfg.contactDistance*1.5;
@@ -107,8 +124,14 @@
         squads:{us:sim.factions.us.squads.map(function(q){return q.commandPhase;}),ge:sim.factions.ge.squads.map(function(q){return q.commandPhase;})},
         contact:{us:sim.factions.us.squads.filter(function(q){return q.inContact;}).length,ge:sim.factions.ge.squads.filter(function(q){return q.inContact;}).length}});
     }
-    if(sim.objectiveHold&&sim.objectiveHold.us>=OBJECTIVE_HOLD_WIN)declare(sim,'us','held all objectives');
-    else if(sim.objectiveHold&&sim.objectiveHold.ge>=OBJECTIVE_HOLD_WIN)declare(sim,'ge','held all objectives');
+    /* "Held every objective for OBJECTIVE_HOLD_WIN seconds" is an ATTACKER's victory condition. In
+       an attack/defence battle the defender starts holding the ground he occupies - on a small map
+       that can be all of it - so applying the same rule to him would declare him the winner 35
+       seconds in, before the attack had arrived. The defender's way to win is the time limit,
+       which already scores objectives held plus force remaining. */
+    var sides=sim._sides,canRush=function(f){return!sides||sides.meeting||sides.attacker===f;};
+    if(sim.objectiveHold&&sim.objectiveHold.us>=OBJECTIVE_HOLD_WIN&&canRush('us'))declare(sim,'us','held all objectives');
+    else if(sim.objectiveHold&&sim.objectiveHold.ge>=OBJECTIVE_HOLD_WIN&&canRush('ge'))declare(sim,'ge','held all objectives');
   }
 
   /* The squad layer owns personal slots and destination commitment.  Commander AI now

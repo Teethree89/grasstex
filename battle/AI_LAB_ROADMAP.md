@@ -98,8 +98,12 @@ thing to change; the gaps above are all inside a layer.
 
 ### Hardpoint Phase 3
 
-- Engineers can breach alternate wall/door entry points, clear obstacles, repair and fortify.
-- Sandbags, wire, mines and prepared firing positions become module-provided hardpoint upgrades.
+- ~~Engineers can ... repair and fortify.~~ Done for fortify: every squad carries a pioneer and
+  fortifies objectives its side occupies (`modules/22-engineer-works.js`). Breaching walls and
+  clearing obstacles are still open.
+- ~~Sandbags, wire and prepared firing positions become module-provided upgrades.~~ Done as the
+  defender's prepared position (`defense-plan.js`, `modules/21-defense-works.js`); see
+  `AI_SIDES.md`. Mines wait on vehicles.
 - Suppression/morale affects whether a garrison holds, withdraws or surrenders the position.
 - Building damage/destruction changes navigation and cover.
 - Upper floors, stairs and roofs only after the ground-floor navigation/occupancy model is proven.
@@ -110,7 +114,7 @@ Planned portable capability-driven modules:
 
 - Infantry squad — capture, direct fire, screen, defend.
 - Tank — armor, breakthrough, mobile direct fire, anti-vehicle.
-- Engineer — breach, repair, build, demolish, obstacle clearing.
+- Engineer — ~~build~~ (done: fortifies held objectives), breach, repair, demolish, obstacle clearing.
 - Anti-tank team / gun — anti-armor, ambush, area denial.
 - Artillery / mortar observer — indirect fire, suppression, smoke.
 - Medic / casualty system if later useful to `ww2fps` scale.
@@ -118,6 +122,10 @@ Planned portable capability-driven modules:
 Commander policies should reason about capabilities (`breach`, `armor`, `antiArmor`, etc.) rather than concrete unit IDs.
 
 ## Objectives
+
+Sides are now a first-class part of a battle: `battle-sides.js` decides who attacks and who
+defends, and the defender deploys onto prepared positions rather than marching at the same
+objectives from the other end. `AI_SIDES.md` is the contract.
 
 The objective service is intentionally pluggable. Future objective types should include:
 

@@ -357,6 +357,163 @@ section('knowing about an enemy is not the same as being in contact');
   check('and somebody is put on it',(us.suppressorCount||0)>0,'no suppressors assigned');
 }
 
+/* ---------------------------------------------------------------------------------------------- */
+/* Attacker/defender: the prepared position, who mans it, and the engineers who extend it.
+   These run on a whole generated battlefield rather than a two-squad duel, because the thing under
+   test is the interaction between the sides model, the objective service and the squad layer. */
+
+section('a defender is picked, and only he is prepared');
+{
+  H.resetIds();
+  const root=H.bootstrap({sides:true});
+  const world=H.battlefield(root,{seed:'sides-'+SEED,defender:'ge'});
+  const sides=world.battle._sides,plan=world.battle._defensePlan;
+  check('the chosen side is the defender',sides.defender==='ge'&&sides.attacker==='us','defender='+sides.defender);
+  check('his span of control caps how many sectors he prepares',
+    sides.heldSectors.length>0&&sides.heldSectors.length<=sides.echelon.span,
+    'held='+sides.heldSectors.length+' span='+sides.echelon.span);
+  check('every sector he skipped says why',
+    sides.sectors.filter(s=>!s.active).every(s=>!!s.reason),'a skipped sector had no reason');
+  check('the plan produced works and manned positions',plan.works.length>0&&plan.posts.length>0,
+    'works='+plan.works.length+' posts='+plan.posts.length);
+  check('it stayed inside its budget',
+    plan.budget.used.personnel<=plan.budget.authorized.personnel&&
+    plan.budget.used.engineering<=plan.budget.authorized.engineering,
+    JSON.stringify(plan.stats));
+  /* Works are only worth building if the rest of the engine treats them as cover. */
+  const F=root.BattleObstacleField;
+  const fighting=plan.works.filter(w=>root.BattleDefensePlan.COMBAT[w.type]);
+  const protective=fighting.filter(w=>{
+    const post=w.posts[0];
+    return post&&F.coverPotentialAt(world.battle.obstacles,post.x,post.z)<=root.BattleEngagement.tuning.USEFUL_COVER;
+  });
+  check('a fighting position is cover to the obstacle field',
+    fighting.length>0&&protective.length===fighting.length,
+    protective.length+'/'+fighting.length+' fighting works give their post cover');
+  check('the works joined the live cover field',
+    world.battle.obstacles.filter(o=>o.work).length===plan.obstacles.length,
+    'field='+world.battle.obstacles.filter(o=>o.work).length+' plan='+plan.obstacles.length);
+}
+
+section('no defender means the battle the sim has always run');
+{
+  H.resetIds();
+  const root=H.bootstrap({sides:true});
+  const world=H.battlefield(root,{seed:'meeting-'+SEED,defender:null});
+  const plan=world.battle._defensePlan;
+  check('a meeting engagement builds nothing',world.battle._sides.meeting&&plan.works.length===0,
+    'works='+plan.works.length);
+  check('and nothing was added to the cover field',world.battle.obstacles.filter(o=>o.work).length===0);
+  check('and both sides still start on their spawn lines',
+    world.battle._roster.ge.every(s=>s.root.position.z>400)&&world.battle._roster.us.every(s=>s.root.position.z<-400),
+    'somebody was deployed forward');
+}
+
+section('the defender starts on his ground, not walking towards it');
+{
+  H.resetIds();
+  const root=H.bootstrap({sides:true});
+  const world=H.battlefield(root,{seed:'deploy-'+SEED,defender:'ge'});
+  const sides=world.battle._sides;
+  const onSector=world.battle._roster.ge.filter(s=>
+    sides.heldSectors.some(sec=>Math.hypot(s.root.position.x-sec.x,s.root.position.z-sec.z)<sec.radius*2));
+  check('the defending force is deployed on its sectors',onSector.length===world.battle._roster.ge.length,
+    onSector.length+'/'+world.battle._roster.ge.length+' men on a sector');
+  check('the attacker is not',world.battle._roster.us.every(s=>s.root.position.z<-400),'an attacker started forward');
+  check('he owns exactly the sectors he prepared',
+    world.battle.objectiveControl.counts.ge===sides.heldSectors.length&&
+    world.battle.objectiveControl.counts.us===0,
+    JSON.stringify(world.battle.objectiveControl.counts)+' of '+world.battle.objectiveControl.total+
+    ' for '+sides.heldSectors.length+' held sectors');
+  check('the attack is given the strength an attack needs',
+    world.battle.factions.us.squads.length>world.battle.factions.ge.squads.length,
+    'us='+world.battle.factions.us.squads.length+' ge='+world.battle.factions.ge.squads.length);
+}
+
+section('men on an objective hold their positions instead of hunting for new ones');
+{
+  /* The regression this whole pass exists for. A defending squad used to drop its posts the moment
+     it made contact and then bound around inside its own objective every BOUND_CYCLE. */
+  H.resetIds();
+  const root=H.bootstrap({sides:true});
+  const world=H.battlefield(root,{seed:'hold-'+SEED,defender:'ge'});
+  H.runCommanded(root,world,30);
+  const defenders=world.battle._roster.ge.filter(s=>!s.dead);
+  const posted=defenders.filter(s=>s._defensePost).length;
+  check('the defence mans its positions',posted>=defenders.length*.7,posted+'/'+defenders.length+' posted');
+  check('most of them are prepared positions, not improvised ones',
+    defenders.filter(s=>s._defensePost&&s._defensePost.planned).length>0,'no planned post was claimed');
+  check('no two men claim the same prepared position',(function(){
+    const seen={};
+    return world.battle._defensePlan.posts.every(p=>{
+      if(!p.claim)return true;
+      if(seen[p.id])return false;seen[p.id]=1;return true;});
+  })(),'a post was double-claimed');
+
+  /* Now watch them through an attack. The thing to measure is not path length - an engineer is
+     SUPPOSED to walk out and dig, and a man under fire is supposed to be able to move - but how
+     often a man abandons the position he committed to for a different one, and how far from it he
+     drifts. Position hunting was a new position every few seconds; holding is one position, left
+     briefly and returned to. */
+  const watch=new Map();
+  defenders.forEach(s=>watch.set(s.id,{changes:0,at:s._defensePost?{x:s._defensePost.x,z:s._defensePost.z}:null,
+    away:0,samples:0,digging:false}));
+  H.runCommanded(root,world,90,()=>{
+    defenders.forEach(s=>{
+      if(s.dead)return;
+      const w=watch.get(s.id),post=s._defensePost;
+      if(s._fortifyJob)w.digging=true;
+      if(post){
+        if(!w.at||Math.hypot(post.x-w.at.x,post.z-w.at.z)>3){w.changes++;w.at={x:post.x,z:post.z};}
+        w.samples++;
+        w.away+=Math.hypot(s.root.position.x-post.x,s.root.position.z-post.z);
+      }
+    });
+  });
+  const held=defenders.filter(s=>!s.dead&&s.squad.commandPhase==='defend'&&!watch.get(s.id).digging);
+  const churned=held.filter(s=>watch.get(s.id).changes>3);
+  check('a man holding ground commits to one position rather than a new one every few seconds',
+    held.length>0&&churned.length===0,
+    churned.length+'/'+held.length+' men changed position more than three times in 90s');
+  const drifted=held.filter(s=>{const w=watch.get(s.id);return w.samples&&w.away/w.samples>10;});
+  check('and he is still standing in it, on average, while the attack comes in',
+    drifted.length<=held.length*.15,
+    drifted.length+'/'+held.length+' men averaged more than 10m from their own position');
+  const contacted=world.battle.factions.ge.squads.filter(sq=>sq.inContact);
+  check('posts are kept through contact, not dropped at the first shot',
+    contacted.every(sq=>sq.members.filter(s=>!s.dead).some(s=>s._defensePost)),
+    'a squad in contact lost every post');
+  check('a squad holding ground does not bound through its own position',
+    world.battle.factions.ge.squads.filter(sq=>sq.commandPhase==='defend').every(sq=>!(sq._boundUntil>0)),
+    'a defending squad was ordered to bound');
+}
+
+section('engineers fortify what their side occupies');
+{
+  H.resetIds();
+  const root=H.bootstrap({sides:true});
+  const world=H.battlefield(root,{seed:'engineer-'+SEED,defender:'ge'});
+  const engineers=world.battle._roster.ge.filter(s=>s.role==='engineer');
+  check('every squad carries a pioneer',engineers.length===world.battle.factions.ge.squads.length,
+    engineers.length+' engineers for '+world.battle.factions.ge.squads.length+' squads');
+  check('he is a real soldier class, not a label',
+    !!root.SquadAI.ROLES.engineer&&root.SquadAI.ROLES.engineer.fortifies===true);
+  const before=world.battle._defensePlan.works.length;
+  let sawJob=false;
+  H.runCommanded(root,world,150,()=>{if(engineers.some(s=>s._fortifyJob))sawJob=true;});
+  const after=world.battle._defensePlan.works.length;
+  check('engineers on a held objective start digging',sawJob,'no engineer ever took a job');
+  check('and what they dig joins the position',after>before,'works '+before+' -> '+after);
+  const added=world.battle._defensePlan.works.slice(before);
+  check('their works are cover in the live field too',
+    added.length===0||added.every(w=>w.obstacles.every(ob=>world.battle.obstacles.indexOf(ob)>=0)),
+    'an engineer work never reached the obstacle field');
+  check('nobody digs while his squad is being shot at',
+    world.battle.factions.ge.squads.every(sq=>!sq.inContact||
+      sq.members.every(s=>!s._fortifyJob||root.BattleEngagement.stateOf(s).state!=='fortify')),
+    'an engineer kept digging through a firefight');
+}
+
 section('full fight still resolves');
 {
   const obstacles=[];

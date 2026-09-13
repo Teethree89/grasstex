@@ -8,7 +8,7 @@
   'use strict';
   if(!root.BattleModules||!root.BattleNavigation)return;
   var MAX_PER_SQUAD=3;
-  function eligible(s){return s&&!s.dead&&(s.role==='gunner'||s.role==='rifleman'||s.role==='captain');}
+  function eligible(s){return s&&!s.dead&&(s.role==='gunner'||s.role==='rifleman'||s.role==='captain'||s.role==='engineer');}
   function garrisonPhase(sq){return sq.state==='engaged'||sq.commandPhase==='capture'||sq.commandPhase==='defend';}
   function releaseInvalid(sim){
     ['us','ge'].forEach(function(f){(sim._roster[f]||[]).forEach(function(s){

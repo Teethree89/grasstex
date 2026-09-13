@@ -18,6 +18,7 @@ BATTLE_FILES = [
     "battle_sim.html","soldier.js","weapons.js","obstacle-field.js","terrain-features.js",
     "squad-ai.js","engagement.js","battle-sim.js","camera-controls.js","acoustics.js",
     "scenario-generator.js","battle-navigation.js","town-objectives.js","module-registry.js",
+    "battle-sides.js","defense-plan.js",
     "ai-policy.js","objective-system.js","battle-telemetry.js","commander-doctrine.js",
     "commander-routes.js","commander-ai.js","ai-trainer.js","battle-control.js",
 ]

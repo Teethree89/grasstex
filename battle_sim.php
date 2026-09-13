@@ -169,7 +169,7 @@ if ($missingRequiredAsset || $refChanged || time() - intval($state['checked_at']
    stability and stance commitment were dead code in normal play while working fine in the local
    deployment (which globs the directory). The listing is cached per resolved commit so this costs
    one extra API call per deploy, not one per request. */
-$moduleFallback = array('01-capture-zone.js','09-voice-runtime.js','10-infantry-squad.js','11-voice-variation.js','12-soldier-animation-events.js','13-captain-command-throttle.js','16-squad-plan-stability.js','20-building-hardpoints.js');
+$moduleFallback = array('01-capture-zone.js','09-voice-runtime.js','10-infantry-squad.js','11-voice-variation.js','12-soldier-animation-events.js','13-captain-command-throttle.js','16-squad-plan-stability.js','20-building-hardpoints.js','21-defense-works.js','22-engineer-works.js');
 $moduleFiles = null;
 $moduleSource = 'cache';
 $moduleCacheKey = $resolvedRef . '|' . $cacheEpoch;
@@ -231,7 +231,7 @@ if ($body !== false && strlen($body) > 100 && stripos($body, '<html') !== false)
     $version = rawurlencode($resolvedRef) . '&c=' . rawurlencode($cacheEpoch);
     foreach (array('soldier.js','weapons.js','obstacle-field.js','terrain-features.js','squad-ai.js','engagement.js','battle-sim.js') as $file) $body = str_replace('<script src="'.$file.'"></script>', '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>', $body);
     $extras = '';
-    foreach (array('acoustics.js','scenario-generator.js','battle-navigation.js','town-objectives.js','module-registry.js','ai-policy.js','objective-system.js','battle-telemetry.js','commander-doctrine.js','commander-routes.js','commander-ai.js') as $file) $extras .= '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>' . "\n";
+    foreach (array('acoustics.js','scenario-generator.js','battle-navigation.js','town-objectives.js','module-registry.js','battle-sides.js','defense-plan.js','ai-policy.js','objective-system.js','battle-telemetry.js','commander-doctrine.js','commander-routes.js','commander-ai.js') as $file) $extras .= '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>' . "\n";
     foreach ($moduleFiles as $file) $extras .= '<script src="'.$base.'battle/modules/'.rawurlencode($file).'?v='.$version.'"></script>' . "\n";
     foreach (array('ai-trainer.js','battle-control.js') as $file) $extras .= '<script src="'.$base.'battle/'.$file.'?v='.$version.'"></script>' . "\n";
     $body = preg_replace('#<script>\s*/\* Extra runtimes[\s\S]*?</script>#', $extras, $body, 1, $replacementCount);

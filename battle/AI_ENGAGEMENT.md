@@ -14,12 +14,14 @@ recognised a target, never initiated contact, never got down.
 | Individual combat | `engagement.js` | `destination`, `prone` / `crawling` / `tacticalCrouch`, permission to fire | commander intent, objectives |
 | Squad stability | `modules/16-squad-plan-stability.js` | committed plans, fireteam slots, defensive posts | stance, cover, firing |
 | Hardpoints | `modules/20-building-hardpoints.js` | who claims a building firing station | how that soldier moves or shoots |
+| Prepared positions | `defense-plan.js` + `modules/21-defense-works.js` | where a defence is built and who may claim each post | how a soldier behaves on one |
+| Engineers | `modules/22-engineer-works.js` | what a pioneer builds and where | how he behaves while building it |
 | Commander | `commander-ai.js` + `commander-doctrine.js` + `commander-routes.js` | route, phase, objective | anything per-soldier |
 
 Modules supply **inputs** to the engagement pipeline (`orderDestination`, `_fireteamDestination`,
-`_firingStation`, `squad.commandPhase`). They do not override its **outputs**. A new module that
-needs a soldier somewhere should express that as a position input, not as a post-hoc assignment to
-`soldier.destination`.
+`_firingStation`, `_defensePost`, `_fortifyJob`, `squad.commandPhase`). They do not override its
+**outputs**. A new module that needs a soldier somewhere should express that as a position input,
+not as a post-hoc assignment to `soldier.destination`.
 
 ## The state machine
 
@@ -34,10 +36,12 @@ advance ──contact──> orient ──> (decide) ──> bound ──arrived
    |                                                             |
    +--- sector clear --- alert <--- target lost -----------------+
 
+advance ──holds a post──> post ──contact──> orient     post ──post lapses──> advance
 engage ──suppressed in the open──> pinned ──suppression lifts──> (decide)
 engage ──ordered bound──> bound
 engage ──authorised assault, no cover, close──> assault ──> engage
 any ──squad retreating──> withdraw          any ──station claimed──> station
+any ──engineer with a job, out of contact──> fortify ──> advance
 ```
 
 - **orient** is the beat that was missing: halt, turn onto the threat, weapon up. No shot is
@@ -50,6 +54,12 @@ any ──squad retreating──> withdraw          any ──station claimed─
 - **pinned** is prone and still while suppressed, firing only in the gaps.
 - **alert** holds the threat sector for `ALERT_HOLD` after contact breaks instead of instantly
   resuming the march. Without it, intermittent line of sight produces the old walk/aim/walk cycle.
+- **post** is manning a prepared or committed position with nobody in sight: down behind the work,
+  watching the arc it covers, and - if he is the gun - emplaced before the first man appears rather
+  than 1.4 s after. There was previously no way to express "already in position", so a force that
+  had arrived kept marching on the spot.
+- **fortify** is an engineer digging. The clock only runs while he is on the site, so an
+  interrupted job resumes rather than restarting; one enemy in sight and he puts the spade down.
 
 ## Fire discipline
 
@@ -118,7 +128,21 @@ soldier is firing at a place and not at nothing.
 in contact, `issueOrders` in `squad-ai.js` stops creeping the order anchor forward: the squad is a
 base of fire, not a marching column. Every `BOUND_CYCLE` seconds, if at least two men are shooting
 and not everyone is pinned, one fireteam is authorised to bound for `BOUND_DURATION` seconds. The
-machine gunner is never a mover.
+machine gunner is never a mover, and neither is a man on a post.
+
+A squad in a **holding** phase (`defend`, `hold`, `support-hold`, `reserve`, `regroup`) issues no
+bounds at all. A bound needs somewhere to be going; bounding anyway was the squad-level half of
+position hunting, because every `BOUND_CYCLE` a fireteam got up out of its prepared positions and
+moved forward inside its own objective.
+
+## Posts
+
+A post is a position a soldier has been given and is expected to stay on - either from the
+defender's prepared plan or from wherever engagement settled him to fight. `POST_RADIUS` is how
+close counts as being on it. While a man holds one, `decide()` sends him back to it rather than
+looking for cover, and `engage()` skips the periodic `ENGAGE_REVIEW` re-decision entirely. That
+re-decision, plus the bound cycle above, plus fireteam slots that moved underneath him, is what
+made a squad orbit a capture point permanently. See `AI_SIDES.md`.
 
 ## Why stance matters mechanically
 
@@ -134,8 +158,8 @@ network plus low cover across the whole field — mean distance to usable cover 
 `node tools/ai-sim-harness/run.js` runs the whole pipeline headless (no Babylon) and asserts the
 claims above: contact is oriented on before it is shot at, men in contact are crouched or prone,
 cover is used when present, a squad in contact stops marching, suppression pins men flat, stance
-does not churn, and a full 10-v-10 fight still resolves. Add a check there for any behaviour you
-rely on.
+does not churn, a man holding ground stays in one position, engineers fortify what their side
+occupies, and a full 10-v-10 fight still resolves. Add a check there for any behaviour you rely on.
 
 ## Tuning
 

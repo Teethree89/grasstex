@@ -11,9 +11,14 @@
     captain: {weapon:'pistol', speed:3.0, visionRange:150, engageRange:55,  hp:110},
     rifleman:{weapon:'rifle',  speed:2.9, visionRange:140, engageRange:135, hp:100},
     gunner:  {weapon:'lmg',    speed:2.2, visionRange:150, engageRange:160, hp:100},
-    scout:   {weapon:'carbine',speed:3.8, visionRange:175, engageRange:105, hp:90}
+    scout:   {weapon:'carbine',speed:3.8, visionRange:175, engageRange:105, hp:90},
+    /* The pioneer. He fights like a slightly worse rifleman on purpose: his value is that he is
+       the only man who can turn ground the squad is standing on into ground the squad can hold.
+       What he actually builds is modules/22-engineer-works.js; everything here is the fact that he
+       is carrying a spade and a roll of wire instead of a second rifle. */
+    engineer:{weapon:'carbine',speed:2.7, visionRange:130, engageRange:100, hp:100, fortifies:true}
   };
-  var COMPOSITION=['captain','gunner','scout','scout','rifleman','rifleman','rifleman','rifleman','rifleman','rifleman'];
+  var COMPOSITION=['captain','gunner','scout','scout','rifleman','rifleman','rifleman','rifleman','rifleman','engineer'];
 
   var RETREAT_CASUALTY_FRAC=.6,GUNNER_SETUP_TIME=1.4,SUPPRESSION_TIME=1.3,LOS_SAMPLES=8;
   /* A captain issues a destination for the squad, not a constantly-moving point for
@@ -315,7 +320,7 @@
       var p=soldier.root.position,t=soldier.target.root.position,d=dist2(p.x,p.z,t.x,t.z);
       soldier.destination={x:p.x,z:p.z};
       soldier.tacticalCrouch=true;
-      soldier.prone=(soldier.role==='rifleman'||soldier.role==='gunner')&&(d>80||soldier.suppressedUntil>battle.time);
+      soldier.prone=(soldier.role==='rifleman'||soldier.role==='gunner'||soldier.role==='engineer')&&(d>80||soldier.suppressedUntil>battle.time);
       if(soldier.role==='gunner'){if(!soldier.setUpSince)soldier.setUpSince=battle.time;soldier.setUp=battle.time-soldier.setUpSince>GUNNER_SETUP_TIME;}
       if(d<=role.engageRange)tryFire(soldier,battle);
       return;

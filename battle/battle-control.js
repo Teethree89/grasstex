@@ -28,10 +28,33 @@
       });
       (sim.factions&&sim.factions[f]&&sim.factions[f].squads||[]).forEach(function(sq){if(sq.inContact)contact++;if(sq.contact)known++;suppressing+=sq.suppressorCount||0;});
     });
-    var order=['advance','alert','orient','bound','engage','suppress','pinned','assault','station','withdraw'];
+    var order=['advance','post','fortify','alert','orient','bound','engage','suppress','pinned','assault','station','withdraw'];
     var parts=order.filter(function(k){return counts[k];}).map(function(k){return k+' '+counts[k];});
     Object.keys(counts).forEach(function(k){if(order.indexOf(k)<0)parts.push(k+' '+counts[k]);});
     return contact+' in contact · '+known+' tracking a position · '+suppressing+' suppressing\n'+(parts.join(' · ')||'no men')+' ('+total+' alive)';
+  }
+  /* Who is dug in, on what, and what their engineers have added since. Without this the operator
+     can see that a battle is lopsided but not why. */
+  function sidesText(sim){
+    var sides=sim._sides;
+    if(!root.BattleSides||!sides)return'';
+    if(sides.meeting)return'Sides: meeting engagement';
+    var plan=sim._defensePlan||{works:[],posts:[]},plans=sim._defensePlans||{};
+    var built=['us','ge'].map(function(f){
+      var p=plans[f];return p&&p.works.length?f.toUpperCase()+' '+p.works.length:null;
+    }).filter(Boolean).join(' · ');
+    var manned=0;(plan.posts||[]).forEach(function(post){if(post.claim)manned++;});
+    return'Sides: '+root.BattleSides.summary(sides)+
+      '\nWorks: '+(built||'none')+' · '+manned+'/'+(plan.posts||[]).length+' prepared positions manned';
+  }
+  function engineerText(sim){
+    var digging=0,done=0;
+    ['us','ge'].forEach(function(f){
+      (sim._roster&&sim._roster[f]||[]).forEach(function(s){if(!s.dead&&s.role==='engineer'&&s._fortifyJob)digging++;});
+      var plan=sim._defensePlans&&sim._defensePlans[f];
+      if(plan)plan.works.forEach(function(w){if(w.why&&w.why.indexOf('Field-fortified')===0)done++;});
+    });
+    return digging||done?'Engineers: '+digging+' digging · '+done+' works completed in battle':'';
   }
   function objectiveText(sim){var control=sim.objectiveControl,objects=control&&(control.objectives||control.sectors);if(!objects)return'';var parts=[];Object.keys(objects).forEach(function(id){var x=objects[id]||{},owner=x.owner==='neutral'?'N':String(x.owner||'?').toUpperCase(),push=x.active?(' '+String(x.active).toUpperCase()+'→'+(x.progress||0)+'%'):'';parts.push((x.label||id)+': '+owner+push);});return parts.join(' · ');}
   function endBattle(sim,reason){if(sim._trainingRunning)return;sim.pause();sim.manualEnded=true;if(root.BattleTelemetry)root.BattleTelemetry.end(sim,reason||'manual',{usAlive:sim.factions.us.alive,geAlive:sim.factions.ge.alive,objectives:sim.objectiveControl||null,policyRevision:root.BattleAIPolicy?root.BattleAIPolicy.revision:0});var s=document.getElementById('aiTestStatus');if(s)s.textContent='Battle ended · decision logging stopped';console.log('[CONTROL] battle ended; telemetry flushed');}
@@ -52,8 +75,9 @@
     var scenarioInfo=document.createElement('div');scenarioInfo.id='scenarioInfo';scenarioInfo.style.cssText='margin-top:4px;color:#b9bea7;font-size:10px;line-height:1.35;word-break:break-all';box.appendChild(scenarioInfo);
     var logStats=document.createElement('div');logStats.id='logStats';logStats.style.cssText='margin-top:4px;color:#a8ab8e;font-size:10px;line-height:1.35';logStats.textContent='Logs: loading…';box.appendChild(logStats);
     var engagement=document.createElement('div');engagement.id='engagementDetail';engagement.style.cssText='margin-top:5px;color:#cfd6b6;font-size:10px;line-height:1.35';box.appendChild(engagement);
-    var objective=document.createElement('div');objective.id='objectiveDetail';objective.style.cssText='margin-top:5px;color:#b9bea7;font-size:10px;line-height:1.35';box.appendChild(objective);hud.appendChild(box);
-    setInterval(function(){var o=document.getElementById('objectiveDetail');if(o)o.textContent=objectiveText(sim);var eg=document.getElementById('engagementDetail');if(eg)eg.textContent=engagementText(sim);var sc=scenario(sim),e=document.getElementById('scenarioInfo');if(e&&sc)e.textContent='Scenario '+sc.id+' · seed '+sc.seed+' · '+sc.buildings.length+' buildings · '+sc.objectives.length+' objectives';},500);refreshStats(logStats);setInterval(function(){refreshStats(logStats);},15000);
+    var objective=document.createElement('div');objective.id='objectiveDetail';objective.style.cssText='margin-top:5px;color:#b9bea7;font-size:10px;line-height:1.35';box.appendChild(objective);
+    var sidesDetail=document.createElement('div');sidesDetail.id='sidesDetail';sidesDetail.style.cssText='margin-top:5px;color:#c3cfa6;font-size:10px;line-height:1.35;white-space:pre-line';box.appendChild(sidesDetail);hud.appendChild(box);
+    setInterval(function(){var o=document.getElementById('objectiveDetail');if(o)o.textContent=objectiveText(sim);var eg=document.getElementById('engagementDetail');if(eg)eg.textContent=engagementText(sim);var sd=document.getElementById('sidesDetail');if(sd){var parts=[sidesText(sim),engineerText(sim)].filter(Boolean);sd.textContent=parts.join('\n');}var sc=scenario(sim),e=document.getElementById('scenarioInfo');if(e&&sc)e.textContent='Scenario '+sc.id+' · seed '+sc.seed+' · '+sc.buildings.length+' buildings · '+sc.objectives.length+' objectives';},500);refreshStats(logStats);setInterval(function(){refreshStats(logStats);},15000);
   }
 
   function showTrainingDialog(sim,trainButton){
@@ -74,5 +98,5 @@
     sim.restart=function(){var resumeAfter=sim.manualEnded||!sim.paused;if(root.BattleTelemetry)root.BattleTelemetry.end(sim,'restart');rawRestart();sim.manualEnded=false;sim.paused=!resumeAfter;var sc=scenario(sim);if(root.BattleTelemetry)root.BattleTelemetry.start(sim,'live',{restart:true,policyRevision:root.BattleAIPolicy?root.BattleAIPolicy.revision:0,scenarioSeed:sc&&sc.seed,scenarioId:sc&&sc.id});var s=document.getElementById('aiTestStatus');if(s)s.textContent='AI log: active · genome r'+(root.BattleAIPolicy?root.BattleAIPolicy.revision:0);};
     installUi(sim);var sc=scenario(sim);telemetry(sim,'battle-start',{usAlive:sim.factions.us.alive,geAlive:sim.factions.ge.alive,policyRevision:root.BattleAIPolicy?root.BattleAIPolicy.revision:0,scenarioSeed:sc&&sc.seed,scenarioId:sc&&sc.id,fingerprint:sc&&sc.fingerprint,unitModules:root.BattleModules?root.BattleModules.listUnitTypes().map(function(x){return x.id;}):[]});return sim;
   };
-  root.BattleControl={spawnUnit:spawnUnit,endBattle:endBattle,refreshStats:refreshStats,newScenario:newScenario,runScenarios:function(sim){return root.BattleAITrainer&&root.BattleAITrainer.train(sim,{candidates:4,scenarios:3,headless:true,renderLoop:root.__battleRenderLoop__});}};console.log('[CONTROL] AI lab controls loaded · build '+(root.BATTLE_BUILD||'dev'));
+  root.BattleControl={spawnUnit:spawnUnit,endBattle:endBattle,refreshStats:refreshStats,newScenario:newScenario,sidesText:sidesText,runScenarios:function(sim){return root.BattleAITrainer&&root.BattleAITrainer.train(sim,{candidates:4,scenarios:3,headless:true,renderLoop:root.__battleRenderLoop__});}};console.log('[CONTROL] AI lab controls loaded · build '+(root.BATTLE_BUILD||'dev'));
 })(typeof window!=='undefined'?window:globalThis);

@@ -35,8 +35,18 @@
   /* A position is "in the open" when the best stance available there still leaves the soldier
      nearly fully exposed. */
   var OPEN_COVER=.92,USEFUL_COVER=.88;
-  var PRONE_ROLES={rifleman:1,gunner:1};
+  var PRONE_ROLES={rifleman:1,gunner:1,engineer:1};
   var BOUND_CYCLE=9.0,BOUND_DURATION=3.6,BOUND_TEAMS=['alpha','bravo','charlie'];
+  /* A defensive post is a position a soldier has been given and is expected to stay on.
+     modules/16-squad-plan-stability.js hands them out - either from the defender's prepared plan or
+     from wherever the man settled to fight - and this file's job is to stop asking the cover
+     question once he has one. Re-asking it is what "position hunting inside the objective" was:
+     every ENGAGE_REVIEW a dug-in man reconsidered, found some marginally better rock, bounded to
+     it, then got pulled back to a fireteam slot that had moved in the meantime. */
+  var POST_RADIUS=2.4;
+  /* Phases in which the squad is holding ground. A squad holding ground does not bound: fire and
+     movement is how you cross ground you do not own. */
+  var HOLDING={defend:1,hold:1,'support-hold':1,reserve:1,regroup:1};
   /* Suppressing a known position. Capped per squad so it reads as suppressing fire rather than
      everyone emptying magazines into a hedge, and fired in short bursts so the sound of a
      firefight has a rhythm. */
@@ -223,6 +233,19 @@
     e.until=battle.time+(seconds||0);
   }
   function holdPosition(s){var p=posOf(s);s.destination={x:p.x,z:p.z};s._navCache=null;}
+  function heldPost(s,battle){
+    var post=s._defensePost;
+    return post&&battle.time<(post.until||0)?post:null;
+  }
+  function atPost(s,post){var p=posOf(s);return dist(p.x,p.z,post.x,post.z)<=POST_RADIUS;}
+  /* Where a man on a post looks when nobody is visible: the squad's shared contact if there is
+     one, otherwise down the arc the position was dug to cover. */
+  function postArc(s,battle,post){
+    var known=knownThreat(s,battle);
+    if(known)return known;
+    if(!post.facing)return null;
+    return{x:post.x+post.facing.x*45,z:post.z+post.facing.z*45};
+  }
   function orderPoint(s){
     if(s._fireteamDestination)return s._fireteamDestination;
     if(s.orderDestination)return s.orderDestination;
@@ -261,8 +284,15 @@
        and a man coming off a retreat re-decides instead of resuming a stale firefight state. */
     if(s.squad&&s.squad.state==='retreat'){enter(s,battle,'withdraw',0,'squad withdrawing');return withdraw(s,battle);}
     if(s._firingStation){enter(s,battle,'station',0,'firing station');return station(s,battle);}
+    /* An engineer's fortification job is a position input like any other: modules/22-engineer-works.js
+       decides what is worth building and where, this pipeline decides how the man behaves while he
+       builds it. A job never outranks a fight - one enemy in sight and he puts the spade down. */
+    if(s._fortifyJob&&!s._fortifyJob.complete&&!s.target&&!(s.squad&&s.squad.inContact)){enter(s,battle,'fortify',0,'fortifying the position');return fortify(s,battle);}
+    if(e.state==='fortify')enter(s,battle,'advance',0,'fortification interrupted');
 
     switch(e.state){
+      case'post':return manPost(s,battle);
+      case'fortify':return fortify(s,battle);
       case'orient':return orient(s,battle);
       case'bound':return bound(s,battle);
       case'engage':return engage(s,battle);
@@ -277,8 +307,36 @@
     var e=state(s);
     s.state='advance';s.setUp=false;
     if(s.target){enter(s,battle,'orient',reactTime(s,battle),'contact');return orient(s,battle);}
+    if(heldPost(s,battle)){enter(s,battle,'post',0,'manning a prepared position');return manPost(s,battle);}
     if(!holdStance(s,battle))commitStance(s,battle,'stand',1.0);
     followOrders(s,battle,false);
+  }
+
+  /* Manning a position, with nobody in sight yet. This is what a defender does for most of the
+     battle and there was previously no way to express it: he was either marching or fighting, so a
+     force that had already arrived kept marching on the spot. He gets down behind his work, watches
+     the arc it was dug to cover, and - if he is the gun - is emplaced before the first man appears
+     rather than 1.4 s after. */
+  function manPost(s,battle){
+    var e=state(s),post=heldPost(s,battle);
+    s.state='post';
+    if(!post){enter(s,battle,'advance',0,'post released');return advance(s,battle);}
+    if(s.target){enter(s,battle,'orient',reactTime(s,battle),'contact from the post');return orient(s,battle);}
+    if(!atPost(s,post)){
+      s.setUp=false;e.setUpSince=0;
+      s.destination={x:post.x,z:post.z};
+      if(!holdStance(s,battle))commitStance(s,battle,'crouch',1.2);
+      return;
+    }
+    holdPosition(s);
+    if(!holdStance(s,battle))commitStance(s,battle,'crouch',3.0);
+    var aim=postArc(s,battle,post);
+    s._faceHint=aim&&facingError(s,aim)>AIM_CONE?aim:null;
+    if(s.role==='gunner'){
+      if(!e.setUpSince)e.setUpSince=battle.time;
+      s.setUp=battle.time-e.setUpSince>GUNNER_SETUP;
+    }else s.setUp=false;
+    if(e.suppressOrder&&aim)suppress(s,battle,aim);
   }
 
   /* Recognize, stop, face the threat, weapon up. No shooting during this window - this is the
@@ -302,6 +360,17 @@
     var suppressed=s.suppressedUntil>battle.time;
 
     if(suppressed&&here>OPEN_COVER&&PRONE_ROLES[s.role]){enter(s,battle,'pinned',0,'pinned in the open');return pinned(s,battle);}
+    /* A man with a post fights from it. He is allowed to walk back onto it and nothing else: the
+       position was chosen by the defence plan or settled on earlier, and a soldier who keeps
+       re-litigating it is a soldier who is never anywhere. */
+    var post=heldPost(s,battle);
+    if(post){
+      if(atPost(s,post)){enter(s,battle,'engage',0,why+': holding his position');return engage(s,battle);}
+      var back=dist(p.x,p.z,post.x,post.z);
+      e.cover={x:post.x,z:post.z,quality:F?F.coverPotentialAt(battle.obstacles,post.x,post.z):1,distance:back,type:'post'};
+      enter(s,battle,'bound',Math.max(3,back/Math.max(.6,s.speed*.6)+2),why+': back onto his position');
+      return bound(s,battle);
+    }
     if(here<=USEFUL_COVER){enter(s,battle,'engage',0,why+': cover here');return engage(s,battle);}
 
     var cover=findCover(s,battle,{maxRange:suppressed?COVER_RANGE_UNDER_FIRE:COVER_RANGE});
@@ -355,7 +424,8 @@
       s.setUp=battle.time-e.setUpSince>GUNNER_SETUP;
     }else s.setUp=false;
     tryFire(s,battle);
-    if(battle.time>=(e.reviewAt||0)){e.reviewAt=battle.time+ENGAGE_REVIEW+jitter(s,.3);if(here>OPEN_COVER)decide(s,battle,'review');}
+    /* The periodic re-open of the cover question is skipped for a man on a post - see POST_RADIUS. */
+    if(battle.time>=(e.reviewAt||0)){e.reviewAt=battle.time+ENGAGE_REVIEW+jitter(s,.3);if(here>OPEN_COVER&&!heldPost(s,battle))decide(s,battle,'review');}
   }
 
   /* Suppressed in the open: flat, still, and only shooting in the gaps between bursts. */
@@ -410,6 +480,28 @@
     commitStance(s,battle,'stand',.5);
     followOrders(s,battle,true);
     if(s.target&&dist(posOf(s).x,posOf(s).z,posOf(s.target).x,posOf(s.target).z)<35)tryFire(s,battle);
+  }
+
+  /* Digging. The clock only runs while he is actually on the site and working, so a job that is
+     interrupted by a firefight resumes where it stopped instead of restarting or completing itself
+     while its engineer was face down fifty metres away. */
+  function fortify(s,battle){
+    var job=s._fortifyJob;
+    s.state='fortify';s.setUp=false;
+    if(!job||job.complete){enter(s,battle,'advance',0,'fortification finished');return advance(s,battle);}
+    var p=posOf(s),d=dist(p.x,p.z,job.x,job.z);
+    if(d>1.4){
+      job.lastAt=null;
+      s.destination={x:job.x,z:job.z};
+      if(!holdStance(s,battle))commitStance(s,battle,'crouch',1.2);
+      return;
+    }
+    holdPosition(s);
+    commitStance(s,battle,'crouch',1.5);
+    if(job.lastAt==null||battle.time-job.lastAt>1)job.lastAt=battle.time;
+    job.worked=(job.worked||0)+(battle.time-job.lastAt);
+    job.lastAt=battle.time;
+    if(job.worked>=job.seconds)job.complete=true;
   }
 
   function station(s,battle){
@@ -505,7 +597,12 @@
     var phase=sq.commandPhase||'';
     sq._assaultAuthorized=phase==='assault'||phase==='capture'||phase==='clear-town';
 
-    /* A bound needs a base of fire: somebody has to be shooting while somebody else moves. */
+    /* A bound needs a base of fire: somebody has to be shooting while somebody else moves. It also
+       needs somewhere to be going. A squad that is holding ground - defending an objective it owns,
+       held in reserve, regrouping - has nowhere to bound to, and bounding anyway was the squad-level
+       half of the position hunting: every BOUND_CYCLE a fireteam got up out of its prepared
+       positions and moved forward inside its own objective. */
+    if(HOLDING[phase])return;
     if(battle.time>=(sq._nextBoundAt||0)&&battle.time>=(sq._boundUntil||0)&&effective>=2&&pinnedCount<effective){
       var team=BOUND_TEAMS[(sq._boundTurn=(sq._boundTurn==null?0:sq._boundTurn+1))%BOUND_TEAMS.length];
       sq._boundTeam=team;sq._boundUntil=battle.time+BOUND_DURATION;sq._nextBoundAt=battle.time+BOUND_CYCLE;
@@ -513,6 +610,7 @@
       for(i=0;i<members.length;i++){
         s=members[i];if(s.dead||s.suppressedUntil>battle.time)continue;
         if(s.role==='gunner')continue;                                  // the gun holds the base of fire
+        if(s._defensePost)continue;                                     // and so does a man on a post
         if(s._fireteamKey&&s._fireteamKey!==team)continue;
         state(s).boundOrder=true;ordered++;
       }
@@ -522,6 +620,8 @@
 
   function resetSoldier(s){
     s.eng=null;s._faceHint=null;s.prone=false;s.crawling=false;s.tacticalCrouch=false;s.setUp=false;
+    s._defensePost=null;s._fortifyJob=null;
+    if(root.BattleDefensePlan)root.BattleDefensePlan.releasePost(s);
   }
   function resetSquad(sq){
     sq.inContact=false;sq.contactSince=null;sq.contactCount=0;sq.contact=null;sq.suppressorCount=0;sq._boundUntil=0;sq._nextBoundAt=0;
@@ -532,10 +632,12 @@
     updateSoldier:updateSoldier,updateSquad:updateSquad,decide:decide,
     suppress:suppress,assignSuppressors:assignSuppressors,reactTime:reactTime,knownThreat:knownThreat,
     findCover:findCover,threatSector:threatSector,sectorDistance:sectorDistance,
+    heldPost:heldPost,atPost:atPost,
     facingError:facingError,fireAllowed:fireAllowed,commitStance:commitStance,applyStance:applyStance,
     resetSoldier:resetSoldier,resetSquad:resetSquad,stateOf:state,
     tuning:{REACT:REACT,AIM_CONE:AIM_CONE,ALERT_HOLD:ALERT_HOLD,COVER_RANGE:COVER_RANGE,BOUND_CYCLE:BOUND_CYCLE,BOUND_DURATION:BOUND_DURATION,USEFUL_COVER:USEFUL_COVER,OPEN_COVER:OPEN_COVER,
-      MAX_SUPPRESSORS:MAX_SUPPRESSORS,SUPPRESS_BURST:SUPPRESS_BURST,SUPPRESS_PAUSE:SUPPRESS_PAUSE,PREWARNED_REACT:PREWARNED_REACT}
+      MAX_SUPPRESSORS:MAX_SUPPRESSORS,SUPPRESS_BURST:SUPPRESS_BURST,SUPPRESS_PAUSE:SUPPRESS_PAUSE,PREWARNED_REACT:PREWARNED_REACT,
+      POST_RADIUS:POST_RADIUS,HOLDING:HOLDING}
   };
-  if(typeof console!=='undefined')console.log('[ENGAGE] contact pipeline loaded: orient -> cover -> aimed fire -> bound');
+  if(typeof console!=='undefined')console.log('[ENGAGE] contact pipeline loaded: post -> orient -> cover -> aimed fire -> bound');
 })(typeof window!=='undefined'?window:globalThis);
