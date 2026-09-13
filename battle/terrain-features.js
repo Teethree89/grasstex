@@ -5,10 +5,9 @@
      1. circular tactical obstacles used by BattleObstacleField for LOS / cover scoring;
      2. mesh-aligned physical footprints used by navigation for actual movement clearance.
 
-   Keeping those separate matters. A hedge may influence cover several metres from its leaves, but
-   its movement blocker should match the long thin hedge mesh rather than a row of giant circles.
-   Physical footprints describe the ground-contact geometry before the soldier clearance margin is
-   added by navigation. */
+   Physical clutter is also kept clear of scenario building footprints. This matters for doors:
+   a hedge/log/wall may never occupy a building interior or threshold and accidentally turn a
+   legal navigation portal into an impossible route. */
 (function(root){
   'use strict';
   if(typeof BABYLON==='undefined')return;
@@ -96,6 +95,8 @@
     opts=opts||{};
     var fieldW=opts.fieldW||360,fieldD=opts.fieldD||(opts.keepoutZ?opts.keepoutZ*2.2:190),keepoutZ=opts.keepoutZ||fieldD*.46;
     var rng=mulberry32(opts.seed||1337),halfW=fieldW*.46,entries=[],obstacles=[],physical=[],area=(halfW*2)*(keepoutZ*2),physicalSeq=0;
+    var scenario=opts.scenario||(root.BattleScenarioGenerator&&root.BattleScenarioGenerator.current?root.BattleScenarioGenerator.current():null);
+    var buildings=scenario&&scenario.buildings||[],BUILDING_KEEP=opts.buildingKeepout==null?2.2:+opts.buildingKeepout;
 
     function place(mesh,x,z){entries.push({mesh:mesh,x:x,z:z});}
     function addObstacle(x,z,radius,cover,height,type,physicalId){obstacles.push({x:x,z:z,y:heightAt(x,z),radius:radius,cover:cover,height:height,type:type,physicalId:physicalId||null});}
@@ -104,30 +105,58 @@
     function addSegmentObb(ax,az,bx,bz,width,type,id){var dx=bx-ax,dz=bz-az,len=Math.hypot(dx,dz)||.001,ux=dx/len,uz=dz/len,fp={id:id||('physical-'+physicalSeq++),type:type,shape:'obb',x:(ax+bx)/2,z:(az+bz)/2,hx:len/2,hz:width/2,ux:ux,uz:uz,vx:-uz,vz:ux};physical.push(fp);return fp;}
     function addCircle(x,z,radius,type,id){var fp={id:id||('physical-'+physicalSeq++),type:type,shape:'circle',x:x,z:z,radius:radius};physical.push(fp);return fp;}
 
-    /* Hedgerow meshes are long thin boxes. Cover still uses point samples for cheap LOS math, but
-       physical navigation gets ONE oriented rectangle per rendered hedge segment. */
+    function buildingLocal(b,x,z){var c=Math.cos(b.rot||0),s=Math.sin(b.rot||0),dx=x-b.x,dz=z-b.z;return{x:dx*c-dz*s,z:dx*s+dz*c};}
+    function segmentHitsBox(a,b,hx,hz){
+      var dx=b.x-a.x,dz=b.z-a.z,t0=0,t1=1;
+      function slab(p,d,min,max){
+        if(Math.abs(d)<1e-9)return p>=min&&p<=max;
+        var q0=(min-p)/d,q1=(max-p)/d;if(q0>q1){var q=q0;q0=q1;q1=q;}
+        if(q0>t0)t0=q0;if(q1<t1)t1=q1;return t0<=t1;
+      }
+      return slab(a.x,dx,-hx,hx)&&slab(a.z,dz,-hz,hz)&&t1>=0&&t0<=1;
+    }
+    function pointBlockedByBuilding(x,z,radius){
+      radius=radius||0;
+      for(var i=0;i<buildings.length;i++){
+        var b=buildings[i],p=buildingLocal(b,x,z);
+        if(Math.abs(p.x)<=b.w/2+BUILDING_KEEP+radius&&Math.abs(p.z)<=b.d/2+BUILDING_KEEP+radius)return true;
+      }
+      return false;
+    }
+    function segmentBlockedByBuilding(ax,az,bx,bz,width){
+      var pad=BUILDING_KEEP+(width||0)/2;
+      for(var i=0;i<buildings.length;i++){
+        var b=buildings[i],a=buildingLocal(b,ax,az),e=buildingLocal(b,bx,bz);
+        if(segmentHitsBox(a,e,b.w/2+pad,b.d/2+pad))return true;
+      }
+      return false;
+    }
+
     var rowGap=opts.hedgeRowGap||140,colGap=opts.hedgeColGap||260;
     function hedgeLine(along,fixed,horizontal){
       var span=horizontal?halfW*2:keepoutZ*2,cursor=-span/2+rng()*40;
       while(cursor<span/2-14){
         var segLen=26+rng()*34,gap=14+rng()*26;if(cursor+segLen>span/2)segLen=span/2-cursor;if(segLen<10)break;
         var jag=(rng()-.5)*7,ax=horizontal?cursor:fixed,az=horizontal?fixed+jag:cursor,bx=horizontal?cursor+segLen:fixed-jag,bz=horizontal?fixed-jag:cursor+segLen;
-        var y=heightAt((ax+bx)/2,(az+bz)/2),fp=addSegmentObb(ax,az,bx,bz,1.1,'hedge','hedge-'+physicalSeq++);
-        place(buildHedgeSegment(scene,ax,az,bx,bz,y),(ax+bx)/2,(az+bz)/2);
-        var steps=Math.max(1,Math.round(segLen/7));
-        for(var p=0;p<=steps;p++){var u=p/steps;addObstacle(ax+(bx-ax)*u,az+(bz-az)*u,3.4,.62,1.5,'hedge',fp.id);}
+        if(!segmentBlockedByBuilding(ax,az,bx,bz,1.1)){
+          var y=heightAt((ax+bx)/2,(az+bz)/2),fp=addSegmentObb(ax,az,bx,bz,1.1,'hedge','hedge-'+physicalSeq++);
+          place(buildHedgeSegment(scene,ax,az,bx,bz,y),(ax+bx)/2,(az+bz)/2);
+          var steps=Math.max(1,Math.round(segLen/7));
+          for(var p=0;p<=steps;p++){var u=p/steps;addObstacle(ax+(bx-ax)*u,az+(bz-az)*u,3.4,.62,1.5,'hedge',fp.id);}
+        }
         cursor+=segLen+gap;
       }
     }
     for(var rz=-keepoutZ+rowGap*.5;rz<keepoutZ;rz+=rowGap)hedgeLine(0,rz+(rng()-.5)*22,true);
     for(var cx=-halfW+colGap*.5;cx<halfW;cx+=colGap)hedgeLine(0,cx+(rng()-.5)*30,false);
 
-    /* Trees physically block at the trunk; their much larger foliage/cover radius remains tactical. */
     var copses=opts.clumpCount||Math.max(8,Math.round(area/16000));
     for(var i=0;i<copses;i++){
       var ccx=(rng()-.5)*halfW*2,ccz=(rng()-.5)*keepoutZ*2,n=2+Math.floor(rng()*3);
       for(var t=0;t<n;t++){
-        var tx=ccx+(rng()-.5)*11,tz=ccz+(rng()-.5)*11,scale=.85+rng()*.7,ty=heightAt(tx,tz),treeFp=addCircle(tx,tz,.11*scale,'tree','tree-'+physicalSeq++);
+        var tx=ccx+(rng()-.5)*11,tz=ccz+(rng()-.5)*11,scale=.85+rng()*.7,ty=heightAt(tx,tz);
+        if(pointBlockedByBuilding(tx,tz,1.25*scale))continue;
+        var treeFp=addCircle(tx,tz,.11*scale,'tree','tree-'+physicalSeq++);
         place(buildTree(scene,tx,ty,tz,scale,LEAF[Math.floor(rng()*LEAF.length)]),tx,tz);addObstacle(tx,tz,1.15*scale,.72,2.2*scale,'tree',treeFp.id);
       }
     }
@@ -136,27 +165,30 @@
     for(i=0;i<lowCover;i++){
       var lx=(rng()-.5)*halfW*2,lz=(rng()-.5)*keepoutZ*2,ly=heightAt(lx,lz),roll=rng();
       if(roll<.45){
-        var size=.7+rng()*.5,rockRot=rng()*Math.PI,rockFp=addObb(lx,lz,size*.9,size*.75,rockRot,'rock','rock-'+physicalSeq++);
+        var size=.7+rng()*.5,rockRot=rng()*Math.PI,rockBound=Math.hypot(size*.9,size*.75);
+        if(pointBlockedByBuilding(lx,lz,rockBound))continue;
+        var rockFp=addObb(lx,lz,size*.9,size*.75,rockRot,'rock','rock-'+physicalSeq++);
         place(buildRock(scene,lx,ly,lz,size,rockRot),lx,lz);addObstacle(lx,lz,size*1.1,.55,size,'rock',rockFp.id);
       }else if(roll<.75){
-        var len=2.6+rng()*2.4,logRot=rng()*Math.PI,logFp=addObb(lx,lz,len/2,.275,logRot,'log','log-'+physicalSeq++);
+        var len=2.6+rng()*2.4,logRot=rng()*Math.PI,logBound=Math.hypot(len/2,.275);
+        if(pointBlockedByBuilding(lx,lz,logBound))continue;
+        var logFp=addObb(lx,lz,len/2,.275,logRot,'log','log-'+physicalSeq++);
         place(buildLog(scene,lx,ly,lz,len,logRot),lx,lz);addObstacle(lx,lz,len*.42,.60,.62,'log',logFp.id);
       }else{
-        var wl=4+rng()*7,rot=rng()*Math.PI,wallFp=addObb(lx,lz,wl/2,.25,rot,'wall','wall-'+physicalSeq++);
+        var wl=4+rng()*7,rot=rng()*Math.PI,wallBound=Math.hypot(wl/2,.25);
+        if(pointBlockedByBuilding(lx,lz,wallBound))continue;
+        var wallFp=addObb(lx,lz,wl/2,.25,rot,'wall','wall-'+physicalSeq++);
         place(buildWallStub(scene,lx,ly,lz,wl,rot),lx,lz);
         var steps2=Math.max(1,Math.round(wl/3));
         for(var q=0;q<=steps2;q++){var v=(q/steps2-.5)*wl;addObstacle(lx+Math.cos(rot)*v,lz-Math.sin(rot)*v,1.6,.50,1.05,'wall',wallFp.id);}
       }
     }
 
-    /* Array sidecars preserve all existing call sites while giving navigation the exact ground
-       footprint. They are intentionally separate from obstacle.length so BattleObstacleField's
-       spatial index continues indexing tactical cover samples only. */
     obstacles.__physicalFootprints=physical;
-    obstacles.__physicalVersion=2;
+    obstacles.__physicalVersion=3;
 
     var meshes=mergeBuckets(scene,entries);
-    console.log('[TERRAIN] cover field: '+obstacles.length+' tactical obstacles · '+physical.length+' mesh footprints in '+meshes.length+' merged meshes over '+Math.round(halfW*2)+'x'+Math.round(keepoutZ*2)+'m');
+    console.log('[TERRAIN] cover field: '+obstacles.length+' tactical obstacles · '+physical.length+' mesh footprints · building keepouts='+buildings.length+' in '+meshes.length+' merged meshes over '+Math.round(halfW*2)+'x'+Math.round(keepoutZ*2)+'m');
     return{obstacles:obstacles,physicalFootprints:physical,dispose:function(){for(var i=0;i<meshes.length;i++){try{meshes[i].dispose();}catch(_){}}meshes.length=0;}};
   }
 
