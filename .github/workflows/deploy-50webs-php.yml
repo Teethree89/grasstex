@@ -75,7 +75,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq lftp ffmpeg
 
-      - name: Inventory deployed voice variants
+      - name: Inventory deployed voice files
         shell: bash
         env:
           FTP_HOST: ${{ secrets.FTP_HOST }}
@@ -103,10 +103,11 @@ jobs:
             sed -e 's#^\./##' -e 's#/$##' .audio-remote-files.raw \
               | grep '^voices/' \
               | sort -u > .audio-remote-files.txt || true
-            echo "Remote voice files indexed: $(wc -l < .audio-remote-files.txt)"
+            echo "Remote voice entries indexed: $(wc -l < .audio-remote-files.txt)"
+            echo "Remote MP3s: $(grep -c '\.mp3$' .audio-remote-files.txt || true)"
             echo "Existing pitch variants: $(grep -c '\.pitch-.*\.mp3$' .audio-remote-files.txt || true)"
           else
-            echo "Remote voice inventory failed; builder will safely regenerate pitch variants."
+            echo "Remote voice inventory failed; deploy will safely rebuild/upload staged voice files."
             rm -f .audio-remote-files.txt
           fi
 
@@ -118,8 +119,40 @@ jobs:
           test -s .audio-deploy/manifest.json
           test -d .audio-deploy/voices/us
           test -d .audio-deploy/voices/ge
-          echo "Voice files staged for incremental upload: $(find .audio-deploy/voices -type f -name '*.mp3' | wc -l)"
+          echo "Voice files staged: $(find .audio-deploy/voices -type f -name '*.mp3' | wc -l)"
           echo "New pitch variants staged: $(find .audio-deploy/voices -type f -name '*.pitch-*.mp3' | wc -l)"
+
+      - name: Prepare missing-only voice upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > .audio-upload.lftp
+          inventory_available=0
+          [[ -f .audio-remote-files.txt ]] && inventory_available=1
+          upload_count=0
+          skip_count=0
+
+          # Directories are cheap/idempotent; MP3 PUT commands are generated only for paths
+          # that do not already exist on the server. We intentionally use existence, not mtime,
+          # because derived pitch files should be immutable once deployed.
+          printf '%s\n' 'mkdir -p voices/us' 'mkdir -p voices/ge' >> .audio-upload.lftp
+
+          while IFS= read -r -d '' src; do
+            rel="${src#.audio-deploy/}"
+            if [[ "$inventory_available" -eq 1 ]] && grep -Fqx "$rel" .audio-remote-files.txt; then
+              skip_count=$((skip_count+1))
+              continue
+            fi
+            # Voice filenames are controlled by the manifest and validated before this step.
+            printf 'put "%s" -o "%s"\n' "$src" "$rel" >> .audio-upload.lftp
+            upload_count=$((upload_count+1))
+          done < <(find .audio-deploy/voices -type f -name '*.mp3' -print0 | sort -z)
+
+          echo "Voice MP3s already remote / skipped: $skip_count"
+          echo "Voice MP3s missing / queued for upload: $upload_count"
+          if [[ "$inventory_available" -eq 0 ]]; then
+            echo "Remote inventory unavailable: all staged MP3s queued as safe fallback."
+          fi
 
       - name: Upload runtime to 50webs
         shell: bash
@@ -166,7 +199,7 @@ jobs:
           put battle/battle-control.js -o battle-control.js
           mirror -R --delete --verbose battle/modules modules
           cd ../Assets/audio
-          mirror -R --verbose .audio-deploy/voices voices
+          source "$GITHUB_WORKSPACE/.audio-upload.lftp"
           put .audio-deploy/manifest.json -o manifest.json
           cd ../../battle
           cls -l scenario-generator.js
@@ -192,6 +225,7 @@ jobs:
             echo "- Scenario memory: \`/grasstex/battle_learning.php\`"
             echo "- Runtime modules: exact mirror of \`/grasstex/battle/modules/\`"
             echo "- Voice manifest: validated against committed neutral/base MP3s"
-            echo "- Voice pitch: remote-aware incremental build; existing variants are preserved"
+            echo "- Voice pitch: remote-aware incremental build"
+            echo "- Voice upload: existence-based; already-deployed MP3s are never re-uploaded"
             echo "- Trigger: every push to \`main\` plus manual dispatch"
           } >> "$GITHUB_STEP_SUMMARY"
