@@ -1,0 +1,19 @@
+{
+  "status": "complete",
+  "runNumber": 3,
+  "runId": 34788450952,
+  "sourceSha": "1aaa86642fa3a0a9352289b03089b6113c816b1d",
+  "completedAt": "2026-09-13T23:06:41.670Z",
+  "requestedBattles": 100,
+  "completedBattles": 100,
+  "usWins": 46,
+  "geWins": 54,
+  "vacantObjectiveStalls": 14,
+  "movementStalls": 380,
+  "actionsUrl": "https://github.com/Teethree89/grasstex/actions/runs/34788450952",
+  "markdownPath": null,
+  "csvPath": null,
+  "summaryPath": "benchmarks/results/latest/battle-benchmark-summary.json",
+  "historyPath": "benchmarks/results/runs/3/",
+  "backfilledFromArtifact": true
+}
