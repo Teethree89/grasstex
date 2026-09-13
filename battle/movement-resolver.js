@@ -23,8 +23,8 @@
     if(!soldier||soldier.dead)return null;var st=state(soldier),pick=choose(soldier,battle);if(!pick)return null;
     var current=point(soldier.destination),atCurrent=current&&distance({x:+soldier.root.position.x,z:+soldier.root.position.z},current)<ARRIVAL,changed=!current||distance(current,pick.point)>ORDER_EPS,canChange=pick.urgent||atCurrent||now(battle)>=(soldier._destinationCommitUntil||0);
     if(changed&&canChange){
-      /* The provenance fast path reads this marker in its tracked destination setter. */
-      soldier._movementResolvedOwner=pick.owner;soldier.destination={x:pick.point.x,z:pick.point.z};soldier._navCache=null;soldier._destinationCommitUntil=now(battle)+ORDER_COMMIT+(soldier.slotIndex%3)*.22;st.changes++;
+      /* Provenance records the resolver as the sole writer and keeps the winning proposal beside it. */
+      soldier._movementResolvedOwner='movement-resolver';soldier._movementProposalOwner=pick.owner;soldier.destination={x:pick.point.x,z:pick.point.z};soldier._navCache=null;soldier._destinationCommitUntil=now(battle)+ORDER_COMMIT+(soldier.slotIndex%3)*.22;st.changes++;
     }
     st.last={owner:pick.owner,kind:pick.kind,issuedAt:pick.issuedAt,until:pick.until,point:{x:pick.point.x,z:pick.point.z}};
     if(pick.owner==='engagement')st.combatWins++;else st.orderWins++;

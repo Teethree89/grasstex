@@ -11,7 +11,7 @@ var VERSION='step2-fastpath-v1',active=[];
 var SAMPLE_SECONDS=1.6,POINT_EPS=.9,MAX_TARGET=32,MAX_GLOBAL=420,MAX_CONFLICTS=80,PINGPONG_WINDOW=8;
 var SQUAD={commandPhase:'state',targetObjective:'state',objective:'point',orderAnchor:'point',rally:'point'};
 var SOLDIER={_fireteamDestination:'point',_preparedDefensePost:'point',_defensePost:'point',orderDestination:'point',destination:'point'};
-var KEYS={'force-command':'system:commander','capture-zone':'system:objective','squad-stability':'system:squad','prepared-defense':'defense:defense','building-hardpoints':'system:engagement','engagement':'system:engagement','squad-orders':'system:squad','engineer':'defense:engineer'};
+  var KEYS={'force-command':'system:commander','capture-zone':'system:objective','squad-stability':'system:squad','prepared-defense':'defense:defense','building-hardpoints':'system:engagement','engagement':'system:engagement','movement-resolver':'system:resolver','squad-orders':'system:squad','engineer':'defense:engineer'};
 
 function time(sim){return sim&&isFinite(sim.time)?+sim.time:0;}
 function point(v){return v&&isFinite(+v.x)&&isFinite(+v.z)?{x:+v.x,z:+v.z}:null;}
@@ -31,16 +31,17 @@ function source(target,kind,field){
   else if(field==='_fireteamDestination')owner=target._preparedDefensePost?'prepared-defense':'squad-stability';
   else if(field==='orderDestination')owner=target._preparedDefensePost?'prepared-defense':(target._fireteamDestination?'squad-stability':'squad-orders');
   else if(field==='destination')owner=target._movementResolvedOwner||'squad-orders';
-  return{owner:owner,key:KEYS[owner]||null,site:'fast field ownership'};
+  return{owner:owner,key:KEYS[owner]||null,proposalOwner:field==='destination'?(target._movementProposalOwner||null):null,site:'fast field ownership'};
 }
 function store(target){return target&&target.__orderProvenance||null;}
 function simStore(sim){if(!sim._orderProvenance)sim._orderProvenance={version:VERSION,events:[],conflicts:[],seq:0,installedAt:time(sim)};sim._orderProvenance.version=VERSION;return sim._orderProvenance;}
 function meta(target,kind){var sq=kind==='squad'?target:target&&target.squad;return{faction:(sq&&sq.faction)||(target&&target.faction)||null,squad:sq&&sq.id!=null?String(sq.id):null,soldier:kind==='soldier'&&target&&target.id!=null?String(target.id):null};}
 function fieldEvents(ts,field){var out=[];for(var i=ts.events.length-1;i>=0&&out.length<7;i--)if(ts.events[i].field===field)out.unshift(ts.events[i]);return out;}
 function conflict(events,t){
-  if(events.length>=3){var a=events[events.length-3],b=events[events.length-2],c=events[events.length-1];if(a.owner===c.owner&&a.owner!==b.owner&&c.time-a.time<=PINGPONG_WINDOW)return'writer-ping-pong';}
+  function competing(owner){return owner&&owner!=='unknown'&&owner!=='in-place/unknown'&&owner!=='diagnostics';}
+  if(events.length>=3){var a=events[events.length-3],b=events[events.length-2],c=events[events.length-1];if(competing(a.owner)&&competing(b.owner)&&competing(c.owner)&&a.owner===c.owner&&a.owner!==b.owner&&c.time-a.time<=PINGPONG_WINDOW)return'writer-ping-pong';}
   var start=Math.max(0,events.length-5),owners=[],switches=0,last=null,first=null;
-  for(var i=start;i<events.length;i++){var e=events[i];if(first==null)first=e.time;if(e.owner!==last){if(last!=null)switches++;last=e.owner;if(owners.indexOf(e.owner)<0)owners.push(e.owner);}}
+  for(var i=start;i<events.length;i++){var e=events[i];if(!competing(e.owner))continue;if(first==null)first=e.time;if(e.owner!==last){if(last!=null)switches++;last=e.owner;if(owners.indexOf(e.owner)<0)owners.push(e.owner);}}
   return owners.length>=3&&switches>=3&&t-first<=PINGPONG_WINDOW?'writer-churn':null;
 }
 function addConflict(sim,target,event,kind,ts){
@@ -51,7 +52,7 @@ function addConflict(sim,target,event,kind,ts){
   if(root.BattleTelemetry)root.BattleTelemetry.record('order-writer-conflict',{kind:kind,field:event.field,faction:m.faction,squad:m.squad,soldier:m.soldier,owners:c.owners},sim);
 }
 function record(sim,target,kind,field,from,to,src,st){
-  var ts=store(target);if(!ts)return;var ss=simStore(sim),prev=st.lastEvent||null,m=meta(target,kind),event={id:++ss.seq,time:+time(sim).toFixed(3),targetKind:kind,field:field,from:from,to:to,owner:src.owner||'unknown',ownerKey:src.key||KEYS[src.owner]||null,site:src.site||'',reason:src.site||'',previousOwner:prev&&prev.owner||null,faction:m.faction,squad:m.squad,soldier:m.soldier,phase:(kind==='squad'?target.commandPhase:target.squad&&target.squad.commandPhase)||null,rule:(kind==='squad'?target._lastDoctrineRule:target.squad&&target.squad._lastDoctrineRule)||null,inContact:!!(kind==='squad'?target.inContact:target.squad&&target.squad.inContact)};
+  var ts=store(target);if(!ts)return;var ss=simStore(sim),prev=st.lastEvent||null,m=meta(target,kind),event={id:++ss.seq,time:+time(sim).toFixed(3),targetKind:kind,field:field,from:from,to:to,owner:src.owner||'unknown',ownerKey:src.key||KEYS[src.owner]||null,proposalOwner:src.proposalOwner||null,site:src.site||'',reason:src.site||'',previousOwner:prev&&prev.owner||null,faction:m.faction,squad:m.squad,soldier:m.soldier,phase:(kind==='squad'?target.commandPhase:target.squad&&target.squad.commandPhase)||null,rule:(kind==='squad'?target._lastDoctrineRule:target.squad&&target.squad._lastDoctrineRule)||null,inContact:!!(kind==='squad'?target.inContact:target.squad&&target.squad.inContact)};
   ts.events.push(event);if(ts.events.length>MAX_TARGET)ts.events.shift();st.lastEvent=event;st.last=to;ss.events.push(event);if(ss.events.length>MAX_GLOBAL)ss.events.shift();var ck=conflict(fieldEvents(ts,field),event.time);if(ck)addConflict(sim,target,event,ck,ts);
 }
 function fastField(sim,target,kind,field,type){

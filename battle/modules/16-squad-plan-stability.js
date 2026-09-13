@@ -46,6 +46,18 @@
     };
     telemetry(sim,'decision-plan-commit',{faction:sq.faction,squad:sq.id,phase:sq.commandPhase,targetObjective:sq.targetObjective||null,seconds:planSeconds(sq.commandPhase)});
   }
+  /* Called before Force Command evaluates a squad. It keeps the accepted plan authoritative for
+     its commitment window, so the commander never writes a competing intent only for this module
+     to restore it later in the same tick. Retreat/regroup remains the explicit escape hatch. */
+  function holdCommittedPlan(sim,sq){
+    if(!sq||!sim||sq.state==='retreat'||EMERGENCY[sq.commandPhase])return false;
+    var plan=sq._stablePlan;if(!plan)return false;
+    if(sim.time>=plan.until){clearPlan(sq);return false;}
+    sq.commandPhase=plan.phase;
+    if(plan.objective)sq.objective=copyPoint(plan.objective);
+    sq.targetObjective=plan.targetObjective;
+    return true;
+  }
   function stabilizePlan(sim,sq){
     if(!sq||!sim)return;
     var phase=sq.commandPhase||'';
@@ -56,15 +68,7 @@
 
     /* While committed, commander proposals are advisory. Keep the accepted objective/phase until
        its commitment expires. Immediate retreat/regroup above is the escape hatch. */
-    var proposed=tacticalSignature(sq);
-    if(proposed!==plan.signature){
-      sq.commandPhase=plan.phase;
-      if(plan.objective)sq.objective=copyPoint(plan.objective);
-      sq.targetObjective=plan.targetObjective;
-    }else if(plan.objective){
-      /* Even same-phase doctrine can recompute a slightly different flank/defense point every tick. */
-      sq.objective=copyPoint(plan.objective);
-    }
+    holdCommittedPlan(sim,sq);
   }
 
   /* 10-man squad -> command pair + two 3-man maneuver teams + one 2-man team. */
@@ -158,7 +162,7 @@
     planSeconds:{assault:ASSAULT_PLAN_SECONDS,defense:DEFENSE_PLAN_SECONDS},
     teamOrderSeconds:TEAM_ORDER_SECONDS,
     defensePostSeconds:DEFENSE_POST_SECONDS,
-    teamKeyFor:teamKeyFor
+    teamKeyFor:teamKeyFor,holdCommittedPlan:holdCommittedPlan
   };
   console.log('[TACTICS] committed plans + 2-3 man fireteam slots active');
 })(typeof window!=='undefined'?window:globalThis);

@@ -33,12 +33,12 @@ var SOURCE_MAP=[
 ];
 var OWNER_KEYS={
   'force-command':'system:commander','capture-zone':'system:objective','squad-stability':'system:squad',
-  'prepared-defense':'defense:defense','building-hardpoints':'system:engagement','engagement':'system:engagement',
+  'prepared-defense':'defense:defense','building-hardpoints':'system:engagement','engagement':'system:engagement','movement-resolver':'system:resolver',
   'squad-orders':'system:squad','simulation':'system:soldier','engineer':'defense:engineer'
 };
 var OWNER_LABELS={
   'force-command':'Force Command','capture-zone':'Capture Zone','squad-stability':'Squad Stability',
-  'prepared-defense':'Prepared Defense','building-hardpoints':'Building Hardpoints','engagement':'Engagement',
+  'prepared-defense':'Prepared Defense','building-hardpoints':'Building Hardpoints','engagement':'Engagement','movement-resolver':'Movement Resolver',
   'squad-orders':'Squad Orders','simulation':'Simulation','engineer':'Engineer','in-place/unknown':'Unknown in-place writer','unknown':'Unknown writer'
 };
 
@@ -210,9 +210,11 @@ function installUi(){
 function refreshUi(){if(typeof document==='undefined')return;requestAnimationFrame(function(){renderPanel();decorateLoopCards();});}
 
 function installSim(sim){simStore(sim);instrumentAll(sim);sampleAll(sim);refreshUi();}
+function resetSim(sim){if(!sim)return;sim._orderProvenance={version:VERSION,events:[],conflicts:[],seq:0,installedAt:now(sim)};}
 root.BattleModules.registerSystem('zz-order-provenance',{
   version:VERSION,
   onBattleStart:function(sim){installSim(sim);},
+  beforeBattleRestart:function(sim){resetSim(sim);},
   onBattleRestart:function(sim){installSim(sim);},
   onCommanderTick:function(sim){instrumentAll(sim);sampleAll(sim);decorateLoopCards();}
 });
@@ -220,7 +222,7 @@ if(typeof document!=='undefined'){if(document.readyState==='loading')document.ad
 
 root.BattleOrderProvenance={
   version:VERSION,instrument:instrumentAll,sample:sampleAll,history:history,recent:recentForTarget,
-  conflicts:function(sim){var s=simStore(sim||root.__battle__);return s?s.conflicts.slice():[];},
+  reset:resetSim,conflicts:function(sim){var s=simStore(sim||root.__battle__);return s?s.conflicts.slice():[];},
   events:function(sim){var s=simStore(sim||root.__battle__);return s?s.events.slice():[];},
   findSoldier:findSoldier,findSquad:findSquad,graphKey:graphKey,ownerLabel:ownerLabel,
   withOwner:withOwner,write:explicitWrite,decorateLoopCards:decorateLoopCards

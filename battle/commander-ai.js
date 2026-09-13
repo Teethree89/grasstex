@@ -40,6 +40,10 @@
        to drag men out of cover and back into the open. */
     if(spread>cohesionLimit&&!sq.inContact){setPhase(sim,sq,'regroup','spread '+spread.toFixed(1));sq.commandHoldUntil=Math.max(sq.commandHoldUntil,now+cfg.regroupHold);sq.objective={x:p.x,z:p.z};return;}
 
+    /* Squad Stability owns an accepted tactical plan during its bounded commitment window. Check
+       before issuing new intent so Force Command does not create a visible write/restore loop. */
+    if(root.BattleSquadStability&&root.BattleSquadStability.holdCommittedPlan&&root.BattleSquadStability.holdCommittedPlan(sim,sq))return;
+
     if(sq.commandRole==='reserve'){
       var counts=sim.objectiveControl&&sim.objectiveControl.counts||{},own=counts[sq.faction]||0,enemyCount=counts[enemyFaction(sq.faction)]||0;
       var release=now>45*(1-doc.riskTolerance)||enemyCount>own||enemy.distance<cfg.contactDistance*1.5;
