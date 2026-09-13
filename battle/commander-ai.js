@@ -52,6 +52,36 @@
     return true;
   }
 
+  /* Coordination Health is intentionally observational, but Force Command consumes its signal at
+     the intent boundary. A squad that has exhausted its route and is still targetless must not
+     remain in the broad `clear-town` fallback forever: select a real capture objective and let
+     the normal squad/engagement/movement layers execute it. This also recovers a targetless
+     regroup stranded off-route once side health shows an assignment gap or stalled progress. */
+  function replanDue(sim,faction){
+    var health=sim&&sim._coordinationHealth,side=health&&health.sides&&health.sides[faction];
+    return !!(side&&side.replanDue);
+  }
+  function recordObjectiveRecovery(sim,sq,chosen,reason,now){
+    var log=sim._objectiveRecovery||(sim._objectiveRecovery={us:{count:0,last:null},ge:{count:0,last:null}}),side=log[sq.faction]||(log[sq.faction]={count:0,last:null});
+    var event={faction:sq.faction,squad:sq.id,objectiveId:chosen.instance.id,reason:reason,at:+now.toFixed(2)};
+    side.count++;side.last=event;sq._objectiveRecovery=event;
+    telemetry(sim,'decision-objective-recovery',event);
+  }
+  function recoverTargetlessObjective(sim,sq,town,enemy,p,cfg,now){
+    if(!sq||sq.state==='retreat'||sq.inContact||sq.targetObjective||sq.commandRole==='garrison')return false;
+    var route=sq.route||[],atRouteEnd=route.length&&sq.routeIndex>=route.length-1;
+    if(!atRouteEnd)return false;
+    var inTown=town&&town.center&&dist(p.x,p.z,town.center.x,town.center.z)<(town.radius||250),stalled=replanDue(sim,sq.faction);
+    if(!inTown&&!stalled)return false;
+    var chosen=D.chooseObjective(sim,sq,false)||D.chooseObjective(sim,sq,true);
+    if(!chosen)return false;
+    sq.targetObjective=chosen.instance.id;sq.objective={x:chosen.point.x,z:chosen.point.z};
+    var radius=+chosen.instance.def.radius||30,objectiveDistance=dist(p.x,p.z,chosen.point.x,chosen.point.z),reason=inTown?'terminal clear-town':'stalled targetless route';
+    setPhase(sim,sq,objectiveDistance<=radius*cfg.captureCommitRatio?'capture':'assault',reason+' '+chosen.instance.id);
+    recordObjectiveRecovery(sim,sq,chosen,reason,now);
+    return true;
+  }
+
   /* One squad's intent for this tick. Order of business: cohesion, role gates, committed holds,
      route progress, then - once the route is spent - doctrine on a chosen objective. */
   function advanceRoute(sim,sq,town){
@@ -64,6 +94,10 @@
     /* A squad already trading fire is not "spread out", it is deployed. Regrouping under fire used
        to drag men out of cover and back into the open. */
     if(spread>cohesionLimit&&!sq.inContact){setPhase(sim,sq,'regroup','spread '+spread.toFixed(1));sq.commandHoldUntil=Math.max(sq.commandHoldUntil,now+cfg.regroupHold);sq.objective={x:p.x,z:p.z};return;}
+
+    /* This is deliberately after the cohesion gate: a genuinely scattered squad first reforms,
+       then Force Command gives it its recovered capture intent. */
+    if(recoverTargetlessObjective(sim,sq,town,enemy,p,cfg,now))return;
 
     /* Squad Stability owns an accepted tactical plan during its bounded commitment window. Check
        before issuing new intent so Force Command does not create a visible write/restore loop. */
@@ -168,7 +202,7 @@
     if(!town){console.warn('[COMMAND] no scenario metadata; hierarchical infantry AI disabled');return sim;}
     if(root.BattleObjectiveSystem)root.BattleObjectiveSystem.attach(sim,root.BattleObjectiveSystem.definitionsFromTown(town),{town:town});
     R.initForce(sim,'us',town);R.initForce(sim,'ge',town);
-    sim.objectives=sim._objectives||[];sim._commandAccum=0;sim._nextDecisionSnapshot=0;
+    sim.objectives=sim._objectives||[];sim._commandAccum=0;sim._nextDecisionSnapshot=0;sim._objectiveRecovery={us:{count:0,last:null},ge:{count:0,last:null}};
     var adapted={};
     if(root.BattleAIPolicy){['us','ge'].forEach(function(f){adapted[f]=root.BattleAIPolicy.adaptedForScenario(town);});telemetry(sim,'decision-scenario-recall',{scenarioId:town.id,seed:town.seed,sources:adapted.us.sources,fingerprint:town.fingerprint});}
     if(root.BattleModules)root.BattleModules.runHook('onBattleStart',sim,{town:town});
@@ -180,7 +214,7 @@
       town=scene.metadata&&scene.metadata.battleScenario||scene.metadata&&scene.metadata.battleTown||town;
       if(root.BattleObjectiveSystem)root.BattleObjectiveSystem.reset(sim,root.BattleObjectiveSystem.definitionsFromTown(town),{town:town});
       R.initForce(sim,'us',town);R.initForce(sim,'ge',town);
-      sim._commandAccum=0;sim._nextDecisionSnapshot=0;
+      sim._commandAccum=0;sim._nextDecisionSnapshot=0;sim._objectiveRecovery={us:{count:0,last:null},ge:{count:0,last:null}};
       if(root.BattleModules)root.BattleModules.runHook('onBattleRestart',sim,{town:town});
     };
     scene.onBeforeRenderObservable.add(function(){
@@ -197,6 +231,7 @@
     assignSquad:R.assignSquad,ensureAssignments:R.ensureAssignments,
     acceptObjectiveDefenseRequest:acceptObjectiveDefenseRequest,
     acceptPreparedDefenseRequest:acceptPreparedDefenseRequest,
+    recoverTargetlessObjective:recoverTargetlessObjective,
     commandTick:COMMAND_TICK,objectiveHoldWin:OBJECTIVE_HOLD_WIN,
     policyFor:policy,genomeFor:genome,doctrineFor:doctrine,
     chooseObjective:D.chooseObjective,buildContext:D.buildContext

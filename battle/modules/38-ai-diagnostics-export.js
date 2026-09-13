@@ -14,6 +14,8 @@ function clone(v){
 function point(v){return v&&isFinite(+v.x)&&isFinite(+v.z)?{x:+v.x,z:+v.z}:null;}
 function defenseRequest(sq){var r=sq&&sq._captureZoneDefenseRequest;return r&&r.objectiveId?{objectiveId:String(r.objectiveId),point:point(r.point),requestedAt:isFinite(+r.requestedAt)?+r.requestedAt:null,reason:r.reason||null}:null;}
 function preparedDefenseRequest(sq){var r=sq&&sq._preparedDefenseRequest;return r&&r.objectiveId?{objectiveId:String(r.objectiveId),point:point(r.point),requestedAt:isFinite(+r.requestedAt)?+r.requestedAt:null,reason:r.reason||null}:null;}
+function objectiveRecovery(sq){var r=sq&&sq._objectiveRecovery;return r&&r.objectiveId?{objectiveId:String(r.objectiveId),reason:r.reason||null,at:isFinite(+r.at)?+r.at:null}:null;}
+function routeState(sq){var route=sq&&sq.route||[],raw=sq&&isFinite(+sq.routeIndex)?+sq.routeIndex:0,index=Math.max(0,Math.min(route.length-1,raw));return{index:route.length?index:null,length:route.length,waypoint:route.length?point(route[index]):null,finalWaypoint:route.length?point(route[route.length-1]):null};}
 function isoStamp(){return new Date().toISOString().replace(/[:.]/g,'-');}
 function safeName(s){return String(s||'battle-ai').replace(/[^a-z0-9._-]+/gi,'-').replace(/^-+|-+$/g,'').toLowerCase();}
 function downloadJson(name,data){
@@ -30,7 +32,7 @@ function factionSummary(sim,faction){
       return{
         id:sq.id!=null?String(sq.id):null,role:sq.commandRole||null,phase:sq.commandPhase||null,state:sq.state||null,
         targetObjective:sq.targetObjective!=null?String(sq.targetObjective):null,objective:point(sq.objective),rally:point(sq.rally),orderAnchor:point(sq.orderAnchor),
-        inContact:!!sq.inContact,aliveCount:isFinite(+sq.aliveCount)?+sq.aliveCount:null,lastDoctrineRule:sq._lastDoctrineRule||null,objectiveDefenseRequest:defenseRequest(sq),preparedDefenseRequest:preparedDefenseRequest(sq),
+        inContact:!!sq.inContact,aliveCount:isFinite(+sq.aliveCount)?+sq.aliveCount:null,lastDoctrineRule:sq._lastDoctrineRule||null,route:routeState(sq),objectiveRecovery:objectiveRecovery(sq),objectiveDefenseRequest:defenseRequest(sq),preparedDefenseRequest:preparedDefenseRequest(sq),
         strategicDefenseObjective:sq._strategicDefenseObjective!=null?String(sq._strategicDefenseObjective):null
       };
     })
@@ -43,7 +45,7 @@ function meta(sim){
     battleTime:+simNow(sim).toFixed(3),paused:!!(sim&&sim.paused),timeScale:sim&&isFinite(+sim.timeScale)?+sim.timeScale:null,
     timeLimit:sim&&isFinite(+sim.timeLimit)?+sim.timeLimit:null,winner:sim&&sim.winner||null,winReason:sim&&sim.winReason||null,
     sideRoles:clone(sim&&sim.sideRoles||root.BATTLE_SIDE_ROLES||null),objectiveControl:clone(control),
-    factions:{us:factionSummary(sim,'us'),ge:factionSummary(sim,'ge')}
+    objectiveRecovery:clone(sim&&sim._objectiveRecovery||null),factions:{us:factionSummary(sim,'us'),ge:factionSummary(sim,'ge')}
   };
 }
 function policySnapshot(){

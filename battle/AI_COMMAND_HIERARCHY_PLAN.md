@@ -20,7 +20,7 @@ No two live systems should own the same decision class.
 | 4. Owned leases | **PARTIAL** | Most durations already exist, but they remain separate raw timers/`until` fields rather than one named lease system with owner/priority/release/progress semantics. |
 | 5. Captain local planner | **NOT DONE** | Captain is still primarily a leadership/status/voice influence, not a tactical planning agent. |
 | 6. Final movement ownership | **DONE / SUPERSEDED ORIGINAL DESIGN** | `BattleMovementResolver` is now the sole normal-runtime writer of `soldier.destination`; Squad Orders and Engagement submit proposals. Preserve this architecture rather than moving final destination ownership back into Engagement. |
-| 7. Causal loop prevention/trace | **PARTIAL** | Loop Watch, provenance, writer-conflict detection, exports, destination churn detection and a no-progress formation-renewal guard exist. Missing: full Force Intent -> Captain Plan -> Squad Plan -> Engagement -> Resolver causal chain and lease-aware causes. |
+| 7. Causal loop prevention/trace | **PARTIAL** | Loop Watch, provenance, writer-conflict detection, exports, destination churn detection, a no-progress formation-renewal guard, and Force Command's targetless-route recovery now exist. Missing: full Force Intent -> Captain Plan -> Squad Plan -> Engagement -> Resolver causal chain and lease-aware causes. |
 | 8. Larger command hierarchy | **PARTIAL FOUNDATION** | Attacker/defender doctrine, echelon metadata, sectors, reserve behavior, fallback metadata, prepared defenses and engineers exist. Active higher-command coordination, fallback/counterattack execution, succession/comms and combined arms remain future work. |
 
 ---
@@ -81,6 +81,19 @@ Capture Zone no longer needs to become a second strategic commander. It publishe
 Prepared Defense now follows the same boundary: it publishes a persistent garrison/post request (`_preparedDefenseRequest` and per-soldier `_preparedDefensePost`). Force Command accepts the strategic garrison intent, while Squad Stability turns the fixed post constraint into the live formation proposal. Prepared Defense no longer rewrites a defender's live order before and after the squad update.
 
 This is the migration pattern Step 3 should generalize.
+
+### Validated recovery slice
+
+Force Command now consumes the existing coordination-health signal for one bounded case: a
+non-garrison squad that has reached the end of its route without an objective target. A terminal
+`clear-town` fallback is immediately converted to an explicit `assault` or `capture` intent; a
+targetless squad stranded away from town is recovered only once the side has a genuine stalled or
+missing-assignment health signal. The recovery is recorded as `decision-objective-recovery`, shown
+on the Force Command graph node, and exported with route state and the recovery cause.
+
+This closes the observed failure where a squad stopped outside a capture radius with no owner for
+the final approach. It is not the general `SquadIntent` resolver yet: compatibility fields remain
+the current Force Command output until Step 3A.
 
 ### Still required
 
@@ -254,6 +267,11 @@ Already implemented:
 - loop/order/combined diagnostic exports;
 - movement-resolver ownership summaries;
 - a progress gate on fireteam-order renewal so a non-progressing team does not receive endlessly shifted formation slots.
+- targetless terminal-route recovery from coordination health, with the selected objective and cause in the graph/diagnostics.
+
+Also preserve role allocation across defense-plan reset. The reset previously cleared every
+non-defender `commandRole` after routes were allocated, which made the health monitor report
+missing roles and degraded objective recovery context in ordinary meeting engagements.
 
 Finish the causal chain once Steps 3-5 exist:
 
