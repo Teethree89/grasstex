@@ -29,7 +29,8 @@
     document.addEventListener('pointerlockchange',function(){active=document.pointerLockElement===canvas;if(!active)keys.clear();});
     document.addEventListener('mousemove',function(event){
       if(!active)return;
-      yaw-=event.movementX*LOOK_X;pitch-=event.movementY*LOOK_Y;pitch=clamp(pitch,-PITCH_LIMIT,PITCH_LIMIT);
+      /* Conventional FPS look: mouse right turns right; mouse down looks down. */
+      yaw+=event.movementX*LOOK_X;pitch+=event.movementY*LOOK_Y;pitch=clamp(pitch,-PITCH_LIMIT,PITCH_LIMIT);
       camera.rotation.y=yaw;camera.rotation.x=pitch;
     });
     window.addEventListener('keydown',function(event){
