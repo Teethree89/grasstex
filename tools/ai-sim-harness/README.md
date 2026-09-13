@@ -18,7 +18,25 @@ normally provide:
   one too**, or the harness will test behavior the game does not have.
 
 `run.js` asserts the engagement contract (see `battle/AI_ENGAGEMENT.md`) and exits non-zero on
-failure, so it is usable as a pre-commit or CI check. It also prints the outcome of a 10-v-10 fight
+failure, so it is usable as a pre-commit or CI check.
+
+**Determinism and the seed sweep.** A run is byte-for-byte reproducible: the harness pins
+`Math.random` while sources load and while soldiers are created, because the shipping code seeds a
+couple of per-soldier cooldowns from it and one of those decides whether a callout fires — and a
+callout draws from the battle's seeded RNG, so a single unseeded value diverges the whole battle.
+Soldier ids also reset per scenario so a test cannot depend on how many tests ran before it.
+
+Reproducible is not the same as robust. `HARNESS_SEED=<n>` runs the whole suite against a different
+battle; sweep it before trusting a new check:
+
+```
+for seed in $(seq 1 40); do HARNESS_SEED=$seed node tools/ai-sim-harness/run.js || break; done
+```
+
+A check that passes on one seed and fails on another is testing the dice, not the code. Write
+assertions about the mechanism — "a squad that could bound, did", "stance does not oscillate" —
+rather than about an outcome the dice control, such as "somebody bounded during these 40 seconds"
+(they legitimately might not, if the squad spent them pinned). CI sweeps eight seeds. It also prints the outcome of a 10-v-10 fight
 so a change in lethality is visible even when every assertion still passes.
 
 Useful for ad-hoc work as well: `bootstrap()` returns the loaded globals, so a throwaway script can

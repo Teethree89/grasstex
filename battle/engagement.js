@@ -432,8 +432,8 @@
      does not hop around the squad, then by slot. Men who can see a target of their own, men who
      are moving, pinned, withdrawing or holding a firing station are all excluded - and during a
      bound the movers never double as the base of fire. */
-  function assignSuppressors(sq,battle,members){
-    var contact=SA().squadContact?SA().squadContact(sq,battle):null,i,s,chosen=0;
+  function assignSuppressors(sq,battle,members,known){
+    var contact=known!==undefined?known:(SA().squadContact?SA().squadContact(sq,battle):null),i,s,chosen=0;
     for(i=0;i<members.length;i++){s=members[i];if(!s.dead)state(s).suppressOrder=false;}
     if(contact){
       var bounding=battle.time<(sq._boundUntil||0),candidates=[];
@@ -469,24 +469,37 @@
   function updateSquad(sq,battle){
     if(!sq||!battle)return;
     var members=sq.members||[],contact=0,effective=0,pinnedCount=0,i,s;
+    /* Suppression is assigned off the shared contact, not off current visibility, so it keeps
+       working in the gap where nobody can see anyone - which is exactly when a squad used to fall
+       silent. Assigning before the counting below means a suppressor counts toward this tick's
+       base of fire rather than the previous one's. */
+    var known=SA().squadContact?SA().squadContact(sq,battle):null;
+    var suppressing=assignSuppressors(sq,battle,members,known);
     for(i=0;i<members.length;i++){
       s=members[i];if(s.dead)continue;
       var e=state(s);
       if(s.target)contact++;
       if(e.state==='pinned'||s.suppressedUntil>battle.time)pinnedCount++;
-      else if(e.state==='engage'||e.state==='station')effective++;
+      /* A man putting rounds on the known position IS the base of fire - that is the entire point
+         of him doing it. Counting only men with a visible target meant a squad whose line of sight
+         kept blinking could never satisfy the bound requirement and simply stopped advancing. */
+      else if(e.state==='engage'||e.state==='station'||e.suppressOrder)effective++;
     }
-    sq.contactCount=contact;sq.pinnedCount=pinnedCount;
+    sq.contactCount=contact;sq.pinnedCount=pinnedCount;sq.effectiveCount=effective;
     /* A bound order that was not taken up inside its window is stale, not pending. */
     if(battle.time>=(sq._boundUntil||0))for(i=0;i<members.length;i++)if(!members[i].dead)state(members[i]).boundOrder=false;
     var wasInContact=!!sq.inContact;
-    sq.inContact=contact>0;
+    /* In contact means shooting at somebody or shooting at where they are - NOT merely knowing a
+       position exists. One blink of line of sight used to clear the firefight state and reset the
+       bound cycle, so a squad trading fire through a hedgerow behaved as if the battle had ended
+       every couple of seconds; but counting bare knowledge instead deadlocks the field. A squad
+       that knows about an enemy 220 m away can neither shoot at it nor bound toward it (a bound
+       needs a base of fire), so it would freeze in place forever. Suppressor assignment already
+       answers the question that matters - can anybody here actually put rounds on it - so that is
+       the test. Out of reach means keep advancing until it is in reach. */
+    sq.inContact=contact>0||suppressing>0;
     if(sq.inContact&&!wasInContact){sq.contactSince=battle.time;sq._boundUntil=0;sq._nextBoundAt=battle.time+BOUND_CYCLE;
       telemetry(battle,'decision-contact',{faction:sq.faction,squad:sq.id,phase:sq.commandPhase||'',contacts:contact});}
-    /* Suppression is assigned off the shared contact, not off current visibility, so it keeps
-       working in the gap where nobody can see anyone - which is exactly when a squad used to fall
-       silent. It therefore runs before the in-contact early-out below. */
-    assignSuppressors(sq,battle,members);
     if(!sq.inContact){sq.contactSince=null;sq._boundUntil=0;sq._assaultAuthorized=false;return;}
 
     var phase=sq.commandPhase||'';

@@ -66,7 +66,10 @@ A shot is resolved only when all of these hold (`BattleEngagement.fireAllowed`):
 `squad.contact` is one record per squad: `{unit, x, z, at, seenBy, stance}`, written by
 `SquadAI.shareContact` for the enemy **nearest the squad's order anchor** that any member can
 currently see, and read through `SquadAI.squadContact(squad, battle)`, which expires it after
-`CONTACT_MEMORY` seconds or as soon as that man is confirmed dead. Last-writer-wins was wrong: a
+`CONTACT_MEMORY` seconds — or after a third of that once the tracked man is confirmed dead. Killing
+him decays the record faster (the reason for it is gone) but must not erase it: there are usually
+nine more enemies in the same place, and wiping the squad's picture because it scored a hit left it
+blind at the moment it was winning. Last-writer-wins was wrong: a
 scout sees 175 m and would repeatedly point the whole squad at a contact a rifleman cannot reach, so
 a fresher-than-`CONTACT_REFRESH` record is only displaced by something closer.
 
@@ -84,6 +87,17 @@ cover. What it does is set `suppressedUntil` on everyone within a distance-scale
 the whole tactical point. `SquadAI.canSuppress` gates it on weapon range and a clear shot at the
 point itself (the obstacle field's used-as-cover exception means he can shoot at the hedge a man is
 behind, but not through a hill).
+
+`squad.inContact` means **shooting at somebody, or shooting at where they are** — never merely
+knowing a position exists. Both halves of that are load-bearing and each was got wrong once:
+counting only visible targets let one blink of line of sight clear the firefight state and reset the
+bound cycle, so a squad trading fire through a hedgerow behaved as if the battle ended every couple
+of seconds; but counting bare knowledge deadlocked the field, because a squad that knows about an
+enemy 220 m away can neither shoot at it nor bound toward it (a bound needs a base of fire) and so
+froze in place forever. Suppressor assignment already answers the question that matters — can
+anybody here actually put rounds on it — so `inContact` is `contactCount > 0 || suppressors > 0`.
+For the same reason a suppressing man counts toward `effectiveCount`, the base of fire a bound
+requires: putting rounds on the position *is* being the base of fire.
 
 `BattleEngagement.assignSuppressors` picks at most `MAX_SUPPRESSORS` men per squad, preferring the
 machine gun, then whoever held the job last tick, then by slot. Excluded: men with their own target,

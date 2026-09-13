@@ -84,8 +84,13 @@ jobs:
           # deploy plan. When they drift the deployed loader just 404s.
           python3 scripts/check_deploy_coverage.py
 
-          # The AI decision stack has to still behave before it is published.
-          node tools/ai-sim-harness/run.js
+          # The AI decision stack has to still behave before it is published. The suite is
+          # deterministic per seed, so sweep a handful of battles: a check that only holds on one
+          # set of dice is a check that will block a deploy at random, which is exactly what
+          # happened once already.
+          for seed in 12345 1 2 3 5 8 13 21; do
+            HARNESS_SEED="$seed" node tools/ai-sim-harness/run.js
+          done
 
           test -d battle/modules
           find battle/modules -maxdepth 1 -type f -name '*.js' -print0 | sort -z | while IFS= read -r -d '' f; do
