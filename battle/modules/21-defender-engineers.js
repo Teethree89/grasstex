@@ -28,7 +28,20 @@
   function material(scene){if(typeof BABYLON==='undefined')return null;if(sharedMat&&sharedMat.getScene&&sharedMat.getScene()===scene)return sharedMat;sharedMat=new BABYLON.StandardMaterial('defenseWorkMat',scene);sharedMat.specularColor=BABYLON.Color3.Black();sharedMat.ambientColor=new BABYLON.Color3(1,1,1);return sharedMat;}
   function paint(mesh,rgb){var n=mesh.getTotalVertices(),d=new Float32Array(n*4);for(var i=0;i<n;i++){d[i*4]=rgb[0];d[i*4+1]=rgb[1];d[i*4+2]=rgb[2];d[i*4+3]=1;}mesh.setVerticesData(BABYLON.VertexBuffer.ColorKind,d);return mesh;}
   function slab(scene,w,h,d,x,y,z,yaw,rgb){var m=BABYLON.MeshBuilder.CreateBox('defense-work',{width:w,height:h,depth:d},scene);m.position.set(x,y+h/2,z);m.rotation.y=yaw;m.bakeCurrentTransformIntoVertices();return paint(m,rgb);}
-  function renderWork(sim,work){if(typeof BABYLON==='undefined'||!sim.scene||!work.render)return;var r=work.render,rgb=COLORS[work.type]||[.5,.45,.35],parts=[],dx=Math.sin(r.ang),dz=Math.cos(r.ang),i,t,x,z;if(r.shape==='arc'){for(i=-1;i<=1;i++){t=i*r.len*.32;x=work.x+dx*t;z=work.z+dz*t;parts.push(slab(sim.scene,1.5,r.height,.8,x,sim.heightAt(x,z),z,r.ang+i*.28,rgb));}}else{var steps=Math.max(2,Math.round(r.len/2.4));for(i=0;i<=steps;i++){t=(i/steps-.5)*r.len;x=work.x+dx*t;z=work.z+dz*t;parts.push(slab(sim.scene,2.2,r.height,work.type==='wire'?.25:.7,x,sim.heightAt(x,z),z,r.ang,rgb));}}var mesh=parts.length>1?BABYLON.Mesh.MergeMeshes(parts,true,true,undefined,false,false):parts[0];if(mesh){mesh.material=material(sim.scene);mesh.isPickable=false;if(mesh.freezeWorldMatrix)mesh.freezeWorldMatrix();(sim._defenseMeshes||(sim._defenseMeshes=[])).push(mesh);}}
+  function renderWork(sim,work){
+    if(typeof BABYLON==='undefined'||!sim.scene||!work.render)return;
+    var r=work.render,rgb=COLORS[work.type]||[.5,.45,.35],parts=[],dx=Math.sin(r.ang),dz=Math.cos(r.ang),visualYaw=r.ang+Math.PI/2,i,t,x,z;
+    /* Planner yaw is measured along the prepared-work line from +Z. Babylon boxes are elongated
+       along local X, so using planner yaw directly turns every slab ninety degrees across its own
+       obstacle/post line. Keep the planner geometry untouched and rotate only the visual slab. */
+    if(r.shape==='arc'){
+      for(i=-1;i<=1;i++){t=i*r.len*.32;x=work.x+dx*t;z=work.z+dz*t;parts.push(slab(sim.scene,1.5,r.height,.8,x,sim.heightAt(x,z),z,visualYaw+i*.28,rgb));}
+    }else{
+      var steps=Math.max(2,Math.round(r.len/2.4));
+      for(i=0;i<=steps;i++){t=(i/steps-.5)*r.len;x=work.x+dx*t;z=work.z+dz*t;parts.push(slab(sim.scene,2.2,r.height,work.type==='wire'?.25:.7,x,sim.heightAt(x,z),z,visualYaw,rgb));}
+    }
+    var mesh=parts.length>1?BABYLON.Mesh.MergeMeshes(parts,true,true,undefined,false,false):parts[0];if(mesh){mesh.material=material(sim.scene);mesh.isPickable=false;if(mesh.freezeWorldMatrix)mesh.freezeWorldMatrix();(sim._defenseMeshes||(sim._defenseMeshes=[])).push(mesh);}
+  }
   function addWork(sim,work){(work.obstacles||[]).forEach(function(o){o.defenseWork=work.id;o.workType=work.type;sim.obstacles.push(o);});sim.obstacles.__battleField=null;renderWork(sim,work);}
   function clearWorks(sim){if(!sim)return;if(sim.obstacles)for(var i=sim.obstacles.length-1;i>=0;i--)if(sim.obstacles[i]&&sim.obstacles[i].defenseWork)sim.obstacles.splice(i,1);if(sim.obstacles)sim.obstacles.__battleField=null;(sim._defenseMeshes||[]).forEach(function(m){try{m.dispose();}catch(_){}});sim._defenseMeshes=[];}
 
@@ -59,7 +72,7 @@
   function apply(sim){clearState(sim);ensureEngineer();var scenario=scenarioOf(sim),defender=defenderOf(sim),sides=root.BattleSides.build(scenario,{defender:defender}),plan=root.BattleDefensePlan.build(scenario,sides,{heightAt:sim.heightAt,obstacles:sim.obstacles});sim._sides=sides;sim._defensePlan=plan;sim._defensePlans={us:root.BattleDefensePlan.empty('us'),ge:root.BattleDefensePlan.empty('ge')};if(defender)sim._defensePlans[defender]=plan;if(sim.scene&&sim.scene.metadata){sim.scene.metadata.battleSides=sides;sim.scene.metadata.battleDefender=defender;}if(!defender)return plan;augmentPosts(plan,sides);plan.works.forEach(function(w){addWork(sim,w);});seedOwnership(sim,sides);var n=deploy(sim,sides);telemetry(sim,'defense-plan',{defender:defender,commander:sides.commander,sectors:sides.heldSectors.map(function(s){return s.objectiveId+':'+s.role;}),works:plan.works.length,posts:plan.posts.length,squadsDeployed:n});console.log('[DEFENSE] '+root.BattleSides.summary(sides)+' · '+plan.works.length+' works · '+plan.posts.length+' posts');return plan;}
   function setDefender(sim,faction){var f=faction==='us'||faction==='ge'?faction:null;root.BATTLE_DEFENDER=f;if(sim)sim._defenderChoice=f;if(sim&&sim.scene&&sim.scene.metadata)sim.scene.metadata.battleDefender=f;if(sim&&sim.time>0&&!sim.paused)return{applied:false,reason:'battle running; applies on restart'};if(sim){sim.restart();sim.pause();return{applied:true,sides:sim._sides};}return{applied:false,reason:'no battle'};}
 
-  root.BattleModules.registerSystem(SYSTEM,{version:'30-sides-planner',beforeBattleRestart:function(sim){clearState(sim);},onBattleStart:function(sim){apply(sim);},onBattleRestart:function(sim){apply(sim);},onCommanderTick:function(sim,p){engineerTick(sim,p&&p.dt||.45);}});
+  root.BattleModules.registerSystem(SYSTEM,{version:'64-defense-render-axis',beforeBattleRestart:function(sim){clearState(sim);},onBattleStart:function(sim){apply(sim);},onBattleRestart:function(sim){apply(sim);},onCommanderTick:function(sim,p){engineerTick(sim,p&&p.dt||.45);}});
   root.BattleDefenseWorks={apply:apply,setDefender:setDefender,defenderOf:function(sim){return sim&&sim._sides?sim._sides.defender:null;},planOf:function(sim,f){return sim&&sim._defensePlans?sim._defensePlans[f]:null;}};
   root.BattleDefenderStratagem={setDefender:function(f){return setDefender(root.__battle__,f);},scheme:function(sim){return sim&&sim._sides||null;}};
   ensureEngineer();installUi();console.log('[DEFENSE] terrain-aware defender + engineers loaded');

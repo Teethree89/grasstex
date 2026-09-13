@@ -32,10 +32,15 @@
   function tacticalSignature(sq){var p=sq.objective||{};return [sq.commandPhase||'',sq.targetObjective||'',Math.round((+p.x||0)/4),Math.round((+p.z||0)/4)].join('|');}
 
   function clearPlan(sq){sq._stablePlan=null;sq._stablePlanSerial=(sq._stablePlanSerial||0)+1;}
+  function expirePlan(sim,sq,reason){
+    var plan=sq&&sq._stablePlan;if(!plan)return false;
+    telemetry(sim,'decision-plan-expire',{faction:sq.faction,squad:sq.id,phase:plan.phase,targetObjective:plan.targetObjective||null,serial:plan.serial,reason:reason||'lease expired'});
+    clearPlan(sq);sq._stablePlanAwaitingCommander=true;return true;
+  }
   function commitPlan(sim,sq){
     if(!TACTICAL[sq.commandPhase])return;
     var serial=(sq._stablePlanSerial||0)+1;
-    sq._stablePlanSerial=serial;
+    sq._stablePlanSerial=serial;sq._stablePlanAwaitingCommander=false;
     sq._stablePlan={
       phase:sq.commandPhase,
       objective:copyPoint(sq.objective),
@@ -66,7 +71,7 @@
       fromPhase:plan.phase,fromTarget:plan.targetObjective||null,
       toPhase:'defend',toTarget:target,remaining:Math.max(0,(+plan.until||0)-sim.time)
     });
-    clearPlan(sq);return true;
+    clearPlan(sq);sq._stablePlanAwaitingCommander=false;return true;
   }
   function updateRegroupRecovery(sim,sq){
     if(!sq||!sim)return;
@@ -86,25 +91,37 @@
   }
   /* Called before Force Command evaluates a squad. It keeps the accepted plan authoritative for
      its commitment window, so the commander never writes a competing intent only for this module
-     to restore it later in the same tick. Retreat/regroup remains the explicit escape hatch. */
+     to restore it later in the same tick. Retreat/regroup remains the explicit escape hatch.
+
+     Expiry is different from renewal: an expired lease is cleared and Force Command MUST receive
+     one evaluation pass before the same tactical phase may be committed again. */
   function holdCommittedPlan(sim,sq){
     if(!sq||!sim||sq.state==='retreat'||EMERGENCY[sq.commandPhase])return false;
     var plan=sq._stablePlan;if(!plan)return false;
-    if(sim.time>=plan.until){clearPlan(sq);return false;}
+    if(sim.time>=plan.until){expirePlan(sim,sq,'force-command evaluation');return false;}
     sq.commandPhase=plan.phase;
     if(plan.objective)sq.objective=copyPoint(plan.objective);
     sq.targetObjective=plan.targetObjective;
     return true;
   }
-  function stabilizePlan(sim,sq){
-    if(!sq||!sim)return;
+  function stabilizePlan(sim,sq,allowCommit){
+    if(!sq||!sim)return;allowCommit=!!allowCommit;
     updateRegroupRecovery(sim,sq);
     var phase=sq.commandPhase||'';
-    if(sq.state==='retreat'||EMERGENCY[phase]){if(sq._stablePlan)clearPlan(sq);return;}
+    if(sq.state==='retreat'||EMERGENCY[phase]){if(sq._stablePlan)clearPlan(sq);sq._stablePlanAwaitingCommander=false;return;}
     if(sq._stablePlan&&supersedeCommittedPlan(sim,sq))phase=sq.commandPhase||'';
     var plan=sq._stablePlan;
-    if(!plan){if(TACTICAL[phase])commitPlan(sim,sq);return;}
-    if(sim.time>=plan.until){clearPlan(sq);if(TACTICAL[phase])commitPlan(sim,sq);return;}
+    if(!plan){
+      /* Squad updates may consume an existing lease, but never create/renew one. Only the
+         commander-tick hook runs with allowCommit=true, after Force Command has evaluated intent. */
+      if(allowCommit&&TACTICAL[phase])commitPlan(sim,sq);
+      return;
+    }
+    if(sim.time>=plan.until){
+      expirePlan(sim,sq,'lease timeout');
+      if(allowCommit&&TACTICAL[phase])commitPlan(sim,sq);
+      return;
+    }
 
     /* While committed, commander proposals are advisory. Keep the accepted objective/phase until
        its commitment expires. Immediate retreat/regroup above is the escape hatch. */
@@ -207,31 +224,34 @@
   }
 
   root.SquadAI.updateSquad=function(sq,battle){
-    /* Apply the commander commitment before the stock squad layer turns intent into movement. */
-    if(battle)stabilizePlan(battle,sq);
+    /* Squad simulation may consume/expire a lease, but it is not allowed to renew one. */
+    if(battle)stabilizePlan(battle,sq,false);
     oldUpdateSquad(sq,battle);
-    if(battle){stabilizePlan(battle,sq);updateFireteamOrders(sq,battle);}
+    if(battle){stabilizePlan(battle,sq,false);updateFireteamOrders(sq,battle);}
   };
 
   function reset(sim){
     ['us','ge'].forEach(function(f){
       var squads=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];
-      squads.forEach(function(sq){sq._stablePlan=null;sq._stablePlanSerial=0;sq._fireteamOrders={};sq._regroupRecovery=null;sq._regroupRecoverySerial=0;(sq.members||[]).forEach(function(s){s._defensePost=null;s._fireteamDestination=null;s._fireteamKey=null;});});
+      squads.forEach(function(sq){sq._stablePlan=null;sq._stablePlanSerial=0;sq._stablePlanAwaitingCommander=false;sq._fireteamOrders={};sq._regroupRecovery=null;sq._regroupRecoverySerial=0;(sq.members||[]).forEach(function(s){s._defensePost=null;s._fireteamDestination=null;s._fireteamKey=null;});});
     });
   }
 
   root.BattleModules.registerSystem('squad-plan-stability',{
-    version:'63-regroup-stability',
+    version:'64-commander-lease-gate',
     onBattleStart:function(sim){reset(sim);},
     beforeBattleRestart:function(sim){reset(sim);},
-    onCommanderTick:function(sim){['us','ge'].forEach(function(f){var squads=sim.factions[f].squads||[];for(var i=0;i<squads.length;i++)stabilizePlan(sim,squads[i]);});}
+    /* This runs after Force Command has evaluated all squads. It is the only place a new stable
+       lease may be committed, preventing support-hold/defend/etc. from self-renewing forever. */
+    onCommanderTick:function(sim){['us','ge'].forEach(function(f){var squads=sim.factions[f].squads||[];for(var i=0;i<squads.length;i++)stabilizePlan(sim,squads[i],true);});}
   });
 
   root.BattleSquadStability={
     planSeconds:{assault:ASSAULT_PLAN_SECONDS,defense:DEFENSE_PLAN_SECONDS},
     teamOrderSeconds:TEAM_ORDER_SECONDS,
     defensePostSeconds:DEFENSE_POST_SECONDS,
-    teamKeyFor:teamKeyFor,holdCommittedPlan:holdCommittedPlan,supersedeCommittedPlan:supersedeCommittedPlan
+    teamKeyFor:teamKeyFor,holdCommittedPlan:holdCommittedPlan,supersedeCommittedPlan:supersedeCommittedPlan,
+    awaitingCommander:function(sq){return!!(sq&&sq._stablePlanAwaitingCommander);}
   };
-  console.log('[TACTICS] committed plans + bounded regroup recovery + 2-3 man fireteam slots active');
+  console.log('[TACTICS] commander-gated plan leases + bounded regroup recovery + 2-3 man fireteam slots active');
 })(typeof window!=='undefined'?window:globalThis);
