@@ -7,12 +7,24 @@
 (function(root){
   'use strict';
   if(!root.BattleModules||!root.BattleNavigation)return;
-  var MAX_PER_SQUAD=3;
+  var MAX_PER_SQUAD=3,STATION_CONTACT_GRACE=4.5;
   function eligible(s){return s&&!s.dead&&(s.role==='gunner'||s.role==='rifleman'||s.role==='captain');}
   function garrisonPhase(sq){return sq.state==='engaged'||sq.commandPhase==='capture'||sq.commandPhase==='defend';}
+  /* Do not surrender a window the instant one soldier's LOS blinks. The engagement pipeline
+     already keeps a short alert/contact memory; holding the reservation for the same window keeps
+     another man from immediately chasing the slot the first man is still physically standing at. */
+  function recentThreat(s,sim){
+    if(s.target&&!s.target.dead)return true;
+    var e=root.BattleEngagement&&root.BattleEngagement.stateOf?root.BattleEngagement.stateOf(s):s.eng;
+    if(e&&isFinite(+e.lastSeenAt)&&sim.time-(+e.lastSeenAt)<=STATION_CONTACT_GRACE)return true;
+    var c=s.squad&&s.squad.contact;
+    return!!(c&&isFinite(+c.at)&&sim.time-(+c.at)<=STATION_CONTACT_GRACE);
+  }
   function releaseInvalid(sim){
     ['us','ge'].forEach(function(f){(sim._roster[f]||[]).forEach(function(s){
-      if(s._firingStation&&(!s.target||s.target.dead||s.squad.state==='retreat'||s.reloading))root.BattleNavigation.releaseFiringPosition(s);
+      if(!s._firingStation)return;
+      var hardRelease=s.dead||s.hp<=0||s.squad.state==='retreat'||s.reloading;
+      if(hardRelease||!recentThreat(s,sim))root.BattleNavigation.releaseFiringPosition(s);
     });});
   }
   function assignStations(sim){
@@ -27,7 +39,7 @@
           if(s._firingStation){claimed++;continue;}
           var station=root.BattleNavigation.claimFiringPosition(s,s.target,s.role==='gunner'?78:62);
           if(!station)continue;
-          claimed++;
+          claimed++;s._stationClaimedAt=sim.time;
           /* A station supersedes whatever cover the soldier was heading for. */
           if(root.BattleEngagement){var e=root.BattleEngagement.stateOf(s);e.cover=null;}
           if(root.BattleTelemetry)root.BattleTelemetry.record('decision-firing-station',{faction:f,squad:sq.id,soldier:s.id,role:s.role,building:station.building,station:station.id,window:station.windowId},sim);
@@ -36,10 +48,10 @@
     });
   }
   root.BattleModules.registerSystem('building-hardpoints',{
-    version:'29-engagement',
+    version:'45-station-stability',
     onCommanderTick:function(sim){assignStations(sim);},
     beforeBattleRestart:function(sim){['us','ge'].forEach(function(f){(sim._roster[f]||[]).forEach(function(s){root.BattleNavigation.releaseFiringPosition(s);});});}
   });
-  root.BattleBuildingHardpoints={assign:assignStations};
-  console.log('[HARDPOINT] reservable interior firing stations loaded');
+  root.BattleBuildingHardpoints={assign:assignStations,recentThreat:recentThreat,contactGrace:STATION_CONTACT_GRACE};
+  console.log('[HARDPOINT] reservable interior firing stations loaded · transient LOS no longer churns slots');
 })(typeof window!=='undefined'?window:globalThis);
