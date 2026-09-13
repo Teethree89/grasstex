@@ -1,0 +1,90 @@
+name: 100 Battle Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      battles:
+        description: Number of headless battles
+        required: false
+        default: '100'
+      seed:
+        description: Deterministic seed prefix
+        required: false
+        default: 'manual-benchmark'
+  push:
+    paths:
+      - '.github/workflows/battle-benchmark.yml'
+      - 'scripts/run_battle_benchmark.mjs'
+      - 'benchmarks/run-request.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BATTLE_BENCHMARK_COUNT: ${{ github.event.inputs.battles || '100' }}
+      BATTLE_BENCHMARK_SEED: ${{ github.event.inputs.seed || format('push-{0}', github.run_number) }}
+      BATTLE_BENCHMARK_URL: http://127.0.0.1:8765/grasstex/battle_sim_local.php
+      BATTLE_BENCHMARK_OUTPUT: reports
+      BATTLE_BENCHMARK_TIME_LIMIT: '600'
+      BATTLE_BENCHMARK_STEP: '0.15'
+
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install browser harness
+        run: |
+          npm install --no-save --no-package-lock playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Start local battle server
+        run: |
+          php -v
+          rm -rf /tmp/battle-www
+          mkdir -p /tmp/battle-www
+          ln -s "$GITHUB_WORKSPACE" /tmp/battle-www/grasstex
+          php -S 127.0.0.1:8765 -t /tmp/battle-www >/tmp/battle-php.log 2>&1 &
+          echo $! > /tmp/battle-php.pid
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:8765/grasstex/battle_sim_local.php?seed=healthcheck" >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/battle-php.log
+          exit 1
+
+      - name: Run headless battle benchmark
+        run: node scripts/run_battle_benchmark.mjs
+
+      - name: Publish benchmark summary
+        if: always()
+        run: |
+          if [ -f reports/battle-benchmark.md ]; then
+            cat reports/battle-benchmark.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '## Battle benchmark did not produce a report' >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 200 /tmp/battle-php.log 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || true
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload benchmark reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: battle-benchmark-${{ github.run_number }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Show server log on failure
+        if: failure()
+        run: tail -n 300 /tmp/battle-php.log || true
