@@ -16,7 +16,7 @@ No two live systems should own the same decision class.
 | --- | --- | --- |
 | 1. Truthful hierarchy graph | **DONE** | Force Command, Captain Leadership, Squad Orders and Engagement ownership are represented in the AI graph. |
 | 2. Order provenance | **DONE** | Strategic/movement writes are traceable; Loop Watch and Order Trace expose writer churn and diagnostics can be exported. |
-| 3. Versioned `SquadIntent` | **PARTIAL / NEXT** | Capture Zone has already been converted to publish a defense request consumed by Force Command, but the general versioned intent contract and central constraint resolver do not yet exist. Prepared Defense and other systems still write strategic fields directly. |
+| 3. Versioned `SquadIntent` | **PARTIAL / NEXT** | Capture Zone and Prepared Defense now publish constraints consumed by Force Command, but the general versioned intent contract and central constraint resolver do not yet exist. Other systems still use mutable compatibility fields. |
 | 4. Owned leases | **PARTIAL** | Most durations already exist, but they remain separate raw timers/`until` fields rather than one named lease system with owner/priority/release/progress semantics. |
 | 5. Captain local planner | **NOT DONE** | Captain is still primarily a leadership/status/voice influence, not a tactical planning agent. |
 | 6. Final movement ownership | **DONE / SUPERSEDED ORIGINAL DESIGN** | `BattleMovementResolver` is now the sole normal-runtime writer of `soldier.destination`; Squad Orders and Engagement submit proposals. Preserve this architecture rather than moving final destination ownership back into Engagement. |
@@ -78,6 +78,8 @@ Status: **PARTIAL / NEXT IMPLEMENTATION STEP.**
 
 Capture Zone no longer needs to become a second strategic commander. It publishes a short objective-security request (`_captureZoneDefenseRequest`), and Force Command decides whether to accept that request and remains the writer of the squad's strategic objective/phase/target fields.
 
+Prepared Defense now follows the same boundary: it publishes a persistent garrison/post request (`_preparedDefenseRequest` and per-soldier `_preparedDefensePost`). Force Command accepts the strategic garrison intent, while Squad Stability turns the fixed post constraint into the live formation proposal. Prepared Defense no longer rewrites a defender's live order before and after the squad update.
+
 This is the migration pattern Step 3 should generalize.
 
 ### Still required
@@ -111,10 +113,6 @@ Add one authoritative resolver/API for strategic intent:
 - Engineers submit task/readiness constraints rather than becoming alternate commanders.
 - Squad Stability commits or rejects intent changes through the same API instead of restoring raw fields after another writer changes them.
 - Existing compatibility fields (`commandPhase`, `objective`, `targetObjective`, etc.) may remain temporarily as **derived mirrors** during migration, but only one intent resolver writes them.
-
-### Known remaining direct-writer problem
-
-Prepared defender/garrison code still directly writes fields such as `commandPhase`, `targetObjective`, `objective`, `orderAnchor` and related state. Those writes must migrate behind the intent/constraint API.
 
 Definition of done: there is one authoritative versioned strategic intent per squad at a time, and normal-match provenance reports no peer systems competing over strategic fields.
 

@@ -40,6 +40,17 @@
     sq.objective={x:+request.point.x||0,z:+request.point.z||0};
     return true;
   }
+  /* Prepared Defense uses the same constraint boundary as Capture Zone. The request is persistent
+     by design, but it does not own movement or write the squad's strategic compatibility fields. */
+  function acceptPreparedDefenseRequest(sim,sq){
+    var request=sq&&sq._preparedDefenseRequest;
+    if(!request||!request.objectiveId||!request.point||sq.state==='retreat')return false;
+    sq.commandRole='garrison';
+    setPhase(sim,sq,'defend','prepared defense '+request.objectiveId);
+    sq.targetObjective=request.objectiveId;
+    sq.objective={x:+request.point.x||0,z:+request.point.z||0};
+    return true;
+  }
 
   /* One squad's intent for this tick. Order of business: cohesion, role gates, committed holds,
      route progress, then - once the route is spent - doctrine on a chosen objective. */
@@ -48,7 +59,7 @@
     var cfg=policy(sim,sq.faction),doc=doctrine(sim,sq.faction),p=avgPos(sq),spread=maxSpread(sq,p);
     var enemy=D.nearestEnemyToSquad(sim,sq),cap=captain(sq),now=sim.time,cohesionLimit=cap?cfg.cohesionRadius:cfg.captainlessCohesion;
 
-    if(acceptObjectiveDefenseRequest(sim,sq))return;
+    if(acceptPreparedDefenseRequest(sim,sq)||acceptObjectiveDefenseRequest(sim,sq))return;
 
     /* A squad already trading fire is not "spread out", it is deployed. Regrouping under fire used
        to drag men out of cover and back into the open. */
@@ -185,6 +196,7 @@
     update:updateCommander,advanceRoute:advanceRoute,
     assignSquad:R.assignSquad,ensureAssignments:R.ensureAssignments,
     acceptObjectiveDefenseRequest:acceptObjectiveDefenseRequest,
+    acceptPreparedDefenseRequest:acceptPreparedDefenseRequest,
     commandTick:COMMAND_TICK,objectiveHoldWin:OBJECTIVE_HOLD_WIN,
     policyFor:policy,genomeFor:genome,doctrineFor:doctrine,
     chooseObjective:D.chooseObjective,buildContext:D.buildContext

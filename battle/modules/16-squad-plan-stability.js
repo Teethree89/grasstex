@@ -144,8 +144,11 @@
         var s=members[i],d=teamSlot(sq,key,s,i,members.length,current.anchor);
         s._fireteamKey=key;
         if(!defensive)s._defensePost=null;
-        var post=defensive?holdPost(s,battle,serial):null;
-        s._fireteamDestination=post?{x:post.x,z:post.z}:d;
+        /* Prepared Defense supplies a fixed post constraint. Squad Stability remains the only live
+           formation writer: during a defensive posture it turns that constraint into this team's
+           order, rather than Prepared Defense writing before and after the squad update. */
+        var prepared=defensive&&s._preparedDefensePost,post=prepared?null:(defensive?holdPost(s,battle,serial):null);
+        s._fireteamDestination=prepared?copyPoint(prepared):(post?{x:post.x,z:post.z}:d);
         /* Arrival/cohesion accounting should use the fireteam slot, not the obsolete individual
            formation slot that was averaged to create it. */
         if(root.BattleMovementResolver)root.BattleMovementResolver.proposeOrder(s,s._fireteamDestination,battle,urgent);
