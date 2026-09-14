@@ -21,7 +21,8 @@ function spreadOf(sq){try{var p=D.avgPos(sq);return{p:p,spread:D.maxSpread(sq,p)
 function key(sq){return String(sq.faction||'?')+':'+String(sq.id||'?');}
 function snapshot(sq){return{phase:sq.commandPhase||'approach',objective:point(sq.objective),targetObjective:sq.targetObjective||null,hold:+sq.commandHoldUntil||0,routeIndex:+sq.routeIndex||0};}
 function restore(sq,s){if(!s)return;sq.commandPhase=s.phase;if(s.objective)sq.objective={x:s.objective.x,z:s.objective.z};sq.targetObjective=s.targetObjective;sq.commandHoldUntil=Math.min(+sq.commandHoldUntil||0,s.hold);if((+sq.routeIndex||0)<s.routeIndex)sq.routeIndex=s.routeIndex;}
-function state(sq){return sq._regroupHysteresis||(sq._regroupHysteresis={overSince:null,accepted:false,enteredAt:0,cooldownUntil:0,lastForward:null,entries:[],flaps:0,suppressed:0});}
+function state(sq){return sq._regroupHysteresis||(sq._regroupHysteresis={overSince:null,accepted:false,enteredAt:0,cooldownUntil:0,lastForward:null,anchor:null,entries:[],flaps:0,suppressed:0});}
+function clearAccepted(st){st.accepted=false;st.overSince=null;st.anchor=null;}
 function publish(sim){
   var totalEntries=0,totalFlaps=0,totalSuppressed=0,byFaction={us:{entries:0,flaps:0,suppressed:0},ge:{entries:0,flaps:0,suppressed:0}};
   ['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++){var st=squads[i]._regroupHysteresis;if(!st)continue;var e=st.entries.length,fl=st.flaps||0,su=st.suppressed||0;totalEntries+=e;totalFlaps+=fl;totalSuppressed+=su;byFaction[f].entries+=e;byFaction[f].flaps+=fl;byFaction[f].suppressed+=su;}});
@@ -32,10 +33,11 @@ function loopAlert(sim,sq,t,spread,limit){
   var lw=sim&&sim._aiLoopWatch;if(!lw||!Array.isArray(lw.alerts))return;
   lw.alerts.push({kind:'regroup-flap',severity:'hot',faction:sq.faction,squadId:sq.id,soldierId:null,time:+t.toFixed(2),travel:0,net:0,destinationChanges:0,inContact:false,phases:['approach','regroup','approach'],rules:[],sequence:['advance','regroup','advance','regroup'],message:'Repeated cohesion regroup entries while travelling; spread '+spread.toFixed(1)+'m vs '+limit.toFixed(1)+'m limit'});
 }
-function noteEntry(sim,sq,st,t,spread,limit){
-  st.enteredAt=t;st.accepted=true;st.entries.push(t);while(st.entries.length&&t-st.entries[0]>FLAP_WINDOW)st.entries.shift();
+function noteEntry(sim,sq,st,t,spread,limit,centroid){
+  st.enteredAt=t;st.accepted=true;st.anchor=point(centroid);
+  st.entries.push(t);while(st.entries.length&&t-st.entries[0]>FLAP_WINDOW)st.entries.shift();
   if(st.entries.length>=FLAP_COUNT){st.flaps++;st.entries=[];loopAlert(sim,sq,t,spread,limit);if(root.BattleTelemetry)root.BattleTelemetry.record('regroup-flap',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),spread:+spread.toFixed(2),limit:+limit.toFixed(2)},sim);}
-  if(root.BattleTelemetry)root.BattleTelemetry.record('regroup-enter',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),spread:+spread.toFixed(2),limit:+limit.toFixed(2)},sim);
+  if(root.BattleTelemetry)root.BattleTelemetry.record('regroup-enter',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),spread:+spread.toFixed(2),limit:+limit.toFixed(2),anchor:st.anchor},sim);
 }
 function tickSquad(sim,sq){
   if(!sq||sq.state==='retreat')return;
@@ -46,26 +48,27 @@ function tickSquad(sim,sq){
   /* Force Command's bounded recovery must also release this latch. Otherwise a stranded man
      keeps it accepted forever and this later hook immediately undoes every timeout. */
   if(t<(+sq._regroupBypassUntil||0)){
-    st.accepted=false;st.overSince=null;st.cooldownUntil=Math.max(st.cooldownUntil,sq._regroupBypassUntil);
+    clearAccepted(st);st.cooldownUntil=Math.max(st.cooldownUntil,sq._regroupBypassUntil);
     if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);
     return;
   }
 
-  if(sq.inContact){st.overSince=null;if(st.accepted){st.accepted=false;st.cooldownUntil=t+REENTRY_COOLDOWN;}if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);return;}
+  if(sq.inContact){st.overSince=null;if(st.accepted){clearAccepted(st);st.cooldownUntil=t+REENTRY_COOLDOWN;}if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);return;}
 
   if(st.accepted){
-    if(t-st.enteredAt>=MIN_REGROUP&&sp.spread<=release){st.accepted=false;st.cooldownUntil=t+REENTRY_COOLDOWN;st.overSince=null;if(root.BattleTelemetry)root.BattleTelemetry.record('regroup-exit',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),spread:+sp.spread.toFixed(2),release:+release.toFixed(2)},sim);if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);return;}
-    /* Force Command may try to resume as soon as spread dips one centimetre below the old hard
-       threshold. Keep the accepted regroup until the lower release threshold is met. */
+    if(t-st.enteredAt>=MIN_REGROUP&&sp.spread<=release){clearAccepted(st);st.cooldownUntil=t+REENTRY_COOLDOWN;if(root.BattleTelemetry)root.BattleTelemetry.record('regroup-exit',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),spread:+sp.spread.toFixed(2),release:+release.toFixed(2)},sim);if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);return;}
+    /* Keep the rendezvous fixed at the centroid captured when regroup was accepted. Following the
+       live centroid turns regroup into a moving target: late soldiers chase a centre that retreats
+       as the front half keeps moving, which can manufacture long regroups and backwards travel. */
     if(sq.commandPhase!=='regroup')sq.commandPhase='regroup';
-    sq.objective={x:sp.p.x,z:sp.p.z};sq.commandHoldUntil=Math.max(+sq.commandHoldUntil||0,t+Math.min(.6,+cfg.regroupHold||.4));
+    var anchor=st.anchor||sp.p;sq.objective={x:anchor.x,z:anchor.z};sq.commandHoldUntil=Math.max(+sq.commandHoldUntil||0,t+Math.min(.6,+cfg.regroupHold||.4));
     return;
   }
 
   if(sp.spread>limit){if(st.overSince==null)st.overSince=t;}else st.overSince=null;
 
   if(spreadRegroup){
-    if(t>=st.cooldownUntil&&st.overSince!=null&&t-st.overSince>=ENTER_GRACE){noteEntry(sim,sq,st,t,sp.spread,limit);return;}
+    if(t>=st.cooldownUntil&&st.overSince!=null&&t-st.overSince>=ENTER_GRACE){noteEntry(sim,sq,st,t,sp.spread,limit,sp.p);return;}
     /* A path around a hedge/building can momentarily stretch a formation. That is not a command
        reversal. Restore the last forward intent until the excursion proves persistent. */
     st.suppressed++;restore(sq,st.lastForward);return;
@@ -78,7 +81,7 @@ function reset(sim){lastReason={};['us','ge'].forEach(function(f){var squads=sim
 /* Capture Force Command's own phase reason without taking ownership of the phase. */
 if(root.BattleTelemetry&&root.BattleTelemetry.record){var baseRecord=root.BattleTelemetry.record;root.BattleTelemetry.record=function(type,data,sim){if(type==='decision-phase'&&data&&data.squad!=null)lastReason[String(data.faction||'?')+':'+String(data.squad)]=String(data.why||'');return baseRecord.apply(this,arguments);};}
 
-root.BattleModules.registerSystem('regroup-hysteresis',{version:'1.1',onBattleStart:reset,onBattleRestart:reset,onCommanderTick:function(sim){['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++)tickSquad(sim,squads[i]);});publish(sim);}});
-root.BattleRegroupHysteresis={version:'1.1',enterGrace:ENTER_GRACE,exitRatio:EXIT_RATIO,minRegroup:MIN_REGROUP,reentryCooldown:REENTRY_COOLDOWN,summary:function(sim){return sim&&sim._regroupHysteresisSummary?JSON.parse(JSON.stringify(sim._regroupHysteresisSummary)):null;}};
-console.log('[COMMAND] regroup hysteresis + flap diagnostics active');
+root.BattleModules.registerSystem('regroup-hysteresis',{version:'1.2',onBattleStart:reset,onBattleRestart:reset,onCommanderTick:function(sim){['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++)tickSquad(sim,squads[i]);});publish(sim);}});
+root.BattleRegroupHysteresis={version:'1.2',enterGrace:ENTER_GRACE,exitRatio:EXIT_RATIO,minRegroup:MIN_REGROUP,reentryCooldown:REENTRY_COOLDOWN,summary:function(sim){return sim&&sim._regroupHysteresisSummary?JSON.parse(JSON.stringify(sim._regroupHysteresisSummary)):null;}};
+console.log('[COMMAND] regroup hysteresis + fixed rendezvous + flap diagnostics active');
 })(typeof window!=='undefined'?window:globalThis);
