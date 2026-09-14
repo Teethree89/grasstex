@@ -218,6 +218,25 @@ section('progress recovery respects an objective that replaced the approach rout
   tick(sim,{town});
   check('bounded regroup resumes the assigned objective, not the old route',sq.objective.x===120);
 }
+section('a stranded soldier cannot override the regroup timeout');
+{
+  const {r,sq,sim,town}=commandFixture();
+  r.BattleTelemetry={record(){}};
+  for(const f of ['battle/modules/15-force-command-progress-recovery.js','battle/modules/16-squad-plan-stability.js','battle/modules/41-regroup-hysteresis.js'])load(r,f);
+  sq.members[3].root.position.x=-100;
+  sq.commandPhase='regroup';sq.objective={x:20,z:0};
+  sq._regroupRecovery={startedAt:sim.time-19,serial:1};
+  sq._regroupHysteresis={overSince:sim.time-20,accepted:true,enteredAt:sim.time-19,cooldownUntil:0,lastForward:null,entries:[],flaps:0,suppressed:0};
+  function tick(){
+    r.BattleCommanderAI.advanceRoute(sim,sq,town);
+    for(const id of ['force-command-progress-recovery','regroup-hysteresis','squad-plan-stability'])r.BattleModules.getSystem(id).onCommanderTick(sim,{town});
+  }
+  tick();
+  check('hysteresis releases an accepted regroup when Force Command times it out',sq.commandPhase!=='regroup'&&sq.objective.x===120);
+  let held=0;
+  for(let i=0;i<25;i++){sim.time+=.45;tick();if(sq.commandPhase==='regroup'||sq.objective.x!==120)held++;}
+  check('the entire bypass survives subsequent commander and stability ticks',held===0,'held ticks='+held);
+}
 section('benchmark alerts distinguish approach intent from absent orders');
 {
   const file=path.join(REPO,'scripts/battle-benchmark-intent.cjs');
@@ -284,8 +303,12 @@ section('physical wayfinding respects body clearance through hedgerows');
   const r=bootstrap(),N=r.BattleNavigation;
   load(r,'battle/modules/39-navigation-physicality-debug.js');
   const P=r.BattleNavigationPhysicality;
+  // Exercise the shipping integrator, including steering and turn smoothing, without rendering.
+  const movementSource=fs.readFileSync(path.join(REPO,'battle/battle-sim.js'),'utf8').replace('root.BattleSim={','root.stepMovementProbe=stepMovement;root.BattleSim={');
+  const model={animateWalk(){},setCrouch(s,v){s.crouching=v;},setProne(s,v){s.prone=v;}};
+  new Function('window','globalThis','console','BABYLON','BattleSoldierModel',movementSource)(r,r,quiet,r.BABYLON,model);
   function world(shapes){
-    const scenario={buildings:[]},sim={time:0,obstacles:[],_roster:{us:[],ge:[]},scene:{metadata:{battleScenario:scenario}}};
+    const scenario={buildings:[]},sim={time:0,heightAt:()=>0,obstacles:[],_roster:{us:[],ge:[]},scene:{metadata:{battleScenario:scenario}}};
     sim.obstacles.__physicalFootprints=shapes;N.installScenario(scenario);
     r.BattleModules.getSystem('navigation-physicality-debug').onBattleStart(sim);return sim;
   }
@@ -316,8 +339,8 @@ section('physical wayfinding respects body clearance through hedgerows');
   // Node generation can be bounded for speed; collision testing cannot omit the 33rd footprint.
   const crowded=Array.from({length:32},(_,i)=>({id:'rock'+i,type:'rock',shape:'circle',x:0,z:0,radius:3}));
   crowded.push({id:'upper-hedge',type:'hedge',shape:'circle',x:0,z:4.5,radius:1.6},{id:'lower-hedge',type:'hedge',shape:'circle',x:0,z:-4.5,radius:1.6});
-  const dense=world(crowded),a={x:-12,z:0},b={x:12,z:0},path=P.planPath(dense,a,b);
-  check('bounded waypoint candidates cannot omit collision geometry',path.length>0&&clearPath(a,path,crowded,P.routeMargin));
+  const dense=world(crowded),a={x:-12,z:0},b={x:12,z:0},densePath=P.planPath(dense,a,b);
+  check('bounded waypoint candidates cannot omit collision geometry',densePath.length>0&&clearPath(a,densePath,crowded,P.routeMargin));
   const angle=.63,c=Math.cos(angle),sn=Math.sin(angle),rot=p=>({x:p.x*c-p.z*sn,z:p.x*sn+p.z*c});
   const wide=[hedge('wide-left',-2.3,0,.8,8),hedge('wide-right',2.3,0,.8,8)].map(fp=>Object.assign({},fp,rot(fp),{ux:c,uz:sn,vx:-sn,vz:c}));
   const open=world(wide),ws=rot(start),wg=rot(goal),widePath=P.planPath(open,ws,wg);
@@ -327,6 +350,42 @@ section('physical wayfinding respects body clearance through hedgerows');
   const hold=N.nextWaypoint(enclosure,boxed,outside),blockedPlan=boxed._physicalPath;enclosure.time+=.15;
   N.nextWaypoint(enclosure,boxed,outside);
   check('no-path results hold safely and retry on a timer',hold.x===0&&hold.z===0&&blockedPlan.blocked&&boxed._physicalPath===blockedPlan);
+
+  function walkPhysical(sim,start,dest,seconds){
+    const man={id:'probe',root:{position:{...start},rotation:{y:0}},destination:{...dest},speed:2.9,fireCooldown:0};let illegal=0;
+    for(let i=0;i<seconds/.15;i++){
+      sim.time+=.15;const p={...man.root.position};r.stepMovementProbe(sim,man,.15);
+      if(Math.hypot(p.x-man.root.position.x,p.z-man.root.position.z)>1e-8&&!N.movementClear(p,man.root.position))illegal++;
+    }
+    return{man,illegal};
+  }
+  const rockWorld=world([{id:'slot-rock',type:'rock',shape:'circle',x:0,z:0,radius:1}]);
+  rockWorld.obstacles.push({type:'rock',x:0,z:0,radius:1});
+  const slotWalk=walkPhysical(rockWorld,{x:-20,z:0},{x:0,z:0},35);
+  const slotDistance=Math.hypot(slotWalk.man.root.position.x,slotWalk.man.root.position.z);
+  check('a formation slot inside a rock settles nearby instead of circling forever',slotDistance<3&&slotWalk.man._physicalPath.points.length===0,'distance='+slotDistance);
+  check('slot recovery keeps body clearance and preserves the resolved order',slotWalk.illegal===0&&slotDistance>1+P.navMargin&&slotWalk.man.destination.x===0&&slotWalk.man.destination.z===0);
+  const room={id:'room',x:0,z:0,w:12,d:12,rot:.4,openings:[{id:'door',type:'door',side:'south',offset:0,width:2},{id:'window',type:'window',side:'north',offset:0,width:1.25,bottom:.92,top:2.08}]};
+  const roomWorld=world([]);roomWorld.scene.metadata.battleScenario={buildings:[room]};N.installScenario(roomWorld.scene.metadata.battleScenario);
+  const station=N.firingStations[0];
+  check('window stations are inset by half the previous 1.55 metres',Math.abs(Math.hypot(station.x-station.windowX,station.z-station.windowZ)-.775)<1e-8);
+  const windowWalk=walkPhysical(roomWorld,{x:0,z:0},station,15);
+  check('soldiers actually reach the closer window station',Math.hypot(windowWalk.man.root.position.x-station.x,windowWalk.man.root.position.z-station.z)<=.35&&windowWalk.illegal===0);
+  const entering=walkPhysical(roomWorld,{x:-Math.sin(room.rot)*12,z:-Math.cos(room.rot)*12},station,25);
+  check('an exterior soldier reaches the window through the door without crossing walls',Math.hypot(entering.man.root.position.x-station.x,entering.man.root.position.z-station.z)<=.35&&entering.illegal===0);
+  load(r,'battle/movement-resolver.js');
+  const close={slotIndex:0,root:{position:{x:station.x,z:station.z-.6}},destination:{x:station.x,z:station.z-.6}};
+  r.BattleMovementResolver.proposeCombat(close,station,roomWorld,'firing-station');r.BattleMovementResolver.resolve(close,roomWorld);
+  check('the resolver accepts a sub-metre adjustment to a window station',close.destination.x===station.x&&close.destination.z===station.z);
+
+  const aimWorld=world([]),aim={root:{position:{x:0,z:0},rotation:{y:0}},destination:{x:0,z:0},speed:2.9,fireCooldown:0,_faceHint:{x:Math.sin(.02)*20,z:Math.cos(.02)*20}};
+  r.stepMovementProbe(aimWorld,aim,1/60);
+  check('small aim changes ease over frames instead of snapping to the target',aim.root.rotation.y>0&&aim.root.rotation.y<.02);
+  for(let i=0;i<60;i++)r.stepMovementProbe(aimWorld,aim,1/60);
+  check('eased aim settles promptly without overshooting',aim.root.rotation.y>.0199&&aim.root.rotation.y<=.02);
+  aim.root.rotation.y=Math.PI-.01;aim._faceHint={x:Math.sin(-Math.PI+.01)*20,z:Math.cos(-Math.PI+.01)*20};
+  r.stepMovementProbe(aimWorld,aim,1/60);
+  check('aim across the angle wrap takes the short turn',aim.root.rotation.y>Math.PI-.01&&aim.root.rotation.y<Math.PI+.01);
 
 
 }

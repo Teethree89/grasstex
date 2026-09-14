@@ -34,6 +34,11 @@ branch, so it reproduces real failing battles rather than invented ones, and it 
 the scenarios are fixed and the assertions are about mechanism. Both suites run in the deploy
 workflow.
 
+The navigation suite also exercises buffered mesh routing, obstructed formation slots, precise
+window arrival through doors, and the interaction between regroup timeout and cohesion hysteresis.
+Its final movement probes execute the shipping `stepMovement()` with rendering stubbed out,
+including checks for smooth aim changes and angle wrapping.
+
 **Determinism and the seed sweep.** A run is byte-for-byte reproducible: the harness pins
 `Math.random` while sources load and while soldiers are created, because the shipping code seeds a
 couple of per-soldier cooldowns from it and one of those decides whether a callout fires — and a

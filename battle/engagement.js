@@ -420,7 +420,7 @@
     s.state='hardpoint';
     var p=posOf(s),d=dist(p.x,p.z,st.x,st.z);
     commitStance(s,battle,'crouch',2.0);
-    if(d<.75){
+    if(d<=.35){
       holdPosition(s,battle);
       if(s.role==='gunner'){if(!e.setUpSince)e.setUpSince=battle.time;s.setUp=battle.time-e.setUpSince>GUNNER_SETUP;}
       tryFire(s,battle);

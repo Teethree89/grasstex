@@ -50,7 +50,8 @@
     if(soldier.dead){BattleSoldierModel.animateWalk(soldier,dt,0);return;}soldier.fireCooldown=Math.max(0,soldier.fireCooldown-dt);var desired=soldier.destination;if(root.BattleNavigation)desired=root.BattleNavigation.nextWaypoint(self,soldier,desired)||desired;
     var dx=desired.x-soldier.root.position.x,dz=desired.z-soldier.root.position.z,d=Math.hypot(dx,dz),crawl=!!(soldier.prone&&soldier.crawling),wantCrouch=!soldier.prone&&(soldier.tacticalCrouch||(soldier.suppressedUntil>self.time)||(!!soldier.target&&d<=.6));
     var desiredSpeed=d>.35?soldier.speed*(crawl?.23:(wantCrouch?.58:1)):0,cur=soldier.moveSpeed||0,rate=desiredSpeed>cur?(crawl?1.2:4.2):(crawl?2.0:6.5);soldier.moveSpeed=Math.max(0,cur+Math.max(-rate*dt,Math.min(rate*dt,desiredSpeed-cur)));
-    function turnToward(yaw){var diff=Math.atan2(Math.sin(yaw-soldier.root.rotation.y),Math.cos(yaw-soldier.root.rotation.y)),maxTurn=(soldier.prone?1.25:2.8)*dt;soldier.root.rotation.y+=Math.max(-maxTurn,Math.min(maxTurn,diff));}
+    // Ease the remaining angle over time, keeping the existing stance-dependent turn limit.
+    function turnToward(yaw){var diff=Math.atan2(Math.sin(yaw-soldier.root.rotation.y),Math.cos(yaw-soldier.root.rotation.y)),maxTurn=(soldier.prone?1.25:2.8)*dt,eased=diff*(1-Math.exp(-8*dt));soldier.root.rotation.y+=Math.max(-maxTurn,Math.min(maxTurn,eased));}
     if(d>.35&&soldier.moveSpeed>.025&&(!soldier.prone||crawl)){
       var here={x:soldier.root.position.x,z:soldier.root.position.z};
       var dirx=dx/d,dirz=dz/d,steered=steerAroundObstacles(self.obstacles,here.x,here.z,dirx,dirz);if(steered){dirx=steered.x;dirz=steered.z;}

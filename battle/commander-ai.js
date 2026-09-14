@@ -93,7 +93,7 @@
 
     /* A squad already trading fire is not "spread out", it is deployed. Regrouping under fire used
        to drag men out of cover and back into the open. */
-    if(spread>cohesionLimit&&!sq.inContact){setPhase(sim,sq,'regroup','spread '+spread.toFixed(1));sq.commandHoldUntil=Math.max(sq.commandHoldUntil,now+cfg.regroupHold);sq.objective={x:p.x,z:p.z};return;}
+    if(spread>cohesionLimit&&!sq.inContact&&now>=(+sq._regroupBypassUntil||0)){setPhase(sim,sq,'regroup','spread '+spread.toFixed(1));sq.commandHoldUntil=Math.max(sq.commandHoldUntil,now+cfg.regroupHold);sq.objective={x:p.x,z:p.z};return;}
 
     /* This is deliberately after the cohesion gate: a genuinely scattered squad first reforms,
        then Force Command gives it its recovered capture intent. */

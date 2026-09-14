@@ -6,7 +6,7 @@
 (function(root){
   'use strict';
   var scenario=null,walls=[],nodes=[],edges=[],version=0,firingStations=[],occupants=Object.create(null),doorPortals=[];
-  var EPS=.0001,DOOR_PAD=1.55,DOOR_CLEARANCE=.48,CORNER_PAD=2.4,MAX_EDGE=300,STATION_INSET=1.55;
+  var EPS=.0001,DOOR_PAD=1.55,DOOR_CLEARANCE=.48,CORNER_PAD=2.4,MAX_EDGE=300,STATION_INSET=.775;
   /* How much wall a man is allowed to be standing on before it counts as being in his way.
      This has to be an absolute distance. It used to be a fraction of the query segment, so the
      planner asking "is the 250 m line to the objective clear?" ignored the wall he was leaning

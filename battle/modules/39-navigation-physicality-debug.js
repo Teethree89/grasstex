@@ -20,7 +20,7 @@ var HARD_TYPES={hedge:1,tree:1,log:1,wall:1,rock:1};
    Inflate each footprint by the body radius for collision; path centres keep a full body
    width plus 0.25 m from its edge. These are world metres, independent of segment length. */
 var BODY_RADIUS=.45,COLLISION_MARGIN=BODY_RADIUS,ROUTE_MARGIN=BODY_RADIUS*2+.25,NODE_PAD=.34,ROUTE_HORIZON=96,ROUTE_CORRIDOR=12,MAX_ROUTE_SHAPES=32;
-var LOOKAHEAD_DISTANCE=105,MIN_QUEUE=3,TARGET_QUEUE=5,MAX_QUEUE=8,WAYPOINT_SPACING=10,MIN_WAYPOINT_SPACING=1.35,PATH_ARRIVAL=.88,REPLAN_SECONDS=5.0;
+var LOOKAHEAD_DISTANCE=105,MIN_QUEUE=3,TARGET_QUEUE=5,MAX_QUEUE=8,WAYPOINT_SPACING=10,MIN_WAYPOINT_SPACING=1.35,PATH_ARRIVAL=.88,GOAL_ARRIVAL=.35,REPLAN_SECONDS=5.0;
 var STATION_RADIUS=.92,STATION_ROUTE_MARGIN=.28,CONTACT_GRACE=4.5;
 var simRef=null,occupied=[],occupiedAt=-999,legacyCache=null,physicalIndexCache=null;
 var debug={visible:false,version:-1,markers:[],freeMat:null,usedMat:null,button:null,nextUpdate:0};
@@ -42,7 +42,7 @@ function staticFootprints(sim){
   if(!sim||!sim.obstacles)return[];var p=sim.obstacles.__physicalFootprints;
   return Array.isArray(p)&&p.length?p:legacyFootprints(sim);
 }
-function physicalVersion(sim){var o=sim&&sim.obstacles;return(o&&o.__physicalVersion||0)+'|'+staticFootprints(sim).length;}
+function physicalVersion(sim){var o=sim&&sim.obstacles;return N.version+'|'+(o&&o.__physicalVersion||0)+'|'+staticFootprints(sim).length;}
 var PHYS_CELL=28;
 function axes(fp){
   var ux=isFinite(+fp.ux)?+fp.ux:1,uz=isFinite(+fp.uz)?+fp.uz:0,len=Math.hypot(ux,uz)||1;ux/=len;uz/=len;
@@ -197,12 +197,30 @@ function baseTargets(start,dest){
   var d=point(dest);if(d&&(!out.length||dist(out[out.length-1],d)>.25))out.push(d);
   return out;
 }
+/* Formation/cover orders can land inside a mesh or its clearance buffer. Settle at a nearby
+   legal stand point instead of repeatedly circling an unreachable point. Keep the resolved
+   destination intact; only navigation owns this bounded endpoint adjustment. Building walls
+   still gate the adjustment so a room/window order cannot jump to the other side of a wall. */
+function standGoal(sim,soldier,start,dest){
+  var shapes=routeFootprints(sim,dest,dest,soldier);
+  if(edgeClear(sim,dest,dest,shapes,ROUTE_MARGIN))return dest;
+  var radii=[.5,1,1.5,2,2.5,3,4,6],best=null;
+  for(var ri=0;ri<radii.length;ri++){
+    for(var i=0;i<16;i++){
+      var a=i*Math.PI/8,p={x:dest.x+Math.cos(a)*radii[ri],z:dest.z+Math.sin(a)*radii[ri],kind:'stand-goal'};
+      if(!baseMovementClear(dest,p)||!edgeClear(sim,p,p,shapes,ROUTE_MARGIN))continue;
+      var score=dist(start,p);if(!best||score<best.score)best={point:p,score:score};
+    }
+    if(best)return best.point;
+  }
+  return dest;
+}
 function rawLookahead(sim,soldier,start,dest){
   var targets=baseTargets(start,dest);if(!targets.length)return[];
   var cursor={x:start.x,z:start.z},raw=[],travel=0,guard=0;
   outer:for(var ti=0;ti<targets.length&&guard<48;ti++){
     var target=targets[ti];
-    while(dist(cursor,target)>PATH_ARRIVAL&&guard++<48){
+    while(dist(cursor,target)>GOAL_ARRIVAL&&guard++<48){
       var before={x:cursor.x,z:cursor.z},planned=planLocal(sim,soldier,cursor,target),pts=planned.points||[];
       if(!pts.length)break outer;
       for(var pi=0;pi<pts.length;pi++){
@@ -215,7 +233,7 @@ function rawLookahead(sim,soldier,start,dest){
         raw.push({x:n.x,z:n.z,kind:n.kind||target.kind||'route',meta:n.meta||target.meta||null});
         travel+=seg;cursor={x:n.x,z:n.z};
       }
-      if(dist(cursor,target)<=PATH_ARRIVAL)break;
+      if(dist(cursor,target)<=GOAL_ARRIVAL)break;
       if(dist(before,cursor)<.08)break;
       if(travel>=LOOKAHEAD_DISTANCE)break outer;
       if(dist(cursor,planned.segmentGoal)<=PATH_ARRIVAL&&dist(planned.segmentGoal,target)>PATH_ARRIVAL)continue;
@@ -251,11 +269,11 @@ function topUpQueue(sim,soldier,start,dest,points){
   return points;
 }
 function buildRollingPlan(soldier,sim,start,dest){
-  var raw=rawLookahead(sim,soldier,start,dest),points=densify(start,raw);
-  points=topUpQueue(sim,soldier,start,dest,points);
+  var goal=standGoal(sim,soldier,start,dest),raw=rawLookahead(sim,soldier,start,goal),points=densify(start,raw);
+  points=topUpQueue(sim,soldier,start,goal,points);
   soldier._physicalPath={
     version:physicalVersion(sim),
-    finalGoalX:+dest.x,finalGoalZ:+dest.z,points:points,blocked:!points.length,index:0,createdAt:sim.time,replanAt:sim.time+REPLAN_SECONDS,
+    finalGoalX:+dest.x,finalGoalZ:+dest.z,standGoal:goal,points:points,blocked:!points.length&&dist(start,goal)>GOAL_ARRIVAL,index:0,createdAt:sim.time,replanAt:sim.time+REPLAN_SECONDS,
     minQueue:MIN_QUEUE,routeMargin:ROUTE_MARGIN,collisionMargin:COLLISION_MARGIN
   };
   var first=points[0];
@@ -271,27 +289,34 @@ function needsReplan(soldier,sim,dest,start){
   var c=soldier._physicalPath;if(!c)return true;
   if(c.version!==physicalVersion(sim))return true;
   if(Math.hypot(dest.x-c.finalGoalX,dest.z-c.finalGoalZ)>1.4)return true;
-  if(!c.points||!c.points.length)return !c.blocked||sim.time>=c.replanAt;
+  if(!c.points||!c.points.length)return sim.time>=c.replanAt||(!c.blocked&&dist(start,c.standGoal)>GOAL_ARRIVAL);
   if(!firstSegmentClear(sim,soldier,start,c))return true;
   if(sim.time>=c.replanAt)return true;
   return false;
 }
-function consumeReached(c,start){
+function consumeReached(c,start,sim,soldier){
   if(!c||!c.points)return;
-  while(c.points.length&&dist(start,c.points[0])<PATH_ARRIVAL)c.points.shift();
+  while(c.points.length){
+    var next=c.points[1],arrival=next?PATH_ARRIVAL:GOAL_ARRIVAL;
+    if(dist(start,c.points[0])>arrival)break;
+    // Reaching the corner's radius is not permission to cut through the corner itself.
+    if(next&&!edgeClear(sim,start,next,routeFootprints(sim,start,next,soldier),ROUTE_MARGIN))break;
+    c.points.shift();
+  }
   c.index=0;
 }
 
 function planComplete(sim,start,end){
   if(!sim)return baseFindPath(start,end);
+  end=standGoal(sim,null,start,end);
   var building=baseFindPath(start,end)||[{x:end.x,z:end.z}],cursor={x:start.x,z:start.z},raw=[],guard=0;
   for(var bi=0;bi<building.length&&guard<96;bi++){
     var target=point(building[bi]);if(!target)continue;
-    while(dist(cursor,target)>PATH_ARRIVAL&&guard++<96){
+    while(dist(cursor,target)>GOAL_ARRIVAL&&guard++<96){
       var p=planLocal(sim,null,cursor,target),pts=p.points||[];if(!pts.length)return densify(start,raw);
       var progressed=false;
       for(var q=0;q<pts.length;q++){var n=pts[q];if(dist(cursor,n)>.05){raw.push({x:n.x,z:n.z,kind:n.kind||target.kind||'physical',meta:n.meta||target.meta||null});cursor={x:n.x,z:n.z};progressed=true;}}
-      if(dist(cursor,target)<=PATH_ARRIVAL)break;
+      if(dist(cursor,target)<=GOAL_ARRIVAL)break;
       if(!progressed)break;
       if(dist(cursor,p.segmentGoal)<=PATH_ARRIVAL&&dist(p.segmentGoal,target)>PATH_ARRIVAL)continue;
     }
@@ -327,9 +352,9 @@ N.nextWaypoint=function(sim,soldier,dest){
   var start={x:+soldier.root.position.x,z:+soldier.root.position.z},finalGoal=point(dest);if(!finalGoal)return base;
   var c=soldier._physicalPath;
   if(needsReplan(soldier,sim,finalGoal,start))c=buildRollingPlan(soldier,sim,start,finalGoal);
-  consumeReached(c,start);
-  if(!c.blocked&&c.points.length<=MIN_QUEUE&&dist(start,finalGoal)>PATH_ARRIVAL*2)c=buildRollingPlan(soldier,sim,start,finalGoal);
-  consumeReached(c,start);
+  consumeReached(c,start,sim,soldier);
+  if(!c.blocked&&c.points.length<=MIN_QUEUE&&dist(start,c.standGoal)>PATH_ARRIVAL*2)c=buildRollingPlan(soldier,sim,start,finalGoal);
+  consumeReached(c,start,sim,soldier);
   var wp=c.points[0];
   if(!wp)return start; // Hold a blocked route until its bounded retry; no destination write.
   if(dist(wp,finalGoal)>1.0)soldier._fieldDetour={x:wp.x,z:wp.z,goalX:finalGoal.x,goalZ:finalGoal.z,until:sim.time+REPLAN_SECONDS,key:'rolling-path',kind:'mesh-route'};

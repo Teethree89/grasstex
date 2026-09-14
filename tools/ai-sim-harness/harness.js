@@ -154,7 +154,8 @@ function stepMovement(battle,s,dt){
   function turnToward(yaw){
     const diff=Math.atan2(Math.sin(yaw-s.root.rotation.y),Math.cos(yaw-s.root.rotation.y));
     const maxTurn=(s.prone?1.25:2.8)*dt;
-    s.root.rotation.y+=Math.max(-maxTurn,Math.min(maxTurn,diff));
+    const eased=diff*(1-Math.exp(-8*dt));
+    s.root.rotation.y+=Math.max(-maxTurn,Math.min(maxTurn,eased));
   }
   if(d>.35&&s.moveSpeed>.025&&(!s.prone||crawl)){
     const dirx=dx/d,dirz=dz/d,step=Math.min(d,s.moveSpeed*dt);

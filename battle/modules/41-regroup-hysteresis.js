@@ -43,6 +43,14 @@ function tickSquad(sim,sq){
   var t=now(sim),st=state(sq),limit=+(captainAlive(sq)?cfg.cohesionRadius:cfg.captainlessCohesion)||34,release=limit*EXIT_RATIO;
   var reason=lastReason[key(sq)]||'',spreadRegroup=sq.commandPhase==='regroup'&&reason.indexOf('spread ')===0;
 
+  /* Force Command's bounded recovery must also release this latch. Otherwise a stranded man
+     keeps it accepted forever and this later hook immediately undoes every timeout. */
+  if(t<(+sq._regroupBypassUntil||0)){
+    st.accepted=false;st.overSince=null;st.cooldownUntil=Math.max(st.cooldownUntil,sq._regroupBypassUntil);
+    if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);
+    return;
+  }
+
   if(sq.inContact){st.overSince=null;if(st.accepted){st.accepted=false;st.cooldownUntil=t+REENTRY_COOLDOWN;}if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);return;}
 
   if(st.accepted){
