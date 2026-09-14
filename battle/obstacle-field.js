@@ -89,7 +89,7 @@
      successfully reached cover would immediately lose the target that sent him there. */
   function usedAsCover(ob,x,z){var dx=x-ob.x,dz=z-ob.z,r=(+ob.radius||1)+1.5;return dx*dx+dz*dz<=r*r;}
 
-  function sightBlocked(obstacles,a,b){
+  function sightBlocker(obstacles,a,b){
     var field=fieldFor(obstacles);if(!field)return false;
     var ax=a.x,az=a.z,ay=a.y,bx=b.x,bz=b.z,by=b.y;
     var candidates=gatherSegment(field,ax,az,bx,bz);
@@ -97,10 +97,11 @@
       var ob=candidates[i],t=closestParam(ax,az,bx,bz,ob.x,ob.z),px=ax+(bx-ax)*t,pz=az+(bz-az)*t,ddx=px-ob.x,ddz=pz-ob.z,rad=+ob.radius||1;
       if(ddx*ddx+ddz*ddz>rad*rad)continue;
       if(usedAsCover(ob,ax,az)||usedAsCover(ob,bx,bz))continue;
-      if(ay+(by-ay)*t<=obstacleTop(ob))return true;
+      if(ay+(by-ay)*t<=obstacleTop(ob))return ob;
     }
     return false;
   }
+  function sightBlocked(obstacles,a,b){return !!sightBlocker(obstacles,a,b);}
 
   /* Lower is better protection. 1 means fully exposed. */
   function coverAt(obstacles,x,z,stance){
@@ -127,7 +128,7 @@
 
   root.BattleObstacleField={
     CELL:CELL,SILHOUETTE:SILHOUETTE,EYE:EYE,
-    index:fieldFor,rebuild:buildIndex,sightBlocked:sightBlocked,coverAt:coverAt,
+    index:fieldFor,rebuild:buildIndex,sightBlocked:sightBlocked,sightBlocker:sightBlocker,coverAt:coverAt,
     coverPotentialAt:coverPotentialAt,nearby:nearby,obstacleHeight:obstacleHeight,obstacleTop:obstacleTop
   };
   if(typeof console!=='undefined')console.log('[FIELD] stance-aware obstacle field loaded');

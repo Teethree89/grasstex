@@ -61,15 +61,15 @@
   }
   function segmentBlocked(o,d,t,battle){
     var p=pointAt(o,d,t),F=root.BattleObstacleField;
-    try{if(F&&F.sightBlocked&&F.sightBlocked(battle.obstacles,{x:o.x,z:o.z,y:o.y},{x:p.x,z:p.z,y:p.y}))return true;}catch(_){}
-    try{if(root.BattleNavigation&&root.BattleNavigation.lineOfSightBlocked&&root.BattleNavigation.lineOfSightBlocked({x:o.x,z:o.z},{x:p.x,z:p.z},o.y,p.y))return true;}catch(_){}
+    try{if(F){var ob=(F.sightBlocker||F.sightBlocked).call(F,battle.obstacles,o,p);if(ob)return{obstacle:ob};}}catch(_){}
+    try{if(root.BattleNavigation&&root.BattleNavigation.lineOfSightBlocked){var wall=root.BattleNavigation.lineOfSightBlocked({x:o.x,z:o.z},{x:p.x,z:p.z},o.y,p.y);if(wall)return{wall:wall};}}catch(_){}
     return false;
   }
   function obstacleStop(o,d,maxT,battle){
-    if(!segmentBlocked(o,d,maxT,battle))return maxT;
+    if(!segmentBlocked(o,d,maxT,battle))return{travel:maxT};
     var lo=EPS,hi=maxT;
     for(var i=0;i<REFINE_STEPS;i++){var mid=(lo+hi)*.5;if(segmentBlocked(o,d,mid,battle))hi=mid;else lo=mid;}
-    return hi;
+    var block=segmentBlocked(o,d,hi,battle)||{};block.travel=hi;return block;
   }
   function groundStop(o,d,maxT,battle){
     var prev=EPS;
@@ -84,7 +84,19 @@
     }
     return maxT;
   }
-  function environmentStop(o,d,maxT,battle){return Math.min(obstacleStop(o,d,maxT,battle),groundStop(o,d,maxT,battle));}
+  function environmentStop(o,d,maxT,battle){
+    var ob=obstacleStop(o,d,maxT,battle),ground=groundStop(o,d,maxT,battle);
+    return ground<ob.travel?{travel:ground,ground:true}:ob;
+  }
+  function impactSurface(stop,p,d,battle){
+    var ob=stop.obstacle,w=stop.wall,n={x:-d.x,y:-d.y,z:-d.z},surface='cement';
+    if(stop.ground){
+      surface='dirt';n=norm({x:battle.heightAt(p.x-.2,p.z)-battle.heightAt(p.x+.2,p.z),y:.4,z:battle.heightAt(p.x,p.z-.2)-battle.heightAt(p.x,p.z+.2)});
+    }else if(w&&w.a&&w.b){n=norm({x:w.b.z-w.a.z,y:0,z:w.a.x-w.b.x});}
+    else if(ob){surface=ob.impactMaterial||ob.materialType||ob.type||'cement';if(isFinite(ob.x)&&isFinite(ob.z))n=norm({x:p.x-ob.x,y:.15,z:p.z-ob.z});}
+    if(n.x*d.x+n.y*d.y+n.z*d.z>0)n={x:-n.x,y:-n.y,z:-n.z};
+    return{surface:surface,normal:n};
+  }
   function firstEnemyHit(shooter,o,d,maxT,battle){
     var enemies=battle.rosterOf?battle.rosterOf(shooter.faction==='us'?'ge':'us'):[],best=null,bestT=maxT+1;
     for(var i=0;i<enemies.length;i++){
@@ -98,11 +110,11 @@
     if(!shooter||!target||target.dead||!shooter.weapon)return null;
     var stats=shooter.weapon.stats,sp=shooter.root.position,tp=target.root.position,d2=S.dist2?S.dist2(sp.x,sp.z,tp.x,tp.z):Math.hypot(sp.x-tp.x,sp.z-tp.z);
     if(d2>stats.range)return null;
-    var shot=shotDirection(shooter,target,stats,battle),maxT=stats.range,stop=environmentStop(shot.origin,shot.dir,maxT,battle),body=firstEnemyHit(shooter,shot.origin,shot.dir,Math.min(stop,maxT),battle);
-    var hit=!!body,t=hit?body.t:stop,victim=hit?body.soldier:null,impact=pointAt(shot.origin,shot.dir,t);
+    var shot=shotDirection(shooter,target,stats,battle),maxT=stats.range,environment=environmentStop(shot.origin,shot.dir,maxT,battle),stop=environment.travel,body=firstEnemyHit(shooter,shot.origin,shot.dir,Math.min(stop,maxT),battle);
+    var hit=!!body,t=hit?body.t:stop,victim=hit?body.soldier:null,impact=pointAt(shot.origin,shot.dir,t),surface=impactSurface(environment,impact,shot.dir,battle);
     if(stats.suppressive)target.suppressedUntil=Math.max(target.suppressedUntil||0,battle.time+1.3);
     if(victim){victim.hp-=stats.damage*(.85+rand(battle)*.3);if(victim.hp<=0)battle.killSoldier(victim,shooter);}
-    var meta={mode:'raycast',origin:shot.origin,aim:shot.aim,impact:impact,victim:victim,intendedTarget:target,dispersionRad:shot.sigma,travel:t,stoppedBy:hit?'soldier':(stop<maxT-.1?'environment':'range')};
+    var meta={mode:'raycast',origin:shot.origin,aim:shot.aim,impact:impact,victim:victim,intendedTarget:target,dispersionRad:shot.sigma,travel:t,stoppedBy:hit?'soldier':(stop<maxT-.1?'environment':'range'),surface:hit?'blood':surface.surface,normal:hit?{x:-shot.dir.x,y:-shot.dir.y,z:-shot.dir.z}:surface.normal,direction:shot.dir};
     battle.onShot&&battle.onShot(shooter,target,hit,d2,meta);
     shooter._lastBallisticShot=meta;
     return hit;

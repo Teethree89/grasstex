@@ -39,6 +39,10 @@ window arrival through doors, and the interaction between regroup timeout and co
 Its final movement probes execute the shipping `stepMovement()` with rendering stubbed out,
 including checks for smooth aim changes and angle wrapping.
 
+`node tools/ai-sim-harness/impact-fx-check.js` checks ballistic impact materials, cosmetic callback
+chaining, blood placement on terrain/building floors, effect budgets, fading, and restart cleanup.
+It uses a rendering stub; inspect the effects in Babylon for visual tuning.
+
 **Determinism and the seed sweep.** A run is byte-for-byte reproducible: the harness pins
 `Math.random` while sources load and while soldiers are created, because the shipping code seeds a
 couple of per-soldier cooldowns from it and one of those decides whether a callout fires — and a
