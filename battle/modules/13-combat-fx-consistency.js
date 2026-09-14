@@ -1,6 +1,6 @@
 /* Consistent visible feedback for every weapon discharge.
-   The core renderer historically drew direct-fire tracers only on hits.  Keep gameplay unchanged,
-   but add a miss tracer and a slightly larger short-lived muzzle bloom on every actual discharge. */
+   The core renderer historically drew direct-fire tracers only on hits. Keep gameplay unchanged,
+   but add a very subtle miss tracer and a slightly larger short-lived muzzle bloom on every actual discharge. */
 (function(root){
   'use strict';
   if(!root.BattleSim||typeof BABYLON==='undefined'||root.BattleCombatFxConsistency)return;
@@ -29,7 +29,7 @@
   }
   function missTracer(scene,from,to){
     if(!scene||!from||!to)return;var l=BABYLON.MeshBuilder.CreateLines('tracer-miss',{points:[from,to]},scene);
-    l.color=new BABYLON.Color3(1,.93,.62);l.alpha=.96;l.isPickable=false;l.renderingGroupId=3;
+    l.color=new BABYLON.Color3(1,1,1);l.alpha=.15;l.isPickable=false;l.renderingGroupId=3;
     setTimeout(function(){try{l.dispose();}catch(_){}},135);
   }
   function install(sim){
@@ -47,6 +47,6 @@
     return sim;
   }
   root.BattleSim.start=function(scene,opts){return install(oldStart(scene,opts));};
-  root.BattleCombatFxConsistency={version:'66-every-shot-fx',install:install};
-  if(typeof console!=='undefined')console.log('[FX] every shot gets visible muzzle bloom; direct misses get tracers');
+  root.BattleCombatFxConsistency={version:'67-subtle-miss-tracers',install:install};
+  if(typeof console!=='undefined')console.log('[FX] every shot gets visible muzzle bloom; direct misses get faint white tracers');
 })(typeof window!=='undefined'?window:globalThis);
