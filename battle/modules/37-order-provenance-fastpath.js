@@ -58,8 +58,8 @@ function record(sim,target,kind,field,from,to,src,st){
 function fastField(sim,target,kind,field,type){
   var ts=store(target);if(!ts||!ts.fields)return;var st=ts.fields[field];if(!st||st.fastPath)return;
   var desc;try{desc=Object.getOwnPropertyDescriptor(target,field);}catch(_){}if(desc&&desc.configurable===false)return;
-  var value=target[field];st.fastPath=true;st.instrumented=true;st.type=type;st.last=snap(value,type);
-  try{Object.defineProperty(target,field,{enumerable:desc?desc.enumerable!==false:true,configurable:true,get:function(){return value;},set:function(next){var before=st.last;value=next;var after=snap(next,type);if(!same(before,after,type,field)){record(sim,target,kind,field,before,after,source(target,kind,field),st);st.last=after;}}});}catch(_){st.fastPath=false;}
+  var value=target[field];st.observed=snap(value,type);st.fastPath=true;st.instrumented=true;st.type=type;st.last=snap(value,type);
+  try{Object.defineProperty(target,field,{enumerable:desc?desc.enumerable!==false:true,configurable:true,get:function(){return value;},set:function(next){var before=st.last;value=next;var after=snap(next,type);st.observed=after;if(!same(before,after,type,field)){record(sim,target,kind,field,before,after,source(target,kind,field),st);st.last=after;}}});}catch(_){st.fastPath=false;}
 }
 function installFast(sim){
   if(!sim)return;['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++){var sq=squads[i];Object.keys(SQUAD).forEach(function(field){fastField(sim,sq,'squad',field,SQUAD[field]);});var members=sq.members||[];for(var j=0;j<members.length;j++)Object.keys(SOLDIER).forEach(function(field){fastField(sim,members[j],'soldier',field,SOLDIER[field]);});}});

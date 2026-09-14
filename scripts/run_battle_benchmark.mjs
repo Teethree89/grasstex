@@ -9,7 +9,7 @@ const timeLimit = Math.max(60, Number.parseFloat(process.env.BATTLE_BENCHMARK_TI
 const fixedDt = Math.max(0.05, Math.min(0.3, Number.parseFloat(process.env.BATTLE_BENCHMARK_STEP || '0.15') || 0.15));
 const outputDir = path.resolve(process.env.BATTLE_BENCHMARK_OUTPUT || 'reports');
 const policyUrl = process.env.BATTLE_BENCHMARK_POLICY_URL || 'https://test.ivandpopov.com/grasstex/battle_policy.php';
-const commit = process.env.GITHUB_SHA || 'local';
+const commit = process.env.BATTLE_BENCHMARK_SOURCE_SHA || process.env.GITHUB_SHA || 'local';
 
 fs.mkdirSync(outputDir, { recursive: true });
 
@@ -100,6 +100,7 @@ try {
     window.BattleAIPolicy && window.BattleObjectiveSystem && window.BattleModules
   ), null, { timeout: 120_000 });
 
+  await page.addScriptTag({ path: path.resolve('scripts/battle-benchmark-intent.cjs') });
   const result = await page.evaluate(async ({ count, seedPrefix, fixedDt, timeLimit, suppliedPolicy }) => {
     const root = window, sim = root.__battle__, engine = sim.scene?.getEngine?.(), renderLoop = root.__battleRenderLoop__;
     if (engine && renderLoop) engine.stopRenderLoop(renderLoop);
@@ -229,7 +230,7 @@ try {
           const orders = sq._fireteamOrders || {}; let blocked = 0; for (const k of Object.keys(orders)) if (orders[k]?.blocked) blocked++;
           if (blocked) state.blockedFireteamSamples += blocked;
 
-          const relevantTargetless = sq.state !== 'retreat' && !['support','reserve','garrison'].includes(sq.commandRole) && sq.targetObjective == null;
+          const relevantTargetless = root.BattleBenchmarkIntent.targetless(sq, p);
           if (relevantTargetless) {
             state.targetlessSamples++;
             const t = state.targetlessTrack[key] || (state.targetlessTrack[key] = { since: now, reported: false });
@@ -242,7 +243,9 @@ try {
           } else delete state.regroupTrack[key];
 
           const route = sq.route || [], routeIndex = Math.max(0, Math.min(route.length - 1, +sq.routeIndex || 0));
-          if (p && route.length && routeIndex < route.length && phaseAllowsAdvance(phase) && !sq.inContact) {
+          /* An assigned objective supersedes the approach route. Distance from its obsolete
+             town-centre waypoint is not evidence that the squad has stalled. */
+          if (p && root.BattleBenchmarkIntent.routeActive(sq, p) && phaseAllowsAdvance(phase) && !sq.inContact) {
             const d = distance(p, route[routeIndex]);
             let t = state.routeTrack[key];
             if (!t || t.index !== routeIndex) t = state.routeTrack[key] = { index: routeIndex, bestDistance: d, lastProgress: now, reported: false };

@@ -63,7 +63,7 @@
 
   function urbanRouteAdvance(sim,sq,town,pos,cfg){
     var route=sq.route||[],idx=Math.max(0,Math.min(route.length-1,+sq.routeIndex||0));
-    if(route.length<2||idx>=route.length-1)return false;
+    if(sq.targetObjective||route.length<2||idx>=route.length-1)return false;
     var wp=point(route[idx]);if(!wp||!inTown(town,wp))return false;
     var cohesion=captainAlive(sq)?(+cfg.cohesionRadius||34):(+cfg.captainlessCohesion||26);
     var arrival=Math.max(+cfg.routeArrivalRadius||8,cohesion*URBAN_ARRIVAL_COHESION);
@@ -124,9 +124,10 @@
           var recovered=recoverObjective(sim,sq,town,pos,cfg,now,advanced,bypass);
           if(bypass&&!advanced&&!recovered){
             /* Core Command's cohesion gate set the objective to the squad centroid before this
-               hook ran.  During the timeout bypass restore the real route waypoint so the
-               formation actually leaves the recovery area. */
-            var route=sq.route||[],idx=Math.max(0,Math.min(route.length-1,+sq.routeIndex||0)),wp=route.length?point(route[idx]):null;
+               hook ran. During the timeout bypass resume the assigned objective, falling back
+               to its approach waypoint only when there is no objective mission yet. */
+            var obj=sq.targetObjective&&root.BattleObjectiveSystem&&root.BattleObjectiveSystem.get(sim,sq.targetObjective);
+            var route=sq.route||[],idx=Math.max(0,Math.min(route.length-1,+sq.routeIndex||0)),wp=obj?objectivePoint(obj):(route.length?point(route[idx]):null);
             if(wp){sq.objective=wp;sq.commandHoldUntil=0;}
           }
         });

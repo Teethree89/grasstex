@@ -3,8 +3,8 @@
    This module used to also fight engagement.js for control of each soldier's stance, cover point
    and destination. It no longer does. It now only produces INPUTS the engagement pipeline reads:
 
-     - sq.commandPhase / sq.objective are held steady for the length of a plan, so sub-second
-       commander churn cannot turn a squad into ten individuals hunting ten new positions.
+     - committed plans ask Force Command to retain accepted intent during a bounded lease;
+       this module never restores strategic fields over a newer commander decision.
      - each soldier's orderDestination becomes a fireteam slot rather than a lone formation slot.
      - in a defensive phase an arrived soldier's slot is frozen into a post, so a squad that has
        taken an objective digs in instead of orbiting through it.
@@ -89,9 +89,9 @@
       sq._regroupRecovery=null;
     }
   }
-  /* Called before Force Command evaluates a squad. It keeps the accepted plan authoritative for
-     its commitment window, so the commander never writes a competing intent only for this module
-     to restore it later in the same tick. Retreat/regroup remains the explicit escape hatch.
+  /* Called before Force Command evaluates a squad. An unchanged accepted plan asks the
+     commander to retain its intent for the commitment window. This is a predicate, not a
+     strategic writer. Retreat/regroup and superseding commander intent are escape hatches.
 
      Expiry is different from renewal: an expired lease is cleared and Force Command MUST receive
      one evaluation pass before the same tactical phase may be committed again. */
@@ -99,9 +99,9 @@
     if(!sq||!sim||sq.state==='retreat'||EMERGENCY[sq.commandPhase])return false;
     var plan=sq._stablePlan;if(!plan)return false;
     if(sim.time>=plan.until){expirePlan(sim,sq,'force-command evaluation');return false;}
-    sq.commandPhase=plan.phase;
-    if(plan.objective)sq.objective=copyPoint(plan.objective);
-    sq.targetObjective=plan.targetObjective;
+    /* A lease is a constraint consumed by Force Command, never permission for this lower
+       layer to restore strategic fields. Later Force Command hooks may legitimately supersede it. */
+    if(tacticalSignature(sq)!==plan.signature){expirePlan(sim,sq,'commander intent changed');return false;}
     return true;
   }
   function stabilizePlan(sim,sq,allowCommit){
@@ -123,9 +123,9 @@
       return;
     }
 
-    /* While committed, commander proposals are advisory. Keep the accepted objective/phase until
-       its commitment expires. Immediate retreat/regroup above is the escape hatch. */
-    holdCommittedPlan(sim,sq);
+    /* Accept Force Command's final intent after all of its extensions have run. Squad updates
+       can invalidate a stale lease, but only the commander hook can commit its replacement. */
+    if(!holdCommittedPlan(sim,sq)&&allowCommit&&TACTICAL[phase])commitPlan(sim,sq);
   }
 
   /* 10-man squad -> command pair + two 3-man maneuver teams + one 2-man team. */

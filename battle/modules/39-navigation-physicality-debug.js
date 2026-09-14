@@ -16,7 +16,10 @@ if(!root.BattleModules||!root.BattleNavigation||root.BattleNavigationPhysicality
 var N=root.BattleNavigation;
 var baseMovementClear=N.movementClear,baseNextWaypoint=N.nextWaypoint,baseFindPath=N.findPath,baseFiringDirective=N.firingDirective;
 var HARD_TYPES={hedge:1,tree:1,log:1,wall:1,rock:1};
-var COLLISION_MARGIN=.45,ROUTE_MARGIN=1.15,NODE_PAD=.34,ROUTE_HORIZON=96,ROUTE_CORRIDOR=12,MAX_ROUTE_SHAPES=32;
+/* The widest procedural infantry rig (gunner torso + upper arms) fits within 0.9 m.
+   Inflate each footprint by the body radius for collision; path centres keep a full body
+   width plus 0.25 m from its edge. These are world metres, independent of segment length. */
+var BODY_RADIUS=.45,COLLISION_MARGIN=BODY_RADIUS,ROUTE_MARGIN=BODY_RADIUS*2+.25,NODE_PAD=.34,ROUTE_HORIZON=96,ROUTE_CORRIDOR=12,MAX_ROUTE_SHAPES=32;
 var LOOKAHEAD_DISTANCE=105,MIN_QUEUE=3,TARGET_QUEUE=5,MAX_QUEUE=8,WAYPOINT_SPACING=10,MIN_WAYPOINT_SPACING=1.35,PATH_ARRIVAL=.88,REPLAN_SECONDS=5.0;
 var STATION_RADIUS=.92,STATION_ROUTE_MARGIN=.28,CONTACT_GRACE=4.5;
 var simRef=null,occupied=[],occupiedAt=-999,legacyCache=null,physicalIndexCache=null;
@@ -89,14 +92,17 @@ function shapeContains(p,fp,margin){
 function segmentCircle(a,b,fp,margin){
   margin=shapeMargin(fp,margin||0);
   var dx=b.x-a.x,dz=b.z-a.z,len2=dx*dx+dz*dz,r=(+fp.radius||1)+margin,sx=a.x-fp.x,sz=a.z-fp.z,ex=b.x-fp.x,ez=b.z-fp.z,r2=r*r;
-  var start2=sx*sx+sz*sz,end2=ex*ex+ez*ez;if(start2<r2&&end2>start2+.02)return null;
+  var start2=sx*sx+sz*sz,end2=ex*ex+ez*ez;if(start2<r2&&sx*dx+sz*dz>=0&&end2>start2+1e-8)return null;
   if(len2<1e-8)return end2<r2?{t:1,obstacle:fp}:null;
   var t=clamp((-(sx*dx+sz*dz))/len2,0,1),px=a.x+dx*t-fp.x,pz=a.z+dz*t-fp.z;return px*px+pz*pz<r2?{t:t,obstacle:fp}:null;
 }
 function segmentObb(a,b,fp,margin){
   margin=shapeMargin(fp,margin||0);
   var A=toLocal(fp,a),B=toLocal(fp,b),hx=(+fp.hx||.5)+margin,hz=(+fp.hz||.5)+margin,dx=B.x-A.x,dz=B.z-A.z;
-  var sm=Math.max(Math.abs(A.x)/hx,Math.abs(A.z)/hz),em=Math.max(Math.abs(B.x)/hx,Math.abs(B.z)/hz);if(sm<1&&em>sm+.02)return null;
+  var sm=Math.max(Math.abs(A.x)/hx,Math.abs(A.z)/hz);
+  var exitX=hx-Math.abs(A.x)<=hz-Math.abs(A.z)&&A.x*dx>=0&&Math.abs(B.x)>Math.abs(A.x)+1e-8;
+  var exitZ=hz-Math.abs(A.z)<=hx-Math.abs(A.x)&&A.z*dz>=0&&Math.abs(B.z)>Math.abs(A.z)+1e-8;
+  if(sm<1&&(exitX||exitZ))return null;
   var t0=0,t1=1;
   function slab(p,d,min,max){if(Math.abs(d)<1e-9)return p>=min&&p<=max;var aa=(min-p)/d,bb=(max-p)/d;if(aa>bb){var q=aa;aa=bb;bb=q;}if(aa>t0)t0=aa;if(bb<t1)t1=bb;return t0<=t1;}
   if(!slab(A.x,dx,-hx,hx)||!slab(A.z,dz,-hz,hz)||t1<0||t0>1)return null;return{t:clamp(t0,0,1),obstacle:fp};
@@ -114,12 +120,15 @@ function routeNodes(fp,margin){
 }
 function edgeClear(sim,a,b,shapes,margin){
   if(!baseMovementClear(a,b))return false;
-  for(var i=0;i<shapes.length;i++)if(shapeHit(a,b,shapes[i],margin))return false;
+  /* Candidate nodes are capped, collision geometry is not. A detour may leave the original
+     corridor or meet a footprint excluded from the candidate budget. */
+  var nearby=gatherStatic(sim,a,b,margin*1.5+.01);
+  for(var i=0;i<nearby.length;i++)if(shapeHit(a,b,nearby[i],margin))return false;
+  for(i=0;i<shapes.length;i++)if(shapeHit(a,b,shapes[i],margin))return false;
   return true;
 }
-function pointFree(p,shapes,margin){for(var i=0;i<shapes.length;i++)if(shapeContains(p,shapes[i],margin))return false;return true;}
 
-function routeFootprints(sim,start,goal,soldier){
+function routeFootprints(sim,start,goal,soldier,limit){
   var list=gatherStatic(sim,start,goal,ROUTE_CORRIDOR+ROUTE_MARGIN+1),scored=[],i;
   for(i=0;i<list.length;i++){
     var fp=list[i],br=boundRadius(fp,ROUTE_MARGIN),clearance=pointSegmentDistance({x:+fp.x,z:+fp.z},start,goal)-br,direct=shapeHit(start,goal,fp,ROUTE_MARGIN)?0:1;
@@ -132,24 +141,27 @@ function routeFootprints(sim,start,goal,soldier){
     if(c<=ROUTE_CORRIDOR)scored.push({fp:st,direct:shapeHit(start,goal,st,ROUTE_MARGIN)?0:1,clearance:c});
   }
   scored.sort(function(a,b){return a.direct-b.direct||a.clearance-b.clearance;});
-  return scored.slice(0,MAX_ROUTE_SHAPES).map(function(x){return x.fp;});
+  return scored.slice(0,limit||MAX_ROUTE_SHAPES).map(function(x){return x.fp;});
 }
 
 function heapPush(h,x){h.push(x);var i=h.length-1;while(i>0){var p=(i-1)>>1;if(h[p].f<=h[i].f)break;var t=h[p];h[p]=h[i];h[i]=t;i=p;}}
 function heapPop(h){var top=h[0],last=h.pop();if(h.length){h[0]=last;for(var i=0;;){var l=i*2+1,r=l+1,s=i;if(l<h.length&&h[l].f<h[s].f)s=l;if(r<h.length&&h[r].f<h[s].f)s=r;if(s===i)break;var t=h[i];h[i]=h[s];h[s]=t;i=s;}}return top;}
 function localGoal(start,goal){var d=dist(start,goal);if(d<=ROUTE_HORIZON)return{x:goal.x,z:goal.z,kind:goal.kind||null,meta:goal.meta||null};var u=ROUTE_HORIZON/d;return{x:start.x+(goal.x-start.x)*u,z:start.z+(goal.z-start.z)*u,kind:'lookahead'};}
-function planLocal(sim,soldier,start,goal){
-  var end=localGoal(start,goal),shapes=routeFootprints(sim,start,end,soldier);
-  if(!shapes.length||edgeClear(sim,start,end,shapes,ROUTE_MARGIN))return{points:[end],segmentGoal:end,finalGoal:goal,shapes:shapes};
+function planLocal(sim,soldier,start,goal,expanded){
+  var end=localGoal(start,goal),shapes=routeFootprints(sim,start,end,soldier,expanded?MAX_ROUTE_SHAPES*3:MAX_ROUTE_SHAPES);
+  if(edgeClear(sim,start,end,shapes,ROUTE_MARGIN))return{points:[end],segmentGoal:end,finalGoal:goal,shapes:shapes};
   var nodes=[start,end],i,j;
   for(i=0;i<shapes.length;i++){
     var candidates=routeNodes(shapes[i],ROUTE_MARGIN);
-    for(j=0;j<candidates.length;j++){var p=candidates[j];if(pointFree(p,shapes,ROUTE_MARGIN*.98)){p.kind='avoid';nodes.push(p);}}
+    for(j=0;j<candidates.length;j++){var p=candidates[j];if(edgeClear(sim,p,p,shapes,ROUTE_MARGIN)){p.kind='avoid';nodes.push(p);}}
   }
   var adj=new Array(nodes.length);for(i=0;i<nodes.length;i++)adj[i]=[];
   for(i=0;i<nodes.length;i++)for(j=i+1;j<nodes.length;j++){
-    if(!edgeClear(sim,nodes[i],nodes[j],shapes,ROUTE_MARGIN))continue;
-    var d=dist(nodes[i],nodes[j]);adj[i].push({to:j,cost:d});adj[j].push({to:i,cost:d});
+    /* Clearance permits outward escape when a start is already inside a buffer. That makes
+       visibility directed: a legal escape edge must never imply a legal reverse entry edge. */
+    var d=dist(nodes[i],nodes[j]);
+    if(edgeClear(sim,nodes[i],nodes[j],shapes,ROUTE_MARGIN))adj[i].push({to:j,cost:d});
+    if(edgeClear(sim,nodes[j],nodes[i],shapes,ROUTE_MARGIN))adj[j].push({to:i,cost:d});
   }
   var open=[],g=new Array(nodes.length),prev=new Array(nodes.length),closed=new Array(nodes.length);
   for(i=0;i<g.length;i++)g[i]=Infinity;g[0]=0;heapPush(open,{id:0,f:dist(start,end)});
@@ -162,6 +174,7 @@ function planLocal(sim,soldier,start,goal){
     var k=1,ids=[1];while(k!==0&&prev[k]!=null){k=prev[k];ids.push(k);}ids.reverse();
     for(i=1;i<ids.length;i++)path.push({x:nodes[ids[i]].x,z:nodes[ids[i]].z,kind:nodes[ids[i]].kind||'physical',meta:nodes[ids[i]].meta||null});
   }
+  if(!path.length&&!expanded&&shapes.length>=MAX_ROUTE_SHAPES)return planLocal(sim,soldier,start,goal,true);
   if(!path.length){
     var direct=null;
     for(i=0;i<shapes.length;i++){var hit=shapeHit(start,end,shapes[i],ROUTE_MARGIN);if(hit&&(!direct||hit.t<direct.t))direct={fp:shapes[i],t:hit.t};}
@@ -174,8 +187,8 @@ function planLocal(sim,soldier,start,goal){
       if(best)path.push(best);
     }
   }
-  if(!path.length)path.push(end);
-  return{points:path,segmentGoal:end,finalGoal:goal,shapes:shapes};
+  /* No route is a real result. Never turn failure into an unchecked straight segment. */
+  return{points:path,segmentGoal:end,finalGoal:goal,shapes:shapes,blocked:!path.length};
 }
 
 function baseTargets(start,dest){
@@ -191,7 +204,7 @@ function rawLookahead(sim,soldier,start,dest){
     var target=targets[ti];
     while(dist(cursor,target)>PATH_ARRIVAL&&guard++<48){
       var before={x:cursor.x,z:cursor.z},planned=planLocal(sim,soldier,cursor,target),pts=planned.points||[];
-      if(!pts.length)break;
+      if(!pts.length)break outer;
       for(var pi=0;pi<pts.length;pi++){
         var n=pts[pi],seg=dist(cursor,n);if(seg<.04)continue;
         if(travel+seg>LOOKAHEAD_DISTANCE){
@@ -240,10 +253,9 @@ function topUpQueue(sim,soldier,start,dest,points){
 function buildRollingPlan(soldier,sim,start,dest){
   var raw=rawLookahead(sim,soldier,start,dest),points=densify(start,raw);
   points=topUpQueue(sim,soldier,start,dest,points);
-  if(!points.length){var d=point(dest);if(d)points=[d];}
   soldier._physicalPath={
     version:physicalVersion(sim),
-    finalGoalX:+dest.x,finalGoalZ:+dest.z,points:points,index:0,createdAt:sim.time,replanAt:sim.time+REPLAN_SECONDS,
+    finalGoalX:+dest.x,finalGoalZ:+dest.z,points:points,blocked:!points.length,index:0,createdAt:sim.time,replanAt:sim.time+REPLAN_SECONDS,
     minQueue:MIN_QUEUE,routeMargin:ROUTE_MARGIN,collisionMargin:COLLISION_MARGIN
   };
   var first=points[0];
@@ -259,7 +271,7 @@ function needsReplan(soldier,sim,dest,start){
   var c=soldier._physicalPath;if(!c)return true;
   if(c.version!==physicalVersion(sim))return true;
   if(Math.hypot(dest.x-c.finalGoalX,dest.z-c.finalGoalZ)>1.4)return true;
-  if(!c.points||!c.points.length)return true;
+  if(!c.points||!c.points.length)return !c.blocked||sim.time>=c.replanAt;
   if(!firstSegmentClear(sim,soldier,start,c))return true;
   if(sim.time>=c.replanAt)return true;
   return false;
@@ -276,7 +288,7 @@ function planComplete(sim,start,end){
   for(var bi=0;bi<building.length&&guard<96;bi++){
     var target=point(building[bi]);if(!target)continue;
     while(dist(cursor,target)>PATH_ARRIVAL&&guard++<96){
-      var p=planLocal(sim,null,cursor,target),pts=p.points||[];if(!pts.length)break;
+      var p=planLocal(sim,null,cursor,target),pts=p.points||[];if(!pts.length)return densify(start,raw);
       var progressed=false;
       for(var q=0;q<pts.length;q++){var n=pts[q];if(dist(cursor,n)>.05){raw.push({x:n.x,z:n.z,kind:n.kind||target.kind||'physical',meta:n.meta||target.meta||null});cursor={x:n.x,z:n.z};progressed=true;}}
       if(dist(cursor,target)<=PATH_ARRIVAL)break;
@@ -284,7 +296,6 @@ function planComplete(sim,start,end){
       if(dist(cursor,p.segmentGoal)<=PATH_ARRIVAL&&dist(p.segmentGoal,target)>PATH_ARRIVAL)continue;
     }
   }
-  if(!raw.length||dist(raw[raw.length-1],end)>.1)raw.push({x:end.x,z:end.z,kind:'goal'});
   return densify(start,raw);
 }
 
@@ -293,6 +304,20 @@ N.movementClear=function(a,b){
   var shapes=gatherStatic(sim,a,b,COLLISION_MARGIN+.8);
   for(var i=0;i<shapes.length;i++)if(shapeHit(a,b,shapes[i],COLLISION_MARGIN))return false;
   return true;
+};
+/* The base wall slider only knows building walls. Validate its answer against the complete
+   body envelope, then seek a legal physical tangent/fan step at this same navigation layer. */
+var baseResolveStep=N.resolveStep;
+N.resolveStep=function(from,to){
+  var candidate=baseResolveStep?baseResolveStep(from,to):to;
+  if(candidate&&N.movementClear(from,candidate))return candidate;
+  var dx=to.x-from.x,dz=to.z-from.z,len=Math.hypot(dx,dz);if(len<1e-8)return null;
+  var heading=Math.atan2(dz,dx),fan=[.26,.52,.79,1.05,1.31,1.57,2.09];
+  for(var i=0;i<fan.length;i++)for(var sign=-1;sign<=1;sign+=2){
+    var a=heading+sign*fan[i],p={x:from.x+Math.cos(a)*len,z:from.z+Math.sin(a)*len};
+    if(N.movementClear(from,p))return p;
+  }
+  return null;
 };
 N.findPath=function(start,end){var sim=currentSim();return sim?planComplete(sim,start,end):baseFindPath(start,end);};
 N.nextWaypoint=function(sim,soldier,dest){
@@ -303,10 +328,10 @@ N.nextWaypoint=function(sim,soldier,dest){
   var c=soldier._physicalPath;
   if(needsReplan(soldier,sim,finalGoal,start))c=buildRollingPlan(soldier,sim,start,finalGoal);
   consumeReached(c,start);
-  if(c.points.length<=MIN_QUEUE&&dist(start,finalGoal)>PATH_ARRIVAL*2)c=buildRollingPlan(soldier,sim,start,finalGoal);
+  if(!c.blocked&&c.points.length<=MIN_QUEUE&&dist(start,finalGoal)>PATH_ARRIVAL*2)c=buildRollingPlan(soldier,sim,start,finalGoal);
   consumeReached(c,start);
   var wp=c.points[0];
-  if(!wp)return base;
+  if(!wp)return start; // Hold a blocked route until its bounded retry; no destination write.
   if(dist(wp,finalGoal)>1.0)soldier._fieldDetour={x:wp.x,z:wp.z,goalX:finalGoal.x,goalZ:finalGoal.z,until:sim.time+REPLAN_SECONDS,key:'rolling-path',kind:'mesh-route'};
   else soldier._fieldDetour=null;
   return wp;
@@ -350,7 +375,7 @@ function installButton(){
 }
 
 root.BattleModules.registerSystem('navigation-physicality-debug',{
-  version:'48-rolling-clearance-routing',
+  version:'49-enforced-body-clearance',
   onBattleStart:function(sim){simRef=sim;occupiedAt=-999;legacyCache=null;physicalIndexCache=null;installButton();if(debug.visible)rebuildMarkers(sim);},
   onBattleRestart:function(sim){simRef=sim;occupiedAt=-999;legacyCache=null;physicalIndexCache=null;['us','ge'].forEach(function(f){(sim._roster[f]||[]).forEach(function(s){delete s._fieldDetour;delete s._physicalPath;});});if(debug.visible)rebuildMarkers(sim);},
   onSimulationStep:function(sim){simRef=sim;if(debug.visible)updateDebug(sim,false);}
@@ -358,9 +383,9 @@ root.BattleModules.registerSystem('navigation-physicality-debug',{
 if(typeof document!=='undefined'){if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installButton,{once:true});else installButton();}
 
 root.BattleNavigationPhysicality={
-  version:'48-rolling-clearance-routing',setWindowDebug:setVisible,windowDebug:function(){return debug.visible;},
+  version:'49-enforced-body-clearance',setWindowDebug:setVisible,windowDebug:function(){return debug.visible;},
   occupiedStations:function(sim){return refreshOccupied(sim||currentSim(),true).slice();},hardTypes:Object.keys(HARD_TYPES),
-  navMargin:COLLISION_MARGIN,routeMargin:ROUTE_MARGIN,routeHorizon:ROUTE_HORIZON,minLookahead:MIN_QUEUE,maxLookahead:MAX_QUEUE,
+  bodyRadius:BODY_RADIUS,bodyWidth:BODY_RADIUS*2,navMargin:COLLISION_MARGIN,routeMargin:ROUTE_MARGIN,routeHorizon:ROUTE_HORIZON,minLookahead:MIN_QUEUE,maxLookahead:MAX_QUEUE,
   footprints:function(sim){return staticFootprints(sim||currentSim()).slice();},shapeHit:shapeHit,shapeContains:shapeContains,routeNodes:routeNodes,
   planPath:function(sim,start,end){return planComplete(sim||currentSim(),start,end);},planLocal:function(sim,start,end){return planLocal(sim||currentSim(),null,start,end);}
 };

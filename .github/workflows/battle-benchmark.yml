@@ -12,17 +12,44 @@ on:
         required: false
         default: 'manual-benchmark'
   push:
-    paths:
-      - 'scripts/run_battle_benchmark.mjs'
-      - 'scripts/merge_battle_benchmarks.mjs'
-      - 'benchmarks/run-request.txt'
+    tags:
+      - 'benchmark-*'
 
 permissions:
   contents: read
 
 jobs:
+  validate-source:
+    name: Verify benchmark source is on main
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate source commit
+        id: source
+        env:
+          SOURCE_REF: ${{ github.ref }}
+          SOURCE_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$SOURCE_EVENT" = workflow_dispatch ] && [ "$SOURCE_REF" != refs/heads/main ]; then
+            echo 'Manual benchmarks must be dispatched from main.' >&2
+            exit 1
+          fi
+          git fetch origin main
+          source_sha="$(git rev-parse HEAD)"
+          if ! git merge-base --is-ancestor "$source_sha" origin/main; then
+            echo 'Benchmark tags must point to a commit already merged into main.' >&2
+            exit 1
+          fi
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+
   benchmark:
     name: Battle shard ${{ matrix.shard }}/5
+    needs: validate-source
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -30,6 +57,7 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5]
     env:
+      BATTLE_BENCHMARK_SOURCE_SHA: ${{ needs.validate-source.outputs.source_sha }}
       BATTLE_BENCHMARK_COUNT: ${{ github.event.inputs.battles_per_shard || '20' }}
       BATTLE_BENCHMARK_URL: http://127.0.0.1:8765/grasstex/battle_sim_local.php
       BATTLE_BENCHMARK_OUTPUT: reports
@@ -37,8 +65,10 @@ jobs:
       BATTLE_BENCHMARK_STEP: '0.15'
 
     steps:
-      - name: Checkout current branch
+      - name: Checkout verified source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate-source.outputs.source_sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -67,7 +97,7 @@ jobs:
 
       - name: Run headless battle shard
         env:
-          BASE_SEED: ${{ github.event.inputs.seed || format('push-{0}', github.run_number) }}
+          BASE_SEED: ${{ github.event.inputs.seed || format('benchmark-{0}', github.run_number) }}
           SHARD: ${{ matrix.shard }}
         run: |
           export BATTLE_BENCHMARK_SEED="${BASE_SEED}-s${SHARD}"
@@ -88,20 +118,23 @@ jobs:
 
   merge:
     name: Merge 100-battle report
-    needs: benchmark
-    if: always() && !cancelled()
+    needs: [validate-source, benchmark]
+    if: always() && !cancelled() && needs.validate-source.result == 'success' && needs.benchmark.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      BATTLE_BENCHMARK_SOURCE_SHA: ${{ needs.validate-source.outputs.source_sha }}
     permissions:
       contents: write
     concurrency:
       group: battle-benchmark-results-publish
       cancel-in-progress: false
     steps:
-      - name: Checkout current branch
+      - name: Checkout verified source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ needs.validate-source.outputs.source_sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -118,7 +151,7 @@ jobs:
         run: node scripts/merge_battle_benchmarks.mjs
 
       - name: Prepare persistent report bundle
-        if: success() && github.ref == 'refs/heads/main'
+        if: success()
         run: |
           set -euo pipefail
           rm -rf persistent-result
@@ -132,7 +165,7 @@ jobs:
             status: 'complete',
             runNumber: Number(process.env.GITHUB_RUN_NUMBER),
             runId: Number(process.env.GITHUB_RUN_ID),
-            sourceSha: process.env.GITHUB_SHA,
+            sourceSha: process.env.BATTLE_BENCHMARK_SOURCE_SHA,
             actionsUrl: `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
             summary: report.summary || {},
             policy: report.policy ? {
@@ -163,7 +196,7 @@ jobs:
           retention-days: 30
 
       - name: Publish persistent benchmark result
-        if: success() && github.ref == 'refs/heads/main'
+        if: success()
         env:
           RESULTS_BRANCH: benchmark-results
         run: |
@@ -228,7 +261,7 @@ jobs:
               historyPath: `benchmarks/results/runs/${compact.runNumber}/`
             };
             fs.writeFileSync('benchmarks/results/status.json', JSON.stringify(status, null, 2) + '\n');
-            NODE
+          NODE
           fi
 
           git add benchmarks/results

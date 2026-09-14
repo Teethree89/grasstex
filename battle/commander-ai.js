@@ -103,6 +103,18 @@
        before issuing new intent so Force Command does not create a visible write/restore loop. */
     if(root.BattleSquadStability&&root.BattleSquadStability.holdCommittedPlan&&root.BattleSquadStability.holdCommittedPlan(sim,sq))return;
 
+    /* Once Force Command has selected an objective, the approach route is spent for this
+       assignment (including urban recovery before its last waypoint). Never retain a target ID
+       while replacing its point with the old town-centre waypoint. Keep an unowned target until
+       captured; saturation balances NEW assignments, not every tick of an ongoing assault. */
+    var assigned=sq.targetObjective&&root.BattleObjectiveSystem&&root.BattleObjectiveSystem.get(sim,sq.targetObjective);
+    if(assigned){
+      var assignedStatus=D.objectiveStatus(sim,assigned)||{},chosen;
+      if(assignedStatus.owner===sq.faction)chosen=D.chooseObjective(sim,sq,false)||D.chooseObjective(sim,sq,true);
+      else chosen={instance:assigned,point:D.objectivePoint(assigned,sim,sq),status:assignedStatus};
+      if(chosen&&applyDoctrine(sim,sq,town,chosen,enemy,p,cfg,now))return;
+    }
+
     if(sq.commandRole==='reserve'){
       var counts=sim.objectiveControl&&sim.objectiveControl.counts||{},own=counts[sq.faction]||0,enemyCount=counts[enemyFaction(sq.faction)]||0;
       var release=now>45*(1-doc.riskTolerance)||enemyCount>own||enemy.distance<cfg.contactDistance*1.5;

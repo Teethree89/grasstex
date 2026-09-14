@@ -25,7 +25,7 @@ const quiet={log(){},warn(){},error(){}};
 function bootstrap(){
   const root={console:quiet};root.window=root;
   root.BABYLON={Color3:function(){},MeshBuilder:{CreateLines:()=>({dispose(){}}),CreateCylinder:()=>({position:{set(){}},dispose(){}}),CreateSphere:()=>({position:{set(){}},scaling:{set(){}},dispose(){}})},StandardMaterial:function(){this.dispose=function(){};}};
-  root.BattleModules={reg:{},registerSystem(){},registerObjectiveType(n,h){this.reg[n]=h;},getObjectiveType(n){return this.reg[n];},runHook(){},unitsFor(sim){return sim._units||[];}};
+  root.BattleModules={reg:{},systems:{},registerSystem(n,h){h.id=n;this.systems[n]=h;},listSystems(){return Object.values(this.systems);},getSystem(n){return this.systems[n];},registerObjectiveType(n,h){this.reg[n]=h;},getObjectiveType(n){return this.reg[n];},runHook(){},unitsFor(sim){return sim._units||[];}};
   load(root,'battle/scenario-generator.js');
   load(root,'battle/battle-navigation.js');
   load(root,'battle/objective-system.js');
@@ -88,7 +88,7 @@ function walk(start,dest,seconds){
 /* ------------------------------------------------------------------------------------------- */
 section('Force Command spreads squads over the objectives it has');
 {
-  let single=0,scenarios=0,coveredTotal=0,objectiveTotal=0;
+  let single=0,scenarios=0,coveredTotal=0,objectiveTotal=0,lateSwitches=0;
   for(const seed of SEEDS){
     const s=root.BattleScenarioGenerator.create(seed,{benchmark:true});
     const sim={time:0,factions:{us:{squads:[]},ge:{squads:[]}},_units:[],heightAt:()=>0,scene:{metadata:{}}};
@@ -105,10 +105,16 @@ section('Force Command spreads squads over the objectives it has');
       const ch=root.BattleCommanderDoctrine.chooseObjective(sim,sq,false);
       if(ch)sq.targetObjective=ch.instance.id;
     }
+    // Static equal-position assignments should settle, not ping-pong solely as counts change.
+    for(let pass=0;pass<30;pass++)for(const f of ['us','ge'])for(const sq of sim.factions[f].squads){
+      const ch=root.BattleCommanderDoctrine.chooseObjective(sim,sq,false);
+      if(ch){if(pass>=5&&sq.targetObjective!==ch.instance.id)lateSwitches++;sq.targetObjective=ch.instance.id;}
+    }
     const covered=new Set(sim.factions.us.squads.map(sq=>sq.targetObjective)).size;
     scenarios++;coveredTotal+=covered;objectiveTotal+=s.objectives.length;
     if(covered<=1)single++;
   }
+  check('saturation alone does not oscillate settled neutral assignments',lateSwitches===0,'late switches='+lateSwitches);
   check('no scenario sends every squad to one objective',single===0,single+'/'+scenarios+' monopolised');
   check('most objectives get an assigned squad',coveredTotal/objectiveTotal>=.7,
     coveredTotal+' of '+objectiveTotal+' objectives assigned ('+(100*coveredTotal/objectiveTotal).toFixed(0)+'%)');
@@ -137,6 +143,192 @@ section('capture progress survives a lapse in presence');
   check('a repeatedly interrupted hold still captures',flickering!==null,'never captured in 240s');
   check('interruption costs time but does not reset the work',flickering!==null&&flickering<clean*3,
     'clean '+clean+'s vs interrupted '+flickering+'s');
+}
+
+/* Current expanded-benchmark regressions. Exercise shipping commander hooks, not a second
+   implementation of their decisions. */
+function commandFixture(){
+  const r=bootstrap();r.BattleSim={start(){}};
+  r.SquadAI={updateSquad(){},ROLES:{},COMPOSITION:['rifleman']};
+  load(r,'battle/commander-routes.js');load(r,'battle/commander-ai.js');
+  const sq={id:'us-0',faction:'us',state:'advance',commandRole:'center',commandPhase:'assault',
+    route:[{x:0,z:0},{x:0,z:0}],routeIndex:1,commandHoldUntil:0,
+    targetObjective:'outer',objective:{x:120,z:0},rally:{x:65,z:0},members:[],aliveCount:4};
+  for(let i=0;i<4;i++)sq.members.push({id:'m'+i,role:i?'rifleman':'captain',faction:'us',dead:false,root:{position:{x:65,z:i-1.5}}});
+  const sim={time:100,factions:{us:{squads:[sq]},ge:{squads:[]}},_units:sq.members,_roster:{us:sq.members,ge:[]},heightAt:()=>0,scene:{metadata:{}}};
+  r.BattleObjectiveSystem.attach(sim,[{id:'outer',type:'capture-zone',x:120,z:0,radius:30,value:1}],{});
+  return{r,sq,sim,town:{center:{x:0,z:0},radius:250}};
+}
+section('assigned objective intent survives approach-route and lease boundaries');
+{
+  const {r,sq,sim,town}=commandFixture();
+  r.BattleCommanderAI.advanceRoute(sim,sq,town);
+  check('an assigned outer objective stays the movement goal outside the terminal radius',sq.objective.x===120&&sq.commandPhase==='assault',JSON.stringify(sq.objective)+' '+sq.commandPhase);
+  sq.routeIndex=0;sim.time++;
+  r.BattleCommanderAI.advanceRoute(sim,sq,town);
+  check('urban mid-route recovery is not overwritten by an old waypoint',sq.objective.x===120&&sq.commandPhase==='assault');
+  load(r,'battle/modules/16-squad-plan-stability.js');
+  const hook=r.BattleModules.getSystem('squad-plan-stability').onCommanderTick;
+  sq.commandPhase='assault';sq.objective={x:120,z:0};hook(sim);
+  const lease=sq._stablePlan;
+  check('an unchanged tactical lease gates commander reconsideration',r.BattleSquadStability.holdCommittedPlan(sim,sq)&&sq._stablePlan===lease);
+  // A Force Command extension transitions into capture before the old assault lease expires.
+  sq.commandPhase='capture';hook(sim);
+  check('Squad Stability accepts a Force Command capture transition without writing assault back',sq.commandPhase==='capture'&&sq._stablePlan.phase==='capture');
+  sq.objective={x:90,z:0};hook(sim);
+  check('Squad Stability never restores an obsolete strategic point',sq.objective.x===90&&sq._stablePlan.objective.x===90);
+  sim.time=sq._stablePlan.until;
+  check('lease expiry still gives Force Command an evaluation pass',!r.BattleSquadStability.holdCommittedPlan(sim,sq)&&!sq._stablePlan);
+}
+section('a single assigned squad can reach and capture an outer objective');
+{
+  const H=require('./harness.js'),r=H.bootstrap({modules:false});r.console=quiet;r.BABYLON.Vector3=H.vec;r.BABYLON.Color3.prototype.scale=function(){return this;};
+  const base=bootstrap();r.BattleModules=base.BattleModules;
+  r.BattleModules.runHook=function(name,sim,payload){for(const id of Object.keys(this.systems).sort()){const h=this.systems[id][name];if(h)h(sim,payload);}};
+  r.BattleModules.unitsFor=sim=>sim._roster.us.concat(sim._roster.ge);
+  r.BattleSim={start(){}};
+  for(const f of ['battle/movement-resolver.js','battle/objective-system.js','battle/modules/01-capture-zone.js',
+    'battle/commander-doctrine.js','battle/commander-routes.js','battle/commander-ai.js',
+    'battle/modules/15-force-command-progress-recovery.js','battle/modules/16-squad-plan-stability.js'])load(r,f);
+  const sim=H.makeBattle(r,{seed:12345});sim.scene={metadata:{}};
+  const sq=H.addSquad(r,sim,{id:'us-0',faction:'us',x:65,z:0,objective:{x:180,z:0},seed:12345});
+  Object.assign(sq,{route:[{x:0,z:0},{x:0,z:0}],routeIndex:1,targetObjective:'outer',commandRole:'center',commandPhase:'assault',commandHoldUntil:0});
+  r.BattleObjectiveSystem.attach(sim,[{id:'outer',type:'capture-zone',x:180,z:0,radius:28,value:1}],{});
+  const town={center:{x:0,z:0},radius:250};let first=null,peakPresence=0,wrongGoal=0,step=0;
+  H.run(r,sim,180,()=>{
+    if(++step%3===0)r.BattleCommanderAI.update(sim,town,.45);
+    const st=r.BattleObjectiveSystem.status(sim,'outer');peakPresence=Math.max(peakPresence,st.us||0);
+    if(st.owner==='us'&&first===null)first=sim.time;
+    if(first===null&&sq.objective.x===0)wrongGoal++;
+  });
+  check('normal squad/engagement/resolver layers capture an uncontested outer zone',first!==null,'capture='+first+'s, peak presence='+peakPresence);
+  check('approach waypoint never replaces assigned intent before capture',wrongGoal===0,'wrong-goal frames='+wrongGoal);
+  check('the formation supplies at least the two required capture weights',peakPresence>=2,'peak='+peakPresence);
+  console.log('  probe: first capture '+(first===null?'none':first.toFixed(1)+'s')+', peak presence '+peakPresence+', obsolete-goal frames '+wrongGoal);
+}
+section('progress recovery respects an objective that replaced the approach route');
+{
+  const {r,sq,sim,town}=commandFixture();
+  load(r,'battle/modules/15-force-command-progress-recovery.js');
+  const tick=r.BattleModules.getSystem('force-command-progress-recovery').onCommanderTick;
+  sq.route=[{x:65,z:0},{x:0,z:0}];sq.routeIndex=0;
+  tick(sim,{town});
+  check('urban route advancement cannot overwrite assigned intent',sq.objective.x===120&&sq.routeIndex===0);
+  sq.commandPhase='regroup';sq.objective={x:65,z:0};sq._regroupRecovery={startedAt:70,serial:1};
+  tick(sim,{town});
+  check('bounded regroup resumes the assigned objective, not the old route',sq.objective.x===120);
+}
+section('benchmark alerts distinguish approach intent from absent orders');
+{
+  const file=path.join(REPO,'scripts/battle-benchmark-intent.cjs');
+  // Load the old runner's actual inline predicates when running this test on the parent tree.
+  // This makes the negative control test behavior, not merely the absence of a new file.
+  let d;
+  if(fs.existsSync(file))d=require(file);
+  else{
+    const source=fs.readFileSync(path.join(REPO,'scripts/run_battle_benchmark.mjs'),'utf8');
+    const target=source.match(/const relevantTargetless = (.*);/)[1];
+    const route=source.match(/if \((p && route.length.*)\) \{/)[1];
+    const phases=source.match(/function phaseAllowsAdvance\(phase\) \{.*\}/)[0];
+    d={targetless:new Function('sq','p','return '+target),routeActive:new Function('sq','p',
+      phases+';const route=sq.route||[],routeIndex=Math.max(0,Math.min(route.length-1,+sq.routeIndex||0)),phase=sq.commandPhase;return '+route)};
+  }
+  {
+    const {sq}=commandFixture(),p={x:65,z:0};
+    check('an objective mission is not measured against its obsolete route',!d.routeActive(sq,p));
+    sq.targetObjective=null;sq.objective={x:0,z:0};
+    check('a squad travelling a valid route has strategic intent',!d.targetless(sq,p)&&d.routeActive(sq,p));
+    check('a squad at the terminal waypoint without an objective is targetless',d.targetless(sq,{x:0,z:0}));
+    sq.route=[];check('missing route and objective remain detectable',d.targetless(sq,p));
+    sq.aliveCount=0;check('an eliminated squad cannot have an actionable assignment gap',!d.targetless(sq,p));
+  }
+}
+section('meeting engagements do not enter prepared-defender construction');
+{
+  const {r,sq,sim}=commandFixture();
+  load(r,'battle/modules/00-battle-sides.js');
+  load(r,'battle/modules/00-defense-plan.js');
+  sim.obstacles=[];sim.scene=null; // Render stubs are unnecessary for construction geometry.
+  sim._defensePlans={us:r.BattleDefensePlan.empty('us'),ge:r.BattleDefensePlan.empty('ge')};
+  load(r,'battle/modules/21-defender-engineers.js');
+  sim._sides=r.BattleSides.build({center:{x:0,z:0}},{defender:null});
+  sim._objectives[0].state.owner='us';sq.members[0].role='engineer';sq.members[0].root.position={x:120,z:0};
+  let error=null;try{r.BattleModules.getSystem('defender-engineers').onCommanderTick(sim,{dt:11});}catch(e){error=e.message;}
+  check('an engineer holding a meeting objective skips unsupported construction',!error,error);
+  check('skipping meeting construction creates no build state',!sim._engineerBuild);
+  sim._sides=r.BattleSides.build({center:{x:0,z:0},objectives:[sim._objectives[0].def]},{defender:'us'});
+  error=null;try{for(let i=0;i<3;i++)r.BattleModules.getSystem('defender-engineers').onCommanderTick(sim,{dt:11});}catch(e){error=e.message;}
+  check('prepared-defender runtime construction still works and respects its two-work limit',!error&&sim._engineerBuild.counts['us|outer']===2,error);
+}
+section('provenance distinguishes real competing writers from sampling noise');
+{
+  const {r,sq,sim}=commandFixture();
+  load(r,'battle/modules/36-order-provenance.js');load(r,'battle/modules/37-order-provenance-fastpath.js');
+  const p=r.BattleOrderProvenance,fast=r.BattleOrderProvenanceFastPath;
+  p.instrument(sim);fast.install(sim);
+  for(let i=0;i<5;i++){
+    sim.time+=.45;fast.withOwner('force-command','regroup centroid',()=>{sq.objective={x:120+i*.75,z:0};});p.sample(sim);
+  }
+  check('sub-threshold assigned points are not mislabeled as in-place writes',!p.history(sq,'objective',40).some(e=>e.owner==='in-place/unknown'));
+  check('one commander cannot conflict with the provenance sampler',p.conflicts(sim).length===0);
+  // Real in-place writes stay observable, but an unknown identity cannot establish competition.
+  for(let i=0;i<3;i++){sim.time+=.45;fast.withOwner('force-command','goal',()=>{sq.objective={x:200+i*10,z:0};});sq.objective.x+=3;p.sample(sim);}
+  check('unknown in-place changes remain in the trace',p.history(sq,'objective',40).some(e=>e.owner==='in-place/unknown'));
+  check('unknown identity does not count as a competing system',p.conflicts(sim).length===0);
+  for(const owner of ['force-command','squad-stability','force-command']){sim.time+=.45;fast.withOwner(owner,'deliberate boundary violation',()=>{sq.commandPhase=sq.commandPhase==='capture'?'assault':'capture';});}
+  check('known writer ping-pong is still detected',p.conflicts(sim).some(c=>c.field==='commandPhase'));
+}
+
+section('physical wayfinding respects body clearance through hedgerows');
+{
+  const r=bootstrap(),N=r.BattleNavigation;
+  load(r,'battle/modules/39-navigation-physicality-debug.js');
+  const P=r.BattleNavigationPhysicality;
+  function world(shapes){
+    const scenario={buildings:[]},sim={time:0,obstacles:[],_roster:{us:[],ge:[]},scene:{metadata:{battleScenario:scenario}}};
+    sim.obstacles.__physicalFootprints=shapes;N.installScenario(scenario);
+    r.BattleModules.getSystem('navigation-physicality-debug').onBattleStart(sim);return sim;
+  }
+  function hedge(id,x,z,hx,hz){return{id,type:'hedge',shape:'obb',x,z,hx,hz,ux:1,uz:0,vx:0,vz:1};}
+  function clearPath(start,points,shapes,margin){let p=start;for(const q of points){if(shapes.some(fp=>P.shapeHit(p,q,fp,margin)))return false;p=q;}return true;}
+  const shapes=[hedge('left',-1.2,0,.8,8),hedge('right',1.2,0,.8,8)],sim=world(shapes);
+  const start={x:0,z:-15},goal={x:0,z:15},plan=P.planPath(sim,start,goal);
+  check('a sub-body-width hedge gap is not movement-clear',!N.movementClear({x:0,z:-7},{x:0,z:7}));
+  check('the path detours around nearly touching hedges with planning clearance',plan.length>0&&clearPath(start,plan,shapes,P.routeMargin));
+  const s={id:'walker',root:{position:{...start}},_navCache:null};let penetrations=0;
+  for(let i=0;i<600&&Math.hypot(s.root.position.x-goal.x,s.root.position.z-goal.z)>.7;i++){
+    sim.time+=.15;const p=s.root.position,w=N.nextWaypoint(sim,s,goal),d=Math.hypot(w.x-p.x,w.z-p.z),step=Math.min(.4,d);
+    if(d<.001)continue;let to={x:p.x+(w.x-p.x)/d*step,z:p.z+(w.z-p.z)/d*step};
+    if(!N.movementClear(p,to))to=N.resolveStep(p,to);
+    if(!to)continue;if(!N.movementClear(p,to))penetrations++;s.root.position={...to};
+  }
+  check('rolling waypoints carry the soldier around the hedge gap',Math.hypot(s.root.position.x-goal.x,s.root.position.z-goal.z)<.7,JSON.stringify(s.root.position));
+  check('integration recovery never returns a footprint-illegal step',penetrations===0,'illegal steps='+penetrations);
+  // A formation slot in an impassable gap must never become a fabricated straight path.
+  const trapped={x:0,z:0},bad=P.planPath(sim,start,trapped);
+  check('unreachable narrow-gap goals never produce illegal route segments',clearPath(start,bad,shapes,P.routeMargin),JSON.stringify(bad));
+  const circle={type:'rock',shape:'circle',x:0,z:0,radius:2},box=hedge('escape',0,0,2,8);
+  check('buffer escape cannot tunnel across a circular obstacle',!!P.shapeHit({x:1,z:0},{x:-4,z:0},circle,P.navMargin));
+  check('buffer escape cannot tunnel across a hedgerow',!!P.shapeHit({x:1,z:0},{x:-4,z:0},box,P.navMargin));
+  check('tiny outward recovery steps are legal in a hedge buffer',!P.shapeHit({x:2.2,z:0},{x:2.2001,z:0},box,P.navMargin));
+  const from={x:-3,z:0},into={x:-2,z:0},slid=N.resolveStep(from,into);
+  check('wall sliding also respects hedgerow body collision',!slid||N.movementClear(from,slid));
+  // Node generation can be bounded for speed; collision testing cannot omit the 33rd footprint.
+  const crowded=Array.from({length:32},(_,i)=>({id:'rock'+i,type:'rock',shape:'circle',x:0,z:0,radius:3}));
+  crowded.push({id:'upper-hedge',type:'hedge',shape:'circle',x:0,z:4.5,radius:1.6},{id:'lower-hedge',type:'hedge',shape:'circle',x:0,z:-4.5,radius:1.6});
+  const dense=world(crowded),a={x:-12,z:0},b={x:12,z:0},path=P.planPath(dense,a,b);
+  check('bounded waypoint candidates cannot omit collision geometry',path.length>0&&clearPath(a,path,crowded,P.routeMargin));
+  const angle=.63,c=Math.cos(angle),sn=Math.sin(angle),rot=p=>({x:p.x*c-p.z*sn,z:p.x*sn+p.z*c});
+  const wide=[hedge('wide-left',-2.3,0,.8,8),hedge('wide-right',2.3,0,.8,8)].map(fp=>Object.assign({},fp,rot(fp),{ux:c,uz:sn,vx:-sn,vz:c}));
+  const open=world(wide),ws=rot(start),wg=rot(goal),widePath=P.planPath(open,ws,wg);
+  check('a rotated passage wider than the clearance envelope remains usable',widePath.length>0&&clearPath(ws,widePath,wide,P.routeMargin));
+  const enclosure=world([hedge('west',-6,0,.8,8),hedge('east',6,0,.8,8),hedge('south',0,-6,8,.8),hedge('north',0,6,8,.8)]);
+  const boxed={id:'boxed',root:{position:{x:0,z:0}}},outside={x:20,z:0};
+  const hold=N.nextWaypoint(enclosure,boxed,outside),blockedPlan=boxed._physicalPath;enclosure.time+=.15;
+  N.nextWaypoint(enclosure,boxed,outside);
+  check('no-path results hold safely and retry on a timer',hold.x===0&&hold.z===0&&blockedPlan.blocked&&boxed._physicalPath===blockedPlan);
+
+
 }
 
 console.log('\n'+(failures?failures+' of '+checks+' checks FAILED':'all '+checks+' checks passed'));

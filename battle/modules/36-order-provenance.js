@@ -98,9 +98,11 @@ function withOwner(owner,reason,fn,key){activeContext.push({owner:owner,reason:r
 function telemetry(sim,type,data){if(root.BattleTelemetry)root.BattleTelemetry.record(type,data,sim);}
 function recentFieldEvents(store,field){var out=[];for(var i=store.events.length-1;i>=0&&out.length<8;i--)if(store.events[i].field===field)out.unshift(store.events[i]);return out;}
 function conflictKind(events,t){
-  if(events.length>=3){var a=events[events.length-3],b=events[events.length-2],c=events[events.length-1];if(a.owner===c.owner&&a.owner!==b.owner&&c.time-a.time<=PINGPONG_WINDOW)return'writer-ping-pong';}
+  /* Unknown is missing attribution, not evidence of an independent competing writer. */
+  function competing(owner){return owner&&owner!=='unknown'&&owner!=='in-place/unknown'&&owner!=='diagnostics';}
+  if(events.length>=3){var a=events[events.length-3],b=events[events.length-2],c=events[events.length-1];if(competing(a.owner)&&competing(b.owner)&&competing(c.owner)&&a.owner===c.owner&&a.owner!==b.owner&&c.time-a.time<=PINGPONG_WINDOW)return'writer-ping-pong';}
   var start=Math.max(0,events.length-5),owners=[],switches=0,last=null,firstTime=null;
-  for(var i=start;i<events.length;i++){var e=events[i];if(firstTime==null)firstTime=e.time;if(e.owner!==last){if(last!=null)switches++;last=e.owner;if(owners.indexOf(e.owner)<0)owners.push(e.owner);}}
+  for(var i=start;i<events.length;i++){var e=events[i];if(!competing(e.owner))continue;if(firstTime==null)firstTime=e.time;if(e.owner!==last){if(last!=null)switches++;last=e.owner;if(owners.indexOf(e.owner)<0)owners.push(e.owner);}}
   if(owners.length>=3&&switches>=3&&t-firstTime<=PINGPONG_WINDOW)return'writer-churn';
   return null;
 }
@@ -144,7 +146,7 @@ function instrumentAll(sim){
   if(!sim)return;['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++){instrumentSquad(sim,squads[i]);var m=squads[i].members||[];for(var j=0;j<m.length;j++)instrumentSoldier(sim,m[j]);}});
 }
 function sampleTarget(sim,target,kind,fields){
-  var ts=targetStore(target);if(!ts)return;Object.keys(fields).forEach(function(field){var st=ts.fields[field];if(!st||!st.instrumented)return;var cur=snap(target[field],fields[field]);if(!same(st.last,cur,fields[field])){record(sim,target,kind,field,fields[field],st.last,cur,{owner:'in-place/unknown',key:null,site:'mutated without property assignment'},'in-place mutation detected by sampler');st.last=cur;}});
+  var ts=targetStore(target);if(!ts)return;Object.keys(fields).forEach(function(field){var st=ts.fields[field];if(!st||!st.instrumented)return;var cur=snap(target[field],fields[field]);var observed=st.fastPath?st.observed:st.last;if(!same(observed,cur,fields[field])){record(sim,target,kind,field,fields[field],st.last,cur,{owner:'in-place/unknown',key:null,site:'mutated without property assignment'},'in-place mutation detected by sampler');st.last=cur;if(st.fastPath)st.observed=cur;}});
 }
 function sampleAll(sim){
   if(!sim)return;['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++){sampleTarget(sim,squads[i],'squad',SQUAD_FIELDS);var m=squads[i].members||[];for(var j=0;j<m.length;j++)sampleTarget(sim,m[j],'soldier',SOLDIER_FIELDS);}});
