@@ -9,6 +9,7 @@
   'use strict';
 
   var ORDER_COMMIT=1.35,COMBAT_TTL=.75,ORDER_EPS=2.4,ARRIVAL=1.8,ORDER_WRITE_EPS=.05;
+  var PRECISE_GOALS={'firing-station':1,'reload-hold':1,'hold':1,'contact-reaction':1};
   function point(v){return v&&isFinite(+v.x)&&isFinite(+v.z)?{x:+v.x,z:+v.z}:null;}
   function distance(a,b){return!a||!b?Infinity:Math.hypot(a.x-b.x,a.z-b.z);}
   function now(battle){return battle&&isFinite(+battle.time)?+battle.time:0;}
@@ -16,7 +17,7 @@
   function signature(s){var q=s.squad||{};return[q.commandPhase||'',q.targetObjective||'',q._engagementPlan&&q._engagementPlan.serial||0,q.state==='retreat'?'retreat':''].join('|');}
   function priority(kind,s){return kind==='retreat'?100:kind==='regroup'?95:kind==='reload-hold'?90:kind==='firing-station'?80:kind==='assault-rush'||kind==='assault-bound-push'?70:kind==='cover-bound'?60:kind==='contact-reaction'?55:kind==='hold'?(s.eng&&s.eng.state==='pinned'?85:50):20;}
   function tolerance(kind){return ['firing-station','hold','reload-hold','contact-reaction'].indexOf(kind)>=0?.1:ORDER_EPS;}
-  function metrics(b){return b._movementGoalStats||(b._movementGoalStats={requests:0,actualChanges:0,equivalentRequestsIgnored:0,hysteresisRetains:0,lowerPriorityRejected:0,emergencyOverrides:0,formationShadowsIgnored:0,overridesByPriority:{},bySource:{}});}
+  function metrics(b){return b._movementGoalStats||(b._movementGoalStats={requests:0,actualChanges:0,equivalentRequestsIgnored:0,hysteresisRetains:0,lowerPriorityRejected:0,emergencyOverrides:0,formationShadowsIgnored:0,goalLegalizations:0,illegalGoalsUnresolved:0,overridesByPriority:{},bySource:{}});}
   function count(b,key,source){var m=metrics(b);m[key]=(m[key]||0)+1;if(source){var row=m.bySource[source]||(m.bySource[source]={requests:0,changes:0});if(key==='requests')row.requests++;if(key==='actualChanges')row.changes++;}}
   function valid(s,p,b){
     if(!p||p.signature!==signature(s))return false;
@@ -27,34 +28,79 @@
     return p.until+1e-6>=now(b);
   }
   function proposal(owner,pt,battle,kind,urgent,ttl){pt=point(pt);if(!pt)return null;return{owner:owner,point:pt,kind:kind||owner,urgent:!!urgent,issuedAt:now(battle),until:now(battle)+(ttl==null?Infinity:ttl)};}
+
+  /* Physical navigation already knows the hard hedge/tree/log/wall/rock footprint and body
+     clearance. Do not let higher AI layers commit a point the body can never occupy and then wait
+     for stuck recovery to abandon it. Keep the original intent for diagnostics, but publish a
+     nearby legal stand point as the authoritative movement goal.
+
+     This deliberately does NOT change obstacle margins or route geometry. It asks the shipping
+     movementClear() implementation whether the point itself is occupiable, then searches only when
+     that exact point is illegal. The nearest legal ring is preferred; on that ring we prefer a
+     point directly reachable from the soldier so a long hedge resolves to the soldier's own side
+     instead of sending him around an arbitrary end. */
+  function legalizeGoal(soldier,battle,raw,kind,source){
+    var p=point(raw);if(!p||!battle||PRECISE_GOALS[kind])return p;
+    var N=root.BattleNavigation;if(!N||typeof N.movementClear!=='function')return p;
+    var cache=soldier&&soldier._movementLegalGoalCache;
+    if(cache&&cache.kind===kind&&distance(cache.raw,p)<=ORDER_WRITE_EPS)return{x:cache.point.x,z:cache.point.z};
+    if(N.movementClear(p,p)){
+      if(soldier)soldier._movementLegalGoalCache={kind:kind,raw:{x:p.x,z:p.z},point:{x:p.x,z:p.z}};
+      return p;
+    }
+    var start=point(soldier&&soldier.root&&soldier.root.position)||p,radii=[.5,1,1.5,2,2.5,3,4,6],best=null;
+    for(var ri=0;ri<radii.length;ri++){
+      var radius=radii[ri];best=null;
+      for(var i=0;i<16;i++){
+        var a=i*Math.PI/8,q={x:p.x+Math.cos(a)*radius,z:p.z+Math.sin(a)*radius};
+        if(!N.movementClear(q,q))continue;
+        var direct=N.movementClear(start,q),score=(direct?0:10000)+distance(start,q);
+        if(!best||score<best.score)best={point:q,score:score};
+      }
+      if(best){
+        count(battle,'goalLegalizations',source);
+        if(soldier)soldier._movementLegalGoalCache={kind:kind,raw:{x:p.x,z:p.z},point:{x:best.point.x,z:best.point.z}};
+        return best.point;
+      }
+    }
+    count(battle,'illegalGoalsUnresolved',source);
+    if(soldier)soldier._movementLegalGoalCache={kind:kind,raw:{x:p.x,z:p.z},point:{x:p.x,z:p.z}};
+    return p;
+  }
+
   function proposeOrder(soldier,next,battle,urgent){
-    if(!soldier)return null;var p=point(next);if(!p)return null;
+    if(!soldier)return null;var raw=point(next);if(!raw)return null;
     var st=state(soldier),team=point(soldier._fireteamDestination),source=team?'squad-stability':'squad-orders';count(battle,'requests',source);st.requests=(st.requests||0)+1;
     /* Squad Stability owns the soldier's formation intent once it has published a fireteam slot.
        The wrapped legacy issueOrders pass still computes an individual formation slot before the
        fireteam layer refreshes. That intermediate point is not a second order: ignore it instead
        of briefly overwriting orderDestination and forcing engagement to restore the real intent.
        Retreat/forced orders remain immediate; the fireteam writer runs later in the same squad tick. */
-    if(team&&!urgent&&distance(p,team)>ORDER_WRITE_EPS){count(battle,'formationShadowsIgnored');return st.order;}
-    var sig=signature(soldier),old=st.order,cur=point(soldier.orderDestination);
-    if(old&&old.owner===source&&old.signature===sig&&distance(old.point,p)<=ORDER_WRITE_EPS&&cur&&distance(cur,p)<=ORDER_WRITE_EPS){old.urgent=!!urgent;old.until=Infinity;return old;}
+    if(team&&!urgent&&distance(raw,team)>ORDER_WRITE_EPS){count(battle,'formationShadowsIgnored');return st.order;}
+    var sig=signature(soldier),old=st.order,cur=point(soldier.orderDestination),oldIntent=old&&point(old.intentPoint||old.point);
+    /* Compare the tactical intent before doing any geometry work. This keeps the hot repeated
+       fireteam refresh cheap even when the original slot had to be projected out of an obstacle. */
+    if(old&&old.owner===source&&old.signature===sig&&oldIntent&&distance(oldIntent,raw)<=ORDER_WRITE_EPS&&cur&&distance(cur,old.point)<=ORDER_WRITE_EPS){old.urgent=!!urgent;old.until=Infinity;return old;}
+    var p=legalizeGoal(soldier,battle,raw,'formation',source);
     if(!cur||distance(cur,p)>ORDER_WRITE_EPS)soldier.orderDestination={x:p.x,z:p.z};
-    st.order=proposal(source,p,battle,'formation',urgent,Infinity);st.order.signature=sig;st.order.reason='squad intent';return st.order;
+    st.order=proposal(source,p,battle,'formation',urgent,Infinity);st.order.signature=sig;st.order.reason='squad intent';st.order.intentPoint={x:raw.x,z:raw.z};return st.order;
   }
   function proposeCombat(soldier,next,battle,kind,ttl,meta){
-    if(!soldier)return null;meta=meta||{};var st=state(soldier),source=meta.source||'engagement',p=proposal(source,next,battle,kind||'combat',true,ttl==null?COMBAT_TTL:ttl);if(!p)return null;
-    count(battle,'requests',source);st.requests=(st.requests||0)+1;p.signature=signature(soldier);p.reason=meta.reason||kind;p.score=meta.score;p.priority=priority(p.kind,soldier);
+    if(!soldier)return null;meta=meta||{};var raw=point(next);if(!raw)return null;
+    var st=state(soldier),source=meta.source||'engagement',p=proposal(source,raw,battle,kind||'combat',true,ttl==null?COMBAT_TTL:ttl);if(!p)return null;
+    count(battle,'requests',source);st.requests=(st.requests||0)+1;p.signature=signature(soldier);p.reason=meta.reason||kind;p.score=meta.score;p.priority=priority(p.kind,soldier);p.intentPoint={x:raw.x,z:raw.z};
     var q=soldier.squad||{},old=st.combat;
     if(q.state==='retreat'||q.commandPhase==='retreat'){count(battle,'lowerPriorityRejected');return old;}
     /* Short-lived failed-candidate memory: a cover/bound point this soldier repeatedly failed to
        reach stays proposed by engagement until it re-decides, so retain the incumbent instead of
        recommitting to the suppressed candidate. Kinds with no alternative never consult it. */
     var MP=root.BattleMovementProgress;
-    if(MP&&MP.gatedKind(p.kind)&&!MP.candidateAllowed(soldier,battle,next))return old;
+    if(MP&&MP.gatedKind(p.kind)&&!MP.candidateAllowed(soldier,battle,raw))return old;
+    p.point=legalizeGoal(soldier,battle,raw,p.kind,source);
     if(old&&valid(soldier,old,battle)){
       if(p.priority<priority(old.kind,soldier)){count(battle,'lowerPriorityRejected');return old;}
       if(old.kind===p.kind&&old.owner===p.owner&&distance(old.point,p.point)<=tolerance(p.kind)){
-        old.until=p.until;count(battle,'equivalentRequestsIgnored');return old;
+        old.until=p.until;old.intentPoint={x:raw.x,z:raw.z};count(battle,'equivalentRequestsIgnored');return old;
       }
       if(!meta.material&&old.kind===p.kind&&isFinite(old.score)&&isFinite(p.score)&&p.score<old.score+4){count(battle,'hysteresisRetains');return old;}
     }
@@ -132,11 +178,12 @@
       soldier._movementResolvedOwner='movement-resolver';soldier._movementProposalOwner=pick.owner;soldier._movementTacticalReason=routed&&routed.reason||null;soldier.destination={x:physical.x,z:physical.z};soldier._navCache=null;soldier._destinationCommitUntil=now(battle)+ORDER_COMMIT+(soldier.slotIndex%3)*.22;st.changes++;
     }
     if(routed)st.tacticalWins++;
-    st.last={owner:pick.owner,kind:pick.kind,reason:pick.reason||pick.kind,oldGoalValid:!!oldValid,issuedAt:pick.issuedAt,until:pick.until,point:{x:physical.x,z:physical.z},intentPoint:{x:pick.point.x,z:pick.point.z},tacticalReason:routed&&routed.reason||null,tacticalStep:routed?{index:routed.step,total:routed.total}:null};
+    var intent=point(pick.intentPoint)||pick.point;
+    st.last={owner:pick.owner,kind:pick.kind,reason:pick.reason||pick.kind,oldGoalValid:!!oldValid,issuedAt:pick.issuedAt,until:pick.until,point:{x:physical.x,z:physical.z},intentPoint:{x:intent.x,z:intent.z},tacticalReason:routed&&routed.reason||null,tacticalStep:routed?{index:routed.step,total:routed.total}:null};
     if(pick.owner==='engagement'||pick.owner==='tactical-positions')st.combatWins++;else st.orderWins++;
     return st.last;
   }
-  function resetSoldier(soldier){if(soldier){delete soldier._movementResolver;delete soldier._movementTacticalReason;delete soldier._tacticalRoute;}}
+  function resetSoldier(soldier){if(soldier){delete soldier._movementResolver;delete soldier._movementTacticalReason;delete soldier._tacticalRoute;delete soldier._movementLegalGoalCache;}}
   function summary(sim){
     var out=Object.assign({orders:0,combat:0,byKind:{},changed:0,stickyCombatWins:0,tacticalWins:0,bySoldier:[],highestChurnSoldier:null},metrics(sim)),roster=sim&&sim._roster||{},active=0;
     ['us','ge'].forEach(function(f){(roster[f]||[]).forEach(function(s){var st=s._movementResolver;if(!st)return;out.changed+=st.changes||0;
@@ -146,6 +193,6 @@
     out.averageChangesPerActiveSoldier=active?out.bySoldier.filter(function(r){return(roster[r.faction]||[]).some(function(s){return s.id===r.id&&!s.dead;});}).reduce(function(n,r){return n+r.changes;},0)/active:0;
     return JSON.parse(JSON.stringify(out));
   }
-  root.BattleMovementResolver={version:'2.0-goal-authority-v128-clean',signature:signature,priority:priority,tolerance:tolerance,orderCommit:ORDER_COMMIT,combatTTL:COMBAT_TTL,proposeOrder:proposeOrder,proposeCombat:proposeCombat,resolve:resolve,resetSoldier:resetSoldier,summary:summary};
-  console.log('[MOVE] v128 resolver + clean fireteam ownership: command intent -> tactical waypoint -> physical destination');
+  root.BattleMovementResolver={version:'2.0-goal-authority-v128-legal-endpoints',signature:signature,priority:priority,tolerance:tolerance,orderCommit:ORDER_COMMIT,combatTTL:COMBAT_TTL,proposeOrder:proposeOrder,proposeCombat:proposeCombat,resolve:resolve,resetSoldier:resetSoldier,summary:summary};
+  console.log('[MOVE] v128 resolver + legal endpoints: command intent -> legal goal -> tactical waypoint -> physical destination');
 })(typeof window!=='undefined'?window:globalThis);
