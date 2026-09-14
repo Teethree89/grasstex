@@ -11,8 +11,8 @@
   "vacantObjectiveStalls": 14,
   "movementStalls": 380,
   "actionsUrl": "https://github.com/Teethree89/grasstex/actions/runs/34788450952",
-  "markdownPath": null,
-  "csvPath": null,
+  "markdownPath": "benchmarks/results/latest/battle-benchmark.md",
+  "csvPath": "benchmarks/results/latest/battle-benchmark.csv",
   "summaryPath": "benchmarks/results/latest/battle-benchmark-summary.json",
   "historyPath": "benchmarks/results/runs/3/",
   "backfilledFromArtifact": true
