@@ -36,6 +36,31 @@
   function objectiveValueScore(sim,faction){var total=0;(sim._objectives||[]).forEach(function(o){var s=objectiveStatus(sim,o);if(s&&s.owner===faction)total+=(+o.def.value||1);});return total;}
   function ownerPressure(status,faction){if(!status)return 0;var enemy=enemyFaction(faction);return+(status[enemy]||0)-+(status[faction]||0);}
 
+  /* Objective saturation.
+     Every non-reserve route ends at the same point - the settlement centre - so every squad on a
+     side used to score the objectives from the same position and pick the same winner. The central
+     strongpoint sits at distance zero and carries the highest value, so it out-scored the next
+     objective by ~80 points for all five squads of both sides at once. Both forces piled onto one
+     zone, the outer objectives were never assigned to anybody, and a 600 s battle ended with about
+     a third of the map still neutral. Force Command decides WHAT, so the deconfliction belongs
+     here, in the score, rather than in anything that writes positions.
+     A neutral, unoccupied zone only needs one squad to walk onto it; a contested or enemy-held one
+     is worth committing a second. Past that, each further squad pays SATURATION_COST, which is
+     enough to make the next objective the better answer without ever making an objective
+     unchoosable - when there is nothing else left, the crowded one still wins. */
+  var SATURATION_COST=55;
+  function saturationAllowance(status,owner){return owner==='neutral'&&!status.active?1:2;}
+  function squadsTargeting(sim,sq,id){
+    var squads=sim&&sim.factions&&sim.factions[sq.faction]&&sim.factions[sq.faction].squads||[],n=0;
+    for(var i=0;i<squads.length;i++){
+      var other=squads[i];
+      if(!other||other===sq||other.state==='retreat')continue;
+      if((other.aliveCount!=null?+other.aliveCount:aliveMembers(other).length)<=0)continue;
+      if(String(other.targetObjective||'')===String(id))n++;
+    }
+    return n;
+  }
+
   function chooseObjective(sim,sq,wantOwned){
     var objectives=sim._objectives||[],p=avgPos(sq),cfg=policy(sim,sq.faction),doc=doctrine(sim,sq.faction),best=null,bestScore=-Infinity;
     var ordered=objectives.slice();if(doc.objectiveStrategy==='sequential'&&sq.faction==='ge')ordered.reverse();
@@ -49,7 +74,9 @@
       else if(doc.objectiveStrategy==='weakest-pressure')score=90-ownerPressure(status,sq.faction)*18-d*.25+(owner===sq.faction?-30:30);
       else if(doc.objectiveStrategy==='sequential')score=200-i*35-d*.10+(owner===sq.faction?-150:0);
       if(obj.handler&&typeof obj.handler.commandScore==='function')score=obj.handler.commandScore(obj,sim,sq,score,cfg);
-      if(score>bestScore){bestScore=score;best={instance:obj,point:point,status:status,score:score};}
+      var assigned=squadsTargeting(sim,sq,obj.id),crowd=Math.max(0,assigned-(saturationAllowance(status,owner)-1));
+      score-=crowd*SATURATION_COST;
+      if(score>bestScore){bestScore=score;best={instance:obj,point:point,status:status,score:score,assignedSquads:assigned,crowdPenalty:crowd*SATURATION_COST};}
     }
     return best;
   }
@@ -86,7 +113,8 @@
     dist:dist,enemyFaction:enemyFaction,aliveMembers:aliveMembers,avgPos:avgPos,maxSpread:maxSpread,captain:captain,
     forceUnits:forceUnits,forceScore:forceScore,nearbyStrength:nearbyStrength,nearestEnemyToSquad:nearestEnemyToSquad,
     objectivePoint:objectivePoint,objectiveStatus:objectiveStatus,objectiveValueScore:objectiveValueScore,ownerPressure:ownerPressure,
-    chooseObjective:chooseObjective,buildContext:buildContext,flankPoint:flankPoint
+    chooseObjective:chooseObjective,buildContext:buildContext,flankPoint:flankPoint,
+    squadsTargeting:squadsTargeting,saturationCost:SATURATION_COST
   };
   console.log('[COMMAND] doctrine + objective scoring loaded');
 })(typeof window!=='undefined'?window:globalThis);

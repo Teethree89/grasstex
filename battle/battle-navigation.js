@@ -7,6 +7,15 @@
   'use strict';
   var scenario=null,walls=[],nodes=[],edges=[],version=0,firingStations=[],occupants=Object.create(null),doorPortals=[];
   var EPS=.0001,DOOR_PAD=1.55,DOOR_CLEARANCE=.48,CORNER_PAD=2.4,MAX_EDGE=300,STATION_INSET=1.55;
+  /* How much wall a man is allowed to be standing on before it counts as being in his way.
+     This has to be an absolute distance. It used to be a fraction of the query segment, so the
+     planner asking "is the 250 m line to the objective clear?" ignored the wall he was leaning
+     against while the integrator asking "is this 0.1 m step clear?" did not: planning returned a
+     straight line through the wall, physics refused every step of it, and the two disagreed
+     forever. */
+  var START_SKIN=.06;
+  /* Headings to try, either side of the desired one, when the direct step is into a wall. */
+  var SLIDE_FAN=[.52,1.05,1.57,2.09];
 
   function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
   function transform(b,lx,lz){var c=Math.cos(b.rot||0),s=Math.sin(b.rot||0);return{x:b.x+lx*c+lz*s,z:b.z-lx*s+lz*c};}
@@ -26,16 +35,43 @@
     return null;
   }
   function blocked(a,b,mode,ay,by){
+    var segLen=Math.hypot(b.x-a.x,b.z-a.z)||EPS;
     for(var i=0;i<walls.length;i++){
       var w=walls[i],hit=intersection(a,b,w.a,w.b);
       if(!hit)continue;
-      if(hit.t<.002)continue;
+      if(hit.t*segLen<START_SKIN)continue;
       if(openingAt(w,hit.u,mode))continue;
       return w;
     }
     return null;
   }
   function movementClear(a,b){return !blocked(a,b,'move');}
+  /* Physical navigation owns how a man gets past something in his way. The Movement Resolver still
+     owns where he is going: this only ever rewrites one integration step, never a destination.
+     Returns a movement-legal step of the same length, or null when he is genuinely boxed in. */
+  function resolveStep(from,to){
+    if(!scenario)return to;
+    var wall=blocked(from,to,'move');
+    if(!wall)return to;
+    var dx=to.x-from.x,dz=to.z-from.z,len=Math.hypot(dx,dz);
+    if(!(len>EPS))return null;
+    /* First choice is a true slide: keep the component of the step that runs along the wall.
+       A step almost square-on to the wall leaves nothing worth keeping, so it falls through to the
+       fan rather than returning a step of near-zero length with no usable heading. */
+    var wx=wall.b.x-wall.a.x,wz=wall.b.z-wall.a.z,wl=Math.hypot(wx,wz)||1,along=(dx*wx+dz*wz)/wl;
+    if(Math.abs(along)>len*.25){
+      var sx=from.x+wx/wl*along,sz=from.z+wz/wl*along;
+      if(!blocked(from,{x:sx,z:sz},'move'))return{x:sx,z:sz};
+    }
+    /* Pinched into a corner, where no single wall tangent is free. Fan out around the desired
+       heading - never backwards - so he works his way out instead of standing there. */
+    var base=Math.atan2(dz,dx);
+    for(var i=0;i<SLIDE_FAN.length;i++)for(var sign=-1;sign<=1;sign+=2){
+      var a=base+sign*SLIDE_FAN[i],cx=from.x+Math.cos(a)*len,cz=from.z+Math.sin(a)*len;
+      if(!blocked(from,{x:cx,z:cz},'move'))return{x:cx,z:cz};
+    }
+    return null;
+  }
   function losBlocked(a,b,ay,by){return blocked(a,b,'los',ay,by);}
   function addNode(p,kind,meta){var n={id:nodes.length,x:p.x,z:p.z,kind:kind||'nav',meta:meta||null};nodes.push(n);edges.push([]);return n;}
   function link(a,b){var d=Math.hypot(a.x-b.x,a.z-b.z);edges[a.id].push({to:b.id,cost:d});edges[b.id].push({to:a.id,cost:d});}
@@ -128,11 +164,11 @@
   function firingDirective(soldier,target){var st=soldier&&(soldier._firingStation||soldier._windowSlot);if(!st||!target||target.dead)return null;var tx=target.root.position.x,tz=target.root.position.z,vx=tx-st.windowX,vz=tz-st.windowZ,vlen=Math.hypot(vx,vz)||1,face=(vx/vlen)*st.normalX+(vz/vlen)*st.normalZ;if(face<.25){releaseFiringPosition(soldier);return null;}return{x:st.x,z:st.z,slot:st,stance:st.stance,aimPoint:{x:st.windowX,z:st.windowZ}};}
 
   root.BattleNavigation={
-    installScenario:buildScenarioGeometry,movementClear:movementClear,lineOfSightBlocked:losBlocked,findPath:findPath,nextWaypoint:nextWaypoint,
+    installScenario:buildScenarioGeometry,movementClear:movementClear,resolveStep:resolveStep,lineOfSightBlocked:losBlocked,findPath:findPath,nextWaypoint:nextWaypoint,
     claimFiringPosition:claimFiringPosition,releaseFiringPosition:releaseFiringPosition,firingDirective:firingDirective,
     claimWindow:claimFiringPosition,releaseWindow:releaseFiringPosition,windowDirective:firingDirective,
     get scenario(){return scenario;},get version(){return version;},get walls(){return walls.slice();},get doorPortals(){return doorPortals.slice();},
-    get firingStations(){return firingStations.slice();},get windowSlots(){return firingStations.slice();},get doorPad(){return DOOR_PAD;},get doorClearance(){return DOOR_CLEARANCE;}
+    get firingStations(){return firingStations.slice();},get windowSlots(){return firingStations.slice();},get doorPad(){return DOOR_PAD;},get doorClearance(){return DOOR_CLEARANCE;},get startSkin(){return START_SKIN;}
   };
   console.log('[NAV] firing-station navigation loaded');
 })(typeof window!=='undefined'?window:globalThis);

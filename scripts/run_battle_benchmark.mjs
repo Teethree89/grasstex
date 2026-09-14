@@ -40,8 +40,16 @@ async function getLivePolicy() {
 }
 
 const policy = await getLivePolicy();
-const browserErrors = [];
+/* Errors have to be split by kind or the metric is useless. A misconfigured asset host produced
+   ~1,700 "browser/runtime errors" per run, all of them CORS/network noise, which is exactly the
+   volume that would hide a single real uncaught exception. `pageErrors` is the one that means the
+   runtime is broken; asset/network failures are reported separately as a harness signal. */
+const ASSET_ERROR = /Failed to load resource|blocked by CORS policy|net::ERR_|ERR_FAILED|favicon/i;
+const pageErrors = [];
+const consoleErrors = [];
+const assetErrors = [];
 const browserWarnings = [];
+const browserErrors = [];
 const startedWall = Date.now();
 const browser = await chromium.launch({
   headless: true,
@@ -51,10 +59,10 @@ const browser = await chromium.launch({
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   page.setDefaultTimeout(120_000);
-  page.on('pageerror', error => browserErrors.push(String(error?.stack || error)));
+  page.on('pageerror', error => { const t = String(error?.stack || error); pageErrors.push(t); browserErrors.push(t); });
   page.on('console', msg => {
     const text = msg.text();
-    if (msg.type() === 'error') browserErrors.push(text);
+    if (msg.type() === 'error') { (ASSET_ERROR.test(text) ? assetErrors : consoleErrors).push(text); browserErrors.push(text); }
     else if (msg.type() === 'warning') browserWarnings.push(text);
   });
   await page.route('**/*', async route => {
@@ -146,6 +154,24 @@ try {
         state.lastObjectiveSig = sig;
       }
 
+      /* Which objectives anybody ever held, and how many distinct objectives each side's squads
+         are actually assigned to. An end-of-battle owner count cannot tell a zone that was taken
+         and lost from one nobody ever walked into, and squad spread is the direct measurement of
+         whether Force Command is distributing the force or piling it onto one zone. */
+      for (const o of (sim._objectives || [])) {
+        const st = objectiveStatus(o);
+        if (st.owner && st.owner !== 'neutral') state.everOwned[o.id] = st.owner;
+        if (st.active) state.everContested[o.id] = true;
+      }
+      for (const faction of ['us', 'ge']) {
+        const targets = new Set();
+        for (const sq of (sim.factions?.[faction]?.squads || [])) {
+          if (!sq || (sq.aliveCount || 0) <= 0) continue;
+          if (sq.targetObjective) targets.add(String(sq.targetObjective));
+        }
+        state.spreadSamples[faction].push(targets.size);
+      }
+
       for (const faction of ['us', 'ge']) {
         const squads = sim.factions?.[faction]?.squads || [];
         for (const sq of squads) {
@@ -193,7 +219,7 @@ try {
             prior.x = p.x; prior.z = p.z; prior.lastMovedAt = now; prior.reported = false;
           } else if (!prior.reported && now - prior.lastMovedAt >= 12 && (+s.moveSpeed || 0) < 0.35) {
             prior.reported = true;
-            state.movementStalls.push({ faction, soldier: s.id, squad: s.squad?.id || null, at: +now.toFixed(1), destinationDistance: +d.toFixed(1), phase: s.squad?.commandPhase || null });
+            state.movementStalls.push({ faction, soldier: s.id, squad: s.squad?.id || null, at: +now.toFixed(1), destinationDistance: +d.toFixed(1), phase: s.squad?.commandPhase || null, engagementState: s.eng?.state || s.state || null, proposalOwner: s._movementProposalOwner || null, firingStation: !!s._firingStation });
           }
         }
       }
@@ -245,7 +271,9 @@ try {
         const diag = {
           lastObjectiveSig: objectiveSignature(), lastObjectiveChangeAt: 0, maxNoObjectiveProgress: 0,
           vacantTrack: Object.create(null), unitTrack: Object.create(null), vacantAssignmentSamples: 0,
-          vacantObjectiveStalls: [], movementStalls: []
+          vacantObjectiveStalls: [], movementStalls: [],
+          everOwned: Object.create(null), everContested: Object.create(null),
+          spreadSamples: { us: [], ge: [] }
         };
         const wallStart = performance.now();
         while (!sim.winner && sim.time < timeLimit + 0.5 && steps < maxSteps) {
@@ -271,6 +299,11 @@ try {
           return { id: o.id, owner: st.owner || 'neutral', active: st.active || null, vacantOwner: !!st.vacantOwner, us: +(st.us || st.weights?.us || 0), ge: +(st.ge || st.weights?.ge || 0) };
         });
         const recovery = sim._objectiveRecovery || {};
+        const objectiveCount = (sim._objectives || []).length;
+        const everOwnedIds = Object.keys(diag.everOwned);
+        const loopAlerts = (sim._aiLoopWatch?.alerts || []).reduce((acc, a) => { acc[a.kind] = (acc[a.kind] || 0) + 1; return acc; }, {});
+        const meanSpread = f => diag.spreadSamples[f].length
+          ? +(diag.spreadSamples[f].reduce((a, b) => a + b, 0) / diag.spreadSamples[f].length).toFixed(2) : 0;
         const record = {
           index: index + 1,
           seed,
@@ -293,6 +326,12 @@ try {
           neutralizations: +(stats.neutralizations || 0),
           capturesByFaction: stats.capturesByFaction || {},
           maxNoObjectiveProgressSeconds: +diag.maxNoObjectiveProgress.toFixed(1),
+          objectiveCount,
+          objectivesEverOwned: everOwnedIds.length,
+          objectivesNeverOwned: Math.max(0, objectiveCount - everOwnedIds.length),
+          objectivesNeverContested: Math.max(0, objectiveCount - Object.keys(diag.everContested).length),
+          squadObjectiveSpread: { us: meanSpread('us'), ge: meanSpread('ge') },
+          loopWatchAlerts: loopAlerts,
           vacantAssignmentSamples: diag.vacantAssignmentSamples,
           vacantObjectiveStalls: diag.vacantObjectiveStalls,
           movementStalls: diag.movementStalls,
@@ -300,7 +339,7 @@ try {
           finalObjectives: objectiveStates
         };
         battles.push(record);
-        console.log(`[BENCH] ${index + 1}/${count} ${seed} winner=${record.winner} t=${record.simulatedSeconds}s captures=${record.captures} vacantStalls=${record.vacantObjectiveStalls.length} moveStalls=${record.movementStalls.length} wall=${record.wallSeconds}s`);
+        console.log(`[BENCH] ${index + 1}/${count} ${seed} winner=${record.winner} t=${record.simulatedSeconds}s captures=${record.captures}/${record.objectiveCount} neverOwned=${record.objectivesNeverOwned} spread=${record.squadObjectiveSpread.us}/${record.squadObjectiveSpread.ge} vacantStalls=${record.vacantObjectiveStalls.length} moveStalls=${record.movementStalls.length} wall=${record.wallSeconds}s`);
         cleanup();
         if ((index + 1) % 5 === 0) await new Promise(resolve => setTimeout(resolve, 0));
       }
@@ -344,8 +383,31 @@ try {
   const vacantStalls = battles.reduce((n, b) => n + (b.vacantObjectiveStalls?.length || 0), 0);
   const movementStalls = battles.reduce((n, b) => n + (b.movementStalls?.length || 0), 0);
   const simulatedTotal = durations.reduce((a, b) => a + b, 0);
+  const sum = (list, f) => list.reduce((n, b) => n + (f(b) || 0), 0);
+  const histogram = (list, f) => {
+    const out = {};
+    for (const b of list) for (const e of (f(b) || [])) { const k = String(e ?? 'unknown'); out[k] = (out[k] || 0) + 1; }
+    return Object.fromEntries(Object.entries(out).sort((a, b2) => b2[1] - a[1]));
+  };
+  const movementStallPhases = histogram(battles, b => (b.movementStalls || []).map(x => x.phase));
+  const movementStallStates = histogram(battles, b => (b.movementStalls || []).map(x => x.engagementState));
+  const vacantStallPhases = histogram(battles, b => (b.vacantObjectiveStalls || []).map(x => x.phase));
+  const loopWatchAlerts = battles.reduce((acc, b) => {
+    for (const [k, n] of Object.entries(b.loopWatchAlerts || {})) acc[k] = (acc[k] || 0) + n;
+    return acc;
+  }, {});
+  const objectiveTotal = sum(battles, b => b.objectiveCount);
+  const neverOwnedTotal = sum(battles, b => b.objectivesNeverOwned);
+  const neverContestedTotal = sum(battles, b => b.objectivesNeverContested);
+  const decisiveBattles = battles.filter(b => b.winReason && b.winReason !== 'time limit objective score').length;
+  /* Ranked by what the three completed 100-battle runs showed actually drives a bad battle:
+     objectives nobody ever took, and long intervals with no objective state change at all.
+     Movement stalls are real but measured to be uncorrelated with the outcome (r = -0.03 against
+     captures over 300 battles), so they no longer dominate this table by a factor of 100. */
   const problematic = [...battles].sort((a, b) => {
-    const score = x => (x.vacantObjectiveStalls?.length || 0) * 1000 + (x.movementStalls?.length || 0) * 100 + (x.captures === 0 ? 20 : 0) + x.maxNoObjectiveProgressSeconds;
+    const score = x => (x.objectivesNeverOwned || 0) * 220 + (x.captures === 0 ? 300 : 0)
+      + (x.maxNoObjectiveProgressSeconds || 0) + (x.vacantObjectiveStalls?.length || 0) * 120
+      + (x.movementStalls?.length || 0) * 25;
     return score(b) - score(a);
   }).slice(0, 15);
 
@@ -380,16 +442,40 @@ try {
     movementStalls,
     movementStallBattles,
     maxNoObjectiveProgressSeconds: +Math.max(0, ...battles.map(b => b.maxNoObjectiveProgressSeconds || 0)).toFixed(1),
+    avgNoObjectiveProgressSeconds: +mean(battles.map(b => b.maxNoObjectiveProgressSeconds || 0)).toFixed(1),
+    decisiveBattles,
+    timeLimitBattles: battles.length - decisiveBattles,
+    avgObjectivesPerBattle: battles.length ? +(objectiveTotal / battles.length).toFixed(2) : 0,
+    objectivesNeverOwned: neverOwnedTotal,
+    objectivesNeverOwnedRate: pct(neverOwnedTotal, objectiveTotal),
+    objectivesNeverContested: neverContestedTotal,
+    avgSquadObjectiveSpread: {
+      us: +mean(battles.map(b => b.squadObjectiveSpread?.us || 0)).toFixed(2),
+      ge: +mean(battles.map(b => b.squadObjectiveSpread?.ge || 0)).toFixed(2)
+    },
+    movementStallPhases,
+    movementStallStates,
+    vacantStallPhases,
+    loopWatchAlerts,
+    pageErrors: pageErrors.length,
+    consoleErrors: consoleErrors.length,
+    assetLoadErrors: assetErrors.length,
     browserErrors: browserErrors.length,
     browserWarnings: browserWarnings.length
   };
 
-  const payload = { summary, policy, browserErrors, browserWarnings: browserWarnings.slice(0, 100), battles };
+  const payload = { summary, policy, pageErrors, consoleErrors: consoleErrors.slice(0, 200), assetErrors: assetErrors.slice(0, 50), browserErrors, browserWarnings: browserWarnings.slice(0, 100), battles };
   fs.writeFileSync(path.join(outputDir, 'battle-benchmark.json'), JSON.stringify(payload, null, 2));
 
-  const headers = ['index','seed','winner','winReason','simulatedSeconds','wallSeconds','usAlive','geAlive','usObjectives','geObjectives','captures','neutralizations','maxNoObjectiveProgressSeconds','vacantObjectiveStalls','movementStalls'];
+  const headers = ['index','seed','winner','winReason','simulatedSeconds','wallSeconds','usAlive','geAlive','usObjectives','geObjectives','objectiveCount','objectivesNeverOwned','usSquadSpread','geSquadSpread','captures','neutralizations','maxNoObjectiveProgressSeconds','vacantObjectiveStalls','movementStalls'];
+  const cell = (b, h) => {
+    if (h === 'vacantObjectiveStalls' || h === 'movementStalls') return b[h]?.length || 0;
+    if (h === 'usSquadSpread') return b.squadObjectiveSpread?.us ?? 0;
+    if (h === 'geSquadSpread') return b.squadObjectiveSpread?.ge ?? 0;
+    return b[h];
+  };
   const csvLines = [headers.join(',')];
-  for (const b of battles) csvLines.push(headers.map(h => csv(h === 'vacantObjectiveStalls' || h === 'movementStalls' ? (b[h]?.length || 0) : b[h])).join(','));
+  for (const b of battles) csvLines.push(headers.map(h => csv(cell(b, h))).join(','));
   fs.writeFileSync(path.join(outputDir, 'battle-benchmark.csv'), csvLines.join('\n') + '\n');
 
   const md = [];
@@ -401,22 +487,39 @@ try {
   md.push(`- Completed: **${summary.completedBattles}/${summary.requestedBattles}** battles in **${summary.wallSeconds}s wall time** (${summary.realtimeMultiplier}× real-time, ${summary.battlesPerMinute} battles/min)`);
   md.push(`- Results: US **${winners.us || 0}** (${summary.usWinRate}), GER **${winners.ge || 0}** (${summary.geWinRate}), draw/none **${(winners.draw || 0) + (winners.none || 0)}** (${summary.drawRate})`);
   md.push(`- Battle duration: avg **${summary.avgBattleSeconds}s**, p50 **${summary.p50BattleSeconds}s**, p95 **${summary.p95BattleSeconds}s**`);
-  md.push(`- Captures: avg **${summary.avgCaptures}**, no-capture battles **${summary.noCaptureBattles}**`);
+  md.push(`- Decisive finishes: **${summary.decisiveBattles}**; ran out the clock: **${summary.timeLimitBattles}**`);
+  md.push(`- Captures: avg **${summary.avgCaptures}** of **${summary.avgObjectivesPerBattle}** objectives; no-capture battles **${summary.noCaptureBattles}**`);
+  md.push(`- Objectives nobody ever owned: **${summary.objectivesNeverOwned}** (${summary.objectivesNeverOwnedRate} of all objectives); never even contested: **${summary.objectivesNeverContested}**`);
+  md.push(`- Distinct objectives a side's squads were assigned to (mean): US **${summary.avgSquadObjectiveSpread.us}**, GER **${summary.avgSquadObjectiveSpread.ge}**`);
   md.push(`- Vacant enemy-objective stalls: **${summary.vacantObjectiveStalls} events across ${summary.vacantObjectiveStallBattles} battles**`);
   md.push(`- Movement stalls while ordered to advance: **${summary.movementStalls} events across ${summary.movementStallBattles} battles**`);
-  md.push(`- Longest interval without objective-state progress: **${summary.maxNoObjectiveProgressSeconds}s**`);
-  md.push(`- Browser/runtime errors: **${summary.browserErrors}**; warnings: **${summary.browserWarnings}**`);
+  md.push(`- Interval without objective-state progress: longest **${summary.maxNoObjectiveProgressSeconds}s**, mean per battle **${summary.avgNoObjectiveProgressSeconds}s**`);
+  md.push(`- Uncaught page exceptions: **${summary.pageErrors}**; other console errors: **${summary.consoleErrors}**; asset/network failures: **${summary.assetLoadErrors}**; warnings: **${summary.browserWarnings}**`);
+  const table = (title, obj) => {
+    const entries = Object.entries(obj || {});
+    if (!entries.length) return;
+    md.push('');
+    md.push(`### ${title}`);
+    md.push('');
+    for (const [k, n] of entries.slice(0, 12)) md.push(`- \`${k}\`: ${n}`);
+  };
+  table('Movement stalls by squad phase', summary.movementStallPhases);
+  table('Movement stalls by engagement state', summary.movementStallStates);
+  table('Vacant-objective stalls by squad phase', summary.vacantStallPhases);
+  table('Loop Watch alerts by kind', summary.loopWatchAlerts);
   md.push('');
   md.push('## Most problematic runs');
   md.push('');
-  md.push('| # | Seed | Winner | Time | Captures | Vacant stalls | Move stalls | Max no-progress |');
-  md.push('|---:|---|---|---:|---:|---:|---:|---:|');
-  for (const b of problematic) md.push(`| ${b.index} | \`${b.seed}\` | ${b.winner} | ${b.simulatedSeconds}s | ${b.captures} | ${b.vacantObjectiveStalls?.length || 0} | ${b.movementStalls?.length || 0} | ${b.maxNoObjectiveProgressSeconds}s |`);
-  if (browserErrors.length) {
+  md.push('| # | Seed | Winner | Time | Captures | Never owned | Spread us/ge | Vacant stalls | Move stalls | Max no-progress |');
+  md.push('|---:|---|---|---:|---:|---:|---|---:|---:|---:|');
+  for (const b of problematic) md.push(`| ${b.index} | \`${b.seed}\` | ${b.winner} | ${b.simulatedSeconds}s | ${b.captures}/${b.objectiveCount} | ${b.objectivesNeverOwned} | ${b.squadObjectiveSpread?.us ?? '-'}/${b.squadObjectiveSpread?.ge ?? '-'} | ${b.vacantObjectiveStalls?.length || 0} | ${b.movementStalls?.length || 0} | ${b.maxNoObjectiveProgressSeconds}s |`);
+  if (pageErrors.length || consoleErrors.length) {
     md.push('');
-    md.push('## Browser/runtime errors');
+    md.push('## Runtime errors');
     md.push('');
-    for (const error of browserErrors.slice(0, 20)) md.push(`- \`${String(error).replaceAll('`', "'")}\``);
+    md.push('Uncaught page exceptions first, then other console errors. Asset/network failures are counted in the summary and deliberately not listed: they are a harness/deployment signal, not a runtime defect.');
+    md.push('');
+    for (const error of [...pageErrors, ...consoleErrors].slice(0, 20)) md.push(`- \`${String(error).replaceAll('`', "'")}\``);
   }
   fs.writeFileSync(path.join(outputDir, 'battle-benchmark.md'), md.join('\n') + '\n');
 

@@ -20,6 +20,20 @@ normally provide:
 `run.js` asserts the engagement contract (see `battle/AI_ENGAGEMENT.md`) and exits non-zero on
 failure, so it is usable as a pre-commit or CI check.
 
+`objective-nav-check.js` is the second suite. It loads the scenario generator, navigation graph,
+objective system and commander doctrine instead of the engagement pipeline, and asserts the three
+defects the first three 100-battle benchmark runs exposed:
+
+- a soldier is never permanently refused a step against a building (the planner and the movement
+  integrator have to agree about which walls are in the way);
+- Force Command never sends every squad on a side to the same objective;
+- capture progress survives an interrupted hold instead of resetting to zero.
+
+It runs against the worst seeds from `benchmarks/results/runs/{1,2,3}` on the `benchmark-results`
+branch, so it reproduces real failing battles rather than invented ones, and it needs no seed sweep:
+the scenarios are fixed and the assertions are about mechanism. Both suites run in the deploy
+workflow.
+
 **Determinism and the seed sweep.** A run is byte-for-byte reproducible: the harness pins
 `Math.random` while sources load and while soldiers are created, because the shipping code seeds a
 couple of per-soldier cooldowns from it and one of those decides whether a callout fires — and a

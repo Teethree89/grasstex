@@ -26,6 +26,9 @@
   BattleSim.prototype.restart=function(){if(root.BattleModules)root.BattleModules.runHook('beforeBattleRestart',this,{});var all=this._roster.us.concat(this._roster.ge),i;if(root.BattleEngagement){for(i=0;i<all.length;i++)root.BattleEngagement.resetSoldier(all[i]);['us','ge'].forEach(function(f){(this.factions[f].squads||[]).forEach(root.BattleEngagement.resetSquad);},this);}for(i=0;i<all.length;i++){if(root.BattleNavigation)(root.BattleNavigation.releaseFiringPosition||root.BattleNavigation.releaseWindow)(all[i]);all[i].root.dispose();}this.spawnAll();};
   BattleSim.prototype.setTimeScale=function(v){this.timeScale=Math.max(0,+v||0);};BattleSim.prototype.pause=function(){this.paused=true;};BattleSim.prototype.resume=function(){this.paused=false;};
   var AVOID_LOOKAHEAD=1.8,AVOID_MARGIN=.5,AVOID_QUERY=8;
+  /* A man who is genuinely boxed in re-plans on a timer rather than once per frame. Clearing
+     the nav cache every blocked frame just recomputed the same unusable path 7 times a second. */
+  var NAV_REPLAN_HOLD=1.5;
   /* The cover field now holds thousands of obstacles, so avoidance asks the spatial index for the
      handful near the look-ahead point instead of scanning the whole field once per soldier per
      frame. */
@@ -48,7 +51,27 @@
     var dx=desired.x-soldier.root.position.x,dz=desired.z-soldier.root.position.z,d=Math.hypot(dx,dz),crawl=!!(soldier.prone&&soldier.crawling),wantCrouch=!soldier.prone&&(soldier.tacticalCrouch||(soldier.suppressedUntil>self.time)||(!!soldier.target&&d<=.6));
     var desiredSpeed=d>.35?soldier.speed*(crawl?.23:(wantCrouch?.58:1)):0,cur=soldier.moveSpeed||0,rate=desiredSpeed>cur?(crawl?1.2:4.2):(crawl?2.0:6.5);soldier.moveSpeed=Math.max(0,cur+Math.max(-rate*dt,Math.min(rate*dt,desiredSpeed-cur)));
     function turnToward(yaw){var diff=Math.atan2(Math.sin(yaw-soldier.root.rotation.y),Math.cos(yaw-soldier.root.rotation.y)),maxTurn=(soldier.prone?1.25:2.8)*dt;soldier.root.rotation.y+=Math.max(-maxTurn,Math.min(maxTurn,diff));}
-    if(d>.35&&soldier.moveSpeed>.025&&(!soldier.prone||crawl)){var dirx=dx/d,dirz=dz/d,steered=steerAroundObstacles(self.obstacles,soldier.root.position.x,soldier.root.position.z,dirx,dirz);if(steered){dirx=steered.x;dirz=steered.z;}var step=Math.min(d,soldier.moveSpeed*dt),nx=soldier.root.position.x+dirx*step,nz=soldier.root.position.z+dirz*step;if(root.BattleNavigation&&!root.BattleNavigation.movementClear({x:soldier.root.position.x,z:soldier.root.position.z},{x:nx,z:nz})){dirx=dx/d;dirz=dz/d;nx=soldier.root.position.x+dirx*step;nz=soldier.root.position.z+dirz*step;if(!root.BattleNavigation.movementClear({x:soldier.root.position.x,z:soldier.root.position.z},{x:nx,z:nz})){soldier._navCache=null;soldier.moveSpeed=0;soldier.moving=false;BattleSoldierModel.animateWalk(soldier,dt,0);return;}}soldier.root.position.x=nx;soldier.root.position.z=nz;soldier.root.position.y=self.heightAt(nx,nz);turnToward(Math.atan2(dirx,dirz));soldier.moving=true;}else{soldier.moving=false;var face=soldier.target?soldier.target.root.position:soldier._faceHint;if(face){var tx=face.x-soldier.root.position.x,tz=face.z-soldier.root.position.z;if(Math.abs(tx)+Math.abs(tz)>1e-4)turnToward(Math.atan2(tx,tz));}}
+    if(d>.35&&soldier.moveSpeed>.025&&(!soldier.prone||crawl)){
+      var here={x:soldier.root.position.x,z:soldier.root.position.z};
+      var dirx=dx/d,dirz=dz/d,steered=steerAroundObstacles(self.obstacles,here.x,here.z,dirx,dirz);if(steered){dirx=steered.x;dirz=steered.z;}
+      var step=Math.min(d,soldier.moveSpeed*dt),nx=here.x+dirx*step,nz=here.z+dirz*step;
+      if(root.BattleNavigation&&!root.BattleNavigation.movementClear(here,{x:nx,z:nz})){
+        /* Cover steering pushed him into a wall: the plain heading to the waypoint comes first. */
+        dirx=dx/d;dirz=dz/d;nx=here.x+dirx*step;nz=here.z+dirz*step;
+        if(!root.BattleNavigation.movementClear(here,{x:nx,z:nz})){
+          /* Physical navigation, not this integrator, decides how to get past the obstruction.
+             Stopping dead and dropping the path cache every frame is what used to freeze a man
+             against a wall for the rest of the battle: the same blocked plan came straight back. */
+          var slid=root.BattleNavigation.resolveStep?root.BattleNavigation.resolveStep(here,{x:nx,z:nz}):null;
+          if(slid){nx=slid.x;nz=slid.z;dirx=(nx-here.x)/step;dirz=(nz-here.z)/step;}
+          else{
+            if(!(self.time<(soldier._navReplanHold||0))){soldier._navCache=null;soldier._navReplanHold=self.time+NAV_REPLAN_HOLD;}
+            soldier.moveSpeed=0;soldier.moving=false;BattleSoldierModel.animateWalk(soldier,dt,0);return;
+          }
+        }
+      }
+      soldier.root.position.x=nx;soldier.root.position.z=nz;soldier.root.position.y=self.heightAt(nx,nz);turnToward(Math.atan2(dirx,dirz));soldier.moving=true;
+    }else{soldier.moving=false;var face=soldier.target?soldier.target.root.position:soldier._faceHint;if(face){var tx=face.x-soldier.root.position.x,tz=face.z-soldier.root.position.z;if(Math.abs(tx)+Math.abs(tz)>1e-4)turnToward(Math.atan2(tx,tz));}}
     if(wantCrouch!==soldier.crouching)BattleSoldierModel.setCrouch(soldier,wantCrouch);if(BattleSoldierModel.setProne)BattleSoldierModel.setProne(soldier,!!soldier.prone);BattleSoldierModel.animateWalk(soldier,dt,soldier.speed>0?soldier.moveSpeed/soldier.speed:0);
   }
   BattleSim.prototype._frame=function(forcedDt){if(this.paused||this.winner)return;var dt=forcedDt==null?this.scene.getEngine().getDeltaTime()/1000*this.timeScale:+forcedDt;if(!(dt>0))return;dt=Math.min(dt,.25);this.time+=dt;var us=this._roster.us,ge=this._roster.ge,i;for(i=0;i<us.length;i++)stepMovement(this,us[i],dt);for(i=0;i<ge.length;i++)stepMovement(this,ge[i],dt);this._aiAccum+=dt;while(this._aiAccum>=AI_TICK&&!this.winner){this._aiAccum-=AI_TICK;var f=this.factions,squadsUs=f.us.squads,squadsGe=f.ge.squads;for(i=0;i<squadsUs.length;i++)SquadAI.updateSquad(squadsUs[i],this);for(i=0;i<squadsGe.length;i++)SquadAI.updateSquad(squadsGe[i],this);for(i=0;i<us.length;i++)SquadAI.updateSoldier(us[i],this);for(i=0;i<ge.length;i++)SquadAI.updateSoldier(ge[i],this);this._checkWinner();if(this.onUpdate)this.onUpdate(this);}if(root.BattleModules)root.BattleModules.runHook('onSimulationStep',this,{dt:dt});};

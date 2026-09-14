@@ -103,8 +103,12 @@ function detectSoldier(sim,s,sq,h){
   if(h.length<8)return;var recent=h.slice(-10),move=travelStats(recent,'pos'),destChanges=changes(recent,'dest',2.2),period=repeatingPeriod(recent,'destSig',3),ratio=move.net>.5?move.travel/move.net:move.travel*2;
   if((period||destChanges>=5)&&move.travel>=6&&move.net<4.5&&ratio>2.2&&move.duration>=5.5){emitAlert(sim,{kind:'position-seeking',severity:'hot',faction:s.faction,squadId:sq.id,soldierId:s.id,message:'Soldier is cycling destinations without meaningful net movement',phases:Array.from(new Set(recent.map(function(x){return x.phase;}))),rules:Array.from(new Set(recent.map(function(x){return x.rule;}).filter(Boolean))),sequence:recent.slice(-8).map(function(x){return x.destSig+' ['+x.eng+']';}),travel:+move.travel.toFixed(1),net:+move.net.toFixed(1),destinationChanges:destChanges,period:period,inContact:!!recent[recent.length-1].inContact});}
 }
+/* Sampling also runs under training/benchmark: the alerts are the automated QA signal for loop
+   and position-seeking defects, and the panel render below is a no-op with no DOM. */
 function sample(sim){
-  if(!sim||sim.trainingMode||sim.winner)return;var st=stateFor(sim);if(sim.time-st.lastSample<SAMPLE_SECONDS)return;st.lastSample=sim.time;
+  if(!sim||sim.winner)return;var st=stateFor(sim);
+  if(sim.time<st.lastSample){reset(sim);return;}
+  if(sim.time-st.lastSample<SAMPLE_SECONDS)return;st.lastSample=sim.time;
   ['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++){
     var sq=squads[i],members=(sq.members||[]).filter(function(s){return !s.dead&&s.root;}),pos=avgPosition(members),order=avgOrder(members);if(!pos)continue;
     var ss={time:sim.time,pos:pos,order:order,orderSig:pointSig(order,2.5),phase:sq.commandPhase||'',rule:sq._lastDoctrineRule||'',target:sq.targetObjective||'',goal:pointSig(sq.objective,3),inContact:!!sq.inContact};ss.decisionSig=[ss.phase,ss.rule,ss.target,ss.goal].join('|');var sh=pushHistory(st.squads,f+':'+sq.id,ss);detectSquad(sim,sq,sh);
