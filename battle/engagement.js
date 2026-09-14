@@ -163,6 +163,8 @@
       if(claimedByOther(s.squad,ob,s,battle))continue;
       var pt=coverPointBehind(ob,target),moveD=dist(p.x,p.z,pt.x,pt.z);
       if(moveD>maxRange)continue;
+      if(root.BattleAssaultForwardGuard&&!root.BattleAssaultForwardGuard.allowCover(s,battle,pt))continue;
+      if(root.BattleMovementProgress&&!root.BattleMovementProgress.candidateAllowed(s,battle,pt))continue;
       var anchor=s.orderDestination||s.squad&&s.squad.orderAnchor;
       if(s.role==='captain'&&anchor&&dist(pt.x,pt.z,anchor.x,anchor.z)>18)continue;
       var quality=F.coverPotentialAt(battle.obstacles,pt.x,pt.z);
@@ -174,6 +176,12 @@
       if(score<=bestScore)continue;
       if(!reachable({x:p.x,z:p.z},pt))continue;
       bestScore=score;best={x:pt.x,z:pt.z,quality:quality,distance:moveD,obstacle:ob,type:ob.type||'cover'};
+    }
+    var incumbent=state(s).state==='bound'&&state(s).cover;
+    if(best&&incumbent&&!opts.forward&&incumbent.quality<=USEFUL_COVER&&
+       (!root.BattleMovementProgress||root.BattleMovementProgress.candidateAllowed(s,battle,incumbent))){
+      var incumbentScore=(1-incumbent.quality)*40-dist(p.x,p.z,incumbent.x,incumbent.z);
+      if(bestScore<incumbentScore+4)return incumbent;
     }
     if(best)claim(s.squad,best.obstacle,s,battle);
     return best;
@@ -220,12 +228,14 @@
       /* A gun that leaves its firing position has to be emplaced again before it counts as set up. */
       if(next!=='engage'&&next!=='station')e.setUpSince=0;
       e.state=next;e.since=battle.time;
+      e.moveReason=why||next;
+      if(next!=='assault')e.assaultGoal=null;
       if(why)telemetry(battle,'decision-engagement',{soldier:s.id,faction:s.faction,role:s.role,squad:s.squad&&s.squad.id,state:next,why:why});
     }
     e.until=battle.time+(seconds||0);
   }
   /* Engagement supplies a short-lived combat proposal; the resolver owns the physical destination. */
-  function move(s,battle,p,kind,ttl){if(root.BattleMovementResolver)return root.BattleMovementResolver.proposeCombat(s,p,battle,kind,ttl);s.destination={x:p.x,z:p.z};s._navCache=null;return null;}
+  function move(s,battle,p,kind,ttl){if(root.BattleMovementResolver)return root.BattleMovementResolver.proposeCombat(s,p,battle,kind,ttl,{source:'engagement',reason:state(s).moveReason||state(s).state});s.destination={x:p.x,z:p.z};s._navCache=null;return null;}
   function holdPosition(s,battle){var p=posOf(s);move(s,battle,{x:p.x,z:p.z},'hold');}
   function orderPoint(s){
     if(s._fireteamDestination)return s._fireteamDestination;
@@ -326,10 +336,20 @@
     var e=state(s),cover=e.cover;
     s.state='engage';s.setUp=false;
     if(!cover){decide(s,battle,'bound without cover');return;}
+    /* Structured recovery consumed here: repeated no-progress against this cover flags it
+       unreachable, so abandon the bound and re-decide (alternate cover or fight from here)
+       instead of cycling the same destination forever. */
+    if(s._movementGoalUnreachable){
+      s._movementGoalUnreachable=false;
+      if(root.BattleMovementProgress)root.BattleMovementProgress.noteFailure(s,battle,cover,'bound-unreachable');
+      decide(s,battle,'bound unreachable');return;
+    }
+    if(cover&&root.BattleMovementProgress&&!root.BattleMovementProgress.candidateAllowed(s,battle,cover)){decide(s,battle,'cover suppressed');return;}
     var p=posOf(s),d=dist(p.x,p.z,cover.x,cover.z);
-    if(d<=COVER_ARRIVED||battle.time>=e.until){
+    if(d<=COVER_ARRIVED){
+      if(root.BattleMovementProgress)root.BattleMovementProgress.clearFailuresNear(s,battle,cover);
       holdPosition(s,battle);
-      enter(s,battle,'engage',0,d<=COVER_ARRIVED?'reached cover':'bound timed out');
+      enter(s,battle,'engage',0,'reached cover');
       return engage(s,battle);
     }
     var suppressed=s.suppressedUntil>battle.time,crawl=suppressed&&d<14&&PRONE_ROLES[s.role];
@@ -379,9 +399,15 @@
     var e=state(s);
     s.state='assault';s.setUp=false;
     if(!s.target){enter(s,battle,'alert',ALERT_HOLD,'target lost');return alert(s,battle);}
+    if(s._movementGoalUnreachable){
+      s._movementGoalUnreachable=false;
+      if(root.BattleMovementProgress&&e.assaultGoal)root.BattleMovementProgress.noteFailure(s,battle,e.assaultGoal,'assault-unreachable');
+      enter(s,battle,'engage',0,'assault unreachable');return engage(s,battle);
+    }
     var p=posOf(s),t=posOf(s.target),d=dist(p.x,p.z,t.x,t.z);
     commitStance(s,battle,'crouch',Math.max(1,e.until-battle.time));
-    move(s,battle,{x:p.x+(t.x-p.x)*.55,z:p.z+(t.z-p.z)*.55},'assault-rush');
+    if(!e.assaultGoal)e.assaultGoal={x:p.x+(t.x-p.x)*.55,z:p.z+(t.z-p.z)*.55};
+    move(s,battle,e.assaultGoal,'assault-rush');
     if(d<12||battle.time>=e.until){enter(s,battle,'engage',0,'assault complete');return engage(s,battle);}
     tryFire(s,battle);
   }

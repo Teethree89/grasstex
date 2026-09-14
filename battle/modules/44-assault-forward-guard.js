@@ -7,7 +7,7 @@
      1. Assault formation/order proposals are compacted around the forward axis. Out of contact the
         formation is especially narrow, so a man does not spend a whole window crossing the line.
      2. A non-suppressed cover bound must gain meaningful ground. Backward or almost-pure-lateral
-        cover is rejected and the normal squad order wins that tick. Suppressed men may still fall
+        candidates are rejected before commitment. Suppressed men may still fall
         back anywhere survival requires.
      3. Existing assault-rush, hold and firing-station combat proposals remain untouched. */
 (function(root){
@@ -46,13 +46,14 @@ function compactOrder(sim,s,q,ax){
   if(s.orderDestination){s.orderDestination.x=p.point.x;s.orderDestination.z=p.point.z;}
   bump(sim,q,'orderClamps');
 }
-function rejectNonProgressCover(sim,s,q,ax){
-  var st=s&&s._movementResolver,p=st&&st.combat;if(!p||p.kind!=='cover-bound'||!p.point)return;
-  if((+s.suppressedUntil||0)>(+sim.time||0))return; // survival outranks advance
-  var here=point(s.root&&s.root.position),pt=point(p.point);if(!here||!pt)return;
-  var dx=pt.x-here.x,dz=pt.z-here.z,forward=dx*ax.fx+dz*ax.fz;
-  if(forward>=MIN_COVER_FORWARD)return;
-  st.combat=null;bump(sim,q,'coverRejects');if(forward>=-.25)bump(sim,q,'lateralCoverRejects');
+// Filter candidates before engagement commits. Never delete an executing cover proposal:
+// remaining forward distance naturally falls below the threshold as the man arrives.
+function allowCover(s,sim,pt){
+  var q=s&&s.squad;if(!q||q.commandPhase!=='assault'||q.state==='retreat'||s.suppressedUntil>sim.time)return true;
+  var ax=axis(sim,q),here=point(s.root&&s.root.position);if(!ax||!here)return true;
+  var forward=(pt.x-here.x)*ax.fx+(pt.z-here.z)*ax.fz;
+  if(forward>=MIN_COVER_FORWARD)return true;
+  bump(sim,q,'coverRejects');if(forward>=-.25)bump(sim,q,'lateralCoverRejects');return false;
 }
 function publish(sim){
   var st=stats(sim),out={orderClamps:st.orderClamps,coverRejects:st.coverRejects,lateralCoverRejects:st.lateralCoverRejects,byFaction:st.byFaction,maxLateralAdvance:MAX_LATERAL_ADVANCE,maxLateralContact:MAX_LATERAL_CONTACT,maxFormationBack:MAX_FORMATION_BACK,maxOrderBackFromSoldier:MAX_ORDER_BACK_FROM_MAN,minNonSuppressedCoverForward:MIN_COVER_FORWARD};
@@ -62,12 +63,12 @@ function publish(sim){
 function reset(sim){sim._assaultForwardGuard=fresh();publish(sim);}
 root.BattleMovementResolver.resolve=function(s,battle){
   if(s&&battle&&s.squad&&s.squad.commandPhase==='assault'&&s.squad.state!=='retreat'){
-    var ax=axis(battle,s.squad);if(ax){compactOrder(battle,s,s.squad,ax);rejectNonProgressCover(battle,s,s.squad,ax);}
+    var ax=axis(battle,s.squad);if(ax){compactOrder(battle,s,s.squad,ax);}
     publish(battle);
   }
   return baseResolve.apply(this,arguments);
 };
 if(root.BattleModules)root.BattleModules.registerSystem('assault-forward-guard',{version:'1.2',onBattleStart:reset,onBattleRestart:reset});
-root.BattleAssaultForwardGuard={version:'1.2',summary:function(sim){return sim&&sim._assaultForwardGuardSummary?JSON.parse(JSON.stringify(sim._assaultForwardGuardSummary)):null;}};
+root.BattleAssaultForwardGuard={version:'1.3-candidate-admission',allowCover:allowCover,summary:function(sim){return sim&&sim._assaultForwardGuardSummary?JSON.parse(JSON.stringify(sim._assaultForwardGuardSummary)):null;}};
 console.log('[MOVE] assault forward guard v1.2: narrow advance + forward-only casual cover');
 })(typeof window!=='undefined'?window:globalThis);

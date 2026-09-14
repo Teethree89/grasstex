@@ -33,14 +33,14 @@ function startUrgentCover(s,battle,e){
   var cover=root.BattleEngagement.findCover(s,battle,{maxRange:COVER_SEARCH,threat:threat,minEnemyDistance:10});if(!cover)return false;
   e.cover=cover;e.state='bound';e.since=battle.time;e.until=battle.time+Math.max(2.0,cover.distance/Math.max(2.4,+s.crouchRunSpeed||+s.runSpeed||+s.speed||3)+1.0);e._urgentCover=true;
   s._combatUrgentUntil=battle.time+URGENT_TTL;s.prone=false;s.crawling=false;s.tacticalCrouch=true;s.setUp=false;
-  root.BattleMovementResolver.proposeCombat(s,{x:cover.x,z:cover.z},battle,'cover-bound',.8);bump(battle,s,'urgentCoverStarts');return true;
+  root.BattleMovementResolver.proposeCombat(s,{x:cover.x,z:cover.z},battle,'cover-bound',.8,{source:'combat-urgency',reason:'suppressed cover move'});bump(battle,s,'urgentCoverStarts');return true;
 }
 function maintainUrgentCover(s,battle,e){
   if(!e._urgentCover||!e.cover)return false;var p=pos(s),goal=point(e.cover),d=dist(p,goal);
   if(d<=COVER_ARRIVED){e._urgentCover=false;s._combatUrgentUntil=0;bump(battle,s,'urgentCoverArrivals');return false;}
-  if(!safeToMove(s,battle)||battle.time>=e.until){e._urgentCover=false;s._combatUrgentUntil=0;return false;}
+  if(!safeToMove(s,battle)||e.state!=='bound'){e._urgentCover=false;s._combatUrgentUntil=0;return false;}
   s._combatUrgentUntil=battle.time+URGENT_TTL;s.prone=false;s.crawling=false;s.tacticalCrouch=true;
-  root.BattleMovementResolver.proposeCombat(s,goal,battle,'cover-bound',.8);return true;
+  root.BattleMovementResolver.proposeCombat(s,goal,battle,'cover-bound',.8,{source:'combat-urgency',reason:'suppressed cover move'});return true;
 }
 /* React to a squadmate's warning ONCE for the current threat sector. The old implementation let an
    alert expire back to advance, then immediately treated the same shared contact as brand-new and
@@ -61,7 +61,7 @@ function reactToSharedContact(s,battle,e){
   if(e._sharedContactAware&&sectorDistance(e._sharedContactSector,sector)<=1){bump(battle,s,'sharedContactRepeatBlocks');return;}
   e._sharedContactAware=true;e._sharedContactSector=sector;e._sharedContactReactedAt=+battle.time||0;
   e.state='alert';e.since=battle.time;e.until=battle.time+SHARED_HOLD;e.lastSeen=aim;e.lastSeenAt=Math.max(+e.lastSeenAt||-999,+c.at||battle.time);s._faceHint=aim;s.tacticalCrouch=true;
-  root.BattleMovementResolver.proposeCombat(s,p,battle,'contact-reaction',Math.min(.8,SHARED_HOLD));bump(battle,s,'sharedContactReactions');
+  root.BattleMovementResolver.proposeCombat(s,p,battle,'contact-reaction',Math.min(.8,SHARED_HOLD),{source:'combat-urgency',reason:'new shared threat'});bump(battle,s,'sharedContactReactions');
 }
 root.BattleEngagement.updateSoldier=function(s,battle){
   var result=oldUpdate.apply(this,arguments);if(!s||!battle||s.dead)return result;var e=estate(s);

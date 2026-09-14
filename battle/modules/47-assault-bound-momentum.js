@@ -45,12 +45,16 @@ function maintain(s,battle){
   if(unsafe(s,battle)){clearRun(s,battle,!!run);return;}
   if(!run){if(!mayStart(s,battle))return;run=start(s,battle);if(!run)return;}
   var here=point(s.root.position);
-  if(dist(here,run.goal)<=ARRIVAL){run.completed=true;bump(battle,s,'completions');delete s._assaultBoundPush;return;}
+  if(dist(here,run.goal)<=ARRIVAL){run.completed=true;bump(battle,s,'completions');delete s._assaultBoundPush;if(root.BattleMovementProgress)root.BattleMovementProgress.clearFailuresNear(s,battle,run.goal);return;}
+  /* The same failed local solution must not be re-proposed every tick: a suppressed or
+     unreachable bound goal ends the run so the fireteam can pick a genuinely new one. */
+  if(s._movementGoalUnreachable){s._movementGoalUnreachable=false;if(root.BattleMovementProgress)root.BattleMovementProgress.noteFailure(s,battle,run.goal,'bound-unreachable');clearRun(s,battle,true);return;}
+  if(root.BattleMovementProgress&&!root.BattleMovementProgress.candidateAllowed(s,battle,run.goal)){clearRun(s,battle,true);return;}
   /* A bound is an urgent dash, not a 1 m/s crouch stroll. Combat-urgency marks this proposal so
      the gait layer compensates the movement integrator's suppression/crouch multiplier. */
   s._combatUrgentUntil=Math.max(+s._combatUrgentUntil||0,(+battle.time||0)+.5);
   s.prone=false;s.crawling=false;s.tacticalCrouch=true;
-  root.BattleMovementResolver.proposeCombat(s,run.goal,battle,'assault-bound-push',.8);
+  root.BattleMovementResolver.proposeCombat(s,run.goal,battle,'assault-bound-push',.8,{source:'assault-bound-momentum',reason:'authorized fireteam bound'});
 }
 function publish(sim){var st=stats(sim),out=JSON.parse(JSON.stringify(st));out.pushMeters=PUSH_METERS;sim._assaultBoundMomentumSummary=out;if(sim._coordinationHealth)sim._coordinationHealth.assaultBoundMomentum=JSON.parse(JSON.stringify(out));}
 function reset(sim){sim._assaultBoundMomentum=fresh();['us','ge'].forEach(function(f){var a=sim&&sim._roster&&sim._roster[f]||[];for(var i=0;i<a.length;i++)delete a[i]._assaultBoundPush;});publish(sim);}

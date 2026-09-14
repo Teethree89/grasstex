@@ -54,6 +54,9 @@ function invalidReason(s,sim,t){
 function update(s,sim){
   var a=s&&assignments.get(s);if(!a)return null;var t=a.task,reason=invalidReason(s,sim,t);
   if(reason){if(reason==='station-invalid')context(sim).stats.ingressRoutesInvalidated++;release(s,sim,reason);return null;}
+  /* Genuinely unable to reach the station after graduated recovery: release so the position can
+     be reassigned. Temporarily delayed soldiers never set this flag, so their assignments stay. */
+  if(s._movementGoalUnreachable){s._movementGoalUnreachable=false;release(s,sim,'station-unreachable');return null;}
   var R=root.BattleTacticalRoute;
   if(t.route&&R&&t.route.version!==R.ingressVersion(sim)){
     context(sim).stats.ingressRoutesInvalidated++;
@@ -61,9 +64,13 @@ function update(s,sim){
     if(!t.route){release(s,sim,'station-unreachable');return null;}
     context(sim).stats.ingressRoutesCreated++;emit(sim,'ingress',t,{door:t.route.door,reason:'geometry-changed'});
   }
-  if(distance(s.root.position,t.position)<=.35){
+  var ingressDist=distance(s.root.position,t.position);
+  if(t.lastIngressDist==null||ingressDist<t.lastIngressDist-.2){t.lastIngressDist=ingressDist;t.lastIngressAt=sim.time;}
+  t.ingressStallFor=Math.max(0,sim.time-(t.lastIngressAt!=null?t.lastIngressAt:t.assignedAt));
+  if(ingressDist<=.35){
     if(t.occupiedAt==null){t.occupiedAt=sim.time;t.status='occupying';context(sim).stats.assignmentsOccupied++;emit(sim,'occupied',t);}
     else t.status='holding';
+    if(root.BattleMovementProgress)root.BattleMovementProgress.clearFailuresNear(s,sim,t.position);
   }
   return t;
 }

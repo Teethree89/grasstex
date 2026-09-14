@@ -19,8 +19,8 @@ function point(p){return p&&isFinite(+p.x)&&isFinite(+p.z)?{x:+p.x,z:+p.z}:null;
 function pos(s){return point(s&&s.root&&s.root.position);}
 function dist(a,b){return a&&b?Math.hypot(a.x-b.x,a.z-b.z):Infinity;}
 function clone(p){return{x:+p.x,z:+p.z};}
-function fresh(){return{plans:0,coverDetours:0,safeDoorPlans:0,completedSteps:0,cancelledPlans:0,cooldownBlocks:0,pathSearches:0,byFaction:{us:{plans:0,coverDetours:0,safeDoorPlans:0},ge:{plans:0,coverDetours:0,safeDoorPlans:0}}};}
-function stats(sim){return sim._tacticalRouteStats||(sim._tacticalRouteStats=fresh());}
+function fresh(){return{plans:0,coverDetours:0,safeDoorPlans:0,completedSteps:0,cancelledPlans:0,cooldownBlocks:0,pathSearches:0,routeReuses:0,byFaction:{us:{plans:0,coverDetours:0,safeDoorPlans:0},ge:{plans:0,coverDetours:0,safeDoorPlans:0}}};}
+function stats(sim){var st=sim._tacticalRouteStats||(sim._tacticalRouteStats=fresh());if(st.routeReuses==null)st.routeReuses=0;return st;}
 function bump(sim,s,field){var st=stats(sim);st[field]=(st[field]||0)+1;var f=st.byFaction[s&&s.faction];if(f&&f[field]!=null)f[field]++;}
 function pathLength(start,path){var p=start,total=0;for(var i=0;i<(path||[]).length;i++){var q=path[i];total+=dist(p,q);p=q;}return total;}
 function navPath(a,b,battle){stats(battle).pathSearches++;var N=root.BattleNavigation;return N&&N.findPath?N.findPath(a,b):[clone(b)];}
@@ -148,7 +148,8 @@ function resolve(s,battle,pick){
   if(!s||!battle||!pick||!pick.point||s.dead)return null;
   var plan=s._tacticalRoute;
   if(plan&&!planMatches(plan,pick)){clearPlan(s,battle,true);plan=null;}
-  plan=advancePlan(s,battle,plan);if(plan)return{point:clone(plan.steps[plan.index]),reason:plan.reason,intent:clone(plan.intent),step:plan.index,total:plan.steps.length};
+  plan=advancePlan(s,battle,plan);
+  if(plan){stats(battle).routeReuses++;return{point:clone(plan.steps[plan.index]),reason:plan.reason,intent:clone(plan.intent),step:plan.index,total:plan.steps.length};}
   var threat=knownThreat(s,battle);
   if(!plan){
     if((+s._tacticalRouteCooldownUntil||0)>(+battle.time||0)){stats(battle).cooldownBlocks++;return null;}

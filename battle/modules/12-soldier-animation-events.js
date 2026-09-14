@@ -22,7 +22,7 @@
     oldUpdate(s,battle);
     if(s&&s.reloading){
       s.setUp=false;s.tacticalCrouch=true;
-      if(s.target&&root.BattleMovementResolver){root.BattleMovementResolver.proposeCombat(s,{x:s.root.position.x,z:s.root.position.z},battle,'reload-hold');root.BattleMovementResolver.resolve(s,battle);}
+      if(s.target&&root.BattleMovementResolver){root.BattleMovementResolver.proposeCombat(s,{x:s.root.position.x,z:s.root.position.z},battle,'reload-hold',null,{source:'weapon-cycle',reason:'reload pause'});root.BattleMovementResolver.resolve(s,battle);}
       else if(s.target)s.destination={x:s.root.position.x,z:s.root.position.z};
     }
   };
