@@ -100,7 +100,7 @@
     var ob=stop.obstacle,w=stop.wall,n={x:-d.x,y:-d.y,z:-d.z},surface='cement';
     if(stop.ground){
       surface='dirt';n=norm({x:battle.heightAt(p.x-.2,p.z)-battle.heightAt(p.x+.2,p.z),y:.4,z:battle.heightAt(p.x,p.z-.2)-battle.heightAt(p.x,p.z+.2)});
-    }else if(w&&w.a&&w.b){n=norm({x:w.b.z-w.a.z,y:0,z:w.a.x-w.b.z});}
+    }else if(w&&w.a&&w.b){n=norm({x:w.b.z-w.a.z,y:0,z:w.a.x-w.b.x});}
     else if(ob){surface=ob.impactMaterial||ob.materialType||ob.type||'cement';if(isFinite(ob.x)&&isFinite(ob.z))n=norm({x:p.x-ob.x,y:.15,z:p.z-ob.z});}
     if(n.x*d.x+n.y*d.y+n.z*d.z>0)n={x:-n.x,y:-n.y,z:-n.z};
     return{surface:surface,normal:n};
