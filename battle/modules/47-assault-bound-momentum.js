@@ -22,7 +22,7 @@ function stats(sim){return sim._assaultBoundMomentum||(sim._assaultBoundMomentum
 function bump(sim,s,kind){var st=stats(sim);st[kind]++;if(st.byFaction[s.faction])st.byFaction[s.faction][kind]++;}
 function tokenFor(s){return s&&s.squad?+s.squad._boundUntil||0:0;}
 function unsafe(s,battle){
-  var sq=s&&s.squad;if(!sq||s.dead||s.role==='gunner'||s._firingStation||s.reloading||s.clearingStoppage||s.outOfAmmo)return true;
+  var sq=s&&s.squad;if(!sq||s.dead||s.role==='gunner'||(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s))||s.reloading||s.clearingStoppage||s.outOfAmmo)return true;
   if((+s.suppressedUntil||0)>(+battle.time||0))return true;
   if(sq.state==='retreat'||sq.commandPhase!=='assault'||!sq._assaultAuthorized||!sq.inContact)return true;
   if((+battle.time||0)>=tokenFor(s))return true;

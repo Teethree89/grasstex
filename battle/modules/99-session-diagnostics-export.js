@@ -45,7 +45,8 @@ function soldier(s){
     suppressedUntil:finite(+(s&&s.suppressedUntil)),setUp:!!(s&&s.setUp),reloading:!!(s&&s.reloading),reloadUntil:finite(+(s&&s.reloadUntil)),
     clearingStoppage:!!(s&&s.clearingStoppage),stoppageUntil:finite(+(s&&s.stoppageUntil)),outOfAmmo:!!(s&&s.outOfAmmo),
     weapon:{kind:w.kind||null,ammo:finite(+w.ammo),reserveAmmo:finite(+w.reserveAmmo),magSize:finite(+w.magSize),heat:finite(+w.heat),jammed:!!w.jammed},
-    ammoState:safePlain(s&&s._ammoState,3),engagement:engagement(s)
+    ammoState:safePlain(s&&s._ammoState,3),engagement:engagement(s),
+    positionalTask:root.BattleTacticalPositions?safePlain(root.BattleTacticalPositions.current(s),7):null
   };
 }
 function squad(sq){
@@ -97,6 +98,7 @@ function buildPayload(sim){
     objectives:objectives(sim),
     objectiveControl:safePlain(sim.objectiveControl,6),objectiveHold:safePlain(sim.objectiveHold,4),
     ammunition:ammo,
+    tacticalPositions:root.BattleTacticalPositions?root.BattleTacticalPositions.summary(sim):null,
     factions:{
       us:{alive:sim.factions&&sim.factions.us&&sim.factions.us.alive,kills:sim.factions&&sim.factions.us&&sim.factions.us.kills,squads:(sim.factions&&sim.factions.us&&sim.factions.us.squads||[]).map(squad)},
       ge:{alive:sim.factions&&sim.factions.ge&&sim.factions.ge.alive,kills:sim.factions&&sim.factions.ge&&sim.factions.ge.kills,squads:(sim.factions&&sim.factions.ge&&sim.factions.ge.squads||[]).map(squad)}

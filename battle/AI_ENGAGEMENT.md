@@ -11,15 +11,54 @@ recognised a target, never initiated contact, never got down.
 | Layer | File | Owns | Must not touch |
 | --- | --- | --- | --- |
 | Perception | `squad-ai.js` | who can see whom, shot resolution, formations, squad state | individual stance or destination during combat |
-| Individual combat | `engagement.js` | `destination`, `prone` / `crawling` / `tacticalCrouch`, permission to fire | commander intent, objectives |
+| Individual combat | `engagement.js` | movement proposals, `prone` / `crawling` / `tacticalCrouch`, permission to fire | reservations, physical destination, commander intent |
 | Squad stability | `modules/16-squad-plan-stability.js` | committed plans, fireteam slots, defensive posts | stance, cover, firing |
-| Hardpoints | `modules/20-building-hardpoints.js` | who claims a building firing station | how that soldier moves or shoots |
+| Tactical positions | `modules/20-building-hardpoints.js` | reservation registry, assignment lifecycle, committed ingress route | personal target, physical destination |
+| Tactical routing | `modules/52-survival-tactical-route.js` | safe ingress construction, suppressed cover detours | reservation lifecycle, physical destination |
+| Navigation | `battle-navigation.js`, `modules/39-navigation-physicality-debug.js` | static stations, doors, physical pathfinding and collision | task assignment or release |
+| Movement resolver | `movement-resolver.js` | final physical destination, selection of command/combat/position waypoint | command task or reservation lifecycle |
 | Commander | `commander-ai.js` + `commander-doctrine.js` + `commander-routes.js` | route, phase, objective | anything per-soldier |
 
 Modules supply **inputs** to the engagement pipeline (`orderDestination`, `_fireteamDestination`,
-`_firingStation`, `squad.commandPhase`). They do not override its **outputs**. A new module that
+`BattleTacticalPositions.current(soldier)`, `squad.commandPhase`). They do not override its **outputs**. A new module that
 needs a soldier somewhere should express that as a position input, not as a post-hoc assignment to
 `soldier.destination`.
+
+## Persistent positional tasks
+
+`BattleTacticalPositions` is the only reservation API: `claim(soldier, sim, station, threat)`,
+`current(soldier)`, `station(soldier)`, `release(soldier, sim, reason)`. The registry keys assignees
+by object identity (including numeric id zero); station IDs come from canonical navigation geometry.
+There are no `_firingStation` / `_windowSlot` mirrors or navigation claim/release methods.
+
+Tasks progress `assigned → ingress → occupying → holding → released`. Command/fireteam jobs
+(`support-by-fire`, defensive holds, security) determine eligibility. Normal window candidates are
+gunners and riflemen. Captains retain their command formation and seek protected cover within
+18 metres of their command slot. Maneuver teams remain available to maneuver.
+
+Personal target loss, target direction changes, reload and stoppage do not release a task. An
+occupied soldier watches the stored sector and fires at valid targets facing that window. The
+resolver reads the persistent assignment even when engagement's temporary proposals expire;
+weapon cycles pause at the current point and then resume the same ingress route.
+
+The router scores door exposure to the known threat and checks a bounded shortlist. It returns a
+complete, exact route through door outside → door inside → station, stored on the task. Repeated
+AI ticks consume waypoints without rescheduling doors or repeating path searches. Static geometry
+changes invalidate that route; a replacement is built once or the manager releases an unreachable
+station. Short rolling navigation queues are not used as proof that an ingress destination is reachable.
+
+Death/incapacitation, retreat/regroup, command task/objective/plan replacement, invalid geometry,
+confirmed unreachability, and battle end release assignments. The engagement plan owns its existing
+quiet-close period; stripped runtimes without plans use squad quiet. No personal LOS grace timer
+owns the station. Physical occupancy caches follow the registry revision, so releases are immediately
+available to a new assignee. Personal-space correction anchors occupied tasks, not ingress soldiers.
+
+Full-session exports contain `tacticalPositions` totals, role counts, release reasons, lifetimes,
+current tasks/routes, and the last 80 releases; each soldier includes `positionalTask`. Counters
+cover the full session, while release details are bounded. `averageAssignmentLifetime` includes the
+current age of live assignments; `averageReleasedLifetime` includes only completed lifetimes.
+
+Run `node tools/ai-sim-harness/tactical-positions-check.js` for the ownership and ingress regressions.
 
 ## The state machine
 

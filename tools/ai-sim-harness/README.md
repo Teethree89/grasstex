@@ -65,3 +65,9 @@ so a change in lethality is visible even when every assertion still passes.
 Useful for ad-hoc work as well: `bootstrap()` returns the loaded globals, so a throwaway script can
 scatter a real cover field, stand up five squads a side, run a few hundred simulated seconds and
 print state histograms without opening a browser.
+
+`node tools/ai-sim-harness/tactical-positions-check.js` loads the shipping position manager, command
+plans, engagement, ammo, physical navigation, resolver, personal spacing and movement integrator.
+It checks exclusive ownership (including soldier id zero), target-independent holding, weapon-cycle
+pauses, legitimate releases, captain/task eligibility, committed rear-door ingress, reuse, quiet
+closure, static route invalidation and full-session diagnostics. It runs in deployment CI.

@@ -16,7 +16,7 @@ function sqKey(s){var q=s&&s.squad;return String(s&&s.faction||'?')+':'+String(q
 function episode(s){var q=s&&s.squad,c=q&&q.contact;if(!q)return'none';if(isFinite(+q.contactSince)&&q.contactSince!=null)return'active:'+Math.floor(+q.contactSince*2)/2;if(c&&isFinite(+c.at))return'forming:'+Math.floor(+c.at*2)/2;return'none';}
 function targetId(s){var q=s&&s.squad,c=q&&q.contact,t=c&&c.unit;return String(t&&t.id!=null?t.id:'?');}
 function locationToken(s,event){
-  var q=s&&s.squad,c=q&&q.contact,t=c&&c.unit,slot=t&&t._windowSlot;
+  var q=s&&s.squad,c=q&&q.contact,t=c&&c.unit,slot=t&&root.BattleTacticalPositions&&root.BattleTacticalPositions.station(t);
   if(slot){var id=slot.id||slot.key||slot.stationId||slot.buildingId;if(id!=null)return String(id);var x=isFinite(+slot.x)?Math.round(+slot.x):'',z=isFinite(+slot.z)?Math.round(+slot.z):'',y=isFinite(+slot.yBottom)?Math.round(+slot.yBottom):'';return[x,z,y].join(',');}
   if(c&&isFinite(+c.x)&&isFinite(+c.z))return Math.round(+c.x/6)+','+Math.round(+c.z/6);
   return event;

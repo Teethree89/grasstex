@@ -174,7 +174,8 @@
     if(shooter.role==='gunner'&&shooter.setUp)acc*=1.25;
     if(shooter.prone)acc*=1.12;
     if(shooter.moving)acc*=.82;
-    if(target._windowSlot)acc*=.46;
+    var targetPosition=root.BattleTacticalPositions&&root.BattleTacticalPositions.current(target);
+    if(targetPosition&&targetPosition.occupiedAt!=null)acc*=.46;
     /* Cover pays off in proportion to how much of the target's silhouette it actually hides. */
     acc*=coverMultiplierAt(target.root.position.x,target.root.position.z,battle.obstacles,stanceOf(target));
     acc=clamp(acc,.02,.95);
@@ -307,7 +308,7 @@
      produces soldiers that shoot instead of soldiers that stand still. */
   function fallbackBehavior(soldier,battle,role){
     if(soldier.squad.state==='retreat'){
-      if(root.BattleNavigation)root.BattleNavigation.releaseFiringPosition(soldier);
+      if(root.BattleTacticalPositions)root.BattleTacticalPositions.release(soldier,battle,'retreat');
       soldier.prone=false;soldier.state='retreat';setDestination(soldier,soldier.orderDestination||formationSlot(soldier.squad,soldier,soldier.slotIndex),battle,true);
       if(soldier.target&&dist2(soldier.root.position.x,soldier.root.position.z,soldier.target.root.position.x,soldier.target.root.position.z)<35)tryFire(soldier,battle);
       soldier.setUp=false;return;
@@ -322,7 +323,6 @@
       if(d<=role.engageRange)tryFire(soldier,battle);
       return;
     }
-    if(root.BattleNavigation&&soldier._windowSlot)root.BattleNavigation.releaseFiringPosition(soldier);
     soldier.prone=false;soldier.tacticalCrouch=false;soldier.state='advance';soldier.setUp=false;soldier.setUpSince=0;
     setDestination(soldier,soldier.orderDestination||formationSlot(soldier.squad,soldier,soldier.slotIndex),battle,false);
   }

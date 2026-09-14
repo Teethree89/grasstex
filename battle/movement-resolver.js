@@ -34,12 +34,22 @@
     if(kind==='cover-bound')return e.state==='bound';
     if(kind==='assault-rush')return e.state==='assault';
     if(kind==='assault-bound-push')return!!soldier._assaultBoundPush;
-    if(kind==='firing-station')return!!soldier._firingStation&&e.state==='station';
     if(kind==='reload-hold')return!!soldier.reloading;
     return false;
   }
   function choose(soldier,battle){
     var st=state(soldier),t=now(battle),combat=st.combat;
+    var P=root.BattleTacticalPositions,task=P&&P.update(soldier,battle);
+    if(task){
+      if(soldier.reloading||soldier.clearingStoppage){
+        if(!st.positionPause)st.positionPause=point(soldier.root.position);
+        return proposal('tactical-positions',st.positionPause,battle,'reload-hold',true,Infinity);
+      }
+      st.positionPause=null;
+      return proposal('tactical-positions',task.position,battle,'firing-station',true,Infinity);
+    }
+    st.positionPause=null;
+    if(P&&combat&&combat.kind==='firing-station'){st.combat=null;combat=null;}
     if(combat&&(combat.until+1e-6>=t||stickyCombatActive(soldier,combat))){
       if(combat.until+1e-6<t)st.stickyCombatWins++;
       return combat;
@@ -48,6 +58,7 @@
     return st.order||proposal('squad-orders',soldier.orderDestination,battle,'formation',false,Infinity);
   }
   function tacticalWaypoint(soldier,battle,pick){
+    if(pick.kind==='firing-station'&&root.BattleTacticalPositions)return root.BattleTacticalPositions.waypoint(soldier,battle);
     var T=root.BattleTacticalRoute;if(!T||typeof T.resolve!=='function')return null;
     try{return T.resolve(soldier,battle,pick)||null;}catch(err){if(root.console&&console.warn)console.warn('[MOVE] tactical route failed',err);return null;}
   }
@@ -65,11 +76,11 @@
     }
     if(routed)st.tacticalWins++;
     st.last={owner:pick.owner,kind:pick.kind,issuedAt:pick.issuedAt,until:pick.until,point:{x:physical.x,z:physical.z},intentPoint:{x:pick.point.x,z:pick.point.z},tacticalReason:routed&&routed.reason||null,tacticalStep:routed?{index:routed.step,total:routed.total}:null};
-    if(pick.owner==='engagement')st.combatWins++;else st.orderWins++;
+    if(pick.owner==='engagement'||pick.owner==='tactical-positions')st.combatWins++;else st.orderWins++;
     return st.last;
   }
   function resetSoldier(soldier){if(soldier){delete soldier._movementResolver;delete soldier._movementTacticalReason;delete soldier._tacticalRoute;}}
-  function summary(sim){var out={orders:0,combat:0,byKind:{},changed:0,stickyCombatWins:0,tacticalWins:0},roster=sim&&sim._roster||{};['us','ge'].forEach(function(f){(roster[f]||[]).forEach(function(s){if(!s||s.dead)return;var st=s._movementResolver,last=st&&st.last;if(!last)return;out.changed+=st.changes||0;out.stickyCombatWins+=st.stickyCombatWins||0;out.tacticalWins+=st.tacticalWins||0;if(last.owner==='engagement')out.combat++;else out.orders++;out.byKind[last.kind]=(out.byKind[last.kind]||0)+1;});});return out;}
+  function summary(sim){var out={orders:0,combat:0,byKind:{},changed:0,stickyCombatWins:0,tacticalWins:0},roster=sim&&sim._roster||{};['us','ge'].forEach(function(f){(roster[f]||[]).forEach(function(s){if(!s||s.dead)return;var st=s._movementResolver,last=st&&st.last;if(!last)return;out.changed+=st.changes||0;out.stickyCombatWins+=st.stickyCombatWins||0;out.tacticalWins+=st.tacticalWins||0;if(last.owner==='engagement'||last.owner==='tactical-positions')out.combat++;else out.orders++;out.byKind[last.kind]=(out.byKind[last.kind]||0)+1;});});return out;}
   root.BattleMovementResolver={version:'1.2-tactical-waypoints',orderCommit:ORDER_COMMIT,combatTTL:COMBAT_TTL,proposeOrder:proposeOrder,proposeCombat:proposeCombat,resolve:resolve,resetSoldier:resetSoldier,summary:summary};
   console.log('[MOVE] final resolver: command intent -> survival-aware tactical waypoint -> physical destination');
 })(typeof window!=='undefined'?window:globalThis);

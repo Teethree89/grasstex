@@ -14,15 +14,15 @@
 if(!root.BattleModules||!root.BattleNavigation||root.BattleNavigationPhysicality)return;
 
 var N=root.BattleNavigation;
-var baseMovementClear=N.movementClear,baseNextWaypoint=N.nextWaypoint,baseFindPath=N.findPath,baseFiringDirective=N.firingDirective;
+var baseMovementClear=N.movementClear,baseNextWaypoint=N.nextWaypoint,baseFindPath=N.findPath;
 var HARD_TYPES={hedge:1,tree:1,log:1,wall:1,rock:1};
 /* The widest procedural infantry rig (gunner torso + upper arms) fits within 0.9 m.
    Inflate each footprint by the body radius for collision; path centres keep a full body
    width plus 0.25 m from its edge. These are world metres, independent of segment length. */
 var BODY_RADIUS=.45,COLLISION_MARGIN=BODY_RADIUS,ROUTE_MARGIN=BODY_RADIUS*2+.25,NODE_PAD=.34,ROUTE_HORIZON=96,ROUTE_CORRIDOR=12,MAX_ROUTE_SHAPES=32;
 var LOOKAHEAD_DISTANCE=105,MIN_QUEUE=3,TARGET_QUEUE=5,MAX_QUEUE=8,WAYPOINT_SPACING=10,MIN_WAYPOINT_SPACING=1.35,PATH_ARRIVAL=.88,GOAL_ARRIVAL=.35,REPLAN_SECONDS=5.0;
-var STATION_RADIUS=.92,STATION_ROUTE_MARGIN=.28,CONTACT_GRACE=4.5;
-var simRef=null,occupied=[],occupiedAt=-999,legacyCache=null,physicalIndexCache=null;
+var STATION_RADIUS=.92,STATION_ROUTE_MARGIN=.28;
+var simRef=null,occupied=[],occupiedAt=-999,occupiedRevision=-1,legacyCache=null,physicalIndexCache=null;
 var debug={visible:false,version:-1,markers:[],freeMat:null,usedMat:null,button:null,nextUpdate:0};
 
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
@@ -76,8 +76,8 @@ function gatherStatic(sim,a,b,pad){
   return out;
 }
 function refreshOccupied(sim,force){
-  if(!sim)return occupied=[];if(!force&&sim.time<occupiedAt+.22)return occupied;occupiedAt=sim.time;occupied=[];
-  ['us','ge'].forEach(function(f){(sim._roster[f]||[]).forEach(function(s){var st=s&&!s.dead&&(s._firingStation||s._windowSlot);if(st)occupied.push({id:'station:'+st.id,type:'occupied-window',shape:'circle',x:+st.x,z:+st.z,radius:STATION_RADIUS,soldier:s});});});return occupied;
+  if(!sim)return occupied=[];var revision=root.BattleTacticalPositions?root.BattleTacticalPositions.revision(sim):0;if(!force&&revision===occupiedRevision&&sim.time<occupiedAt+.22)return occupied;occupiedRevision=revision;occupiedAt=sim.time;occupied=[];
+  ['us','ge'].forEach(function(f){(sim._roster[f]||[]).forEach(function(s){var st=s&&!s.dead&&(root.BattleTacticalPositions&&root.BattleTacticalPositions.station(s));if(st)occupied.push({id:'station:'+st.id,type:'occupied-window',shape:'circle',x:+st.x,z:+st.z,radius:STATION_RADIUS,soldier:s});});});return occupied;
 }
 
 function toLocal(fp,p){var a=axes(fp),dx=p.x-(+fp.x||0),dz=p.z-(+fp.z||0);return{x:dx*a.ux+dz*a.uz,z:dx*a.vx+dz*a.vz};}
@@ -306,14 +306,15 @@ function consumeReached(c,start,sim,soldier){
   c.index=0;
 }
 
-function planComplete(sim,start,end){
+function planComplete(sim,start,end,soldier,exact){
   if(!sim)return baseFindPath(start,end);
-  end=standGoal(sim,null,start,end);
+  if(!exact)end=standGoal(sim,null,start,end);
+  if(dist(start,end)<=GOAL_ARRIVAL&&N.movementClear(start,end))return[point(end)];
   var building=baseFindPath(start,end)||[{x:end.x,z:end.z}],cursor={x:start.x,z:start.z},raw=[],guard=0;
   for(var bi=0;bi<building.length&&guard<96;bi++){
     var target=point(building[bi]);if(!target)continue;
     while(dist(cursor,target)>GOAL_ARRIVAL&&guard++<96){
-      var p=planLocal(sim,null,cursor,target),pts=p.points||[];if(!pts.length)return densify(start,raw);
+      var p=planLocal(sim,soldier||null,cursor,target),pts=p.points||[];if(!pts.length)return exact?[]:densify(start,raw);
       var progressed=false;
       for(var q=0;q<pts.length;q++){var n=pts[q];if(dist(cursor,n)>.05){raw.push({x:n.x,z:n.z,kind:n.kind||target.kind||'physical',meta:n.meta||target.meta||null});cursor={x:n.x,z:n.z};progressed=true;}}
       if(dist(cursor,target)<=GOAL_ARRIVAL)break;
@@ -321,7 +322,7 @@ function planComplete(sim,start,end){
       if(dist(cursor,p.segmentGoal)<=PATH_ARRIVAL&&dist(p.segmentGoal,target)>PATH_ARRIVAL)continue;
     }
   }
-  return densify(start,raw);
+  return exact?(dist(cursor,end)<=GOAL_ARRIVAL?raw:[]):densify(start,raw);
 }
 
 N.movementClear=function(a,b){
@@ -347,6 +348,9 @@ N.resolveStep=function(from,to){
 N.findPath=function(start,end){var sim=currentSim();return sim?planComplete(sim,start,end):baseFindPath(start,end);};
 N.nextWaypoint=function(sim,soldier,dest){
   simRef=sim||simRef;
+  // Positional ingress already contains a complete, committed physical route.
+  var task=root.BattleTacticalPositions&&root.BattleTacticalPositions.current(soldier),last=soldier&&soldier._movementResolver&&soldier._movementResolver.last;
+  if(task&&last&&last.kind==='firing-station'&&dest&&N.movementClear(soldier.root.position,dest))return dest;
   var base=baseNextWaypoint(sim,soldier,dest)||dest;
   if(!soldier||!soldier.root||!dest)return base;
   var start={x:+soldier.root.position.x,z:+soldier.root.position.z},finalGoal=point(dest);if(!finalGoal)return base;
@@ -361,15 +365,6 @@ N.nextWaypoint=function(sim,soldier,dest){
   else soldier._fieldDetour=null;
   return wp;
 };
-
-function recentAim(s,sim){if(!s||!sim)return null;var c=s.squad&&s.squad.contact,e=s.eng;if(c&&isFinite(+c.at)&&sim.time-(+c.at)<=CONTACT_GRACE)return{x:+c.x,z:+c.z};if(e&&e.lastSeen&&isFinite(+e.lastSeenAt)&&sim.time-(+e.lastSeenAt)<=CONTACT_GRACE)return{x:+e.lastSeen.x,z:+e.lastSeen.z};return null;}
-N.firingDirective=function(soldier,target){
-  if(target&&!target.dead)return baseFiringDirective(soldier,target);
-  var st=soldier&&(soldier._firingStation||soldier._windowSlot),sim=currentSim(),aim=recentAim(soldier,sim);if(!st||!aim)return baseFiringDirective(soldier,target);
-  var vx=aim.x-st.windowX,vz=aim.z-st.windowZ,vlen=Math.hypot(vx,vz)||1,face=(vx/vlen)*st.normalX+(vz/vlen)*st.normalZ;if(face<.18)return baseFiringDirective(soldier,target);
-  return{x:st.x,z:st.z,slot:st,stance:st.stance,aimPoint:{x:st.windowX,z:st.windowZ}};
-};
-N.windowDirective=N.firingDirective;
 
 function makeMaterial(scene,name,r,g,b,alpha){var m=new BABYLON.StandardMaterial(name,scene);m.diffuseColor=new BABYLON.Color3(r,g,b);m.emissiveColor=new BABYLON.Color3(r*.72,g*.72,b*.72);m.specularColor=BABYLON.Color3.Black();m.alpha=alpha;m.disableDepthWrite=true;return m;}
 function disposeMarkers(){for(var i=0;i<debug.markers.length;i++){var m=debug.markers[i];try{m.station.dispose();}catch(_){}try{m.window.dispose();}catch(_){}try{m.line.dispose();}catch(_){}}debug.markers=[];debug.version=-1;}
@@ -412,6 +407,7 @@ root.BattleNavigationPhysicality={
   occupiedStations:function(sim){return refreshOccupied(sim||currentSim(),true).slice();},hardTypes:Object.keys(HARD_TYPES),
   bodyRadius:BODY_RADIUS,bodyWidth:BODY_RADIUS*2,navMargin:COLLISION_MARGIN,routeMargin:ROUTE_MARGIN,routeHorizon:ROUTE_HORIZON,minLookahead:MIN_QUEUE,maxLookahead:MAX_QUEUE,
   footprints:function(sim){return staticFootprints(sim||currentSim()).slice();},shapeHit:shapeHit,shapeContains:shapeContains,routeNodes:routeNodes,
+  planIngressPath:function(sim,soldier,start,end){return planComplete(sim,start,end,soldier,true);},
   planPath:function(sim,start,end){return planComplete(sim||currentSim(),start,end);},planLocal:function(sim,start,end){return planLocal(sim||currentSim(),null,start,end);}
 };
 console.log('[NAV-PHYS] rolling 3+ waypoint routing + buffered mesh-footprint avoidance loaded');

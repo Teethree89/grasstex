@@ -298,7 +298,7 @@ try {
     function cleanup() {
       sim.paused = true;
       for (const faction of ['us', 'ge']) for (const u of sim._roster?.[faction] || []) {
-        try { root.BattleNavigation && (root.BattleNavigation.releaseFiringPosition || root.BattleNavigation.releaseWindow)?.(u); } catch (_) {}
+        try { root.BattleTacticalPositions?.release(u, sim, 'battle-reset'); } catch (_) {}
         u._navCache = null; u.target = null;
         try { if (u.root && (!u.root.isDisposed || !u.root.isDisposed())) u.root.dispose(); } catch (_) { try { u.root?.dispose(); } catch (__) {} }
       }

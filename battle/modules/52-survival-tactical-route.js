@@ -73,30 +73,40 @@ function advancePlan(s,battle,plan){
   }
   return plan;
 }
-function safestDoorPlan(s,battle,pick,threat){
-  var st=s&&s._firingStation;if(!st||!st.building||!threat)return null;var b=buildingById(st.building),here=pos(s);if(!b||insideBuilding(here,b))return null;
-  var portals=root.BattleNavigation.doorPortals||[],candidates=[];
-  for(var i=0;i<portals.length;i++){
-    var d=portals[i];if(String(d.building)!==String(st.building))continue;
-    var score=dist(here,d.outside)+dist(d.inside,pick.point);
-    var vx=threat.x-d.x,vz=threat.z-d.z,vl=Math.hypot(vx,vz)||1,faces=(vx/vl)*(+d.normalX||0)+(vz/vl)*(+d.normalZ||0);
-    if(threatCanSeePoint(threat,d.outside,battle))score+=DOOR_VISIBLE_PENALTY;
-    score+=Math.max(0,faces)*DOOR_FACING_PENALTY;
-    candidates.push({door:d,score:score});
+// A complete route is computed once at assignment. Physical navigation supplies exact endpoints;
+// its rolling lookahead queue is not a complete reachability result.
+function ingressPath(s,battle,a,b){
+  var P=root.BattleNavigationPhysicality;stats(battle).pathSearches++;
+  var path=P&&P.planIngressPath?P.planIngressPath(battle,s,a,b):root.BattleNavigation.findPath(a,b);
+  if(!path||!path.length||dist(path[path.length-1],b)>.35)return null;
+  var cursor=a;for(var i=0;i<path.length;i++){if(!root.BattleNavigation.movementClear(cursor,path[i]))return null;cursor=path[i];}
+  return path.map(clone);
+}
+function ingressVersion(battle){return root.BattleNavigation.version+'|'+(battle.obstacles&&battle.obstacles.__physicalVersion||0)+'|'+(battle.obstacles&&battle.obstacles.length||0);}
+function createIngress(s,battle,st,threat){
+  var b=buildingById(st.building),here=pos(s);if(!b||!here)return null;
+  var steps=null,door=null;
+  if(insideBuilding(here,b))steps=ingressPath(s,battle,here,st);
+  else{
+    var candidates=(root.BattleNavigation.doorPortals||[]).filter(function(d){return String(d.building)===String(st.building);}).map(function(d){
+      var score=dist(here,d.outside)+dist(d.inside,st);
+      if(threat){var vx=threat.x-d.x,vz=threat.z-d.z,vl=Math.hypot(vx,vz)||1;
+        if(threatCanSeePoint(threat,d.outside,battle))score+=DOOR_VISIBLE_PENALTY;
+        score+=Math.max(0,(vx*d.normalX+vz*d.normalZ)/vl)*DOOR_FACING_PENALTY;}
+      return{door:d,score:score};
+    }).sort(function(a,b){return a.score-b.score;});
+    var bestScore=Infinity;
+    for(var i=0;i<Math.min(2,candidates.length);i++){
+      var c=candidates[i],d=c.door;
+      if(!root.BattleNavigation.movementClear(d.outside,d.inside))continue;
+      var p1=ingressPath(s,battle,here,d.outside),p2=ingressPath(s,battle,d.inside,st);if(!p1||!p2)continue;
+      var score=pathLength(here,p1)+pathLength(d.inside,p2)+c.score-dist(here,d.outside)-dist(d.inside,st);
+      if(score<bestScore){bestScore=score;steps=p1.concat([clone(d.inside)],p2);door=d.id;}
+    }
   }
-  if(!candidates.length)return null;
-  candidates.sort(function(a,b){return a.score-b.score;});
-  var best=null,bestScore=Infinity,limit=Math.min(2,candidates.length);
-  for(var j=0;j<limit;j++){
-    var c=candidates[j],d=c.door,p1=navPath(here,d.outside,battle),p2=navPath(d.inside,pick.point,battle);
-    var actual=pathLength(here,p1)+pathLength(d.inside,p2)+(c.score-dist(here,d.outside)-dist(d.inside,pick.point));
-    if(actual<bestScore){bestScore=actual;best=d;}
-  }
-  if(!best)return null;
-  /* The final station is part of the same commitment. Do not hand movement back at the inside
-     threshold and immediately let formation/cover logic steal the soldier before he reaches the
-     window. */
-  return beginPlan(s,battle,pick,'safe-building-entry',[best.outside,best.inside,pick.point]);
+  if(!steps)return null;
+  bump(battle,s,'plans');bump(battle,s,'safeDoorPlans');
+  return{steps:steps,index:0,door:door,createdAt:battle.time,version:ingressVersion(battle)};
 }
 function protectivePoint(s,battle,pick,threat){
   var F=root.BattleObstacleField,N=root.BattleNavigation,here=pos(s);if(!F||!here||!threat)return null;
@@ -137,13 +147,9 @@ function survivalPlan(s,battle,pick,threat){
 function resolve(s,battle,pick){
   if(!s||!battle||!pick||!pick.point||s.dead)return null;
   var plan=s._tacticalRoute;
-  /* A reload is a temporary pause, not a new route. Preserve a committed building entry while the
-     hands are busy, then resume the same doorway/window sequence afterward. */
-  if(plan&&plan.reason==='safe-building-entry'&&String(pick.kind||'')==='reload-hold')return null;
   if(plan&&!planMatches(plan,pick)){clearPlan(s,battle,true);plan=null;}
   plan=advancePlan(s,battle,plan);if(plan)return{point:clone(plan.steps[plan.index]),reason:plan.reason,intent:clone(plan.intent),step:plan.index,total:plan.steps.length};
-  var threat=knownThreat(s,battle),kind=String(pick.kind||'');
-  if(kind==='firing-station')plan=safestDoorPlan(s,battle,pick,threat);
+  var threat=knownThreat(s,battle);
   if(!plan){
     if((+s._tacticalRouteCooldownUntil||0)>(+battle.time||0)){stats(battle).cooldownBlocks++;return null;}
     plan=survivalPlan(s,battle,pick,threat);
@@ -153,7 +159,7 @@ function resolve(s,battle,pick){
 function publish(sim){var out=JSON.parse(JSON.stringify(stats(sim)));sim._tacticalRouteSummary=out;if(sim._coordinationHealth)sim._coordinationHealth.tacticalRoutes=JSON.parse(JSON.stringify(out));}
 function reset(sim){sim._tacticalRouteStats=fresh();var a=root.BattleModules.unitsFor(sim);for(var i=0;i<a.length;i++){delete a[i]._tacticalRoute;a[i]._tacticalRouteCooldownUntil=0;}publish(sim);}
 
-root.BattleTacticalRoute={version:'1.1-committed-low-frequency',resolve:resolve,knownThreat:knownThreat,summary:function(sim){return sim&&sim._tacticalRouteSummary?JSON.parse(JSON.stringify(sim._tacticalRouteSummary)):null;}};
-root.BattleModules.registerSystem('survival-tactical-route',{version:'1.1-committed-low-frequency',onBattleStart:reset,onBattleRestart:reset,onCommanderTick:publish});
+root.BattleTacticalRoute={version:'2.0-position-ingress',createIngress:createIngress,ingressVersion:ingressVersion,cancel:function(s,sim){clearPlan(s,sim,true);},resolve:resolve,knownThreat:knownThreat,summary:function(sim){return sim&&sim._tacticalRouteSummary?JSON.parse(JSON.stringify(sim._tacticalRouteSummary)):null;}};
+root.BattleModules.registerSystem('survival-tactical-route',{version:'2.0-position-ingress',onBattleStart:reset,onBattleRestart:reset,onCommanderTick:publish});
 console.log('[MOVE] tactical routing committed + low-frequency: suppressed detours and door->window plans only');
 })(typeof window!=='undefined'?window:globalThis);

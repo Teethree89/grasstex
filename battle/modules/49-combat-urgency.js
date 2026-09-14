@@ -25,7 +25,7 @@ function sectorFor(s,p){var a=pos(s);if(!a||!p)return null;var ang=Math.atan2(p.
 function sectorDistance(a,b){if(a==null||b==null)return 8;var d=Math.abs(a-b)%8;return Math.min(d,8-d);}
 /* Reloading/stoppage handling can momentarily occupy the hands, but being out of ammunition is NOT
    a reason to stand in the open. Empty weapons retain the same right to seek physical cover. */
-function safeToMove(s,battle){return!!(s&&!s.dead&&!s.reloading&&!s.clearingStoppage&&s.squad&&s.squad.state!=='retreat'&&!s._firingStation);}
+function safeToMove(s,battle){return!!(s&&!s.dead&&!s.reloading&&!s.clearingStoppage&&s.squad&&s.squad.state!=='retreat'&&!(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s)));}
 function startUrgentCover(s,battle,e){
   if(!safeToMove(s,battle)||(+s.suppressedUntil||0)<=+battle.time||!exposed(s,battle))return false;
   var threat=threatFor(s,battle);if(!threat||!root.BattleEngagement.findCover)return false;

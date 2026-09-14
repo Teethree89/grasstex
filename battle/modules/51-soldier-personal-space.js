@@ -10,7 +10,7 @@ if(!root.BattleModules||root.BattleSoldierPersonalSpace)return;
 
 var MIN=0.90,CELL=1.0,MAX_PUSH=.18;
 function point(s){return s&&s.root&&s.root.position?{x:+s.root.position.x||0,z:+s.root.position.z||0}:null;}
-function fixed(s){return!!(s&&(s._firingStation||s.state==='hardpoint'));}
+function fixed(s){var t=root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s);return!!(t&&t.occupiedAt!=null);}
 function key(x,z){return Math.floor(x/CELL)+','+Math.floor(z/CELL);}
 function clear(a,b){try{return !root.BattleNavigation||!root.BattleNavigation.movementClear||root.BattleNavigation.movementClear(a,b);}catch(_){return true;}}
 function fresh(){return{pairCorrections:0,exactOverlaps:0,blockedCorrections:0,maxPenetration:0};}

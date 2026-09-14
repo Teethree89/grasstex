@@ -1,11 +1,10 @@
 /* Building-aware navigation + occupiable firing stations.
    Doors are movement portals; doors/windows are LOS portals. Door portals have a real corridor
    width/depth so infantry can cross the threshold without grazing the wall line. Window firing
-   positions sit safely inside rooms, are reservable like vehicle seats, and only score if they
-   face the current enemy. */
+   positions sit safely inside rooms. Persistent reservations belong to BattleTacticalPositions. */
 (function(root){
   'use strict';
-  var scenario=null,walls=[],nodes=[],edges=[],version=0,firingStations=[],occupants=Object.create(null),doorPortals=[];
+  var scenario=null,walls=[],nodes=[],edges=[],version=0,firingStations=[],doorPortals=[];
   var EPS=.0001,DOOR_PAD=1.55,DOOR_CLEARANCE=.48,CORNER_PAD=2.4,MAX_EDGE=300,STATION_INSET=.775;
   /* How much wall a man is allowed to be standing on before it counts as being in his way.
      This has to be an absolute distance. It used to be a fraction of the query segment, so the
@@ -77,7 +76,7 @@
   function link(a,b){var d=Math.hypot(a.x-b.x,a.z-b.z);edges[a.id].push({to:b.id,cost:d});edges[b.id].push({to:a.id,cost:d});}
 
   function buildScenarioGeometry(s){
-    scenario=s;walls=[];nodes=[];edges=[];firingStations=[];occupants=Object.create(null);doorPortals=[];version++;
+    scenario=s;walls=[];nodes=[];edges=[];firingStations=[];doorPortals=[];version++;
     if(!s)return;
     (s.buildings||[]).forEach(function(b){
       ['north','south','east','west'].forEach(function(side){
@@ -133,7 +132,6 @@
     var path=ids.map(function(id){return{x:nodes[id].x,z:nodes[id].z,kind:nodes[id].kind,meta:nodes[id].meta};});
     path.push({x:end.x,z:end.z,kind:'goal'});return path;
   }
-  function pathLength(start,path){var x=start.x,z=start.z,total=0;for(var i=0;i<path.length;i++){total+=Math.hypot(path[i].x-x,path[i].z-z);x=path[i].x;z=path[i].z;}return total;}
   function nextWaypoint(sim,soldier,dest){
     if(!scenario||!dest)return dest;
     var c=soldier._navCache,dx=!c?Infinity:dest.x-c.destX,dz=!c?Infinity:dest.z-c.destZ;
@@ -145,28 +143,8 @@
     return c.path[Math.min(c.index,c.path.length-1)]||dest;
   }
 
-  function claimFiringPosition(soldier,target,maxRange){
-    if(!scenario||!soldier||!target)return null;maxRange=maxRange||60;
-    var sx=soldier.root.position.x,sz=soldier.root.position.z,tx=target.root?target.root.position.x:target.x,tz=target.root?target.root.position.z:target.z,best=null,bestScore=Infinity;
-    for(var i=0;i<firingStations.length;i++){
-      var st=firingStations[i];if(occupants[st.id]&&occupants[st.id]!==soldier.id)continue;
-      var d=Math.hypot(st.x-sx,st.z-sz);if(d>maxRange)continue;
-      var vx=tx-st.windowX,vz=tz-st.windowZ,vlen=Math.hypot(vx,vz)||1,face=(vx/vlen)*st.normalX+(vz/vlen)*st.normalZ;
-      if(face<.32)continue;
-      if(losBlocked({x:st.x,z:st.z},{x:tx,z:tz},1.08,target.root?target.root.position.y+1.15:1.15))continue;
-      var path=findPath({x:sx,z:sz},{x:st.x,z:st.z}),plen=pathLength({x:sx,z:sz},path),score=plen-face*14+d*.08;
-      if(score<bestScore){bestScore=score;best=Object.assign({path:path},st);}
-    }
-    if(best){if(soldier._firingStation&&soldier._firingStation.id!==best.id)releaseFiringPosition(soldier);occupants[best.id]=soldier.id;soldier._firingStation=best;soldier._windowSlot=best;}
-    return best;
-  }
-  function releaseFiringPosition(soldier){if(!soldier)return;var st=soldier._firingStation||soldier._windowSlot;if(!st)return;if(occupants[st.id]===soldier.id)delete occupants[st.id];soldier._firingStation=null;soldier._windowSlot=null;soldier._navCache=null;soldier._physicalPath=null;}
-  function firingDirective(soldier,target){var st=soldier&&(soldier._firingStation||soldier._windowSlot);if(!st||!target||target.dead)return null;var tx=target.root.position.x,tz=target.root.position.z,vx=tx-st.windowX,vz=tz-st.windowZ,vlen=Math.hypot(vx,vz)||1,face=(vx/vlen)*st.normalX+(vz/vlen)*st.normalZ;if(face<.25){releaseFiringPosition(soldier);return null;}return{x:st.x,z:st.z,slot:st,stance:st.stance,aimPoint:{x:st.windowX,z:st.windowZ}};}
-
   root.BattleNavigation={
     installScenario:buildScenarioGeometry,movementClear:movementClear,resolveStep:resolveStep,lineOfSightBlocked:losBlocked,findPath:findPath,nextWaypoint:nextWaypoint,
-    claimFiringPosition:claimFiringPosition,releaseFiringPosition:releaseFiringPosition,firingDirective:firingDirective,
-    claimWindow:claimFiringPosition,releaseWindow:releaseFiringPosition,windowDirective:firingDirective,
     get scenario(){return scenario;},get version(){return version;},get walls(){return walls.slice();},get doorPortals(){return doorPortals.slice();},
     get firingStations(){return firingStations.slice();},get windowSlots(){return firingStations.slice();},get doorPad(){return DOOR_PAD;},get doorClearance(){return DOOR_CLEARANCE;},get startSkin(){return START_SKIN;}
   };

@@ -163,6 +163,8 @@
       if(claimedByOther(s.squad,ob,s,battle))continue;
       var pt=coverPointBehind(ob,target),moveD=dist(p.x,p.z,pt.x,pt.z);
       if(moveD>maxRange)continue;
+      var anchor=s.orderDestination||s.squad&&s.squad.orderAnchor;
+      if(s.role==='captain'&&anchor&&dist(pt.x,pt.z,anchor.x,anchor.z)>18)continue;
       var quality=F.coverPotentialAt(battle.obstacles,pt.x,pt.z);
       if(quality>USEFUL_COVER)continue;
       var enemyD=dist(pt.x,pt.z,posOf(target).x,posOf(target).z);
@@ -262,7 +264,7 @@
        through enter() so the state is honest: the squad counters and the operator readout read it,
        and a man coming off a retreat re-decides instead of resuming a stale firefight state. */
     if(s.squad&&s.squad.state==='retreat'){enter(s,battle,'withdraw',0,'squad withdrawing');return withdraw(s,battle);}
-    if(s._firingStation){enter(s,battle,'station',0,'firing station');return station(s,battle);}
+    if(root.BattleTacticalPositions&&root.BattleTacticalPositions.update(s,battle)){enter(s,battle,'station',0,'firing station');return station(s,battle);}
 
     switch(e.state){
       case'orient':return orient(s,battle);
@@ -415,16 +417,18 @@
   }
 
   function station(s,battle){
-    var e=state(s),st=root.BattleNavigation&&root.BattleNavigation.firingDirective(s,s.target);
-    if(!st){root.BattleNavigation&&root.BattleNavigation.releaseFiringPosition(s);enter(s,battle,'orient',.3,'station lost');return;}
-    s.state='hardpoint';
+    var e=state(s),t=root.BattleTacticalPositions.current(s),st=t.position;
+    s.state='hardpoint';s._faceHint=t.threatSector;
     var p=posOf(s),d=dist(p.x,p.z,st.x,st.z);
     commitStance(s,battle,'crouch',2.0);
+    // Keep the station intent even when occupied; a short-lived hold proposal cannot return him
+    // to formation when engagement updates are staggered.
+    move(s,battle,{x:st.x,z:st.z},'firing-station');
     if(d<=.35){
-      holdPosition(s,battle);
       if(s.role==='gunner'){if(!e.setUpSince)e.setUpSince=battle.time;s.setUp=battle.time-e.setUpSince>GUNNER_SETUP;}
-      tryFire(s,battle);
-    }else move(s,battle,{x:st.x,z:st.z},'firing-station');
+      if(s.target){var tp=posOf(s.target),dx=tp.x-st.windowX,dz=tp.z-st.windowZ,len=Math.hypot(dx,dz)||1;
+        if((dx*st.normalX+dz*st.normalZ)/len>=.25)tryFire(s,battle);}
+    }else s.setUp=false;
   }
 
   /* ---- per-squad update ------------------------------------------------------------------- */
@@ -442,7 +446,7 @@
       var point={x:contact.x,z:contact.z},api=SA();
       for(i=0;i<members.length;i++){
         s=members[i];
-        if(s.dead||s.target||s._firingStation)continue;
+        if(s.dead||s.target||(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s))||(root.BattleAmmunition&&!root.BattleAmmunition.available(s)))continue;
         if(s.suppressedUntil>battle.time)continue;
         var es=state(s);
         if(es.state==='bound'||es.state==='pinned'||es.state==='withdraw'||es.state==='assault')continue;
@@ -485,7 +489,10 @@
       /* A man putting rounds on the known position IS the base of fire - that is the entire point
          of him doing it. Counting only men with a visible target meant a squad whose line of sight
          kept blinking could never satisfy the bound requirement and simply stopped advancing. */
-      else if(e.state==='engage'||e.state==='station'||e.suppressOrder)effective++;
+      else if(!root.BattleAmmunition||root.BattleAmmunition.available(s)){
+        var position=root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s);
+        if(e.state==='engage'||(e.state==='station'&&position&&position.occupiedAt!=null)||e.suppressOrder)effective++;
+      }
     }
     sq.contactCount=contact;sq.pinnedCount=pinnedCount;sq.effectiveCount=effective;
     /* A bound order that was not taken up inside its window is stale, not pending. */
@@ -514,7 +521,7 @@
       var ordered=0;
       for(i=0;i<members.length;i++){
         s=members[i];if(s.dead||s.suppressedUntil>battle.time)continue;
-        if(s.role==='gunner')continue;                                  // the gun holds the base of fire
+        if(s.role==='gunner'||(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s)))continue; // positional tasks hold the base of fire
         if(s._fireteamKey&&s._fireteamKey!==team)continue;
         state(s).boundOrder=true;ordered++;
       }
