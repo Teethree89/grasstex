@@ -1,6 +1,6 @@
 /* Consistent visible feedback for every weapon discharge.
    Direct-fire ballistics now supply the actual ray impact point. Keep hit tracers visible and make
-   miss tracers genuinely faint, while retaining the legacy fallback for older/non-ballistic shots. */
+   miss tracers faint, while retaining the legacy fallback for older/non-ballistic shots. */
 (function(root){
   'use strict';
   if(!root.BattleSim||typeof BABYLON==='undefined'||root.BattleCombatFxConsistency)return;
@@ -28,20 +28,17 @@
     var a=hash01(seed)*Math.PI*2,spread=Math.min(3.2,.55+(+d||0)*.014),vertical=(hash01(seed^0x5bd1e995)-.5)*spread*.65;
     aim.x+=Math.cos(a)*spread;aim.z+=Math.sin(a)*spread;aim.y+=vertical;return aim;
   }
-  function hitTracer(scene,from,to){
-    if(!scene||!from||!to)return;var l=BABYLON.MeshBuilder.CreateLines('tracer-hit',{points:[from,to]},scene);
-    l.color=new BABYLON.Color3(1,.95,.7);l.isPickable=false;l.renderingGroupId=3;
-    setTimeout(function(){try{l.dispose();}catch(_){}},90);
-  }
-  function missTracer(scene,from,to){
+  function tracer(scene,name,from,to,color,alpha,lifetime){
     if(!scene||!from||!to)return;
     var opts={points:[from,to]},useVertexAlpha=typeof BABYLON.Color4==='function';
-    if(useVertexAlpha){opts.colors=[new BABYLON.Color4(1,1,1,.05),new BABYLON.Color4(1,1,1,.05)];opts.useVertexAlpha=true;}
-    var l=BABYLON.MeshBuilder.CreateLines('tracer-miss',opts,scene);
-    l.color=new BABYLON.Color3(1,1,1);if(!useVertexAlpha)l.alpha=.05;
+    if(useVertexAlpha){opts.colors=[new BABYLON.Color4(color.r,color.g,color.b,alpha),new BABYLON.Color4(color.r,color.g,color.b,alpha)];opts.useVertexAlpha=true;}
+    var l=BABYLON.MeshBuilder.CreateLines(name,opts,scene);
+    l.color=new BABYLON.Color3(color.r,color.g,color.b);if(!useVertexAlpha)l.alpha=alpha;
     l.isPickable=false;l.renderingGroupId=3;
-    setTimeout(function(){try{l.dispose();}catch(_){}},135);
+    setTimeout(function(){try{l.dispose();}catch(_){}},lifetime);
   }
+  function hitTracer(scene,from,to){tracer(scene,'tracer-hit',from,to,{r:1,g:.95,b:.7},.50,90);}
+  function missTracer(scene,from,to){tracer(scene,'tracer-miss',from,to,{r:1,g:1,b:1},.15,135);}
   function install(sim){
     if(!sim||sim._combatFxConsistencyInstalled)return sim;sim._combatFxConsistencyInstalled=true;
     var oldFire=sim.onFire,oldShot=sim.onShot;
@@ -61,6 +58,6 @@
     return sim;
   }
   root.BattleSim.start=function(scene,opts){return install(oldStart(scene,opts));};
-  root.BattleCombatFxConsistency={version:'71-ballistic-impact-tracers',install:install};
-  if(typeof console!=='undefined')console.log('[FX] hit/miss tracers follow real ballistic ray impact points; misses use 5% vertex alpha');
+  root.BattleCombatFxConsistency={version:'72-balanced-tracer-opacity',install:install};
+  if(typeof console!=='undefined')console.log('[FX] ballistic hit tracers use 50% vertex alpha; miss tracers use 15% vertex alpha');
 })(typeof window!=='undefined'?window:globalThis);
