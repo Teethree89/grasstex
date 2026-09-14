@@ -271,3 +271,45 @@ jobs:
           fi
           git commit -m "Benchmark results #${GITHUB_RUN_NUMBER}"
           git push origin "HEAD:${RESULTS_BRANCH}"
+
+  notify:
+    name: Notify benchmark result
+    needs: [validate-source, benchmark, merge]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send ntfy notification
+        env:
+          VALIDATE_RESULT: ${{ needs.validate-source.result }}
+          BENCHMARK_RESULT: ${{ needs.benchmark.result }}
+          MERGE_RESULT: ${{ needs.merge.result }}
+          SOURCE_SHA: ${{ needs.validate-source.outputs.source_sha }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$VALIDATE_RESULT" != success ]; then
+            status="FAILED during source validation"
+            tags="x,warning"
+            priority="high"
+          elif [ "$BENCHMARK_RESULT" != success ]; then
+            status="FAILED during battle shards"
+            tags="x,warning"
+            priority="high"
+          elif [ "$MERGE_RESULT" != success ]; then
+            status="FAILED while merging/publishing"
+            tags="x,warning"
+            priority="high"
+          else
+            status="COMPLETE"
+            tags="white_check_mark,crossed_swords"
+            priority="default"
+          fi
+          short_sha="${SOURCE_SHA:-${GITHUB_SHA}}"
+          short_sha="${short_sha:0:7}"
+          curl -fsS \
+            -H "Title: WW2 Battle Sim benchmark #${GITHUB_RUN_NUMBER}" \
+            -H "Priority: ${priority}" \
+            -H "Tags: ${tags}" \
+            -H "Click: ${RUN_URL}" \
+            -d "${status} · 100 battles (10x10) · ${short_sha}" \
+            https://ntfy.sh/ww2battlesim
