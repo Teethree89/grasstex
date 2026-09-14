@@ -28,8 +28,16 @@
     aim.x+=Math.cos(a)*spread;aim.z+=Math.sin(a)*spread;aim.y+=vertical;return aim;
   }
   function missTracer(scene,from,to){
-    if(!scene||!from||!to)return;var l=BABYLON.MeshBuilder.CreateLines('tracer-miss',{points:[from,to]},scene);
-    l.color=new BABYLON.Color3(1,1,1);l.alpha=.05;l.isPickable=false;l.renderingGroupId=3;
+    if(!scene||!from||!to)return;
+    var opts={points:[from,to]},useVertexAlpha=typeof BABYLON.Color4==='function';
+    if(useVertexAlpha){
+      opts.colors=[new BABYLON.Color4(1,1,1,.05),new BABYLON.Color4(1,1,1,.05)];
+      opts.useVertexAlpha=true;
+    }
+    var l=BABYLON.MeshBuilder.CreateLines('tracer-miss',opts,scene);
+    l.color=new BABYLON.Color3(1,1,1);
+    if(!useVertexAlpha)l.alpha=.05;
+    l.isPickable=false;l.renderingGroupId=3;
     setTimeout(function(){try{l.dispose();}catch(_){}},135);
   }
   function install(sim){
@@ -47,6 +55,6 @@
     return sim;
   }
   root.BattleSim.start=function(scene,opts){return install(oldStart(scene,opts));};
-  root.BattleCombatFxConsistency={version:'68-ghost-miss-tracers',install:install};
-  if(typeof console!=='undefined')console.log('[FX] every shot gets visible muzzle bloom; direct misses get near-transparent white tracers');
+  root.BattleCombatFxConsistency={version:'69-vertex-alpha-miss-tracers',install:install};
+  if(typeof console!=='undefined')console.log('[FX] every shot gets visible muzzle bloom; direct misses use 5% vertex-alpha white tracers');
 })(typeof window!=='undefined'?window:globalThis);
