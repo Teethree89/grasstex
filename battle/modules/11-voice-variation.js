@@ -1,10 +1,13 @@
 /* Stable per-soldier voice variation.
-   Pitch variants are pre-rendered during deployment so playback duration/speech speed stays unchanged. */
+   Pitch variants are pre-rendered during deployment so playback duration/speech speed stays unchanged.
+   Social chatter and tactical speech use separate throttle lanes: a captain/contact call can speak
+   over a story instead of being discarded because somebody was joking half a second earlier. */
 (function(root){
   'use strict';
   if(typeof BABYLON==='undefined'||typeof window==='undefined')return;
 
-  var cache={},failed={},lastGlobal=0,squadLast={};
+  var cache={},failed={},lastSocialGlobal=0,socialSquadLast={},lastTacticalGlobal=0,tacticalSquadLast={};
+  var SOCIAL={idleQuip:true,idleStory:true,idleLaugh:true,idleGroan:true};
 
   function hashString(value){
     var s=String(value),h=2166136261>>>0;
@@ -48,16 +51,26 @@
     if(!m||!m.callouts||!m.callouts[soldier.faction]){console.warn('[VOICE] manifest/event map unavailable');return;}
     var events=m.callouts[soldier.faction].events||{},files=events[type];
     if(!files||!files.length){console.warn('[VOICE] no event '+soldier.faction+'/'+type);return;}
-    var rules=m.rules&&m.rules.voice||{},now=performance.now(),globalGap=700,squadGap=(rules.perSquadCooldownSeconds||2.5)*1000;
+    var rules=m.rules&&m.rules.voice||{},now=performance.now(),social=!!SOCIAL[type];
+    var socialGlobalGap=700,socialSquadGap=(rules.perSquadCooldownSeconds||2.5)*1000;
+    /* Tactical calls have their own lane. They can overlap an anecdote, but still get a small
+       anti-cacophony gap so twelve soldiers do not shout CONTACT on the exact same frame. */
+    var tacticalGlobalGap=220,tacticalSquadGap=480;
     var cp=cameraPos(cam),drop=rules.dropBeyondDistance||120;
     if(cp&&distance(cp,soldier.root.position)>drop)return;
-    if(now-lastGlobal<globalGap)return;
     var squadId=soldier.squad&&soldier.squad.id||soldier.faction;
-    if(now-(squadLast[squadId]||0)<squadGap)return;
+    if(social){
+      if(now-lastSocialGlobal<socialGlobalGap)return;
+      if(now-(socialSquadLast[squadId]||0)<socialSquadGap)return;
+    }else{
+      if(now-lastTacticalGlobal<tacticalGlobalGap)return;
+      if(now-(tacticalSquadLast[squadId]||0)<tacticalSquadGap)return;
+    }
 
     var baseFile=files[Math.floor(Math.random()*files.length)],profile=profileFor(soldier,m),file=variantPath(baseFile,profile);
     if(failed[file])return;
-    lastGlobal=now;squadLast[squadId]=now;
+    if(social){lastSocialGlobal=now;socialSquadLast[squadId]=now;}
+    else{lastTacticalGlobal=now;tacticalSquadLast[squadId]=now;}
     var entry=cache[file];
     if(entry){
       if(entry.ready)playAt(entry,soldier);
@@ -90,5 +103,5 @@
   }
 
   root.BattleVoiceScheduler={enqueue:enqueue,profileFor:profileFor,variantPath:variantPath};
-  console.log('[VOICE] v3 stable pitch profiles active; playback speed unchanged');
+  console.log('[VOICE] v4 stable pitch profiles + tactical-over-social priority active');
 })(typeof window!=='undefined'?window:globalThis);
