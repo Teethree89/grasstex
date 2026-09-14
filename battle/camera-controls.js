@@ -5,8 +5,11 @@
   var PAD_DEADZONE=.16,PAD_LOOK_RATE=2.35,PAD_PRECISION=.28,PAD_THROTTLE_STEP=1.35;
   var KEY_HINT='Camera: click to look · WASD move · wheel speed · Q/E up/down · Shift sprint · Esc releases';
   var PAD_HINT='Xbox: LS move · RS look · LT/RT down/up · RB sprint · LB precision · D-pad speed · Y level';
+  var TOUCH_HINT='Camera: drag to orbit · pinch/wheel to zoom';
+  var PAD_WAKE_HINT='Xbox: move a stick or press a button to switch to fly controls';
   function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
   function desktopPointer(){return !!(global.matchMedia&&global.matchMedia('(pointer:fine)').matches);}
+  function hasGamepadAPI(){return !!(global.navigator&&typeof global.navigator.getGamepads==='function');}
   function initialPosition(target,radius,alpha,beta){
     return new BABYLON.Vector3(
       target.x+radius*Math.cos(alpha)*Math.sin(beta),
@@ -18,7 +21,8 @@
     var camera=new BABYLON.ArcRotateCamera('cam',-Math.PI/2,1.02,720,target,scene);
     camera.lowerRadiusLimit=90;camera.upperRadiusLimit=1850;camera.lowerBetaLimit=.28;camera.upperBetaLimit=1.5;
     camera.wheelPrecision=3;camera.panningSensibility=120;camera.attachControl(canvas,true);
-    return {camera:camera,desktop:false,hint:'Camera: drag to orbit · pinch/wheel to zoom'};
+    var hint=TOUCH_HINT+(hasGamepadAPI()?' · '+PAD_WAKE_HINT:'');
+    return {camera:camera,desktop:false,hint:hint};
   }
   function shapedAxis(v){
     v=isFinite(+v)?+v:0;var a=Math.abs(v);if(a<=PAD_DEADZONE)return 0;
@@ -26,15 +30,30 @@
   }
   function buttonValue(pad,index){var b=pad&&pad.buttons&&pad.buttons[index];return b?Math.max(b.pressed?1:0,+b.value||0):0;}
   function activeGamepad(){
-    if(!global.navigator||typeof global.navigator.getGamepads!=='function')return null;
+    if(!hasGamepadAPI())return null;
     var pads=global.navigator.getGamepads()||[],fallback=null;
     for(var i=0;i<pads.length;i++){var p=pads[i];if(!p||p.connected===false)continue;if(!fallback)fallback=p;if(p.mapping==='standard')return p;}
     return fallback;
   }
-  function createDesktopFly(scene,canvas,target,engine,battleSim){
-    var radius=720,alpha=-Math.PI/2,beta=1.02;
-    var camera=new BABYLON.UniversalCamera('cam',initialPosition(target,radius,alpha,beta),scene);
-    camera.inputs.clear();camera.minZ=.25;camera.maxZ=2600;camera.setTarget(target);scene.activeCamera=camera;
+  function cameraPose(camera,fallbackTarget){
+    var position=camera&&camera.position&&camera.position.clone?camera.position.clone():initialPosition(fallbackTarget,720,-Math.PI/2,1.02);
+    var look=fallbackTarget&&fallbackTarget.clone?fallbackTarget.clone():new BABYLON.Vector3(fallbackTarget.x,fallbackTarget.y,fallbackTarget.z);
+    if(camera){
+      try{
+        if(typeof camera.getTarget==='function'){
+          var t=camera.getTarget();if(t)look=t.clone?t.clone():new BABYLON.Vector3(t.x,t.y,t.z);
+        }else if(camera.target){
+          look=camera.target.clone?camera.target.clone():new BABYLON.Vector3(camera.target.x,camera.target.y,camera.target.z);
+        }
+      }catch(_){}
+    }
+    return {position:position,target:look};
+  }
+  function createDesktopFly(scene,canvas,target,engine,battleSim,pose){
+    var startPosition=pose&&pose.position?pose.position:initialPosition(target,720,-Math.PI/2,1.02);
+    var lookTarget=pose&&pose.target?pose.target:target;
+    var camera=new BABYLON.UniversalCamera('cam',startPosition,scene);
+    camera.inputs.clear();camera.minZ=.25;camera.maxZ=2600;camera.setTarget(lookTarget);scene.activeCamera=camera;
     var yaw=camera.rotation.y,pitch=camera.rotation.x,active=false,throttle=1,keys=new Set(),padButtons={},padId=null;
     function guarded(){return active||document.activeElement===canvas;}
     function keyName(event){return event.key===' '?' ':event.key.toLowerCase();}
@@ -103,11 +122,38 @@
     updateHint(activeGamepad());
     return {camera:camera,desktop:true,hint:KEY_HINT+(activeGamepad()?' · '+PAD_HINT:'')};
   }
+  function createAdaptive(options,target){
+    var scene=options.scene,canvas=options.canvas,engine=options.engine,battleSim=options.battleSim;
+    var initialPad=activeGamepad();
+    var initial=(desktopPointer()||initialPad)?createDesktopFly(scene,canvas,target,engine,battleSim):createTouchOrbit(scene,canvas,target);
+    var state={camera:initial.camera,desktop:initial.desktop,hint:initial.hint};
+    var wakeObserver=null;
+    function setHint(text){var el=document.getElementById('cameraHint');if(el)el.textContent=text;}
+    function switchToGamepad(pad,source){
+      if(state.desktop)return;
+      pad=pad||activeGamepad();if(!pad)return;
+      var old=state.camera,pose=cameraPose(old,target);
+      try{if(old&&old.detachControl)old.detachControl(canvas);}catch(_){}
+      try{if(old&&old.dispose)old.dispose();}catch(_){}
+      var next=createDesktopFly(scene,canvas,target,engine,battleSim,pose);
+      state.camera=next.camera;state.desktop=true;state.hint=next.hint;setHint(next.hint);
+      if(wakeObserver){scene.onBeforeRenderObservable.remove(wakeObserver);wakeObserver=null;}
+      console.log('[CAMERA] gamepad wake switched touch orbit to fly ('+source+'): '+(pad.id||'gamepad'));
+    }
+    if(!state.desktop&&hasGamepadAPI()){
+      global.addEventListener('gamepadconnected',function(e){switchToGamepad(e&&e.gamepad,'event');});
+      /* iOS/WebKit can withhold a Bluetooth controller from getGamepads() until user input.
+         Poll while touch-orbit is active so either a stick movement or button press that exposes
+         the pad can hand control to the fly camera without a reload. */
+      wakeObserver=scene.onBeforeRenderObservable.add(function(){var pad=activeGamepad();if(pad)switchToGamepad(pad,'poll');});
+    }
+    return state;
+  }
   global.BattleDesktopCamera={
     create:function(options){
       var target=new BABYLON.Vector3(options.scenario.center.x,4,options.scenario.center.z);
-      var result=(desktopPointer()||activeGamepad())?createDesktopFly(options.scene,options.canvas,target,options.engine,options.battleSim):createTouchOrbit(options.scene,options.canvas,target);
-      console.log('[CAMERA] '+(result.desktop?'ww2fps Model Lab desktop fly controls':'touch orbit controls')+' active');
+      var result=createAdaptive(options,target);
+      console.log('[CAMERA] '+(result.desktop?'ww2fps Model Lab desktop/gamepad fly controls':'touch orbit controls; waiting for gamepad wake')+' active');
       return result;
     }
   };
