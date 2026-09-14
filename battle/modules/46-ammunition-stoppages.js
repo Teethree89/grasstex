@@ -88,7 +88,7 @@ root.SquadAI.areaFire=function(s,point,battle){
 };
 
 function tick(sim,payload){
-  var dt=Math.max(0,+payload&&+payload.dt||0),t=+sim.time||0,a=units(sim);
+  var dt=Math.max(0,payload&&isFinite(+payload.dt)?+payload.dt:0),t=+sim.time||0,a=units(sim);
   for(var i=0;i<a.length;i++){
     var s=a[i],w=s.weapon,c=cfg(s);if(!s._ammoState)initialize(s,sim);
     w.heat=Math.max(0,(+w.heat||0)-c.cool*dt);
@@ -106,7 +106,7 @@ function snapshot(sim){
 }
 function publish(sim){var out=snapshot(sim);sim._ammunitionSummary=out;if(sim._coordinationHealth)sim._coordinationHealth.ammunition=JSON.parse(JSON.stringify(out));}
 
-root.BattleModules.registerSystem('ammunition-stoppages',{version:'1.0',onBattleStart:reset,onBattleRestart:reset,onSimulationStep:tick,onCommanderTick:publish});
-root.BattleAmmunition={version:'1.0',loadouts:LOADOUT,initialize:initialize,startReload:startReload,startStoppage:startStoppage,available:function(s){return!!(s&&s.weapon&&!s.reloading&&!s.clearingStoppage&&!s.weapon.jammed&&(+s.weapon.ammo||0)>0);},summary:function(sim){return sim?snapshot(sim):null;}};
+root.BattleModules.registerSystem('ammunition-stoppages',{version:'1.1',onBattleStart:reset,onBattleRestart:reset,onSimulationStep:tick,onCommanderTick:publish});
+root.BattleAmmunition={version:'1.1',loadouts:LOADOUT,initialize:initialize,startReload:startReload,startStoppage:startStoppage,available:function(s){return!!(s&&s.weapon&&!s.reloading&&!s.clearingStoppage&&!s.weapon.jammed&&(+s.weapon.ammo||0)>0);},summary:function(sim){return sim?snapshot(sim):null;}};
 console.log('[FIRE] finite combat loads + reloads + heat-sensitive stoppages active');
 })(typeof window!=='undefined'?window:globalThis);
