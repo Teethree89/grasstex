@@ -8,7 +8,7 @@
 (function(root){
   'use strict';
 
-  var ORDER_COMMIT=1.35,COMBAT_TTL=.75,ORDER_EPS=2.4,ARRIVAL=1.8;
+  var ORDER_COMMIT=1.35,COMBAT_TTL=.75,ORDER_EPS=2.4,ARRIVAL=1.8,ORDER_WRITE_EPS=.05;
   function point(v){return v&&isFinite(+v.x)&&isFinite(+v.z)?{x:+v.x,z:+v.z}:null;}
   function distance(a,b){return!a||!b?Infinity:Math.hypot(a.x-b.x,a.z-b.z);}
   function now(battle){return battle&&isFinite(+battle.time)?+battle.time:0;}
@@ -16,7 +16,7 @@
   function signature(s){var q=s.squad||{};return[q.commandPhase||'',q.targetObjective||'',q._engagementPlan&&q._engagementPlan.serial||0,q.state==='retreat'?'retreat':''].join('|');}
   function priority(kind,s){return kind==='retreat'?100:kind==='regroup'?95:kind==='reload-hold'?90:kind==='firing-station'?80:kind==='assault-rush'||kind==='assault-bound-push'?70:kind==='cover-bound'?60:kind==='contact-reaction'?55:kind==='hold'?(s.eng&&s.eng.state==='pinned'?85:50):20;}
   function tolerance(kind){return ['firing-station','hold','reload-hold','contact-reaction'].indexOf(kind)>=0?.1:ORDER_EPS;}
-  function metrics(b){return b._movementGoalStats||(b._movementGoalStats={requests:0,actualChanges:0,equivalentRequestsIgnored:0,hysteresisRetains:0,lowerPriorityRejected:0,emergencyOverrides:0,overridesByPriority:{},bySource:{}});}
+  function metrics(b){return b._movementGoalStats||(b._movementGoalStats={requests:0,actualChanges:0,equivalentRequestsIgnored:0,hysteresisRetains:0,lowerPriorityRejected:0,emergencyOverrides:0,formationShadowsIgnored:0,overridesByPriority:{},bySource:{}});}
   function count(b,key,source){var m=metrics(b);m[key]=(m[key]||0)+1;if(source){var row=m.bySource[source]||(m.bySource[source]={requests:0,changes:0});if(key==='requests')row.requests++;if(key==='actualChanges')row.changes++;}}
   function valid(s,p,b){
     if(!p||p.signature!==signature(s))return false;
@@ -29,8 +29,17 @@
   function proposal(owner,pt,battle,kind,urgent,ttl){pt=point(pt);if(!pt)return null;return{owner:owner,point:pt,kind:kind||owner,urgent:!!urgent,issuedAt:now(battle),until:now(battle)+(ttl==null?Infinity:ttl)};}
   function proposeOrder(soldier,next,battle,urgent){
     if(!soldier)return null;var p=point(next);if(!p)return null;
-    var st=state(soldier),source=soldier._fireteamDestination?'squad-stability':'squad-orders';count(battle,'requests',source);st.requests=(st.requests||0)+1;
-    soldier.orderDestination={x:p.x,z:p.z};st.order=proposal(source,p,battle,'formation',urgent,Infinity);st.order.signature=signature(soldier);st.order.reason='squad intent';return st.order;
+    var st=state(soldier),team=point(soldier._fireteamDestination),source=team?'squad-stability':'squad-orders';count(battle,'requests',source);st.requests=(st.requests||0)+1;
+    /* Squad Stability owns the soldier's formation intent once it has published a fireteam slot.
+       The wrapped legacy issueOrders pass still computes an individual formation slot before the
+       fireteam layer refreshes. That intermediate point is not a second order: ignore it instead
+       of briefly overwriting orderDestination and forcing engagement to restore the real intent.
+       Retreat/forced orders remain immediate; the fireteam writer runs later in the same squad tick. */
+    if(team&&!urgent&&distance(p,team)>ORDER_WRITE_EPS){count(battle,'formationShadowsIgnored');return st.order;}
+    var sig=signature(soldier),old=st.order,cur=point(soldier.orderDestination);
+    if(old&&old.owner===source&&old.signature===sig&&distance(old.point,p)<=ORDER_WRITE_EPS&&cur&&distance(cur,p)<=ORDER_WRITE_EPS){old.urgent=!!urgent;old.until=Infinity;return old;}
+    if(!cur||distance(cur,p)>ORDER_WRITE_EPS)soldier.orderDestination={x:p.x,z:p.z};
+    st.order=proposal(source,p,battle,'formation',urgent,Infinity);st.order.signature=sig;st.order.reason='squad intent';return st.order;
   }
   function proposeCombat(soldier,next,battle,kind,ttl,meta){
     if(!soldier)return null;meta=meta||{};var st=state(soldier),source=meta.source||'engagement',p=proposal(source,next,battle,kind||'combat',true,ttl==null?COMBAT_TTL:ttl);if(!p)return null;
@@ -137,6 +146,6 @@
     out.averageChangesPerActiveSoldier=active?out.bySoldier.filter(function(r){return(roster[r.faction]||[]).some(function(s){return s.id===r.id&&!s.dead;});}).reduce(function(n,r){return n+r.changes;},0)/active:0;
     return JSON.parse(JSON.stringify(out));
   }
-  root.BattleMovementResolver={version:'2.0-goal-authority',signature:signature,priority:priority,tolerance:tolerance,orderCommit:ORDER_COMMIT,combatTTL:COMBAT_TTL,proposeOrder:proposeOrder,proposeCombat:proposeCombat,resolve:resolve,resetSoldier:resetSoldier,summary:summary};
-  console.log('[MOVE] final resolver: command intent -> survival-aware tactical waypoint -> physical destination');
+  root.BattleMovementResolver={version:'2.0-goal-authority-v128-clean',signature:signature,priority:priority,tolerance:tolerance,orderCommit:ORDER_COMMIT,combatTTL:COMBAT_TTL,proposeOrder:proposeOrder,proposeCombat:proposeCombat,resolve:resolve,resetSoldier:resetSoldier,summary:summary};
+  console.log('[MOVE] v128 resolver + clean fireteam ownership: command intent -> tactical waypoint -> physical destination');
 })(typeof window!=='undefined'?window:globalThis);
