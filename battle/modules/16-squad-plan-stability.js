@@ -217,8 +217,21 @@
         s._fireteamDestination=prepared?copyPoint(prepared):(post?{x:post.x,z:post.z}:d);
         /* Arrival/cohesion accounting should use the fireteam slot, not the obsolete individual
            formation slot that was averaged to create it. */
-        if(root.BattleMovementResolver)root.BattleMovementResolver.proposeOrder(s,s._fireteamDestination,battle,urgent);
-        else s.orderDestination=copyPoint(s._fireteamDestination);
+        /* Upstream redundancy guard: the resolver persists order intent with an infinite TTL,
+           so re-proposing a numerically identical slot every AI tick only burns request
+           accounting (900k+ requests per battle for a few thousand real changes). Skip the
+           re-proposal when nothing material moved; any signature, anchor or urgency change
+           still proposes immediately. */
+        var lastProposed=s._lastFireteamProposed,repeat=lastProposed&&!urgent&&
+            lastProposed.signature===signature&&
+            Math.hypot(s._fireteamDestination.x-lastProposed.x,s._fireteamDestination.z-lastProposed.z)<1e-6;
+        if(!repeat){
+          s._lastFireteamProposed={x:s._fireteamDestination.x,z:s._fireteamDestination.z,signature:signature};
+          if(root.BattleMovementResolver)root.BattleMovementResolver.proposeOrder(s,s._fireteamDestination,battle,urgent);
+          else s.orderDestination=copyPoint(s._fireteamDestination);
+        } else if(!root.BattleMovementResolver&&s.orderDestination){
+          s.orderDestination=copyPoint(s._fireteamDestination);
+        }
       }
     });
   }
@@ -233,7 +246,7 @@
   function reset(sim){
     ['us','ge'].forEach(function(f){
       var squads=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];
-      squads.forEach(function(sq){sq._stablePlan=null;sq._stablePlanSerial=0;sq._stablePlanAwaitingCommander=false;sq._fireteamOrders={};sq._regroupRecovery=null;sq._regroupRecoverySerial=0;(sq.members||[]).forEach(function(s){s._defensePost=null;s._fireteamDestination=null;s._fireteamKey=null;});});
+      squads.forEach(function(sq){sq._stablePlan=null;sq._stablePlanSerial=0;sq._stablePlanAwaitingCommander=false;sq._fireteamOrders={};sq._regroupRecovery=null;sq._regroupRecoverySerial=0;(sq.members||[]).forEach(function(s){s._defensePost=null;s._fireteamDestination=null;s._fireteamKey=null;s._lastFireteamProposed=null;});});
     });
   }
 

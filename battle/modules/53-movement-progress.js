@@ -8,23 +8,34 @@
    Definitions:
    - A soldier is stuck only when he has an active movement goal with meaningful distance
      remaining, the goal is old enough, he is expected to be moving (not holding, reloading,
-     clearing a stoppage, or occupying a firing station), and his net displacement over the window
-     is tiny. Firing from cover, suppression pauses, reloads and bound pauses never qualify.
-   - Recovery is graduated: (1) rebuild the route to the same goal, (2) suppress the failing
-     candidate briefly and force a fresh local approach, (3) flag the goal unreachable so the
-     owning subsystem (engagement bound/assault, window manager) abandons it cleanly. The flag is
-     consumed once by the owner; nothing teleports and no geometry is blacklisted globally.
+     clearing a stoppage, suppressed, occupying a firing station, or yielding to local
+     avoidance), and BOTH his net displacement over the window is tiny AND his route shows no
+     progress (no waypoint advancement, no remaining-path reduction, no odometer movement).
+     A curved detour with low Euclidean net progress but real route progress is NOT stuck.
+     Firing from cover, suppression pauses, reloads, bound pauses and avoidance never qualify.
+   - Recovery is an episode state machine, not a per-window repeat:
+       suspected stall -> confirmed stall -> rebuild -> observe -> alternate approach
+       -> observe -> genuinely unreachable.
+     Each stage runs once per goal episode. A route rebuild or alternate approach rebases all
+     progress evidence and opens an observation period before any further escalation, so one
+     unresolved episode cannot emit a recovery every few seconds.
+   - Genuine authoritative goal changes (new point, new owner, new kind) reset old stuck
+     evidence instead of letting one window span two different goals.
    - Failed-candidate memory is per-soldier, short-lived (12 s), and cleared around a point on
-     arrival. Cover selection already consults candidateAllowed(); the resolver gates re-proposals
-     of gated kinds against the same memory. */
+     arrival. Only gated kinds (cover-bound, assault-bound-push) are ever suppressed, because
+     only those have an alternate for the owner to pick; formation intent has no alternative,
+     so a formation stall rebuilds once and then goes unreachable without recording a
+     candidate failure. Cover selection already consults candidateAllowed(); the resolver gates
+     re-proposals of gated kinds against the same memory. */
 
 (function(root){
 'use strict';
 if(root.BattleMovementProgress)return;
 
 var EQUIV=2.4, SAMPLE_DT=.5, STUCK_WINDOW=6, STUCK_NET=1.5, GOAL_FAR=3,
-    FAIL_TTL=12, RECOVER_GAP=4, GRID=1,
-    HOLD_KINDS={hold:1,'reload-hold':1,'firing-station':1},
+    FAIL_TTL=12, GRID=1,
+    CONFIRM_WINDOWS=2, OBSERVE_AFTER_ACTION=8, UNREACHABLE_CONFIRMS=2,
+    HOLD_KINDS={hold:1,'reload-hold':1,'firing-station':1,'contact-reaction':1},
     GATED_KINDS={'cover-bound':1,'assault-bound-push':1};
 
 function now(b){return b&&isFinite(+b.time)?+b.time:0;}
@@ -40,7 +51,7 @@ function neighbourKeys(p){
 function freshStats(){return{stuckDetections:0,recoveryAttempts:0,routeRebuilds:0,alternateApproaches:0,unreachableFlags:0,candidatesSuppressed:0,candidateChecks:0,failuresRecorded:0,failuresClearedOnArrival:0};}
 function stats(sim){return sim._movementProgressStats||(sim._movementProgressStats=freshStats());}
 function prog(s){
-  if(!s._movementProgress)s._movementProgress={goal:null,goalSince:0,samples:[],stuck:false,stuckSince:0,recoveries:0,lastRecoveryAt:-999,failures:{}};
+  if(!s._movementProgress)s._movementProgress={goal:null,owner:null,kind:null,goalSince:0,samples:[],stuck:false,stuckSince:0,confirmCount:0,stage:'none',stageAt:0,observeUntil:0,recoveries:0,confirms:0,alternated:false,unreachableFlagged:false,lastRouteIndex:0,lastRemaining:Infinity,lastRecoveryAt:-999,failures:{}};
   return s._movementProgress;
 }
 function expireFailures(st,t){
@@ -48,16 +59,44 @@ function expireFailures(st,t){
   for(k in st.failures)if(st.failures[k].until<=t){delete st.failures[k];changed=true;}
   return changed;
 }
-function expectedToMove(s,pick){
+/* A contact-reaction proposes the soldier's own position: holding still IS the order, so low
+   net movement there is correct behavior, never stuckness. Suppression pauses likewise. */
+function expectedToMove(s,pick,battle){
   if(!s||s.dead)return false;
   if(HOLD_KINDS[pick&&pick.kind])return false;
   if(s.reloading||s.clearingStoppage)return false;
+  if((+s.suppressedUntil||0)>now(battle))return false;
   if(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s))return false;
   return true;
 }
 function avoidanceActive(s,battle){
   var t=now(battle);
   return (s._movementYieldUntil||0)>t||(s._separatedAt||0)>t-1;
+}
+/* Remaining physical route length, when the navigation layers expose one. Null when unknown. */
+function routeRemaining(s){
+  var c=s._physicalPath;
+  if(c&&Array.isArray(c.points)&&c.points.length){
+    var idx=Math.max(0,Math.min(c.points.length,+c.index||0));
+    return c.points.length-idx;
+  }
+  var n=s._navCache;
+  if(n&&Array.isArray(n.path)&&n.path.length){
+    var ni=Math.max(0,Math.min(n.path.length,+n.index||0));
+    return n.path.length-ni;
+  }
+  var tr=s._tacticalRoute;
+  if(tr&&Array.isArray(tr.steps)&&tr.steps.length){
+    var ti=Math.max(0,Math.min(tr.steps.length,+tr.index||0));
+    return tr.steps.length-ti;
+  }
+  return null;
+}
+function routeIndex(s){
+  if(s._tacticalRoute&&isFinite(+s._tacticalRoute.index))return +s._tacticalRoute.index;
+  if(s._physicalPath&&isFinite(+s._physicalPath.index))return +s._physicalPath.index;
+  if(s._navCache&&isFinite(+s._navCache.index))return +s._navCache.index;
+  return 0;
 }
 
 /* Short-lived per-soldier candidate memory. Cover selection and gated re-proposals consult this;
@@ -94,21 +133,39 @@ function clearFailuresNear(s,battle,pt,radius){
 }
 function clearTracking(s){
   var st=prog(s);
-  st.goal=null;st.samples=[];st.stuck=false;st.recoveries=0;
+  st.goal=null;st.owner=null;st.kind=null;st.samples=[];st.stuck=false;
+  st.confirmCount=0;st.stage='none';st.confirms=0;st.alternated=false;st.unreachableFlagged=false;
+  st.recoveries=0;st.observeUntil=0;st.lastRemaining=Infinity;
   if(s._movementGoalUnreachable)s._movementGoalUnreachable=false;
+}
+/* Rebase progress evidence after a meaningful recovery action: the next measurement starts
+   from the post-action state, so one episode cannot escalate on pre-action evidence. */
+function rebaseEvidence(s,battle){
+  var st=prog(s),t=now(battle),here=posOf(s);
+  st.samples=here?[{t:t,x:here.x,z:here.z}]:[];
+  st.goalSince=t;st.stuck=false;st.confirmCount=0;
+  st.lastRouteIndex=routeIndex(s);st.lastRemaining=routeRemaining(s);
+  st.observeUntil=t+OBSERVE_AFTER_ACTION;
 }
 
 /* Called by the movement resolver once per committed intent. Returns a recovery advice object or
-   null. Round 1 asks the caller to rebuild the route to the same goal; round 2 additionally
-   suppresses the goal candidate so the next selection prefers an alternate; round 3 flags the
-   goal unreachable for the owning subsystem to abandon. */
+   null. The episode runs: suspected -> confirmed -> rebuild -> observe -> alternate -> observe
+   -> unreachable (flagged once per goal). Formation intent has no alternate candidate, so it
+   rebuilds once and then goes unreachable without recording a candidate failure. This function
+   never writes soldier.destination; it only advises, and the owning subsystem abandons goals. */
 function observe(s,battle,goalPoint,pick){
   if(!s||!battle||s.dead)return null;
   var st=prog(s),t=now(battle),goal=point(goalPoint);
   expireFailures(st,t);
-  if(!goal||!expectedToMove(s,pick)){if(st.goal||st.stuck)clearTracking(s);return null;}
-  if(!st.goal||dist(st.goal,goal)>EQUIV){
-    st.goal={x:goal.x,z:goal.z};st.goalSince=t;st.samples=[];st.stuck=false;st.recoveries=0;
+  if(!goal||!expectedToMove(s,pick,battle)){if(st.goal||st.stuck)clearTracking(s);return null;}
+  var owner=pick&&pick.owner?String(pick.owner):'',kind=pick&&pick.kind?String(pick.kind):'';
+  /* A genuine authoritative goal change resets old stuck evidence: new point, new owner, or
+     new kind starts a fresh episode instead of spanning one window across two goals. */
+  if(!st.goal||dist(st.goal,goal)>EQUIV||st.owner!==owner||st.kind!==kind){
+    st.goal={x:goal.x,z:goal.z};st.owner=owner;st.kind=kind;
+    st.goalSince=t;st.samples=[];st.stuck=false;st.confirmCount=0;
+    st.stage='none';st.confirms=0;st.alternated=false;st.unreachableFlagged=false;st.recoveries=0;st.observeUntil=0;
+    st.lastRouteIndex=routeIndex(s);st.lastRemaining=routeRemaining(s);
     if(s._movementGoalUnreachable)s._movementGoalUnreachable=false;
   }
   var here=posOf(s);if(!here)return null;
@@ -116,21 +173,74 @@ function observe(s,battle,goalPoint,pick){
   if(!last||t-last.t>=SAMPLE_DT)st.samples.push({t:t,x:here.x,z:here.z});
   while(st.samples.length&&t-st.samples[0].t>STUCK_WINDOW*1.6)st.samples.shift();
   var remaining=dist(here,st.goal);
-  if(remaining<=GOAL_FAR){st.stuck=false;return null;}
-  var need=avoidanceActive(s,battle)?STUCK_WINDOW*1.5:STUCK_WINDOW;
+  /* Arrival clears failure memory around the goal and ends the episode. */
+  if(remaining<=GOAL_FAR){
+    if(st.goal)clearFailuresNear(s,battle,st.goal);
+    st.stuck=false;st.confirmCount=0;st.stage='none';st.confirms=0;
+    return null;
+  }
+  /* Local avoidance / choke yielding gets grace: evidence keeps accumulating, but no new
+     stuck declaration and no escalation while the soldier is being pushed around. */
+  if(avoidanceActive(s,battle)){st.stuck=false;return null;}
+  var need=STUCK_WINDOW;
   var first=st.samples[0];
   if(!first||t-first.t<need||t-st.goalSince<need)return null;
   var net=Math.hypot(here.x-first.x,here.z-first.z);
-  if(net>=STUCK_NET){st.stuck=false;return null;}
+  /* Route progress excuses low Euclidean net progress: waypoint advancement, remaining-path
+     reduction, or real odometer movement all count as valid movement on a curved detour. */
+  var rIdx=routeIndex(s),rRem=routeRemaining(s),advanced=rIdx>st.lastRouteIndex,
+      remShrank=(rRem!=null&&st.lastRemaining!=null&&rRem<st.lastRemaining);
+  var odo=0,i;
+  for(i=1;i<st.samples.length;i++)odo+=Math.hypot(st.samples[i].x-st.samples[i-1].x,st.samples[i].z-st.samples[i-1].z);
+  var routeProgress=advanced||remShrank||odo>=STUCK_NET;
+  if(net>=STUCK_NET||routeProgress){
+    st.stuck=false;st.confirmCount=0;
+    if(st.stage==='suspected')st.stage='none';
+    st.lastRouteIndex=rIdx;st.lastRemaining=rRem;
+    return null;
+  }
+  /* Low progress this window. Confirmation needs repeated windows so one poor sample,
+     temporary congestion, combat interruption or a single bad window never escalates. */
+  st.confirmCount++;
+  if(st.confirmCount<CONFIRM_WINDOWS)return null;
+  st.confirmCount=0;
   if(!st.stuck){st.stuck=true;st.stuckSince=t;stats(battle).stuckDetections++;}
-  if(t-st.lastRecoveryAt<RECOVER_GAP)return null;
-  st.lastRecoveryAt=t;st.recoveries++;stats(battle).recoveryAttempts++;
-  if(st.recoveries<=1){stats(battle).routeRebuilds++;return{rebuild:true,round:st.recoveries};}
-  if(st.recoveries<=2){
+  if(st.stage==='none')st.stage='suspected';
+  /* Every escalation needs its observation period first. */
+  if(t<st.observeUntil)return null;
+  var gated=gatedKind(st.kind);
+  /* One rebuild per goal episode, then one alternate (gated kinds only), then unreachable.
+     st.recoveries / st.alternated make each stage fire exactly once even when an escalation
+     is deferred by the observation period. */
+  if(st.recoveries===0){
+    st.stage='confirmed';st.confirms++;
+    st.lastRecoveryAt=t;st.recoveries++;stats(battle).recoveryAttempts++;
+    stats(battle).routeRebuilds++;st.stage='rebuilding';st.stageAt=t;
+    rebaseEvidence(s,battle);
+    return{rebuild:true,round:st.recoveries};
+  }
+  if(!gated){
+    /* No alternate exists for this kind: one rebuild was already tried, so flag
+       unreachable (once) for the owner to abandon. No candidate is recorded because
+       formation intent must never be suppressed. */
+    if(st.unreachableFlagged)return null;
+    st.unreachableFlagged=true;
+    s._movementGoalUnreachable=true;stats(battle).unreachableFlags++;
+    return{rebuild:true,unreachable:true,round:st.recoveries};
+  }
+  if(!st.alternated){
+    st.lastRecoveryAt=t;st.recoveries++;stats(battle).recoveryAttempts++;
     noteFailure(s,battle,st.goal,'no-progress');
     stats(battle).alternateApproaches++;
+    st.alternated=true;st.stage='alternate';st.stageAt=t;
+    rebaseEvidence(s,battle);
     return{rebuild:true,alternate:true,round:st.recoveries};
   }
+  /* Genuinely unreachable requires repeated confirmed failure, including a full
+     observation window after the alternate approach. Flagged once per goal episode. */
+  st.confirms++;
+  if(st.confirms<UNREACHABLE_CONFIRMS||st.unreachableFlagged)return null;
+  st.unreachableFlagged=true;
   s._movementGoalUnreachable=true;stats(battle).unreachableFlags++;
   return{rebuild:true,unreachable:true,round:st.recoveries};
 }
@@ -161,8 +271,8 @@ function reset(sim){
   summary(sim);
 }
 
-if(root.BattleModules)root.BattleModules.registerSystem('movement-progress',{version:'1.0',onBattleStart:reset,onBattleRestart:reset,onCommanderTick:summary});
-root.BattleMovementProgress={version:'1.0',observe:observe,candidateAllowed:candidateAllowed,gatedKind:gatedKind,noteFailure:noteFailure,clearFailuresNear:clearFailuresNear,isStuck:isStuck,summary:summary,reset:reset,
-  tuning:{stuckWindow:STUCK_WINDOW,stuckNet:STUCK_NET,goalFar:GOAL_FAR,failTTL:FAIL_TTL,recoverGap:RECOVER_GAP}};
-console.log('[MOVE] movement progress active: stuck detection + graduated recovery + candidate memory');
+if(root.BattleModules)root.BattleModules.registerSystem('movement-progress',{version:'2.0-episode',onBattleStart:reset,onBattleRestart:reset,onCommanderTick:summary});
+root.BattleMovementProgress={version:'2.0-episode',observe:observe,candidateAllowed:candidateAllowed,gatedKind:gatedKind,noteFailure:noteFailure,clearFailuresNear:clearFailuresNear,isStuck:isStuck,summary:summary,reset:reset,
+  tuning:{stuckWindow:STUCK_WINDOW,stuckNet:STUCK_NET,goalFar:GOAL_FAR,failTTL:FAIL_TTL,confirmWindows:CONFIRM_WINDOWS,observeAfterAction:OBSERVE_AFTER_ACTION,unreachableConfirms:UNREACHABLE_CONFIRMS}};
+console.log('[MOVE] movement progress active: episode stuck detection + graduated recovery + candidate memory');
 })(typeof window!=='undefined'?window:globalThis);

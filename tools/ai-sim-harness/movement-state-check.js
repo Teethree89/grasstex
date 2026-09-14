@@ -69,9 +69,17 @@ test('small aim updates do not rebuild the movement route',()=>{
 test('a genuinely stuck bound triggers graduated recovery then unreachable',()=>{
   const {r,b,s,M}=fixture();const P=r.BattleMovementProgress;assert.ok(P);
   M.proposeOrder(s,{x:0,z:0},b,true);M.proposeCombat(s,{x:0,z:20},b,'cover-bound');M.resolve(s,b);
-  for(let i=0;i<120;i++){b.time+=.15;M.proposeCombat(s,{x:0,z:20},b,'cover-bound');M.resolve(s,b);}
-  assert.equal(P.isStuck(s),true);assert.equal(s._movementGoalUnreachable,true);
-  assert.ok(b._movementProgressStats.recoveryAttempts>=3);
+  // Episode timing: one rebuild after confirmation (~6.5s), one alternate after the
+  // observation period (~14.5s), unreachable after a further confirmed window (~22.5s).
+  for(let i=0;i<24;i++){b.time+=.5;M.proposeCombat(s,{x:0,z:20},b,'cover-bound');M.resolve(s,b);}
+  assert.equal(b._movementProgressStats.routeRebuilds,1);
+  assert.equal(b._movementProgressStats.alternateApproaches,0);
+  assert.ok(!s._movementGoalUnreachable);
+  for(let i=0;i<36;i++){b.time+=.5;M.proposeCombat(s,{x:0,z:20},b,'cover-bound');M.resolve(s,b);}
+  assert.equal(b._movementProgressStats.alternateApproaches,1);
+  assert.equal(s._movementGoalUnreachable,true);
+  assert.equal(P.isStuck(s),true);
+  assert.equal(b._movementProgressStats.recoveryAttempts,2);
   assert.equal(s._movementResolver.changes,1);
 });
 test('failed candidates are avoided briefly, locally, then forgiven',()=>{

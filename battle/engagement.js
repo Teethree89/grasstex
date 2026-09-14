@@ -398,18 +398,23 @@
   function assault(s,battle){
     var e=state(s);
     s.state='assault';s.setUp=false;
-    if(!s.target){enter(s,battle,'alert',ALERT_HOLD,'target lost');return alert(s,battle);}
+    /* A committed rush is locomotion, not aim: losing sight for a beat must not cancel it.
+       Aim tracking (target/lastSeen) may flicker, but the assaultGoal stands until arrival,
+       the window lapses, or recovery reports it unreachable. Only a rush that never had a
+       goal falls back to alert. */
+    if(!s.target&&!e.assaultGoal){enter(s,battle,'alert',ALERT_HOLD,'target lost');return alert(s,battle);}
     if(s._movementGoalUnreachable){
       s._movementGoalUnreachable=false;
       if(root.BattleMovementProgress&&e.assaultGoal)root.BattleMovementProgress.noteFailure(s,battle,e.assaultGoal,'assault-unreachable');
       enter(s,battle,'engage',0,'assault unreachable');return engage(s,battle);
     }
-    var p=posOf(s),t=posOf(s.target),d=dist(p.x,p.z,t.x,t.z);
+    var p=posOf(s),hasTarget=!!(s.target&&!s.target.dead),t=hasTarget?posOf(s.target):null,d=t?dist(p.x,p.z,t.x,t.z):Infinity;
     commitStance(s,battle,'crouch',Math.max(1,e.until-battle.time));
     if(!e.assaultGoal)e.assaultGoal={x:p.x+(t.x-p.x)*.55,z:p.z+(t.z-p.z)*.55};
     move(s,battle,e.assaultGoal,'assault-rush');
-    if(d<12||battle.time>=e.until){enter(s,battle,'engage',0,'assault complete');return engage(s,battle);}
-    tryFire(s,battle);
+    var arrived=Math.hypot(p.x-e.assaultGoal.x,p.z-e.assaultGoal.z)<12;
+    if(arrived||d<12||battle.time>=e.until){enter(s,battle,'engage',0,'assault complete');return engage(s,battle);}
+    if(hasTarget)tryFire(s,battle);
   }
 
   /* Contact broken. Hold the sector briefly rather than instantly resuming the march, which is
