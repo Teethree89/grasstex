@@ -1,13 +1,14 @@
 /* Combat urgency / self-preservation.
    At 1x speed a man under fire must not leisurely crouch-walk into cover, and a squadmate should
    not keep route-marching for several seconds after somebody beside him has established contact.
-   Engagement remains the combat-state owner: this layer only promotes an exposed suppressed man
-   into its existing cover-bound state and keeps short combat moves at an urgent gait. */
+   Engagement remains the combat-state owner: this layer promotes an exposed suppressed man into
+   its existing cover-bound state and MARKS the move as urgent.  Soldier Individuality is the sole
+   speed owner and maps that urgency to the realistic crouch-run/sprint gait bands. */
 (function(root){
 'use strict';
 if(!root.BattleModules||!root.BattleEngagement||!root.BattleMovementResolver||root.BattleCombatUrgency)return;
 
-var COVER_SEARCH=22,COVER_ARRIVED=1.3,SHARED_REACT_AGE=2.5,SHARED_HOLD=1.8,URGENT_TTL=.55,CROUCH_FACTOR=.58;
+var COVER_SEARCH=22,COVER_ARRIVED=1.3,SHARED_REACT_AGE=2.5,SHARED_HOLD=1.8,URGENT_TTL=.55;
 var oldUpdate=root.BattleEngagement.updateSoldier;
 
 function point(p){return p&&isFinite(+p.x)&&isFinite(+p.z)?{x:+p.x,z:+p.z}:null;}
@@ -26,7 +27,7 @@ function startUrgentCover(s,battle,e){
   var threat=threatFor(s,battle);if(!threat||!root.BattleEngagement.findCover)return false;
   if(e._urgentCoverSearchAt&&battle.time<e._urgentCoverSearchAt)return false;e._urgentCoverSearchAt=battle.time+.9;
   var cover=root.BattleEngagement.findCover(s,battle,{maxRange:COVER_SEARCH,threat:threat,minEnemyDistance:10});if(!cover)return false;
-  e.cover=cover;e.state='bound';e.since=battle.time;e.until=battle.time+Math.max(2.0,cover.distance/Math.max(2.4,+s.runSpeed||+s.speed||3)+1.0);e._urgentCover=true;
+  e.cover=cover;e.state='bound';e.since=battle.time;e.until=battle.time+Math.max(2.0,cover.distance/Math.max(2.4,+s.crouchRunSpeed||+s.runSpeed||+s.speed||3)+1.0);e._urgentCover=true;
   s._combatUrgentUntil=battle.time+URGENT_TTL;s.prone=false;s.crawling=false;s.tacticalCrouch=true;s.setUp=false;
   root.BattleMovementResolver.proposeCombat(s,{x:cover.x,z:cover.z},battle,'cover-bound',.8);bump(battle,s,'urgentCoverStarts');return true;
 }
@@ -45,23 +46,18 @@ function reactToSharedContact(s,battle,e){
 }
 root.BattleEngagement.updateSoldier=function(s,battle){
   var result=oldUpdate.apply(this,arguments);if(!s||!battle||s.dead)return result;var e=estate(s);
-  /* Existing engagement deliberately pins a suppressed rifleman in the open before searching for
-     cover. Promote that state only when useful reachable cover is actually nearby. */
   if(!maintainUrgentCover(s,battle,e)&&(+s.suppressedUntil||0)>+battle.time&&['pinned','engage','orient'].indexOf(String(e.state||''))>=0)startUrgentCover(s,battle,e);
   reactToSharedContact(s,battle,e);return result;
 };
-function gait(sim){
+function markUrgentPosture(sim){
   var t=+sim.time||0,a=root.BattleModules.unitsFor(sim);for(var i=0;i<a.length;i++){
     var s=a[i];if(!s||s.dead||t>=(+s._combatUrgentUntil||0))continue;
-    var run=+s.runSpeed||Math.max(3,+s.speed||0);if(s.prone){s.prone=false;s.crawling=false;}s.tacticalCrouch=true;
-    /* battle-sim's movement integrator multiplies crouched/suppressed movement by .58. Compensate
-       only during a marked dash so actual ground speed is the soldier's normal run speed. */
-    s.speed=run/CROUCH_FACTOR;stats(sim).urgentFrames++;
+    if(s.prone){s.prone=false;s.crawling=false;}s.tacticalCrouch=true;stats(sim).urgentFrames++;
   }
 }
 function publish(sim){var out=JSON.parse(JSON.stringify(stats(sim)));sim._combatUrgencySummary=out;if(sim._coordinationHealth)sim._coordinationHealth.combatUrgency=JSON.parse(JSON.stringify(out));}
 function reset(sim){sim._combatUrgency=fresh();var a=root.BattleModules.unitsFor(sim);for(var i=0;i<a.length;i++){a[i]._combatUrgentUntil=0;if(a[i].eng){a[i].eng._urgentCover=false;a[i].eng._urgentCoverSearchAt=0;}}publish(sim);}
-root.BattleModules.registerSystem('combat-urgency',{version:'1.0',onBattleStart:reset,onBattleRestart:reset,onSimulationStep:gait,onCommanderTick:publish});
-root.BattleCombatUrgency={version:'1.0',summary:function(sim){return sim&&sim._combatUrgencySummary?JSON.parse(JSON.stringify(sim._combatUrgencySummary)):null;}};
-console.log('[ENGAGE] combat urgency active: shared-contact reaction + dash-to-cover');
+root.BattleModules.registerSystem('combat-urgency',{version:'1.1-gait-owned',onBattleStart:reset,onBattleRestart:reset,onSimulationStep:markUrgentPosture,onCommanderTick:publish});
+root.BattleCombatUrgency={version:'1.1-gait-owned',summary:function(sim){return sim&&sim._combatUrgencySummary?JSON.parse(JSON.stringify(sim._combatUrgencySummary)):null;}};
+console.log('[ENGAGE] combat urgency active: shared-contact reaction + realistic crouch-run to cover');
 })(typeof window!=='undefined'?window:globalThis);
