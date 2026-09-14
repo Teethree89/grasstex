@@ -1,13 +1,13 @@
 /* Direct-fire ballistics: every trigger pull launches a dispersed ray.
-   Hits are no longer Bernoulli accuracy rolls.  Weapon accuracy, stance, movement and range
-   control the angular shot group; the first opposing soldier intersected by the ray takes damage.
-   Terrain/buildings/cover can stop a stray round before it reaches a body. */
+   Hits are no longer Bernoulli accuracy rolls.  Weapon combat grouping, stance, movement,
+   suppression and range control the angular shot group; the first opposing soldier intersected
+   by the ray takes damage. Terrain/buildings/cover can stop a stray round before it reaches a body. */
 (function(root){
   'use strict';
   if(!root.SquadAI||root.BattleBallistics)return;
 
   var S=root.SquadAI;
-  var EPS=.08,GROUND_STEPS=24,REFINE_STEPS=9;
+  var EPS=.08,GROUND_STEPS=24,REFINE_STEPS=9,GROUP90=4.291932052578694;
 
   function clamp(n,a,b){return Math.max(a,Math.min(b,n));}
   function rand(b){return b&&b.random?b.random():Math.random();}
@@ -36,10 +36,13 @@
   }
   function targetCenter(target,battle){var e=bodyShape(target,battle);return{x:e.cx,y:e.cy,z:e.cz};}
 
-  /* Convert the old weapon 'accuracy' number into group size rather than hit probability.
-     sigmaAt100 is one standard deviation in metres at 100 m; the ray itself decides the hit. */
+  /* combatSigmaAt100 is one-axis Gaussian sigma in metres at 100 m.  This is deliberately a
+     SHOOTER+WEAPON combat grouping, not mechanical test-bench MOA.  With two independent Gaussian
+     axes, a 90% circular group diameter is ~4.292 * sigma * distance.  Weapons without the newer
+     metadata retain the old accuracy-derived fallback so extension modules remain compatible. */
   function dispersionSigma(shooter,stats,d,battle){
-    var sigmaAt100=.28+(1-clamp(+stats.accuracy||.5,.05,.98))*1.70;
+    var legacy=.28+(1-clamp(+stats.accuracy||.5,.05,.98))*1.70;
+    var sigmaAt100=isFinite(+stats.combatSigmaAt100)?Math.max(.01,+stats.combatSigmaAt100):legacy;
     var sigma=sigmaAt100/100;
     var mult=shooter.squad&&+shooter.squad.accuracyMultiplier||1;
     sigma/=clamp(mult,.45,1.35);
@@ -47,9 +50,14 @@
     if(shooter.moving)sigma*=1.55;
     if(shooter.suppressedUntil>battle.time)sigma*=1.65;
     if(shooter.role==='gunner'&&shooter.setUp)sigma*=.72;
-    if(d>stats.falloffStart){var f=(d-stats.falloffStart)/Math.max(1,stats.range-stats.falloffStart);sigma*=1+clamp(f,0,1)*.90;}
+    if(d>stats.falloffStart){
+      var f=(d-stats.falloffStart)/Math.max(1,stats.range-stats.falloffStart);
+      var extra=isFinite(+stats.rangeDispersion)?Math.max(0,+stats.rangeDispersion):.90;
+      sigma*=1+clamp(f,0,1)*extra;
+    }
     return sigma;
   }
+  function groupDiameter90(shooter,stats,d,battle){return GROUP90*dispersionSigma(shooter,stats,d,battle)*d;}
   function shotDirection(shooter,target,stats,battle){
     var sp=shooter.root.position,origin={x:sp.x,y:battle.heightAt(sp.x,sp.z)+eyeHeight(shooter),z:sp.z},aim=targetCenter(target,battle);
     var base=norm({x:aim.x-origin.x,y:aim.y-origin.y,z:aim.z-origin.z}),flat=Math.hypot(base.x,base.z)||1;
@@ -92,7 +100,7 @@
     var ob=stop.obstacle,w=stop.wall,n={x:-d.x,y:-d.y,z:-d.z},surface='cement';
     if(stop.ground){
       surface='dirt';n=norm({x:battle.heightAt(p.x-.2,p.z)-battle.heightAt(p.x+.2,p.z),y:.4,z:battle.heightAt(p.x,p.z-.2)-battle.heightAt(p.x,p.z+.2)});
-    }else if(w&&w.a&&w.b){n=norm({x:w.b.z-w.a.z,y:0,z:w.a.x-w.b.x});}
+    }else if(w&&w.a&&w.b){n=norm({x:w.b.z-w.a.z,y:0,z:w.a.x-w.b.z});}
     else if(ob){surface=ob.impactMaterial||ob.materialType||ob.type||'cement';if(isFinite(ob.x)&&isFinite(ob.z))n=norm({x:p.x-ob.x,y:.15,z:p.z-ob.z});}
     if(n.x*d.x+n.y*d.y+n.z*d.z>0)n={x:-n.x,y:-n.y,z:-n.z};
     return{surface:surface,normal:n};
@@ -138,6 +146,6 @@
 
   S.resolveFire=resolveRay;
   S.tryFire=tryFire;
-  root.BattleBallistics={version:'70-dispersed-raycast',resolve:resolveRay,dispersionSigma:dispersionSigma,bodyShape:bodyShape,rayEllipsoid:rayEllipsoid};
-  if(typeof console!=='undefined')console.log('[BALLISTICS] direct fire uses dispersed geometric raycasts; no hit/miss dice roll');
+  root.BattleBallistics={version:'71-combat-group-calibration',resolve:resolveRay,dispersionSigma:dispersionSigma,groupDiameter90:groupDiameter90,bodyShape:bodyShape,rayEllipsoid:rayEllipsoid};
+  if(typeof console!=='undefined')console.log('[BALLISTICS] direct fire uses combat-calibrated dispersed raycasts');
 })(typeof window!=='undefined'?window:globalThis);
