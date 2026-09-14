@@ -3,9 +3,9 @@
    spread-triggered regroup until the squad has stayed genuinely over its cohesion envelope,
    and then holds that regroup until the formation is comfortably back inside it.
 
-   It also publishes explicit regroup-entry/flap diagnostics into coordination health so the
-   benchmark can observe short repeated regroup episodes that the old 30-second long-regroup
-   detector could miss completely. */
+   It also publishes explicit regroup-entry/flap diagnostics into coordination health and Loop
+   Watch so the benchmark can observe short repeated regroup episodes that the old 30-second
+   long-regroup detector could miss completely. */
 (function(root){
 'use strict';
 if(!root.BattleModules||!root.BattleCommanderDoctrine||root.BattleRegroupHysteresis)return;
@@ -28,9 +28,13 @@ function publish(sim){
   sim._regroupHysteresisSummary={entries:totalEntries,flaps:totalFlaps,suppressed:totalSuppressed,byFaction:byFaction,enterGrace:ENTER_GRACE,exitRatio:EXIT_RATIO};
   if(sim._coordinationHealth)sim._coordinationHealth.regroupHysteresis=JSON.parse(JSON.stringify(sim._regroupHysteresisSummary));
 }
+function loopAlert(sim,sq,t,spread,limit){
+  var lw=sim&&sim._aiLoopWatch;if(!lw||!Array.isArray(lw.alerts))return;
+  lw.alerts.push({kind:'regroup-flap',severity:'hot',faction:sq.faction,squadId:sq.id,soldierId:null,time:+t.toFixed(2),travel:0,net:0,destinationChanges:0,inContact:false,phases:['approach','regroup','approach'],rules:[],sequence:['advance','regroup','advance','regroup'],message:'Repeated cohesion regroup entries while travelling; spread '+spread.toFixed(1)+'m vs '+limit.toFixed(1)+'m limit'});
+}
 function noteEntry(sim,sq,st,t,spread,limit){
   st.enteredAt=t;st.accepted=true;st.entries.push(t);while(st.entries.length&&t-st.entries[0]>FLAP_WINDOW)st.entries.shift();
-  if(st.entries.length>=FLAP_COUNT){st.flaps++;st.entries=[];if(root.BattleTelemetry)root.BattleTelemetry.record('regroup-flap',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),spread:+spread.toFixed(2),limit:+limit.toFixed(2)},sim);}
+  if(st.entries.length>=FLAP_COUNT){st.flaps++;st.entries=[];loopAlert(sim,sq,t,spread,limit);if(root.BattleTelemetry)root.BattleTelemetry.record('regroup-flap',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),spread:+spread.toFixed(2),limit:+limit.toFixed(2)},sim);}
   if(root.BattleTelemetry)root.BattleTelemetry.record('regroup-enter',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),spread:+spread.toFixed(2),limit:+limit.toFixed(2)},sim);
 }
 function tickSquad(sim,sq){
@@ -66,7 +70,7 @@ function reset(sim){lastReason={};['us','ge'].forEach(function(f){var squads=sim
 /* Capture Force Command's own phase reason without taking ownership of the phase. */
 if(root.BattleTelemetry&&root.BattleTelemetry.record){var baseRecord=root.BattleTelemetry.record;root.BattleTelemetry.record=function(type,data,sim){if(type==='decision-phase'&&data&&data.squad!=null)lastReason[String(data.faction||'?')+':'+String(data.squad)]=String(data.why||'');return baseRecord.apply(this,arguments);};}
 
-root.BattleModules.registerSystem('regroup-hysteresis',{version:'1.0',onBattleStart:reset,onBattleRestart:reset,onCommanderTick:function(sim){['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++)tickSquad(sim,squads[i]);});publish(sim);}});
-root.BattleRegroupHysteresis={version:'1.0',enterGrace:ENTER_GRACE,exitRatio:EXIT_RATIO,minRegroup:MIN_REGROUP,reentryCooldown:REENTRY_COOLDOWN,summary:function(sim){return sim&&sim._regroupHysteresisSummary?JSON.parse(JSON.stringify(sim._regroupHysteresisSummary)):null;}};
+root.BattleModules.registerSystem('regroup-hysteresis',{version:'1.1',onBattleStart:reset,onBattleRestart:reset,onCommanderTick:function(sim){['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++)tickSquad(sim,squads[i]);});publish(sim);}});
+root.BattleRegroupHysteresis={version:'1.1',enterGrace:ENTER_GRACE,exitRatio:EXIT_RATIO,minRegroup:MIN_REGROUP,reentryCooldown:REENTRY_COOLDOWN,summary:function(sim){return sim&&sim._regroupHysteresisSummary?JSON.parse(JSON.stringify(sim._regroupHysteresisSummary)):null;}};
 console.log('[COMMAND] regroup hysteresis + flap diagnostics active');
 })(typeof window!=='undefined'?window:globalThis);
