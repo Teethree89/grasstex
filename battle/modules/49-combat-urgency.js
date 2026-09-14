@@ -21,7 +21,9 @@ function bump(sim,s,field){var st=stats(sim);st[field]++;if(st.byFaction[s.facti
 function contact(s,battle){var sq=s&&s.squad,c=sq&&sq.contact;if(!c||!isFinite(+c.at)||(+battle.time||0)-(+c.at)>SHARED_REACT_AGE)return null;return c;}
 function exposed(s,battle){try{var F=root.BattleObstacleField,p=pos(s);return !F||!p||F.coverPotentialAt(battle.obstacles,p.x,p.z)>.88;}catch(_){return true;}}
 function threatFor(s,battle){if(s.target&&!s.target.dead)return s.target;var c=contact(s,battle);if(c&&c.unit&&!c.unit.dead)return c.unit;if(c&&isFinite(+c.x)&&isFinite(+c.z))return{root:{position:{x:+c.x,y:0,z:+c.z}}};return null;}
-function safeToMove(s,battle){return!!(s&&!s.dead&&!s.reloading&&!s.clearingStoppage&&!s.outOfAmmo&&s.squad&&s.squad.state!=='retreat'&&!s._firingStation);}
+/* Reloading/stoppage handling can momentarily occupy the hands, but being out of ammunition is NOT
+   a reason to stand in the open. Empty weapons retain the same right to seek physical cover. */
+function safeToMove(s,battle){return!!(s&&!s.dead&&!s.reloading&&!s.clearingStoppage&&s.squad&&s.squad.state!=='retreat'&&!s._firingStation);}
 function startUrgentCover(s,battle,e){
   if(!safeToMove(s,battle)||(+s.suppressedUntil||0)<=+battle.time||!exposed(s,battle))return false;
   var threat=threatFor(s,battle);if(!threat||!root.BattleEngagement.findCover)return false;
@@ -57,7 +59,7 @@ function markUrgentPosture(sim){
 }
 function publish(sim){var out=JSON.parse(JSON.stringify(stats(sim)));sim._combatUrgencySummary=out;if(sim._coordinationHealth)sim._coordinationHealth.combatUrgency=JSON.parse(JSON.stringify(out));}
 function reset(sim){sim._combatUrgency=fresh();var a=root.BattleModules.unitsFor(sim);for(var i=0;i<a.length;i++){a[i]._combatUrgentUntil=0;if(a[i].eng){a[i].eng._urgentCover=false;a[i].eng._urgentCoverSearchAt=0;}}publish(sim);}
-root.BattleModules.registerSystem('combat-urgency',{version:'1.1-gait-owned',onBattleStart:reset,onBattleRestart:reset,onSimulationStep:markUrgentPosture,onCommanderTick:publish});
-root.BattleCombatUrgency={version:'1.1-gait-owned',summary:function(sim){return sim&&sim._combatUrgencySummary?JSON.parse(JSON.stringify(sim._combatUrgencySummary)):null;}};
+root.BattleModules.registerSystem('combat-urgency',{version:'1.2-empty-can-cover',onBattleStart:reset,onBattleRestart:reset,onSimulationStep:markUrgentPosture,onCommanderTick:publish});
+root.BattleCombatUrgency={version:'1.2-empty-can-cover',summary:function(sim){return sim&&sim._combatUrgencySummary?JSON.parse(JSON.stringify(sim._combatUrgencySummary)):null;}};
 console.log('[ENGAGE] combat urgency active: shared-contact reaction + realistic crouch-run to cover');
 })(typeof window!=='undefined'?window:globalThis);
