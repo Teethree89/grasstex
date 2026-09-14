@@ -262,14 +262,13 @@
     }
     squad.rally={x:anchor.x,z:anchor.z};
     for(var i=0;i<squad.members.length;i++){var soldier=squad.members[i];if(soldier.dead)continue;
-      /* The resolver persists order intent with an infinite TTL, so re-proposing an unchanged
-         slot every squad tick only burns request accounting (hundreds of thousands of requests
-         per battle for a few thousand real changes). Squad-plan stability owns the live slot
-         once it has issued a fireteam destination later in the same update; defer to it.
-         Any real change - anchor stride, goal/formation switch, force, retreat - still
-         proposes immediately. */
+      /* The resolver persists order intent with an infinite TTL, so re-proposing a numerically
+         identical slot every squad tick only burns request accounting. Any real change -
+         anchor stride, goal/formation switch, force, retreat - still proposes immediately.
+         (Deliberately not deferred to the fireteam slot here: the per-tick refresh carries
+         load-bearing side effects for the resolver's committed intent, so this stays a
+         same-value skip only.) */
       var urgent=force||squad.state==='retreat';
-      if(!urgent&&soldier._fireteamDestination)continue;
       var slot=formationSlot(squad,soldier,soldier.slotIndex),od=soldier.orderDestination,
           identical=slot&&od&&Math.abs(slot.x-od.x)<1e-6&&Math.abs(slot.z-od.z)<1e-6;
       if(!urgent&&identical)continue;

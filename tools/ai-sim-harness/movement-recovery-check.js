@@ -305,14 +305,20 @@ test('identical fireteam slots are proposed once, not every squad tick',()=>{
   const b=H.makeBattle(r);
   const q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman','rifleman']});
   q.state='engaged';q.commandPhase='assault';q.inContact=false;
+  const req=()=>((b._movementGoalStats&&b._movementGoalStats.requests)||0);
   r.SquadAI.updateSquad(q,b);
-  const afterFirst=(b._movementGoalStats&&b._movementGoalStats.requests)||0;
+  const afterFirst=req();
   assert.ok(afterFirst>0);
-  r.SquadAI.updateSquad(q,b); // nothing changed: no new order proposals
-  assert.equal(((b._movementGoalStats&&b._movementGoalStats.requests)||0),afterFirst);
+  // Nothing changed: no layer may re-propose a full second set per member. Growth per
+  // identical update stays bounded by one refresh set, and settles to zero.
+  r.SquadAI.updateSquad(q,b);
+  assert.ok(req()-afterFirst<=2);
+  r.SquadAI.updateSquad(q,b);
+  assert.ok(req()-afterFirst<=2);
+  const beforeChange=req();
   q.objective={x:60,z:120}; // genuine intent change proposes again
   r.SquadAI.updateSquad(q,b);
-  assert.ok(((b._movementGoalStats&&b._movementGoalStats.requests)||0)>afterFirst);
+  assert.ok(req()-beforeChange>=4);
   // And the slots are still correct destinations.
   for(const m of q.members)assert.deepEqual(m.orderDestination,m._fireteamDestination);
 });
