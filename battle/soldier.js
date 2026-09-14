@@ -169,6 +169,64 @@
 
   function damp(a,b,k){return a+(b-a)*k;}
   function rot(node_,x,y,z,k){node_.rotation.x=damp(node_.rotation.x,x,k);node_.rotation.y=damp(node_.rotation.y,y||0,k);node_.rotation.z=damp(node_.rotation.z,z||0,k);}
+  /* Authored stance actions on the existing transform-node rig. These are in-place visual
+     clips: navigation owns root, while the pelvis/body and support hand perform the action. */
+  var STANCE_JOINTS=['hips','spine','chest','neck','head','thighR','thighL','shinR','shinL','footR','footL'];
+  function stancePose(y,hip,spine,chest,rightHip,leftHip,rightKnee,leftKnee,rightFoot,leftFoot,support){
+    return{y:y,z:0,support:support||0,angles:[hip,spine,chest,0,0,rightHip,leftHip,rightKnee,leftKnee,rightFoot,leftFoot]};
+  }
+  var STANCE_POSES={
+    stand:stancePose(0,0,0,0,0,0,0,0,0,0),
+    dip:stancePose(-.045,.08,.07,.02,-.30,-.30,.55,.55,-.33,-.33),
+    crouch:stancePose(-.12,.11,.13,.07,-.64,-.64,1.10,1.10,-.48,-.48),
+    kneel:stancePose(-.34,.32,.16,.06,-.25,-1.60,1.65,1.95,-1.35,-.67),
+    tuck:stancePose(-.34,.32,.16,.06,-.25,-1.10,1.65,2.40,-1.35,-1.5,.2),
+    extend:stancePose(-.34,.72,.12,-.05,.05,-.10,1.10,1.10,-1,-1,.6),
+    brace:stancePose(-.57,1.02,.10,-.06,.10,.04,.65,.62,-.8,-.8,1),
+    prone:stancePose(-.62,1.40,-.12,-.08,.03,.03,.10,.10,-.098,-.098)
+  };
+  STANCE_POSES.prone.z=.03;STANCE_POSES.prone.angles[3]=-.24;
+  var STANCE_CLIPS={
+    'stand>crouch':{duration:.48,keys:[[.35,'dip'],[1,'crouch']]},
+    'crouch>stand':{duration:.55,keys:[[.65,'dip'],[1,'stand']]},
+    'stand>prone':{duration:1.2,keys:[[.22,'crouch'],[.40,'kneel'],[.50,'tuck'],[.60,'extend'],[.78,'brace'],[1,'prone']]},
+    'crouch>prone':{duration:.9,keys:[[.25,'kneel'],[.38,'tuck'],[.52,'extend'],[.72,'brace'],[1,'prone']]},
+    'prone>crouch':{duration:1.05,keys:[[.25,'brace'],[.43,'extend'],[.55,'tuck'],[.73,'kneel'],[1,'crouch']]},
+    'prone>stand':{duration:1.4,keys:[[.20,'brace'],[.34,'extend'],[.44,'tuck'],[.58,'kneel'],[.78,'crouch'],[1,'stand']]}
+  };
+  function desiredStance(s){return s.prone?'prone':(s.crouching?'crouch':'stand');}
+  function poseSnapshot(s){
+    return{position:s.poseRoot.position.clone(),rotation:currentQuaternion(s.poseRoot,new Q()),support:s._stanceSupport||0,
+      joints:STANCE_JOINTS.map(function(name){return currentQuaternion(s.rig[name],new Q());})};
+  }
+  function stanceKey(s,name){
+    var p=STANCE_POSES[name],blade=name==='crouch'&&s.target;
+    return{position:new V3(0,p.y,p.z),rotation:Q.Identity(),support:p.support,joints:p.angles.map(function(x,i){return Q.FromEulerAngles(x,blade?(i===1?.22:(i===2?.30:0)):0,0);})};
+  }
+  function releaseStancePose(s){
+    STANCE_JOINTS.forEach(function(name){releaseQuaternion(s.rig[name]);});releaseQuaternion(s.poseRoot);
+  }
+  function stanceTransition(s,dt){
+    if(!s.rig||!s.poseRoot)return false;
+    if(s.dead){if(s._stanceTransition)releaseStancePose(s);s._stanceTransition=null;s._stanceSupport=0;return false;}
+    var next=desiredStance(s),tr=s._stanceTransition,previous=tr?tr.to:(s._visualStance||'stand');
+    if(previous!==next){
+      // Snapshot an interrupted action too; repeated stance assignments never restart the clock.
+      var from=poseSnapshot(s),clip=STANCE_CLIPS[previous+'>'+next];resetBakedPose(s);
+      tr=s._stanceTransition={from:previous,to:next,elapsed:0,duration:clip.duration,keys:[{at:0,pose:from}]};
+      clip.keys.forEach(function(k){tr.keys.push({at:k[0],pose:stanceKey(s,k[1])});});
+      s.animationEvent={tag:'stance.transition',data:{from:previous,to:next,duration:clip.duration}};
+    }
+    if(!tr){s._visualStance=next;return false;}
+    tr.elapsed=Math.min(tr.duration,tr.elapsed+Math.max(0,dt));
+    var t=tr.elapsed/tr.duration,index=1;while(index<tr.keys.length-1&&t>tr.keys[index].at)index++;
+    var a=tr.keys[index-1],b=tr.keys[index],u=Math.max(0,Math.min(1,(t-a.at)/(b.at-a.at)));u=u*u*(3-2*u);
+    V3.LerpToRef(a.pose.position,b.pose.position,u,s.poseRoot.position);Q.SlerpToRef(a.pose.rotation,b.pose.rotation,u,useQuaternion(s.poseRoot));
+    for(var i=0;i<STANCE_JOINTS.length;i++)Q.SlerpToRef(a.pose.joints[i],b.pose.joints[i],u,useQuaternion(s.rig[STANCE_JOINTS[i]]));
+    s._stanceSupport=damp(a.pose.support,b.pose.support,u);s._animationHold=Math.max(0,(s._animationHold||0)-dt);
+    if(tr.elapsed>=tr.duration){s._visualStance=next;s._stanceTransition=null;s._stanceSupport=0;releaseStancePose(s);}
+    return true;
+  }
   function trigger(soldier,tag,data){if(!soldier)return;soldier.animationEvent={tag:tag,data:data||null};if(tag===TAGS.fire)soldier._animFireKick=1;if(tag===TAGS.reload)soldier._animReloadClock=0;var b=soldier.animationBinding;if(b&&b.backend.indexOf('procedural')!==0&&typeof b.play==='function')try{b.play(tag,data||{},soldier);}catch(e){console.warn('[ANIM] external play failed',e);}}
   function bindAnimationBackend(soldier,binding){if(!soldier||!binding)return false;soldier.animationBinding=Object.assign({backend:'external',tags:TAGS},binding);return true;}
 
@@ -252,6 +310,11 @@
       if(local)hv.grip.set(local[0],local[1],local[2]);
       else{var m=Math.min(1,reach*1.6);hv.grip.set(g.fore[0]+(g.well[0]-g.fore[0])*m,g.fore[1]+(g.well[1]-g.fore[1])*m,g.fore[2]+(g.well[2]-g.fore[2])*m);}
       hv.grip.rotateByQuaternionToRef(hq.weapon,hv.target);hv.target.addInPlace(hv.origin);
+      if(!right&&s._stanceSupport>0){
+        // Keep the rifle in the right hand while the left hand braces on the ground.
+        hv.tmp.set(-.34,-s.poseRoot.position.y+.055,.40-s.poseRoot.position.z);
+        V3.LerpToRef(hv.target,hv.tmp,s._stanceSupport,hv.target);
+      }
       bodyToChest(hv.target,hv.target);hv.target.subtractInPlace(right?r.shoulderR.position:r.shoulderL.position);
       (right?POLE_R:POLE_L).rotateByQuaternionToRef(hq.inv,hv.pole);
       solveArm(right?r.upperArmR:r.upperArmL,right?r.forearmR:r.forearmL,hv.target,hv.pole);
@@ -302,6 +365,7 @@
   }
   function animateWalk(soldier,dt,speedFrac){
     var b=soldier&&soldier.animationBinding;if(!b)return;
+    if((b.backend==='baked-procedural-v2'||b.backend.indexOf('procedural')===0)&&stanceTransition(soldier,dt)){holdWeapon(soldier,dt);return;}
     if(b.backend==='baked-procedural-v2'){
       var baked=false;try{baked=b.update(soldier,{tag:semanticTag(soldier,speedFrac),speed:speedFrac||0,target:soldier.target||null},dt,TAGS);}catch(e){console.warn('[ANIM] baked update failed',e);}
       if(!baked)primitivePose(soldier,dt,speedFrac);holdWeapon(soldier,dt);return;
