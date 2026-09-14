@@ -1,14 +1,14 @@
 {
   "status": "complete",
-  "runNumber": 10,
-  "runId": 34802518973,
-  "sourceSha": "e345c496f1db415d550e7dfad4152732733e7e92",
-  "completedAt": "2026-09-14T03:54:23.928Z",
+  "runNumber": 11,
+  "runId": 34833627367,
+  "sourceSha": "43021489cad2863dca056f91b53b22df3eedaa80",
+  "completedAt": "2026-09-14T10:56:28.765Z",
   "requestedBattles": 100,
   "completedBattles": 100,
   "usWins": 37,
   "geWins": 63,
-  "healthOverall": 72.5,
+  "healthOverall": 70.8,
   "objectivesNeverOwned": 9,
   "objectivesNeverOwnedRate": "2.0%",
   "avgSquadObjectiveSpread": {
@@ -21,11 +21,11 @@
   "targetlessStalls": 125,
   "longRegroups": 267,
   "writerConflicts": 0,
-  "loopAlerts": 635,
+  "loopAlerts": 1520,
   "runtimeErrors": 0,
-  "actionsUrl": "https://github.com/Teethree89/grasstex/actions/runs/34802518973",
+  "actionsUrl": "https://github.com/Teethree89/grasstex/actions/runs/34833627367",
   "markdownPath": "benchmarks/results/latest/battle-benchmark.md",
   "csvPath": "benchmarks/results/latest/battle-benchmark.csv",
   "summaryPath": "benchmarks/results/latest/battle-benchmark-summary.json",
-  "historyPath": "benchmarks/results/runs/10/"
+  "historyPath": "benchmarks/results/runs/11/"
 }
