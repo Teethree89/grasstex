@@ -261,19 +261,7 @@
       anchor.x+=dx/len*Math.min(ORDER_STRIDE,len);anchor.z+=dz/len*Math.min(ORDER_STRIDE,len);squad._orderVersion++;
     }
     squad.rally={x:anchor.x,z:anchor.z};
-    for(var i=0;i<squad.members.length;i++){var soldier=squad.members[i];if(soldier.dead)continue;
-      /* The resolver persists order intent with an infinite TTL, so re-proposing a numerically
-         identical slot every squad tick only burns request accounting. Any real change -
-         anchor stride, goal/formation switch, force, retreat - still proposes immediately.
-         (Deliberately not deferred to the fireteam slot here: the per-tick refresh carries
-         load-bearing side effects for the resolver's committed intent, so this stays a
-         same-value skip only.) */
-      var urgent=force||squad.state==='retreat';
-      var slot=formationSlot(squad,soldier,soldier.slotIndex),od=soldier.orderDestination,
-          identical=slot&&od&&Math.abs(slot.x-od.x)<1e-6&&Math.abs(slot.z-od.z)<1e-6;
-      if(!urgent&&identical)continue;
-      setDestination(soldier,slot,battle,urgent);
-    }
+    for(var i=0;i<squad.members.length;i++){var soldier=squad.members[i];if(!soldier.dead)setDestination(soldier,formationSlot(squad,soldier,soldier.slotIndex),battle,force||squad.state==='retreat');}
   }
   function updateSquad(squad,battle){
     var alive=0;for(var i=0;i<squad.members.length;i++)if(!squad.members[i].dead)alive++;squad.aliveCount=alive;
