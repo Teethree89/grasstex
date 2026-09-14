@@ -32,7 +32,7 @@
   function desiredGait(s){
     if(!s||s.dead||!s.root||!s.destination)return'walk';
     var d=Math.hypot((+s.destination.x||0)-(+s.root.position.x||0),(+s.destination.z||0)-(+s.root.position.z||0)),phase=s.squad&&s.squad.commandPhase||'';
-    if(s.prone||s.reloading)return'walk';
+    if(s.prone||s.reloading||s.clearingStoppage)return'walk';
     if(s.state==='retreat')return'run';
     if(d<RUN_DISTANCE)return'walk';
     if(phase==='defend'||phase==='hold'||phase==='support-hold'||phase==='reserve')return'walk';
@@ -44,7 +44,7 @@
     }
   }
   function applyAll(sim){var units=root.BattleModules.unitsFor(sim);for(var i=0;i<units.length;i++)phenotype(units[i]);updateSpeeds(sim);}
-  root.BattleModules.registerSystem(SYSTEM,{version:'66-individuals',onBattleStart:applyAll,onBattleRestart:applyAll,onSimulationStep:updateSpeeds});
-  root.BattleSoldierIndividuality={version:'66-individuals',roleSpeeds:ROLE,runDistance:RUN_DISTANCE,phenotype:phenotype,desiredGait:desiredGait};
-  if(typeof console!=='undefined')console.log('[INFANTRY] individual body proportions + walk/run speed variance active');
+  root.BattleModules.registerSystem(SYSTEM,{version:'67-weapon-handling',onBattleStart:applyAll,onBattleRestart:applyAll,onSimulationStep:updateSpeeds});
+  root.BattleSoldierIndividuality={version:'67-weapon-handling',roleSpeeds:ROLE,runDistance:RUN_DISTANCE,phenotype:phenotype,desiredGait:desiredGait};
+  if(typeof console!=='undefined')console.log('[INFANTRY] individual body proportions + weapon-handling gait variance active');
 })(typeof window!=='undefined'?window:globalThis);
