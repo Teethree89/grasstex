@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "base": "Assets/audio/",
   "format": "mp3",
   "runtime": {
@@ -12,41 +12,111 @@
   },
   "categories": {
     "weapons": {
-      "rifle": ["rifle.mp3"],
-      "carbine": ["carbine.mp3"],
-      "lmg": ["lmg.mp3"],
-      "pistol": ["pistol.mp3"],
-      "smg": ["weapons/smg-01.mp3", "weapons/smg-02.mp3"],
-      "hmg": ["weapons/hmg-01.mp3", "weapons/hmg-02.mp3"],
-      "cannon": ["weapons/cannon-01.mp3", "weapons/cannon-02.mp3"]
+      "rifle": [
+        "rifle.mp3"
+      ],
+      "carbine": [
+        "carbine.mp3"
+      ],
+      "lmg": [
+        "lmg.mp3"
+      ],
+      "pistol": [
+        "pistol.mp3"
+      ],
+      "smg": [
+        "weapons/smg-01.mp3",
+        "weapons/smg-02.mp3"
+      ],
+      "hmg": [
+        "weapons/hmg-01.mp3",
+        "weapons/hmg-02.mp3"
+      ],
+      "cannon": [
+        "weapons/cannon-01.mp3",
+        "weapons/cannon-02.mp3"
+      ]
     },
     "grenades": {
-      "pin": ["grenades/pin-01.mp3"],
-      "throw": ["grenades/throw-01.mp3"],
-      "bounce": ["grenades/bounce-01.mp3", "grenades/bounce-02.mp3"],
-      "explosion": ["grenades/explosion-01.mp3", "grenades/explosion-02.mp3", "grenades/explosion-03.mp3"]
+      "pin": [
+        "grenades/pin-01.mp3"
+      ],
+      "throw": [
+        "grenades/throw-01.mp3"
+      ],
+      "bounce": [
+        "grenades/bounce-01.mp3",
+        "grenades/bounce-02.mp3"
+      ],
+      "explosion": [
+        "grenades/explosion-01.mp3",
+        "grenades/explosion-02.mp3",
+        "grenades/explosion-03.mp3"
+      ]
     },
     "vehicles": {
-      "tankEngineIdle": ["vehicles/tank-engine-idle.mp3"],
-      "tankEngineMove": ["vehicles/tank-engine-move.mp3"],
-      "tankTrack": ["vehicles/tank-track-01.mp3", "vehicles/tank-track-02.mp3"],
-      "tankTurret": ["vehicles/tank-turret.mp3"],
-      "tankCannon": ["vehicles/tank-cannon-01.mp3", "vehicles/tank-cannon-02.mp3"],
-      "tankImpact": ["vehicles/tank-impact-01.mp3", "vehicles/tank-impact-02.mp3"],
-      "tankDestroyed": ["vehicles/tank-destroyed-01.mp3", "vehicles/tank-destroyed-02.mp3"]
+      "tankEngineIdle": [
+        "vehicles/tank-engine-idle.mp3"
+      ],
+      "tankEngineMove": [
+        "vehicles/tank-engine-move.mp3"
+      ],
+      "tankTrack": [
+        "vehicles/tank-track-01.mp3",
+        "vehicles/tank-track-02.mp3"
+      ],
+      "tankTurret": [
+        "vehicles/tank-turret.mp3"
+      ],
+      "tankCannon": [
+        "vehicles/tank-cannon-01.mp3",
+        "vehicles/tank-cannon-02.mp3"
+      ],
+      "tankImpact": [
+        "vehicles/tank-impact-01.mp3",
+        "vehicles/tank-impact-02.mp3"
+      ],
+      "tankDestroyed": [
+        "vehicles/tank-destroyed-01.mp3",
+        "vehicles/tank-destroyed-02.mp3"
+      ]
     },
     "aircraft": {
-      "fighterPass": ["aircraft/fighter-pass-01.mp3", "aircraft/fighter-pass-02.mp3"],
-      "bomberPass": ["aircraft/bomber-pass-01.mp3", "aircraft/bomber-pass-02.mp3"],
-      "dive": ["aircraft/dive-01.mp3"],
-      "strafing": ["aircraft/strafing-01.mp3", "aircraft/strafing-02.mp3"],
-      "bombDrop": ["aircraft/bomb-drop-01.mp3"],
-      "bombExplosion": ["aircraft/bomb-explosion-01.mp3", "aircraft/bomb-explosion-02.mp3"]
+      "fighterPass": [
+        "aircraft/fighter-pass-01.mp3",
+        "aircraft/fighter-pass-02.mp3"
+      ],
+      "bomberPass": [
+        "aircraft/bomber-pass-01.mp3",
+        "aircraft/bomber-pass-02.mp3"
+      ],
+      "dive": [
+        "aircraft/dive-01.mp3"
+      ],
+      "strafing": [
+        "aircraft/strafing-01.mp3",
+        "aircraft/strafing-02.mp3"
+      ],
+      "bombDrop": [
+        "aircraft/bomb-drop-01.mp3"
+      ],
+      "bombExplosion": [
+        "aircraft/bomb-explosion-01.mp3",
+        "aircraft/bomb-explosion-02.mp3"
+      ]
     },
     "ambience": {
-      "distantBattle": ["ambience/distant-battle-01.mp3", "ambience/distant-battle-02.mp3"],
-      "wind": ["ambience/wind-01.mp3"],
-      "artilleryDistant": ["ambience/artillery-distant-01.mp3", "ambience/artillery-distant-02.mp3"]
+      "distantBattle": [
+        "ambience/distant-battle-01.mp3",
+        "ambience/distant-battle-02.mp3"
+      ],
+      "wind": [
+        "ambience/wind-01.mp3"
+      ],
+      "artilleryDistant": [
+        "ambience/artillery-distant-01.mp3",
+        "ambience/artillery-distant-02.mp3"
+      ]
     }
   },
   "callouts": {
@@ -54,124 +124,1418 @@
       "language": "en-US",
       "voiceDirection": "WWII-era American infantryman. Adult male. Urgent battlefield delivery; short natural commands; not theatrical and not a modern police/radio-announcer voice.",
       "events": {
-        "contactFront": ["voices/us/contact-front-01.mp3", "voices/us/contact-front-02.mp3"],
-        "contactLeft": ["voices/us/contact-left-01.mp3", "voices/us/contact-left-02.mp3"],
-        "contactRight": ["voices/us/contact-right-01.mp3", "voices/us/contact-right-02.mp3"],
-        "advance": ["voices/us/move-up-01.mp3", "voices/us/move-up-02.mp3"],
-        "hold": ["voices/us/hold-01.mp3", "voices/us/hold-02.mp3"],
-        "engage": ["voices/us/open-fire-01.mp3", "voices/us/open-fire-02.mp3"],
-        "retreat": ["voices/us/fall-back-01.mp3", "voices/us/fall-back-02.mp3"],
-        "takeCover": ["voices/us/take-cover-01.mp3", "voices/us/take-cover-02.mp3", "voices/us/get-down-01.mp3", "voices/us/get-down-02.mp3"],
-        "reload": ["voices/us/reloading-01.mp3", "voices/us/reloading-02.mp3"],
-        "coverMe": ["voices/us/cover-me-01.mp3", "voices/us/cover-me-02.mp3"],
-        "manDown": ["voices/us/man-down-01.mp3", "voices/us/man-down-02.mp3"],
-        "grenadeOut": ["voices/us/grenade-out-01.mp3", "voices/us/grenade-out-02.mp3"],
-        "grenadeIncoming": ["voices/us/grenade-incoming-01.mp3", "voices/us/grenade-incoming-02.mp3"],
-        "tankSpotted": ["voices/us/tank-spotted-01.mp3", "voices/us/tank-spotted-02.mp3", "voices/us/armor-front-01.mp3"],
-        "antiTank": ["voices/us/anti-tank-01.mp3", "voices/us/anti-tank-02.mp3"],
-        "aircraft": ["voices/us/aircraft-01.mp3", "voices/us/aircraft-02.mp3", "voices/us/take-cover-air-01.mp3", "voices/us/strafing-01.mp3"],
-        "contact": ["voices/us/contact-front-01.mp3", "voices/us/contact-front-02.mp3"]
+        "contactFront": [
+          "voices/us/contact-front-01.mp3",
+          "voices/us/contact-front-02.mp3"
+        ],
+        "contactLeft": [
+          "voices/us/contact-left-01.mp3",
+          "voices/us/contact-left-02.mp3"
+        ],
+        "contactRight": [
+          "voices/us/contact-right-01.mp3",
+          "voices/us/contact-right-02.mp3"
+        ],
+        "advance": [
+          "voices/us/move-up-01.mp3",
+          "voices/us/move-up-02.mp3"
+        ],
+        "hold": [
+          "voices/us/hold-01.mp3",
+          "voices/us/hold-02.mp3"
+        ],
+        "engage": [
+          "voices/us/open-fire-01.mp3",
+          "voices/us/open-fire-02.mp3"
+        ],
+        "retreat": [
+          "voices/us/fall-back-01.mp3",
+          "voices/us/fall-back-02.mp3"
+        ],
+        "takeCover": [
+          "voices/us/take-cover-01.mp3",
+          "voices/us/take-cover-02.mp3",
+          "voices/us/get-down-01.mp3",
+          "voices/us/get-down-02.mp3"
+        ],
+        "reload": [
+          "voices/us/reloading-01.mp3",
+          "voices/us/reloading-02.mp3"
+        ],
+        "coverMe": [
+          "voices/us/cover-me-01.mp3",
+          "voices/us/cover-me-02.mp3"
+        ],
+        "manDown": [
+          "voices/us/man-down-01.mp3",
+          "voices/us/man-down-02.mp3"
+        ],
+        "grenadeOut": [
+          "voices/us/grenade-out-01.mp3",
+          "voices/us/grenade-out-02.mp3"
+        ],
+        "grenadeIncoming": [
+          "voices/us/grenade-incoming-01.mp3",
+          "voices/us/grenade-incoming-02.mp3"
+        ],
+        "tankSpotted": [
+          "voices/us/tank-spotted-01.mp3",
+          "voices/us/tank-spotted-02.mp3",
+          "voices/us/armor-front-01.mp3"
+        ],
+        "antiTank": [
+          "voices/us/anti-tank-01.mp3",
+          "voices/us/anti-tank-02.mp3"
+        ],
+        "aircraft": [
+          "voices/us/aircraft-01.mp3",
+          "voices/us/aircraft-02.mp3",
+          "voices/us/take-cover-air-01.mp3",
+          "voices/us/strafing-01.mp3"
+        ],
+        "contact": [
+          "voices/us/contact-front-01.mp3",
+          "voices/us/contact-front-02.mp3"
+        ],
+        "killConfirm": [
+          "voices/us/kill-confirm-01.mp3",
+          "voices/us/kill-confirm-02.mp3",
+          "voices/us/kill-confirm-03.mp3",
+          "voices/us/kill-confirm-04.mp3"
+        ],
+        "orderAck": [
+          "voices/us/order-ack-01.mp3",
+          "voices/us/order-ack-02.mp3",
+          "voices/us/order-ack-03.mp3",
+          "voices/us/order-ack-04.mp3"
+        ],
+        "enemyMovingLeft": [
+          "voices/us/enemy-moving-left-01.mp3",
+          "voices/us/enemy-moving-left-02.mp3"
+        ],
+        "enemyMovingRight": [
+          "voices/us/enemy-moving-right-01.mp3",
+          "voices/us/enemy-moving-right-02.mp3"
+        ],
+        "enemyInHouseGround": [
+          "voices/us/enemy-house-ground-01.mp3",
+          "voices/us/enemy-house-ground-02.mp3"
+        ],
+        "enemyInHouseUpper": [
+          "voices/us/enemy-house-upper-01.mp3",
+          "voices/us/enemy-house-upper-02.mp3"
+        ],
+        "enemyAtWindow": [
+          "voices/us/enemy-window-01.mp3",
+          "voices/us/enemy-window-02.mp3"
+        ],
+        "enemyFlanking": [
+          "voices/us/enemy-flanking-01.mp3",
+          "voices/us/enemy-flanking-02.mp3"
+        ],
+        "takingFire": [
+          "voices/us/taking-fire-01.mp3",
+          "voices/us/taking-fire-02.mp3"
+        ],
+        "pinned": [
+          "voices/us/pinned-01.mp3",
+          "voices/us/pinned-02.mp3"
+        ],
+        "ammoLow": [
+          "voices/us/ammo-low-01.mp3",
+          "voices/us/ammo-low-02.mp3"
+        ],
+        "movingCover": [
+          "voices/us/moving-cover-01.mp3",
+          "voices/us/moving-cover-02.mp3"
+        ],
+        "coverSet": [
+          "voices/us/cover-set-01.mp3",
+          "voices/us/cover-set-02.mp3"
+        ],
+        "regroup": [
+          "voices/us/regroup-01.mp3",
+          "voices/us/regroup-02.mp3"
+        ],
+        "rallyHere": [
+          "voices/us/rally-here-01.mp3",
+          "voices/us/rally-here-02.mp3"
+        ],
+        "objectiveTaken": [
+          "voices/us/objective-taken-01.mp3",
+          "voices/us/objective-taken-02.mp3"
+        ],
+        "objectiveLost": [
+          "voices/us/objective-lost-01.mp3",
+          "voices/us/objective-lost-02.mp3"
+        ],
+        "pushNow": [
+          "voices/us/push-now-01.mp3",
+          "voices/us/push-now-02.mp3"
+        ],
+        "idleQuip": [
+          "voices/us/idle-quip-01.mp3",
+          "voices/us/idle-quip-02.mp3",
+          "voices/us/idle-quip-03.mp3",
+          "voices/us/idle-quip-04.mp3",
+          "voices/us/idle-quip-05.mp3"
+        ],
+        "idleStory": [
+          "voices/us/idle-story-01.mp3",
+          "voices/us/idle-story-02.mp3",
+          "voices/us/idle-story-03.mp3",
+          "voices/us/idle-story-04.mp3",
+          "voices/us/idle-story-05.mp3"
+        ],
+        "idleLaugh": [
+          "voices/us/idle-laugh-01.mp3",
+          "voices/us/idle-laugh-02.mp3",
+          "voices/us/idle-laugh-03.mp3",
+          "voices/us/idle-laugh-04.mp3",
+          "voices/us/idle-laugh-05.mp3"
+        ],
+        "idleGroan": [
+          "voices/us/idle-groan-01.mp3",
+          "voices/us/idle-groan-02.mp3"
+        ]
       },
       "generation": [
-        {"event":"contactFront","file":"voices/us/contact-front-01.mp3","text":"Contact front!"},
-        {"event":"contactFront","file":"voices/us/contact-front-02.mp3","text":"Enemy ahead!"},
-        {"event":"contactLeft","file":"voices/us/contact-left-01.mp3","text":"Contact left!"},
-        {"event":"contactLeft","file":"voices/us/contact-left-02.mp3","text":"Enemy on the left!"},
-        {"event":"contactRight","file":"voices/us/contact-right-01.mp3","text":"Contact right!"},
-        {"event":"contactRight","file":"voices/us/contact-right-02.mp3","text":"Enemy on the right!"},
-        {"event":"advance","file":"voices/us/move-up-01.mp3","text":"Move up!"},
-        {"event":"advance","file":"voices/us/move-up-02.mp3","text":"Keep moving!"},
-        {"event":"hold","file":"voices/us/hold-01.mp3","text":"Hold here!"},
-        {"event":"hold","file":"voices/us/hold-02.mp3","text":"Hold this position!"},
-        {"event":"engage","file":"voices/us/open-fire-01.mp3","text":"Open fire!"},
-        {"event":"engage","file":"voices/us/open-fire-02.mp3","text":"Fire!"},
-        {"event":"retreat","file":"voices/us/fall-back-01.mp3","text":"Fall back!"},
-        {"event":"retreat","file":"voices/us/fall-back-02.mp3","text":"Pull back!"},
-        {"event":"takeCover","file":"voices/us/take-cover-01.mp3","text":"Take cover!"},
-        {"event":"takeCover","file":"voices/us/take-cover-02.mp3","text":"Get to cover!"},
-        {"event":"takeCover","file":"voices/us/get-down-01.mp3","text":"Get down!"},
-        {"event":"takeCover","file":"voices/us/get-down-02.mp3","text":"Down!"},
-        {"event":"reload","file":"voices/us/reloading-01.mp3","text":"Reloading!"},
-        {"event":"reload","file":"voices/us/reloading-02.mp3","text":"Changing magazine!"},
-        {"event":"coverMe","file":"voices/us/cover-me-01.mp3","text":"Cover me!"},
-        {"event":"coverMe","file":"voices/us/cover-me-02.mp3","text":"Give me covering fire!"},
-        {"event":"manDown","file":"voices/us/man-down-01.mp3","text":"Man down!"},
-        {"event":"manDown","file":"voices/us/man-down-02.mp3","text":"We got a man down!"},
-        {"event":"grenadeOut","file":"voices/us/grenade-out-01.mp3","text":"Grenade out!"},
-        {"event":"grenadeOut","file":"voices/us/grenade-out-02.mp3","text":"Frag out!"},
-        {"event":"grenadeIncoming","file":"voices/us/grenade-incoming-01.mp3","text":"Grenade!"},
-        {"event":"grenadeIncoming","file":"voices/us/grenade-incoming-02.mp3","text":"Incoming grenade!"},
-        {"event":"tankSpotted","file":"voices/us/tank-spotted-01.mp3","text":"Tank!"},
-        {"event":"tankSpotted","file":"voices/us/tank-spotted-02.mp3","text":"Enemy armor!"},
-        {"event":"tankSpotted","file":"voices/us/armor-front-01.mp3","text":"Armor front!"},
-        {"event":"antiTank","file":"voices/us/anti-tank-01.mp3","text":"Get anti-tank up here!"},
-        {"event":"antiTank","file":"voices/us/anti-tank-02.mp3","text":"We need anti-tank!"},
-        {"event":"aircraft","file":"voices/us/aircraft-01.mp3","text":"Aircraft!"},
-        {"event":"aircraft","file":"voices/us/aircraft-02.mp3","text":"Enemy aircraft!"},
-        {"event":"aircraft","file":"voices/us/take-cover-air-01.mp3","text":"Take cover!"},
-        {"event":"aircraft","file":"voices/us/strafing-01.mp3","text":"They're strafing us!"}
+        {
+          "event": "contactFront",
+          "file": "voices/us/contact-front-01.mp3",
+          "text": "Contact front!"
+        },
+        {
+          "event": "contactFront",
+          "file": "voices/us/contact-front-02.mp3",
+          "text": "Enemy ahead!"
+        },
+        {
+          "event": "contactLeft",
+          "file": "voices/us/contact-left-01.mp3",
+          "text": "Contact left!"
+        },
+        {
+          "event": "contactLeft",
+          "file": "voices/us/contact-left-02.mp3",
+          "text": "Enemy on the left!"
+        },
+        {
+          "event": "contactRight",
+          "file": "voices/us/contact-right-01.mp3",
+          "text": "Contact right!"
+        },
+        {
+          "event": "contactRight",
+          "file": "voices/us/contact-right-02.mp3",
+          "text": "Enemy on the right!"
+        },
+        {
+          "event": "advance",
+          "file": "voices/us/move-up-01.mp3",
+          "text": "Move up!"
+        },
+        {
+          "event": "advance",
+          "file": "voices/us/move-up-02.mp3",
+          "text": "Keep moving!"
+        },
+        {
+          "event": "hold",
+          "file": "voices/us/hold-01.mp3",
+          "text": "Hold here!"
+        },
+        {
+          "event": "hold",
+          "file": "voices/us/hold-02.mp3",
+          "text": "Hold this position!"
+        },
+        {
+          "event": "engage",
+          "file": "voices/us/open-fire-01.mp3",
+          "text": "Open fire!"
+        },
+        {
+          "event": "engage",
+          "file": "voices/us/open-fire-02.mp3",
+          "text": "Fire!"
+        },
+        {
+          "event": "retreat",
+          "file": "voices/us/fall-back-01.mp3",
+          "text": "Fall back!"
+        },
+        {
+          "event": "retreat",
+          "file": "voices/us/fall-back-02.mp3",
+          "text": "Pull back!"
+        },
+        {
+          "event": "takeCover",
+          "file": "voices/us/take-cover-01.mp3",
+          "text": "Take cover!"
+        },
+        {
+          "event": "takeCover",
+          "file": "voices/us/take-cover-02.mp3",
+          "text": "Get to cover!"
+        },
+        {
+          "event": "takeCover",
+          "file": "voices/us/get-down-01.mp3",
+          "text": "Get down!"
+        },
+        {
+          "event": "takeCover",
+          "file": "voices/us/get-down-02.mp3",
+          "text": "Down!"
+        },
+        {
+          "event": "reload",
+          "file": "voices/us/reloading-01.mp3",
+          "text": "Reloading!"
+        },
+        {
+          "event": "reload",
+          "file": "voices/us/reloading-02.mp3",
+          "text": "Changing magazine!"
+        },
+        {
+          "event": "coverMe",
+          "file": "voices/us/cover-me-01.mp3",
+          "text": "Cover me!"
+        },
+        {
+          "event": "coverMe",
+          "file": "voices/us/cover-me-02.mp3",
+          "text": "Give me covering fire!"
+        },
+        {
+          "event": "manDown",
+          "file": "voices/us/man-down-01.mp3",
+          "text": "Man down!"
+        },
+        {
+          "event": "manDown",
+          "file": "voices/us/man-down-02.mp3",
+          "text": "We got a man down!"
+        },
+        {
+          "event": "grenadeOut",
+          "file": "voices/us/grenade-out-01.mp3",
+          "text": "Grenade out!"
+        },
+        {
+          "event": "grenadeOut",
+          "file": "voices/us/grenade-out-02.mp3",
+          "text": "Frag out!"
+        },
+        {
+          "event": "grenadeIncoming",
+          "file": "voices/us/grenade-incoming-01.mp3",
+          "text": "Grenade!"
+        },
+        {
+          "event": "grenadeIncoming",
+          "file": "voices/us/grenade-incoming-02.mp3",
+          "text": "Incoming grenade!"
+        },
+        {
+          "event": "tankSpotted",
+          "file": "voices/us/tank-spotted-01.mp3",
+          "text": "Tank!"
+        },
+        {
+          "event": "tankSpotted",
+          "file": "voices/us/tank-spotted-02.mp3",
+          "text": "Enemy armor!"
+        },
+        {
+          "event": "tankSpotted",
+          "file": "voices/us/armor-front-01.mp3",
+          "text": "Armor front!"
+        },
+        {
+          "event": "antiTank",
+          "file": "voices/us/anti-tank-01.mp3",
+          "text": "Get anti-tank up here!"
+        },
+        {
+          "event": "antiTank",
+          "file": "voices/us/anti-tank-02.mp3",
+          "text": "We need anti-tank!"
+        },
+        {
+          "event": "aircraft",
+          "file": "voices/us/aircraft-01.mp3",
+          "text": "Aircraft!"
+        },
+        {
+          "event": "aircraft",
+          "file": "voices/us/aircraft-02.mp3",
+          "text": "Enemy aircraft!"
+        },
+        {
+          "event": "aircraft",
+          "file": "voices/us/take-cover-air-01.mp3",
+          "text": "Take cover!"
+        },
+        {
+          "event": "aircraft",
+          "file": "voices/us/strafing-01.mp3",
+          "text": "They're strafing us!"
+        },
+        {
+          "event": "killConfirm",
+          "file": "voices/us/kill-confirm-01.mp3",
+          "text": "I got him!",
+          "delivery": "kill"
+        },
+        {
+          "event": "killConfirm",
+          "file": "voices/us/kill-confirm-02.mp3",
+          "text": "He's down!",
+          "delivery": "kill"
+        },
+        {
+          "event": "killConfirm",
+          "file": "voices/us/kill-confirm-03.mp3",
+          "text": "Another one down!",
+          "delivery": "kill"
+        },
+        {
+          "event": "killConfirm",
+          "file": "voices/us/kill-confirm-04.mp3",
+          "text": "That's one less!",
+          "delivery": "kill"
+        },
+        {
+          "event": "orderAck",
+          "file": "voices/us/order-ack-01.mp3",
+          "text": "Roger!",
+          "delivery": "ack"
+        },
+        {
+          "event": "orderAck",
+          "file": "voices/us/order-ack-02.mp3",
+          "text": "Got it!",
+          "delivery": "ack"
+        },
+        {
+          "event": "orderAck",
+          "file": "voices/us/order-ack-03.mp3",
+          "text": "On it!",
+          "delivery": "ack"
+        },
+        {
+          "event": "orderAck",
+          "file": "voices/us/order-ack-04.mp3",
+          "text": "Right behind you!",
+          "delivery": "ack"
+        },
+        {
+          "event": "enemyMovingLeft",
+          "file": "voices/us/enemy-moving-left-01.mp3",
+          "text": "They're moving left!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyMovingLeft",
+          "file": "voices/us/enemy-moving-left-02.mp3",
+          "text": "Movement left! Watch the flank!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyMovingRight",
+          "file": "voices/us/enemy-moving-right-01.mp3",
+          "text": "They're moving right!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyMovingRight",
+          "file": "voices/us/enemy-moving-right-02.mp3",
+          "text": "Movement right! Keep eyes on 'em!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyInHouseGround",
+          "file": "voices/us/enemy-house-ground-01.mp3",
+          "text": "In the house! First floor!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyInHouseGround",
+          "file": "voices/us/enemy-house-ground-02.mp3",
+          "text": "Enemy in that house, ground floor!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyInHouseUpper",
+          "file": "voices/us/enemy-house-upper-01.mp3",
+          "text": "Second floor! In the window!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyInHouseUpper",
+          "file": "voices/us/enemy-house-upper-02.mp3",
+          "text": "Upstairs! Enemy upstairs!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyAtWindow",
+          "file": "voices/us/enemy-window-01.mp3",
+          "text": "Window! Watch that window!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyAtWindow",
+          "file": "voices/us/enemy-window-02.mp3",
+          "text": "He's at the window!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyFlanking",
+          "file": "voices/us/enemy-flanking-01.mp3",
+          "text": "They're trying to flank us!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyFlanking",
+          "file": "voices/us/enemy-flanking-02.mp3",
+          "text": "They're coming around the side!",
+          "delivery": "observation"
+        },
+        {
+          "event": "takingFire",
+          "file": "voices/us/taking-fire-01.mp3",
+          "text": "Taking fire!",
+          "delivery": "combat"
+        },
+        {
+          "event": "takingFire",
+          "file": "voices/us/taking-fire-02.mp3",
+          "text": "We're taking fire! Get down!",
+          "delivery": "combat"
+        },
+        {
+          "event": "pinned",
+          "file": "voices/us/pinned-01.mp3",
+          "text": "We're pinned here!",
+          "delivery": "combat"
+        },
+        {
+          "event": "pinned",
+          "file": "voices/us/pinned-02.mp3",
+          "text": "Can't move! They're all over us!",
+          "delivery": "combat"
+        },
+        {
+          "event": "ammoLow",
+          "file": "voices/us/ammo-low-01.mp3",
+          "text": "I'm running low!",
+          "delivery": "combat"
+        },
+        {
+          "event": "ammoLow",
+          "file": "voices/us/ammo-low-02.mp3",
+          "text": "Low on ammo!",
+          "delivery": "combat"
+        },
+        {
+          "event": "movingCover",
+          "file": "voices/us/moving-cover-01.mp3",
+          "text": "Moving to cover!",
+          "delivery": "combat"
+        },
+        {
+          "event": "movingCover",
+          "file": "voices/us/moving-cover-02.mp3",
+          "text": "I'm moving! Cover me!",
+          "delivery": "combat"
+        },
+        {
+          "event": "coverSet",
+          "file": "voices/us/cover-set-01.mp3",
+          "text": "I'm set! Move!",
+          "delivery": "combat"
+        },
+        {
+          "event": "coverSet",
+          "file": "voices/us/cover-set-02.mp3",
+          "text": "Set here! Go, go!",
+          "delivery": "combat"
+        },
+        {
+          "event": "regroup",
+          "file": "voices/us/regroup-01.mp3",
+          "text": "Regroup! Back on me!",
+          "delivery": "command"
+        },
+        {
+          "event": "regroup",
+          "file": "voices/us/regroup-02.mp3",
+          "text": "Close it up! Regroup here!",
+          "delivery": "command"
+        },
+        {
+          "event": "rallyHere",
+          "file": "voices/us/rally-here-01.mp3",
+          "text": "Rally here!",
+          "delivery": "command"
+        },
+        {
+          "event": "rallyHere",
+          "file": "voices/us/rally-here-02.mp3",
+          "text": "This is our rally point!",
+          "delivery": "command"
+        },
+        {
+          "event": "objectiveTaken",
+          "file": "voices/us/objective-taken-01.mp3",
+          "text": "We got it! Hold this ground!",
+          "delivery": "command"
+        },
+        {
+          "event": "objectiveTaken",
+          "file": "voices/us/objective-taken-02.mp3",
+          "text": "Objective's ours! Dig in!",
+          "delivery": "command"
+        },
+        {
+          "event": "objectiveLost",
+          "file": "voices/us/objective-lost-01.mp3",
+          "text": "We lost the position!",
+          "delivery": "combat"
+        },
+        {
+          "event": "objectiveLost",
+          "file": "voices/us/objective-lost-02.mp3",
+          "text": "They took it! Fall back and regroup!",
+          "delivery": "combat"
+        },
+        {
+          "event": "pushNow",
+          "file": "voices/us/push-now-01.mp3",
+          "text": "They're breaking! Push 'em!",
+          "delivery": "command"
+        },
+        {
+          "event": "pushNow",
+          "file": "voices/us/push-now-02.mp3",
+          "text": "Move! Move! Don't let 'em settle!",
+          "delivery": "command"
+        },
+        {
+          "event": "idleQuip",
+          "file": "voices/us/idle-quip-01.mp3",
+          "text": "When this is over, I'm sleeping for a week.",
+          "delivery": "idle"
+        },
+        {
+          "event": "idleQuip",
+          "file": "voices/us/idle-quip-02.mp3",
+          "text": "I'd trade my rifle for a hot cup of coffee. Almost.",
+          "delivery": "idle"
+        },
+        {
+          "event": "idleQuip",
+          "file": "voices/us/idle-quip-03.mp3",
+          "text": "If anybody sees my clean socks, tell 'em I miss 'em.",
+          "delivery": "idle"
+        },
+        {
+          "event": "idleQuip",
+          "file": "voices/us/idle-quip-04.mp3",
+          "text": "Next fellow who says this is a short walk gets my pack.",
+          "delivery": "idle"
+        },
+        {
+          "event": "idleQuip",
+          "file": "voices/us/idle-quip-05.mp3",
+          "text": "I swear this helmet gets heavier every mile.",
+          "delivery": "idle"
+        },
+        {
+          "event": "idleStory",
+          "file": "voices/us/idle-story-01.mp3",
+          "text": "Back home my brother borrowed my good boots for one dance. Came home barefoot and swore a dog stole 'em. That dog must've known his size.",
+          "delivery": "story"
+        },
+        {
+          "event": "idleStory",
+          "file": "voices/us/idle-story-02.mp3",
+          "text": "My old man said the Army would make a man outta me. First week I spent two hours peeling potatoes. Guess manhood comes with a paring knife.",
+          "delivery": "story"
+        },
+        {
+          "event": "idleStory",
+          "file": "voices/us/idle-story-03.mp3",
+          "text": "Cook back at camp swore that stew was beef. I asked what part of the cow rattles when you stir it. He didn't think that was funny.",
+          "delivery": "story"
+        },
+        {
+          "event": "idleStory",
+          "file": "voices/us/idle-story-04.mp3",
+          "text": "Buddy of mine once saluted a scarecrow at dawn. In his defense, the scarecrow had better posture than our lieutenant.",
+          "delivery": "story"
+        },
+        {
+          "event": "idleStory",
+          "file": "voices/us/idle-story-05.mp3",
+          "text": "I wrote my girl I'd come home with medals. She wrote back she'd settle for me coming home with all my teeth. Fair bargain, I figure.",
+          "delivery": "story"
+        },
+        {
+          "event": "idleLaugh",
+          "file": "voices/us/idle-laugh-01.mp3",
+          "text": "Ha! Ha ha!",
+          "delivery": "laugh"
+        },
+        {
+          "event": "idleLaugh",
+          "file": "voices/us/idle-laugh-02.mp3",
+          "text": "Heh heh... that's awful.",
+          "delivery": "laugh"
+        },
+        {
+          "event": "idleLaugh",
+          "file": "voices/us/idle-laugh-03.mp3",
+          "text": "Ha! You're full of it!",
+          "delivery": "laugh"
+        },
+        {
+          "event": "idleLaugh",
+          "file": "voices/us/idle-laugh-04.mp3",
+          "text": "Oh, that's good. Ha ha!",
+          "delivery": "laugh"
+        },
+        {
+          "event": "idleLaugh",
+          "file": "voices/us/idle-laugh-05.mp3",
+          "text": "Heh! Don't let the lieutenant hear that one.",
+          "delivery": "laugh"
+        },
+        {
+          "event": "idleGroan",
+          "file": "voices/us/idle-groan-01.mp3",
+          "text": "Oh, come on. You've told that one three times.",
+          "delivery": "idle"
+        },
+        {
+          "event": "idleGroan",
+          "file": "voices/us/idle-groan-02.mp3",
+          "text": "That's terrible. Tell it again.",
+          "delivery": "idle"
+        }
       ]
     },
     "ge": {
       "language": "de-DE",
       "voiceDirection": "WWII-era German infantryman. Adult male. Native German pronunciation. Urgent battlefield delivery; short natural tactical commands; not theatrical.",
       "events": {
-        "contactFront": ["voices/ge/feind-voraus-01.mp3", "voices/ge/feind-voraus-02.mp3"],
-        "contactLeft": ["voices/ge/feind-links-01.mp3", "voices/ge/feind-links-02.mp3"],
-        "contactRight": ["voices/ge/feind-rechts-01.mp3", "voices/ge/feind-rechts-02.mp3"],
-        "advance": ["voices/ge/vorwaerts-01.mp3", "voices/ge/vorwaerts-02.mp3"],
-        "hold": ["voices/ge/halt-01.mp3", "voices/ge/halt-02.mp3"],
-        "engage": ["voices/ge/feuer-frei-01.mp3", "voices/ge/feuer-frei-02.mp3"],
-        "retreat": ["voices/ge/zurueck-01.mp3", "voices/ge/zurueck-02.mp3"],
-        "takeCover": ["voices/ge/deckung-01.mp3", "voices/ge/deckung-02.mp3", "voices/ge/runter-01.mp3", "voices/ge/runter-02.mp3"],
-        "reload": ["voices/ge/nachladen-01.mp3", "voices/ge/nachladen-02.mp3"],
-        "coverMe": ["voices/ge/feuerschutz-01.mp3", "voices/ge/feuerschutz-02.mp3"],
-        "manDown": ["voices/ge/mann-gefallen-01.mp3", "voices/ge/mann-gefallen-02.mp3"],
-        "grenadeOut": ["voices/ge/granate-raus-01.mp3", "voices/ge/granate-raus-02.mp3"],
-        "grenadeIncoming": ["voices/ge/granate-01.mp3", "voices/ge/granate-02.mp3"],
-        "tankSpotted": ["voices/ge/panzer-01.mp3", "voices/ge/panzer-02.mp3", "voices/ge/panzer-voraus-01.mp3"],
-        "antiTank": ["voices/ge/panzerabwehr-01.mp3", "voices/ge/panzerabwehr-02.mp3"],
-        "aircraft": ["voices/ge/flieger-01.mp3", "voices/ge/flieger-02.mp3", "voices/ge/deckung-luft-01.mp3", "voices/ge/tiefflieger-01.mp3"],
-        "contact": ["voices/ge/feind-voraus-01.mp3", "voices/ge/feind-voraus-02.mp3"]
+        "contactFront": [
+          "voices/ge/feind-voraus-01.mp3",
+          "voices/ge/feind-voraus-02.mp3"
+        ],
+        "contactLeft": [
+          "voices/ge/feind-links-01.mp3",
+          "voices/ge/feind-links-02.mp3"
+        ],
+        "contactRight": [
+          "voices/ge/feind-rechts-01.mp3",
+          "voices/ge/feind-rechts-02.mp3"
+        ],
+        "advance": [
+          "voices/ge/vorwaerts-01.mp3",
+          "voices/ge/vorwaerts-02.mp3"
+        ],
+        "hold": [
+          "voices/ge/halt-01.mp3",
+          "voices/ge/halt-02.mp3"
+        ],
+        "engage": [
+          "voices/ge/feuer-frei-01.mp3",
+          "voices/ge/feuer-frei-02.mp3"
+        ],
+        "retreat": [
+          "voices/ge/zurueck-01.mp3",
+          "voices/ge/zurueck-02.mp3"
+        ],
+        "takeCover": [
+          "voices/ge/deckung-01.mp3",
+          "voices/ge/deckung-02.mp3",
+          "voices/ge/runter-01.mp3",
+          "voices/ge/runter-02.mp3"
+        ],
+        "reload": [
+          "voices/ge/nachladen-01.mp3",
+          "voices/ge/nachladen-02.mp3"
+        ],
+        "coverMe": [
+          "voices/ge/feuerschutz-01.mp3",
+          "voices/ge/feuerschutz-02.mp3"
+        ],
+        "manDown": [
+          "voices/ge/mann-gefallen-01.mp3",
+          "voices/ge/mann-gefallen-02.mp3"
+        ],
+        "grenadeOut": [
+          "voices/ge/granate-raus-01.mp3",
+          "voices/ge/granate-raus-02.mp3"
+        ],
+        "grenadeIncoming": [
+          "voices/ge/granate-01.mp3",
+          "voices/ge/granate-02.mp3"
+        ],
+        "tankSpotted": [
+          "voices/ge/panzer-01.mp3",
+          "voices/ge/panzer-02.mp3",
+          "voices/ge/panzer-voraus-01.mp3"
+        ],
+        "antiTank": [
+          "voices/ge/panzerabwehr-01.mp3",
+          "voices/ge/panzerabwehr-02.mp3"
+        ],
+        "aircraft": [
+          "voices/ge/flieger-01.mp3",
+          "voices/ge/flieger-02.mp3",
+          "voices/ge/deckung-luft-01.mp3",
+          "voices/ge/tiefflieger-01.mp3"
+        ],
+        "contact": [
+          "voices/ge/feind-voraus-01.mp3",
+          "voices/ge/feind-voraus-02.mp3"
+        ],
+        "killConfirm": [
+          "voices/ge/treffer-bestaetigt-01.mp3",
+          "voices/ge/treffer-bestaetigt-02.mp3",
+          "voices/ge/treffer-bestaetigt-03.mp3",
+          "voices/ge/treffer-bestaetigt-04.mp3"
+        ],
+        "orderAck": [
+          "voices/ge/befehl-bestaetigt-01.mp3",
+          "voices/ge/befehl-bestaetigt-02.mp3",
+          "voices/ge/befehl-bestaetigt-03.mp3",
+          "voices/ge/befehl-bestaetigt-04.mp3"
+        ],
+        "enemyMovingLeft": [
+          "voices/ge/feind-bewegt-links-01.mp3",
+          "voices/ge/feind-bewegt-links-02.mp3"
+        ],
+        "enemyMovingRight": [
+          "voices/ge/feind-bewegt-rechts-01.mp3",
+          "voices/ge/feind-bewegt-rechts-02.mp3"
+        ],
+        "enemyInHouseGround": [
+          "voices/ge/feind-haus-erdgeschoss-01.mp3",
+          "voices/ge/feind-haus-erdgeschoss-02.mp3"
+        ],
+        "enemyInHouseUpper": [
+          "voices/ge/feind-haus-oben-01.mp3",
+          "voices/ge/feind-haus-oben-02.mp3"
+        ],
+        "enemyAtWindow": [
+          "voices/ge/feind-fenster-01.mp3",
+          "voices/ge/feind-fenster-02.mp3"
+        ],
+        "enemyFlanking": [
+          "voices/ge/feind-flanke-01.mp3",
+          "voices/ge/feind-flanke-02.mp3"
+        ],
+        "takingFire": [
+          "voices/ge/unter-feuer-01.mp3",
+          "voices/ge/unter-feuer-02.mp3"
+        ],
+        "pinned": [
+          "voices/ge/festgenagelt-01.mp3",
+          "voices/ge/festgenagelt-02.mp3"
+        ],
+        "ammoLow": [
+          "voices/ge/munition-knapp-01.mp3",
+          "voices/ge/munition-knapp-02.mp3"
+        ],
+        "movingCover": [
+          "voices/ge/in-deckung-gehen-01.mp3",
+          "voices/ge/in-deckung-gehen-02.mp3"
+        ],
+        "coverSet": [
+          "voices/ge/stellung-bereit-01.mp3",
+          "voices/ge/stellung-bereit-02.mp3"
+        ],
+        "regroup": [
+          "voices/ge/sammeln-01.mp3",
+          "voices/ge/sammeln-02.mp3"
+        ],
+        "rallyHere": [
+          "voices/ge/sammelpunkt-01.mp3",
+          "voices/ge/sammelpunkt-02.mp3"
+        ],
+        "objectiveTaken": [
+          "voices/ge/stellung-genommen-01.mp3",
+          "voices/ge/stellung-genommen-02.mp3"
+        ],
+        "objectiveLost": [
+          "voices/ge/stellung-verloren-01.mp3",
+          "voices/ge/stellung-verloren-02.mp3"
+        ],
+        "pushNow": [
+          "voices/ge/nachsetzen-01.mp3",
+          "voices/ge/nachsetzen-02.mp3"
+        ],
+        "idleQuip": [
+          "voices/ge/ruhe-spruch-01.mp3",
+          "voices/ge/ruhe-spruch-02.mp3",
+          "voices/ge/ruhe-spruch-03.mp3",
+          "voices/ge/ruhe-spruch-04.mp3",
+          "voices/ge/ruhe-spruch-05.mp3"
+        ],
+        "idleStory": [
+          "voices/ge/ruhe-geschichte-01.mp3",
+          "voices/ge/ruhe-geschichte-02.mp3",
+          "voices/ge/ruhe-geschichte-03.mp3",
+          "voices/ge/ruhe-geschichte-04.mp3",
+          "voices/ge/ruhe-geschichte-05.mp3"
+        ],
+        "idleLaugh": [
+          "voices/ge/ruhe-lachen-01.mp3",
+          "voices/ge/ruhe-lachen-02.mp3",
+          "voices/ge/ruhe-lachen-03.mp3",
+          "voices/ge/ruhe-lachen-04.mp3",
+          "voices/ge/ruhe-lachen-05.mp3"
+        ],
+        "idleGroan": [
+          "voices/ge/ruhe-stoehnen-01.mp3",
+          "voices/ge/ruhe-stoehnen-02.mp3"
+        ]
       },
       "generation": [
-        {"event":"contactFront","file":"voices/ge/feind-voraus-01.mp3","text":"Feind voraus!"},
-        {"event":"contactFront","file":"voices/ge/feind-voraus-02.mp3","text":"Feind vor uns!"},
-        {"event":"contactLeft","file":"voices/ge/feind-links-01.mp3","text":"Feind links!"},
-        {"event":"contactLeft","file":"voices/ge/feind-links-02.mp3","text":"Feind von links!"},
-        {"event":"contactRight","file":"voices/ge/feind-rechts-01.mp3","text":"Feind rechts!"},
-        {"event":"contactRight","file":"voices/ge/feind-rechts-02.mp3","text":"Feind von rechts!"},
-        {"event":"advance","file":"voices/ge/vorwaerts-01.mp3","text":"Vorwärts!"},
-        {"event":"advance","file":"voices/ge/vorwaerts-02.mp3","text":"Weiter vor!"},
-        {"event":"hold","file":"voices/ge/halt-01.mp3","text":"Halt!"},
-        {"event":"hold","file":"voices/ge/halt-02.mp3","text":"Stellung halten!"},
-        {"event":"engage","file":"voices/ge/feuer-frei-01.mp3","text":"Feuer frei!"},
-        {"event":"engage","file":"voices/ge/feuer-frei-02.mp3","text":"Feuer!"},
-        {"event":"retreat","file":"voices/ge/zurueck-01.mp3","text":"Zurück!"},
-        {"event":"retreat","file":"voices/ge/zurueck-02.mp3","text":"Rückzug!"},
-        {"event":"takeCover","file":"voices/ge/deckung-01.mp3","text":"Deckung!"},
-        {"event":"takeCover","file":"voices/ge/deckung-02.mp3","text":"In Deckung!"},
-        {"event":"takeCover","file":"voices/ge/runter-01.mp3","text":"Runter!"},
-        {"event":"takeCover","file":"voices/ge/runter-02.mp3","text":"Köpfe runter!"},
-        {"event":"reload","file":"voices/ge/nachladen-01.mp3","text":"Nachladen!"},
-        {"event":"reload","file":"voices/ge/nachladen-02.mp3","text":"Ich lade nach!"},
-        {"event":"coverMe","file":"voices/ge/feuerschutz-01.mp3","text":"Feuerschutz!"},
-        {"event":"coverMe","file":"voices/ge/feuerschutz-02.mp3","text":"Gebt mir Feuerschutz!"},
-        {"event":"manDown","file":"voices/ge/mann-gefallen-01.mp3","text":"Mann gefallen!"},
-        {"event":"manDown","file":"voices/ge/mann-gefallen-02.mp3","text":"Ein Mann ist getroffen!"},
-        {"event":"grenadeOut","file":"voices/ge/granate-raus-01.mp3","text":"Granate raus!"},
-        {"event":"grenadeOut","file":"voices/ge/granate-raus-02.mp3","text":"Granate!"},
-        {"event":"grenadeIncoming","file":"voices/ge/granate-01.mp3","text":"Granate!"},
-        {"event":"grenadeIncoming","file":"voices/ge/granate-02.mp3","text":"Deckung, Granate!"},
-        {"event":"tankSpotted","file":"voices/ge/panzer-01.mp3","text":"Panzer!"},
-        {"event":"tankSpotted","file":"voices/ge/panzer-02.mp3","text":"Feindlicher Panzer!"},
-        {"event":"tankSpotted","file":"voices/ge/panzer-voraus-01.mp3","text":"Panzer voraus!"},
-        {"event":"antiTank","file":"voices/ge/panzerabwehr-01.mp3","text":"Panzerabwehr vor!"},
-        {"event":"antiTank","file":"voices/ge/panzerabwehr-02.mp3","text":"Panzerabwehr!"},
-        {"event":"aircraft","file":"voices/ge/flieger-01.mp3","text":"Flieger!"},
-        {"event":"aircraft","file":"voices/ge/flieger-02.mp3","text":"Feindliche Flieger!"},
-        {"event":"aircraft","file":"voices/ge/deckung-luft-01.mp3","text":"Deckung!"},
-        {"event":"aircraft","file":"voices/ge/tiefflieger-01.mp3","text":"Tiefflieger!"}
+        {
+          "event": "contactFront",
+          "file": "voices/ge/feind-voraus-01.mp3",
+          "text": "Feind voraus!"
+        },
+        {
+          "event": "contactFront",
+          "file": "voices/ge/feind-voraus-02.mp3",
+          "text": "Feind vor uns!"
+        },
+        {
+          "event": "contactLeft",
+          "file": "voices/ge/feind-links-01.mp3",
+          "text": "Feind links!"
+        },
+        {
+          "event": "contactLeft",
+          "file": "voices/ge/feind-links-02.mp3",
+          "text": "Feind von links!"
+        },
+        {
+          "event": "contactRight",
+          "file": "voices/ge/feind-rechts-01.mp3",
+          "text": "Feind rechts!"
+        },
+        {
+          "event": "contactRight",
+          "file": "voices/ge/feind-rechts-02.mp3",
+          "text": "Feind von rechts!"
+        },
+        {
+          "event": "advance",
+          "file": "voices/ge/vorwaerts-01.mp3",
+          "text": "Vorwärts!"
+        },
+        {
+          "event": "advance",
+          "file": "voices/ge/vorwaerts-02.mp3",
+          "text": "Weiter vor!"
+        },
+        {
+          "event": "hold",
+          "file": "voices/ge/halt-01.mp3",
+          "text": "Halt!"
+        },
+        {
+          "event": "hold",
+          "file": "voices/ge/halt-02.mp3",
+          "text": "Stellung halten!"
+        },
+        {
+          "event": "engage",
+          "file": "voices/ge/feuer-frei-01.mp3",
+          "text": "Feuer frei!"
+        },
+        {
+          "event": "engage",
+          "file": "voices/ge/feuer-frei-02.mp3",
+          "text": "Feuer!"
+        },
+        {
+          "event": "retreat",
+          "file": "voices/ge/zurueck-01.mp3",
+          "text": "Zurück!"
+        },
+        {
+          "event": "retreat",
+          "file": "voices/ge/zurueck-02.mp3",
+          "text": "Rückzug!"
+        },
+        {
+          "event": "takeCover",
+          "file": "voices/ge/deckung-01.mp3",
+          "text": "Deckung!"
+        },
+        {
+          "event": "takeCover",
+          "file": "voices/ge/deckung-02.mp3",
+          "text": "In Deckung!"
+        },
+        {
+          "event": "takeCover",
+          "file": "voices/ge/runter-01.mp3",
+          "text": "Runter!"
+        },
+        {
+          "event": "takeCover",
+          "file": "voices/ge/runter-02.mp3",
+          "text": "Köpfe runter!"
+        },
+        {
+          "event": "reload",
+          "file": "voices/ge/nachladen-01.mp3",
+          "text": "Nachladen!"
+        },
+        {
+          "event": "reload",
+          "file": "voices/ge/nachladen-02.mp3",
+          "text": "Ich lade nach!"
+        },
+        {
+          "event": "coverMe",
+          "file": "voices/ge/feuerschutz-01.mp3",
+          "text": "Feuerschutz!"
+        },
+        {
+          "event": "coverMe",
+          "file": "voices/ge/feuerschutz-02.mp3",
+          "text": "Gebt mir Feuerschutz!"
+        },
+        {
+          "event": "manDown",
+          "file": "voices/ge/mann-gefallen-01.mp3",
+          "text": "Mann gefallen!"
+        },
+        {
+          "event": "manDown",
+          "file": "voices/ge/mann-gefallen-02.mp3",
+          "text": "Ein Mann ist getroffen!"
+        },
+        {
+          "event": "grenadeOut",
+          "file": "voices/ge/granate-raus-01.mp3",
+          "text": "Granate raus!"
+        },
+        {
+          "event": "grenadeOut",
+          "file": "voices/ge/granate-raus-02.mp3",
+          "text": "Granate!"
+        },
+        {
+          "event": "grenadeIncoming",
+          "file": "voices/ge/granate-01.mp3",
+          "text": "Granate!"
+        },
+        {
+          "event": "grenadeIncoming",
+          "file": "voices/ge/granate-02.mp3",
+          "text": "Deckung, Granate!"
+        },
+        {
+          "event": "tankSpotted",
+          "file": "voices/ge/panzer-01.mp3",
+          "text": "Panzer!"
+        },
+        {
+          "event": "tankSpotted",
+          "file": "voices/ge/panzer-02.mp3",
+          "text": "Feindlicher Panzer!"
+        },
+        {
+          "event": "tankSpotted",
+          "file": "voices/ge/panzer-voraus-01.mp3",
+          "text": "Panzer voraus!"
+        },
+        {
+          "event": "antiTank",
+          "file": "voices/ge/panzerabwehr-01.mp3",
+          "text": "Panzerabwehr vor!"
+        },
+        {
+          "event": "antiTank",
+          "file": "voices/ge/panzerabwehr-02.mp3",
+          "text": "Panzerabwehr!"
+        },
+        {
+          "event": "aircraft",
+          "file": "voices/ge/flieger-01.mp3",
+          "text": "Flieger!"
+        },
+        {
+          "event": "aircraft",
+          "file": "voices/ge/flieger-02.mp3",
+          "text": "Feindliche Flieger!"
+        },
+        {
+          "event": "aircraft",
+          "file": "voices/ge/deckung-luft-01.mp3",
+          "text": "Deckung!"
+        },
+        {
+          "event": "aircraft",
+          "file": "voices/ge/tiefflieger-01.mp3",
+          "text": "Tiefflieger!"
+        },
+        {
+          "event": "killConfirm",
+          "file": "voices/ge/treffer-bestaetigt-01.mp3",
+          "text": "Den hab ich!",
+          "delivery": "kill"
+        },
+        {
+          "event": "killConfirm",
+          "file": "voices/ge/treffer-bestaetigt-02.mp3",
+          "text": "Der ist erledigt!",
+          "delivery": "kill"
+        },
+        {
+          "event": "killConfirm",
+          "file": "voices/ge/treffer-bestaetigt-03.mp3",
+          "text": "Noch einer weniger!",
+          "delivery": "kill"
+        },
+        {
+          "event": "killConfirm",
+          "file": "voices/ge/treffer-bestaetigt-04.mp3",
+          "text": "Einer weniger!",
+          "delivery": "kill"
+        },
+        {
+          "event": "orderAck",
+          "file": "voices/ge/befehl-bestaetigt-01.mp3",
+          "text": "Verstanden!",
+          "delivery": "ack"
+        },
+        {
+          "event": "orderAck",
+          "file": "voices/ge/befehl-bestaetigt-02.mp3",
+          "text": "Wird gemacht!",
+          "delivery": "ack"
+        },
+        {
+          "event": "orderAck",
+          "file": "voices/ge/befehl-bestaetigt-03.mp3",
+          "text": "Jawohl!",
+          "delivery": "ack"
+        },
+        {
+          "event": "orderAck",
+          "file": "voices/ge/befehl-bestaetigt-04.mp3",
+          "text": "Bin dabei!",
+          "delivery": "ack"
+        },
+        {
+          "event": "enemyMovingLeft",
+          "file": "voices/ge/feind-bewegt-links-01.mp3",
+          "text": "Sie gehen nach links!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyMovingLeft",
+          "file": "voices/ge/feind-bewegt-links-02.mp3",
+          "text": "Bewegung links! Flanke beobachten!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyMovingRight",
+          "file": "voices/ge/feind-bewegt-rechts-01.mp3",
+          "text": "Sie gehen nach rechts!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyMovingRight",
+          "file": "voices/ge/feind-bewegt-rechts-02.mp3",
+          "text": "Bewegung rechts! Flanke beobachten!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyInHouseGround",
+          "file": "voices/ge/feind-haus-erdgeschoss-01.mp3",
+          "text": "Im Haus! Erdgeschoss!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyInHouseGround",
+          "file": "voices/ge/feind-haus-erdgeschoss-02.mp3",
+          "text": "Feind im Haus, unten!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyInHouseUpper",
+          "file": "voices/ge/feind-haus-oben-01.mp3",
+          "text": "Oben! Zweiter Stock!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyInHouseUpper",
+          "file": "voices/ge/feind-haus-oben-02.mp3",
+          "text": "Feind oben im Haus!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyAtWindow",
+          "file": "voices/ge/feind-fenster-01.mp3",
+          "text": "Am Fenster! Das Fenster beobachten!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyAtWindow",
+          "file": "voices/ge/feind-fenster-02.mp3",
+          "text": "Feind am Fenster!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyFlanking",
+          "file": "voices/ge/feind-flanke-01.mp3",
+          "text": "Sie versuchen uns zu umgehen!",
+          "delivery": "observation"
+        },
+        {
+          "event": "enemyFlanking",
+          "file": "voices/ge/feind-flanke-02.mp3",
+          "text": "Sie kommen über die Flanke!",
+          "delivery": "observation"
+        },
+        {
+          "event": "takingFire",
+          "file": "voices/ge/unter-feuer-01.mp3",
+          "text": "Wir liegen unter Feuer!",
+          "delivery": "combat"
+        },
+        {
+          "event": "takingFire",
+          "file": "voices/ge/unter-feuer-02.mp3",
+          "text": "Feuer auf uns! Runter!",
+          "delivery": "combat"
+        },
+        {
+          "event": "pinned",
+          "file": "voices/ge/festgenagelt-01.mp3",
+          "text": "Wir sitzen hier fest!",
+          "delivery": "combat"
+        },
+        {
+          "event": "pinned",
+          "file": "voices/ge/festgenagelt-02.mp3",
+          "text": "Kommen nicht vor! Zu viel Feuer!",
+          "delivery": "combat"
+        },
+        {
+          "event": "ammoLow",
+          "file": "voices/ge/munition-knapp-01.mp3",
+          "text": "Mir geht die Munition aus!",
+          "delivery": "combat"
+        },
+        {
+          "event": "ammoLow",
+          "file": "voices/ge/munition-knapp-02.mp3",
+          "text": "Munition wird knapp!",
+          "delivery": "combat"
+        },
+        {
+          "event": "movingCover",
+          "file": "voices/ge/in-deckung-gehen-01.mp3",
+          "text": "Ich gehe in Deckung!",
+          "delivery": "combat"
+        },
+        {
+          "event": "movingCover",
+          "file": "voices/ge/in-deckung-gehen-02.mp3",
+          "text": "Ich bewege mich! Feuerschutz!",
+          "delivery": "combat"
+        },
+        {
+          "event": "coverSet",
+          "file": "voices/ge/stellung-bereit-01.mp3",
+          "text": "Bin in Stellung! Los!",
+          "delivery": "combat"
+        },
+        {
+          "event": "coverSet",
+          "file": "voices/ge/stellung-bereit-02.mp3",
+          "text": "Ich bin bereit! Vorwärts!",
+          "delivery": "combat"
+        },
+        {
+          "event": "regroup",
+          "file": "voices/ge/sammeln-01.mp3",
+          "text": "Sammeln! Zu mir!",
+          "delivery": "command"
+        },
+        {
+          "event": "regroup",
+          "file": "voices/ge/sammeln-02.mp3",
+          "text": "Zusammenrücken! Hier sammeln!",
+          "delivery": "command"
+        },
+        {
+          "event": "rallyHere",
+          "file": "voices/ge/sammelpunkt-01.mp3",
+          "text": "Sammelpunkt hier!",
+          "delivery": "command"
+        },
+        {
+          "event": "rallyHere",
+          "file": "voices/ge/sammelpunkt-02.mp3",
+          "text": "Hier ist unser Sammelpunkt!",
+          "delivery": "command"
+        },
+        {
+          "event": "objectiveTaken",
+          "file": "voices/ge/stellung-genommen-01.mp3",
+          "text": "Die Stellung gehört uns! Halten!",
+          "delivery": "command"
+        },
+        {
+          "event": "objectiveTaken",
+          "file": "voices/ge/stellung-genommen-02.mp3",
+          "text": "Ziel genommen! Eingraben!",
+          "delivery": "command"
+        },
+        {
+          "event": "objectiveLost",
+          "file": "voices/ge/stellung-verloren-01.mp3",
+          "text": "Stellung verloren!",
+          "delivery": "combat"
+        },
+        {
+          "event": "objectiveLost",
+          "file": "voices/ge/stellung-verloren-02.mp3",
+          "text": "Sie haben die Stellung! Zurück und sammeln!",
+          "delivery": "combat"
+        },
+        {
+          "event": "pushNow",
+          "file": "voices/ge/nachsetzen-01.mp3",
+          "text": "Sie brechen! Nachsetzen!",
+          "delivery": "command"
+        },
+        {
+          "event": "pushNow",
+          "file": "voices/ge/nachsetzen-02.mp3",
+          "text": "Vorwärts! Lasst sie nicht zur Ruhe kommen!",
+          "delivery": "command"
+        },
+        {
+          "event": "idleQuip",
+          "file": "voices/ge/ruhe-spruch-01.mp3",
+          "text": "Wenn das vorbei ist, schlafe ich eine Woche.",
+          "delivery": "idle"
+        },
+        {
+          "event": "idleQuip",
+          "file": "voices/ge/ruhe-spruch-02.mp3",
+          "text": "Für einen heißen Kaffee würde ich fast mein Gewehr tauschen. Fast.",
+          "delivery": "idle"
+        },
+        {
+          "event": "idleQuip",
+          "file": "voices/ge/ruhe-spruch-03.mp3",
+          "text": "Wenn jemand meine sauberen Socken sieht, sagt ihnen, dass ich sie vermisse.",
+          "delivery": "idle"
+        },
+        {
+          "event": "idleQuip",
+          "file": "voices/ge/ruhe-spruch-04.mp3",
+          "text": "Der Nächste, der 'kurzer Marsch' sagt, trägt meinen Rucksack.",
+          "delivery": "idle"
+        },
+        {
+          "event": "idleQuip",
+          "file": "voices/ge/ruhe-spruch-05.mp3",
+          "text": "Ich schwöre, der Helm wird mit jedem Kilometer schwerer.",
+          "delivery": "idle"
+        },
+        {
+          "event": "idleStory",
+          "file": "voices/ge/ruhe-geschichte-01.mp3",
+          "text": "Zu Hause hat mein Bruder meine guten Stiefel für einen Tanz geliehen. Er kam barfuß zurück und schwor, ein Hund hätte sie gestohlen. Der Hund muss genau seine Größe gehabt haben.",
+          "delivery": "story"
+        },
+        {
+          "event": "idleStory",
+          "file": "voices/ge/ruhe-geschichte-02.mp3",
+          "text": "Mein Vater sagte, beim Militär werde aus mir ein Mann. In der ersten Woche schälte ich zwei Stunden Kartoffeln. Offenbar braucht man dafür ein Schälmesser.",
+          "delivery": "story"
+        },
+        {
+          "event": "idleStory",
+          "file": "voices/ge/ruhe-geschichte-03.mp3",
+          "text": "Unser Koch schwor, der Eintopf sei Rind. Ich fragte, welcher Teil der Kuh beim Umrühren klappert. Er fand das nicht lustig.",
+          "delivery": "story"
+        },
+        {
+          "event": "idleStory",
+          "file": "voices/ge/ruhe-geschichte-04.mp3",
+          "text": "Ein Kamerad von mir hat im Morgengrauen eine Vogelscheuche gegrüßt. Zu seiner Verteidigung: Sie stand gerader als unser Leutnant.",
+          "delivery": "story"
+        },
+        {
+          "event": "idleStory",
+          "file": "voices/ge/ruhe-geschichte-05.mp3",
+          "text": "Ich schrieb meiner Verlobten, ich käme mit Orden nach Hause. Sie schrieb zurück, ihr reiche es, wenn ich mit allen Zähnen zurückkomme. Guter Handel, finde ich.",
+          "delivery": "story"
+        },
+        {
+          "event": "idleLaugh",
+          "file": "voices/ge/ruhe-lachen-01.mp3",
+          "text": "Ha! Hahaha!",
+          "delivery": "laugh"
+        },
+        {
+          "event": "idleLaugh",
+          "file": "voices/ge/ruhe-lachen-02.mp3",
+          "text": "Hehe... der war schlecht.",
+          "delivery": "laugh"
+        },
+        {
+          "event": "idleLaugh",
+          "file": "voices/ge/ruhe-lachen-03.mp3",
+          "text": "Ha! Du erzählst doch Märchen!",
+          "delivery": "laugh"
+        },
+        {
+          "event": "idleLaugh",
+          "file": "voices/ge/ruhe-lachen-04.mp3",
+          "text": "Oh, der war gut. Hahaha!",
+          "delivery": "laugh"
+        },
+        {
+          "event": "idleLaugh",
+          "file": "voices/ge/ruhe-lachen-05.mp3",
+          "text": "Heh! Lass das bloß nicht den Leutnant hören.",
+          "delivery": "laugh"
+        },
+        {
+          "event": "idleGroan",
+          "file": "voices/ge/ruhe-stoehnen-01.mp3",
+          "text": "Ach komm. Den hast du schon dreimal erzählt.",
+          "delivery": "idle"
+        },
+        {
+          "event": "idleGroan",
+          "file": "voices/ge/ruhe-stoehnen-02.mp3",
+          "text": "Der ist furchtbar. Erzähl ihn nochmal.",
+          "delivery": "idle"
+        }
       ]
     }
   },
@@ -187,16 +1551,40 @@
         "strategy": "stable-per-soldier",
         "preserveDuration": true,
         "profiles": [
-          {"id":"low","semitones":-1.4,"suffix":".pitch-low","weight":0.3},
-          {"id":"neutral","semitones":0.0,"suffix":"","weight":0.4},
-          {"id":"high","semitones":1.3,"suffix":".pitch-high","weight":0.3}
+          {
+            "id": "low",
+            "semitones": -1.4,
+            "suffix": ".pitch-low",
+            "weight": 0.3
+          },
+          {
+            "id": "neutral",
+            "semitones": 0.0,
+            "suffix": "",
+            "weight": 0.4
+          },
+          {
+            "id": "high",
+            "semitones": 1.3,
+            "suffix": ".pitch-high",
+            "weight": 0.3
+          }
         ],
         "notes": "Low/high files are derived from the neutral source during deployment with pitch shift plus tempo compensation. Runtime never changes playbackRate."
       }
     },
-    "grenades": {"positional":true,"explosionPriority":"high"},
-    "vehicles": {"positional":true,"loopEngineLayers":true},
-    "aircraft": {"positional":true,"dopplerCandidate":true}
+    "grenades": {
+      "positional": true,
+      "explosionPriority": "high"
+    },
+    "vehicles": {
+      "positional": true,
+      "loopEngineLayers": true
+    },
+    "aircraft": {
+      "positional": true,
+      "dopplerCandidate": true
+    }
   },
   "notes": {
     "existing": "Current rifle/carbine/lmg/pistol files remain in Assets/audio/ until runtime paths migrate into weapons/.",
@@ -204,5 +1592,35 @@
     "pitchVariants": "Do not hand-generate pitch variants. CI derives .pitch-low.mp3 and .pitch-high.mp3 variants while preserving duration, then deploys them beside the neutral files.",
     "plannedSfx": "Weapon expansion, grenades, vehicles, aircraft and ambience categories may still include planned filenames that are intentionally absent.",
     "voices": "Generate faction-appropriate short callouts and keep each semantic event in its own file so runtime can spatialize, throttle and deterministically voice-match soldiers."
+  },
+  "voiceSequences": {
+    "idleStory": {
+      "requiresSquadIdleSeconds": 20,
+      "minimumSecondsBetweenStoriesPerSquad": 75,
+      "followEvent": "idleLaugh",
+      "followDelaySeconds": [
+        1.0,
+        2.4
+      ],
+      "followCount": [
+        2,
+        4
+      ],
+      "sameSquad": true,
+      "cancelOnContact": true
+    },
+    "idleQuip": {
+      "requiresSquadIdleSeconds": 14,
+      "minimumSecondsBetweenQuipsPerSquad": 35,
+      "cancelOnContact": true
+    },
+    "orderAck": {
+      "speaker": "non-captain preferred",
+      "chance": 0.45
+    },
+    "killConfirm": {
+      "speaker": "killer",
+      "chance": 0.35
+    }
   }
 }
