@@ -2,7 +2,9 @@
    Voice is presentation only: this module never consumes BattleSim.random(), never writes movement,
    combat or command intent, and stays dormant in headless runs that do not load the audio manifest.
    It turns the v4 callout library into observations/reactions tied to real simulation state, plus
-   cancellable same-squad social chatter while resting OR marching safely out of contact. */
+   cancellable same-squad social chatter while resting OR marching safely at any speed.
+
+   Story reactions are scheduled from the actual audio completion callback, not simulated time. */
 (function(root){
 'use strict';
 if(!root.BattleModules||root.BattleContextVoice)return;
@@ -29,14 +31,25 @@ function hasEvent(s,event){var m=manifest(),side=m&&m.callouts&&m.callouts[s&&s.
 function sequence(name){var m=manifest();return m&&m.voiceSequences&&m.voiceSequences[name]||{};}
 function pick(sq,seed,preferNonCaptain,exclude){var a=alive(sq),pool=a.filter(function(s){return (!preferNonCaptain||s.role!=='captain')&&(!exclude||exclude.indexOf(String(s.id))<0);});if(!pool.length)pool=a.filter(function(s){return !exclude||exclude.indexOf(String(s.id))<0;});if(!pool.length)return null;return pool[hash(key(sq)+'|'+seed)%pool.length];}
 function eventGap(event){if(event==='idleLaugh'||event==='idleGroan')return .5;if(event==='orderAck')return 2;return 3.5;}
-function say(sim,soldier,event,opts){opts=opts||{};if(!voiceReady(sim)||!soldier||soldier.dead||!hasEvent(soldier,event))return false;var sq=soldier.squad,ss=sq?squadState(sim,sq):null,t=+sim.time||0;if(!opts.ignoreSoldierCooldown&&t<(+soldier.voiceCooldown||0))return false;if(ss&&!opts.ignoreEventCooldown&&t<(+ss.events[event]||0))return false;soldier.voiceCooldown=Math.max(+soldier.voiceCooldown||0,t+eventGap(event));if(ss)ss.events[event]=t+(opts.cooldown==null?TACTICAL_GAP:+opts.cooldown);try{sim.onCallout(soldier,event);return true;}catch(_){return false;}}
+function say(sim,soldier,event,opts){
+  opts=opts||{};if(!voiceReady(sim)||!soldier||soldier.dead||!hasEvent(soldier,event))return false;
+  var sq=soldier.squad,ss=sq?squadState(sim,sq):null,t=+sim.time||0;if(!opts.ignoreSoldierCooldown&&t<(+soldier.voiceCooldown||0))return false;if(ss&&!opts.ignoreEventCooldown&&t<(+ss.events[event]||0))return false;
+  var out;
+  try{
+    /* Stories need a real playback handle so their responses can wait for the selected MP3 to end.
+       Normal tactical events still go through BattleSim.onCallout. */
+    if(opts.directScheduler&&root.BattleVoiceScheduler&&typeof root.BattleVoiceScheduler.enqueue==='function')out=root.BattleVoiceScheduler.enqueue(soldier,event,sim.scene&&sim.scene.activeCamera,opts);
+    else{sim.onCallout(soldier,event);out=true;}
+  }catch(_){return false;}
+  if(out===false)return false;
+  soldier.voiceCooldown=Math.max(+soldier.voiceCooldown||0,t+eventGap(event));if(ss)ss.events[event]=t+(opts.cooldown==null?TACTICAL_GAP:+opts.cooldown);return out||true;
+}
 function schedule(sim,sq,soldier,event,delayMs,opts){if(!soldier)return;state(sim).pending.push({squad:key(sq),soldierId:String(soldier.id),event:event,due:wallNow()+Math.max(0,+delayMs||0),cancelOnContact:!!(opts&&opts.cancelOnContact),cancelOnSocialUnsafe:!!(opts&&opts.cancelOnSocialUnsafe),opts:opts||{}});}
 function contactFresh(sim,sq){var c=sq&&sq.contact;return!!(c&&isFinite(+c.at)&&(+sim.time||0)-(+c.at)<=CONTACT_GRACE);}
 function engagementOf(s){try{return root.BattleEngagement&&root.BattleEngagement.stateOf?root.BattleEngagement.stateOf(s):(s.eng||{});}catch(_){return s.eng||{};}}
 function dangerous(sim,sq){if(!sq)return true;if(sq.inContact||contactFresh(sim,sq))return true;var a=alive(sq),t=+sim.time||0;for(var i=0;i<a.length;i++){var s=a[i],e=engagementOf(s);if(s.target||(+s.suppressedUntil||0)>t||['engage','pinned','bound','assault','suppress','withdraw'].indexOf(String(e.state||''))>=0)return true;}return false;}
-/* Social chatter is allowed while a squad is resting OR simply marching to its objective. Walking
-   is not combat. Fresh contact, suppression, a tactical engagement state, retreat or regroup shuts
-   the social lane down immediately. */
+/* Walking, jogging and catch-up movement are all compatible with banter. Only tactical danger,
+   retreat or regroup closes the social lane. */
 function socialSafe(sim,sq){if(!sq||dangerous(sim,sq)||sq.state==='retreat'||sq.commandPhase==='regroup')return false;return alive(sq).length>=2;}
 function processPending(sim){var st=state(sim),now=wallNow(),keep=[];for(var i=0;i<st.pending.length;i++){var p=st.pending[i],parts=p.squad.split(':'),f=parts.shift(),id=parts.join(':'),squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[],sq=null;for(var q=0;q<squads.length;q++)if(String(squads[q].id)===id){sq=squads[q];break;}if(!sq)continue;if(p.cancelOnContact&&dangerous(sim,sq))continue;if(p.cancelOnSocialUnsafe&&!socialSafe(sim,sq))continue;if(now<p.due){keep.push(p);continue;}var s=memberById(sq,p.soldierId);if(s&&!say(sim,s,p.event,p.opts)&&!s.dead&&now-p.due<1800){p.due=now+750;keep.push(p);}}st.pending=keep;}
 function forward(sq){if(sq._formationForward&&isFinite(+sq._formationForward.x)&&isFinite(+sq._formationForward.z))return{x:+sq._formationForward.x,z:+sq._formationForward.z};var a=sq.orderAnchor||sq.rally||average(sq),g=sq.objective||sq.home;if(!a||!g)return{x:0,z:1};var dx=g.x-a.x,dz=g.z-a.z,l=Math.hypot(dx,dz)||1;return{x:dx/l,z:dz/l};}
@@ -51,14 +64,30 @@ var rh=sq._regroupHysteresis,uses=rh&&(+rh.rallyUses||0)||0;if(uses>ss.rallyUses
 function objectivePoint(sim,id){try{var o=root.BattleObjectiveSystem&&root.BattleObjectiveSystem.get&&root.BattleObjectiveSystem.get(sim,id);return o&&point(o.def);}catch(_){}return null;}
 function nearestSquad(sim,faction,p){var squads=sim.factions&&sim.factions[faction]&&sim.factions[faction].squads||[],best=null,bd=Infinity;for(var i=0;i<squads.length;i++){var a=average(squads[i]);if(!a)continue;var d=p?dist(a,p):0;if(d<bd){bd=d;best=squads[i];}}return best;}
 function objectiveVoices(sim){var st=state(sim),objs=sim.objectiveControl&&sim.objectiveControl.objectives||{},ids=Object.keys(objs);for(var i=0;i<ids.length;i++){var id=ids[i],owner=objs[id]&&objs[id].owner||'neutral',prev=st.owners[id];if(prev==null){st.owners[id]=owner;continue;}if(owner===prev)continue;var p=objectivePoint(sim,id);if((owner==='us'||owner==='ge')&&owner!==prev){var gained=nearestSquad(sim,owner,p),gs=gained&&(captain(gained)||pick(gained,'obj+',true));if(gs)say(sim,gs,'objectiveTaken',{cooldown:15});}if((prev==='us'||prev==='ge')&&prev!==owner){var lost=nearestSquad(sim,prev,p),ls=lost&&(captain(lost)||pick(lost,'obj-',true));if(ls)say(sim,ls,'objectiveLost',{cooldown:15});}st.owners[id]=owner;}}
-function social(sim,sq,ss){var st=state(sim),t=+sim.time||0,safe=socialSafe(sim,sq);if(!safe){ss.socialSince=null;return;}if(ss.socialSince==null)ss.socialSince=t;var safeFor=t-ss.socialSince,storyCfg=sequence('idleStory'),quipCfg=sequence('idleQuip'),storyNeed=+(storyCfg.requiresSquadIdleSeconds||20)+(hash(key(sq)+'|story-jitter')%13),storyGap=+(storyCfg.minimumSecondsBetweenStoriesPerSquad||75),quipNeed=+(quipCfg.requiresSquadIdleSeconds||14)+(hash(key(sq)+'|quip-jitter')%9),quipGap=+(quipCfg.minimumSecondsBetweenQuipsPerSquad||35);
-if(safeFor>=storyNeed&&t-ss.lastStory>=storyGap&&t-st.lastSocialSim>=STORY_GLOBAL_GAP&&chance(sim,key(sq)+'|story-window|'+Math.floor(t/8),.42)){var teller=pick(sq,'story|'+Math.floor(t/10),true),ok=say(sim,teller,'idleStory',{cooldown:storyGap});if(ok){ss.lastStory=t;st.lastSocialSim=t;var a=alive(sq),minCount=2,maxCount=Math.min(4,Math.max(2,a.length-1)),count=minCount+(hash(key(sq)+'|responses|'+Math.floor(t))%(maxCount-minCount+1)),excluded=[String(teller.id)],delay=5200+(hash(key(sq)+'|delay|'+Math.floor(t))%1200);for(var r=0;r<count;r++){var responder=pick(sq,'response|'+r+'|'+Math.floor(t),true,excluded);if(!responder)break;excluded.push(String(responder.id));var groan=r===0&&chance(sim,key(sq)+'|groan|'+Math.floor(t),.18),ev=groan?'idleGroan':'idleLaugh';schedule(sim,sq,responder,ev,delay,{cancelOnContact:true,cancelOnSocialUnsafe:true,cooldown:1,ignoreSoldierCooldown:true});delay+=2750+(hash(key(sq)+'|spacing|'+r+'|'+Math.floor(t))%650);}return;}}
-if(safeFor>=quipNeed&&t-ss.lastQuip>=quipGap&&t-st.lastSocialSim>=5&&chance(sim,key(sq)+'|quip-window|'+Math.floor(t/7),.35)){var s=pick(sq,'quip|'+Math.floor(t/8),true);if(say(sim,s,'idleQuip',{cooldown:quipGap})){ss.lastQuip=t;st.lastSocialSim=t;}}}
+function scheduleStoryResponses(sim,sq,teller,stamp){
+  if(!socialSafe(sim,sq))return;
+  var a=alive(sq),minCount=2,maxCount=Math.min(4,Math.max(2,a.length-1)),count=minCount+(hash(key(sq)+'|responses|'+stamp)%(maxCount-minCount+1)),excluded=[String(teller.id)],delay=450+(hash(key(sq)+'|after-story|'+stamp)%350);
+  for(var r=0;r<count;r++){
+    var responder=pick(sq,'response|'+r+'|'+stamp,true,excluded);if(!responder)break;excluded.push(String(responder.id));
+    var groan=r===0&&chance(sim,key(sq)+'|groan|'+stamp,.18),ev=groan?'idleGroan':'idleLaugh';
+    schedule(sim,sq,responder,ev,delay,{cancelOnContact:true,cancelOnSocialUnsafe:true,cooldown:1,ignoreSoldierCooldown:true});
+    delay+=1800+(hash(key(sq)+'|spacing|'+r+'|'+stamp)%650);
+  }
+}
+function social(sim,sq,ss){
+  var st=state(sim),t=+sim.time||0,safe=socialSafe(sim,sq);if(!safe){ss.socialSince=null;return;}if(ss.socialSince==null)ss.socialSince=t;
+  var safeFor=t-ss.socialSince,storyCfg=sequence('idleStory'),quipCfg=sequence('idleQuip'),storyNeed=+(storyCfg.requiresSquadIdleSeconds||20)+(hash(key(sq)+'|story-jitter')%13),storyGap=+(storyCfg.minimumSecondsBetweenStoriesPerSquad||75),quipNeed=+(quipCfg.requiresSquadIdleSeconds||14)+(hash(key(sq)+'|quip-jitter')%9),quipGap=+(quipCfg.minimumSecondsBetweenQuipsPerSquad||35);
+  if(safeFor>=storyNeed&&t-ss.lastStory>=storyGap&&t-st.lastSocialSim>=STORY_GLOBAL_GAP&&chance(sim,key(sq)+'|story-window|'+Math.floor(t/8),.42)){
+    var stamp=Math.floor(t),teller=pick(sq,'story|'+Math.floor(t/10),true),ok=say(sim,teller,'idleStory',{cooldown:storyGap,directScheduler:true,priority:'social',onEnded:function(){scheduleStoryResponses(sim,sq,teller,stamp);}});
+    if(ok){ss.lastStory=t;st.lastSocialSim=t;return;}
+  }
+  if(safeFor>=quipNeed&&t-ss.lastQuip>=quipGap&&t-st.lastSocialSim>=5&&chance(sim,key(sq)+'|quip-window|'+Math.floor(t/7),.35)){var s=pick(sq,'quip|'+Math.floor(t/8),true);if(say(sim,s,'idleQuip',{cooldown:quipGap})){ss.lastQuip=t;st.lastSocialSim=t;}}
+}
 function killHook(sim){if(sim._contextVoiceKillWrapped)return;sim._contextVoiceKillWrapped=true;var base=sim.killSoldier.bind(sim);sim.killSoldier=function(victim,killer){var wasAlive=!!victim&&!victim.dead;var out=base(victim,killer);if(wasAlive&&victim&&victim.dead&&killer&&!killer.dead&&killer.squad&&voiceReady(sim)){var st=state(sim),serial=++st.killSerial,p=+sequence('killConfirm').chance||.35;if(chance(sim,'kill|'+serial+'|'+killer.id+'|'+victim.id,p))say(sim,killer,'killConfirm',{cooldown:5});var mate=pick(victim.squad,'down|'+serial,true,[String(victim.id)]);if(mate&&chance(sim,'man-down|'+serial+'|'+victim.id,.28))say(sim,mate,'manDown',{cooldown:8});}return out;};}
 function reset(sim){sim._contextVoice={squads:Object.create(null),owners:Object.create(null),killSerial:0,lastSocialSim:-1e9,nextSample:0,pending:[]};killHook(sim);}
 function tick(sim){if(!voiceReady(sim))return;var st=state(sim),t=+sim.time||0;processPending(sim);if(t<st.nextSample)return;st.nextSample=t+SAMPLE;['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++){var sq=squads[i],ss=squadState(sim,sq);phaseVoice(sim,sq,ss);observeContact(sim,sq,ss);observeSuppression(sim,sq,ss);observeEngagement(sim,sq,ss);social(sim,sq,ss);}});objectiveVoices(sim);}
 
-root.BattleModules.registerSystem(SYSTEM,{version:'1.1',onBattleStart:reset,onBattleRestart:reset,onSimulationStep:tick});
-root.BattleContextVoice={version:'1.1',say:say,socialSafe:socialSafe,meaningfulIdle:socialSafe};
-console.log('[VOICE] contextual combat reactions + safe-march squad banter active');
+root.BattleModules.registerSystem(SYSTEM,{version:'1.2',onBattleStart:reset,onBattleRestart:reset,onSimulationStep:tick});
+root.BattleContextVoice={version:'1.2',say:say,socialSafe:socialSafe,meaningfulIdle:socialSafe};
+console.log('[VOICE] playback-driven stories + any-speed safe-march banter active');
 })(typeof window!=='undefined'?window:globalThis);
