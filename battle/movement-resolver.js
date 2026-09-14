@@ -17,7 +17,7 @@
   function signature(s){var q=s.squad||{};return[q.commandPhase||'',q.targetObjective||'',q._engagementPlan&&q._engagementPlan.serial||0,q.state==='retreat'?'retreat':''].join('|');}
   function priority(kind,s){return kind==='retreat'?100:kind==='regroup'?95:kind==='reload-hold'?90:kind==='firing-station'?80:kind==='assault-rush'||kind==='assault-bound-push'?70:kind==='cover-bound'?60:kind==='contact-reaction'?55:kind==='hold'?(s.eng&&s.eng.state==='pinned'?85:50):20;}
   function tolerance(kind){return ['firing-station','hold','reload-hold','contact-reaction'].indexOf(kind)>=0?.1:ORDER_EPS;}
-  function metrics(b){return b._movementGoalStats||(b._movementGoalStats={requests:0,actualChanges:0,equivalentRequestsIgnored:0,hysteresisRetains:0,lowerPriorityRejected:0,emergencyOverrides:0,formationShadowsIgnored:0,goalLegalizations:0,illegalGoalsUnresolved:0,overridesByPriority:{},bySource:{}});}
+  function metrics(b){return b._movementGoalStats||(b._movementGoalStats={requests:0,actualChanges:0,equivalentRequestsIgnored:0,hysteresisRetains:0,lowerPriorityRejected:0,emergencyOverrides:0,formationShadowsIgnored:0,goalLegalizations:0,tacticalWaypointBacktracks:0,blockedGoalFallbacks:0,illegalGoalsUnresolved:0,overridesByPriority:{},bySource:{}});}
   function count(b,key,source){var m=metrics(b);m[key]=(m[key]||0)+1;if(source){var row=m.bySource[source]||(m.bySource[source]={requests:0,changes:0});if(key==='requests')row.requests++;if(key==='actualChanges')row.changes++;}}
   function valid(s,p,b){
     if(!p||p.signature!==signature(s))return false;
@@ -29,43 +29,67 @@
   }
   function proposal(owner,pt,battle,kind,urgent,ttl){pt=point(pt);if(!pt)return null;return{owner:owner,point:pt,kind:kind||owner,urgent:!!urgent,issuedAt:now(battle),until:now(battle)+(ttl==null?Infinity:ttl)};}
 
-  /* Physical navigation already knows the hard hedge/tree/log/wall/rock footprint and body
-     clearance. Do not let higher AI layers commit a point the body can never occupy and then wait
-     for stuck recovery to abandon it. Keep the original intent for diagnostics, but publish a
-     nearby legal stand point as the authoritative movement goal.
+  /* One physical invariant: an authoritative movement point may not overlap a hard terrain
+     footprint. If a producer asks for an impossible point, walk BACK toward the soldier along the
+     incoming path/ray until the body-clearance envelope is clear. This is deterministic, keeps the
+     point on the soldier's own side of a hedge, and avoids ring-searching a different side.
 
-     This deliberately does NOT change obstacle margins or route geometry. It asks the shipping
-     movementClear() implementation whether the point itself is occupiable, then searches only when
-     that exact point is illegal. The nearest legal ring is preferred; on that ring we prefer a
-     point directly reachable from the soldier so a long hedge resolves to the soldier's own side
-     instead of sending him around an arbitrary end. */
+     It does not alter pathfinder margins or obstacle geometry. The physicality module remains the
+     source of truth for hedge/tree/log/wall/rock footprints. */
+  function projectBlockedPoint(soldier,battle,raw,metric,source){
+    var p=point(raw);if(!p||!battle)return p;
+    var N=root.BattleNavigation;if(!N||typeof N.movementClear!=='function'||N.movementClear(p,p))return p;
+    var start=point(soldier&&soldier.root&&soldier.root.position);if(!start)return p;
+    var total=distance(p,start);if(!isFinite(total)||total<.02)return p;
+
+    var P=root.BattleNavigationPhysicality,overlaps=null,margin=P&&isFinite(+P.navMargin)?+P.navMargin:0;
+    if(P&&typeof P.footprints==='function'&&typeof P.shapeContains==='function'){
+      try{
+        var fps=P.footprints(battle)||[];overlaps=[];
+        for(var i=0;i<fps.length;i++)if(P.shapeContains(p,fps[i],margin))overlaps.push(fps[i]);
+      }catch(_){overlaps=null;}
+    }
+    function at(d){var u=Math.max(0,Math.min(1,d/total));return{x:p.x+(start.x-p.x)*u,z:p.z+(start.z-p.z)*u};}
+    function blocked(q){
+      if(overlaps&&overlaps.length){
+        for(var j=0;j<overlaps.length;j++)if(P.shapeContains(q,overlaps[j],margin))return true;
+        return false;
+      }
+      return !N.movementClear(q,q);
+    }
+
+    var lo=0,hi=Math.min(.25,total),q=at(hi);
+    while(hi<total&&blocked(q)){lo=hi;hi=Math.min(total,hi*2);q=at(hi);}
+    if(blocked(q)){
+      if(N.movementClear(start,start)){
+        if(metric)count(battle,metric,source);count(battle,'blockedGoalFallbacks',source);
+        return start;
+      }
+      count(battle,'illegalGoalsUnresolved',source);return p;
+    }
+    for(var k=0;k<12;k++){
+      var mid=(lo+hi)*.5,mq=at(mid);
+      if(blocked(mq))lo=mid;else hi=mid;
+    }
+    var d=Math.min(total,hi+.12),out=at(d);
+    /* Leaving the originally-overlapped footprint may expose another adjacent footprint. Continue
+       toward the already-valid soldier position until the actual shipping point test agrees. */
+    while(d<total&&!N.movementClear(out,out)){d=Math.min(total,d+.12);out=at(d);}
+    if(!N.movementClear(out,out)){
+      if(N.movementClear(start,start)){out=start;count(battle,'blockedGoalFallbacks',source);}
+      else{count(battle,'illegalGoalsUnresolved',source);return p;}
+    }
+    if(metric)count(battle,metric,source);
+    return out;
+  }
+
   function legalizeGoal(soldier,battle,raw,kind,source){
     var p=point(raw);if(!p||!battle||PRECISE_GOALS[kind])return p;
-    var N=root.BattleNavigation;if(!N||typeof N.movementClear!=='function')return p;
     var cache=soldier&&soldier._movementLegalGoalCache;
     if(cache&&cache.kind===kind&&distance(cache.raw,p)<=ORDER_WRITE_EPS)return{x:cache.point.x,z:cache.point.z};
-    if(N.movementClear(p,p)){
-      if(soldier)soldier._movementLegalGoalCache={kind:kind,raw:{x:p.x,z:p.z},point:{x:p.x,z:p.z}};
-      return p;
-    }
-    var start=point(soldier&&soldier.root&&soldier.root.position)||p,radii=[.5,1,1.5,2,2.5,3,4,6],best=null;
-    for(var ri=0;ri<radii.length;ri++){
-      var radius=radii[ri];best=null;
-      for(var i=0;i<16;i++){
-        var a=i*Math.PI/8,q={x:p.x+Math.cos(a)*radius,z:p.z+Math.sin(a)*radius};
-        if(!N.movementClear(q,q))continue;
-        var direct=N.movementClear(start,q),score=(direct?0:10000)+distance(start,q);
-        if(!best||score<best.score)best={point:q,score:score};
-      }
-      if(best){
-        count(battle,'goalLegalizations',source);
-        if(soldier)soldier._movementLegalGoalCache={kind:kind,raw:{x:p.x,z:p.z},point:{x:best.point.x,z:best.point.z}};
-        return best.point;
-      }
-    }
-    count(battle,'illegalGoalsUnresolved',source);
-    if(soldier)soldier._movementLegalGoalCache={kind:kind,raw:{x:p.x,z:p.z},point:{x:p.x,z:p.z}};
-    return p;
+    var out=projectBlockedPoint(soldier,battle,p,'goalLegalizations',source);
+    if(soldier)soldier._movementLegalGoalCache={kind:kind,raw:{x:p.x,z:p.z},point:{x:out.x,z:out.z}};
+    return out;
   }
 
   function proposeOrder(soldier,next,battle,urgent){
@@ -78,8 +102,6 @@
        Retreat/forced orders remain immediate; the fireteam writer runs later in the same squad tick. */
     if(team&&!urgent&&distance(raw,team)>ORDER_WRITE_EPS){count(battle,'formationShadowsIgnored');return st.order;}
     var sig=signature(soldier),old=st.order,cur=point(soldier.orderDestination),oldIntent=old&&point(old.intentPoint||old.point);
-    /* Compare the tactical intent before doing any geometry work. This keeps the hot repeated
-       fireteam refresh cheap even when the original slot had to be projected out of an obstacle. */
     if(old&&old.owner===source&&old.signature===sig&&oldIntent&&distance(oldIntent,raw)<=ORDER_WRITE_EPS&&cur&&distance(cur,old.point)<=ORDER_WRITE_EPS){old.urgent=!!urgent;old.until=Infinity;return old;}
     var p=legalizeGoal(soldier,battle,raw,'formation',source);
     if(!cur||distance(cur,p)>ORDER_WRITE_EPS)soldier.orderDestination={x:p.x,z:p.z};
@@ -91,9 +113,6 @@
     count(battle,'requests',source);st.requests=(st.requests||0)+1;p.signature=signature(soldier);p.reason=meta.reason||kind;p.score=meta.score;p.priority=priority(p.kind,soldier);p.intentPoint={x:raw.x,z:raw.z};
     var q=soldier.squad||{},old=st.combat;
     if(q.state==='retreat'||q.commandPhase==='retreat'){count(battle,'lowerPriorityRejected');return old;}
-    /* Short-lived failed-candidate memory: a cover/bound point this soldier repeatedly failed to
-       reach stays proposed by engagement until it re-decides, so retain the incumbent instead of
-       recommitting to the suppressed candidate. Kinds with no alternative never consult it. */
     var MP=root.BattleMovementProgress;
     if(MP&&MP.gatedKind(p.kind)&&!MP.candidateAllowed(soldier,battle,raw))return old;
     p.point=legalizeGoal(soldier,battle,raw,p.kind,source);
@@ -107,14 +126,6 @@
     st.combat=p;return p;
   }
 
-  /* Some combat destinations are STATE commitments, not momentary hints. Their short TTL exists as
-      a dead-writer safety net, but it must not dump a man back onto his formation slot merely because
-      simulation time advanced faster than the engagement writer refreshed the proposal. That exact
-      expiry/fallback cycle produced the visible left-right "Duck Hunt" oscillation under fire.
-
-      Keep only destinations whose owning tactical state is still unquestionably active (see valid()
-      above). Once the state changes, ordinary TTL/order selection resumes immediately, so stale
-      combat goals cannot drag a soldier after the state machine has moved on. */
   function choose(soldier,battle){
     var st=state(soldier),t=now(battle),combat=st.combat;
     var P=root.BattleTacticalPositions,task=P&&P.update(soldier,battle),sq=soldier.squad||{};
@@ -157,20 +168,26 @@
       pick=Object.assign({},pick,{point:previous.point,issuedAt:previous.issuedAt});
     }
     st.goal=pick;
-    /* Progress tracking and graduated stuck recovery. Round 1-2 advice rebuilds the physical route
-       to the same goal; round 3 flags the goal unreachable for the owning subsystem to abandon.
-       Formation intent has no other owner, so consume the flag here with a fresh plan. */
+
     var MP=root.BattleMovementProgress,advice=MP&&MP.observe?MP.observe(soldier,battle,pick.point,pick):null;
     if(advice&&advice.rebuild){soldier._navCache=null;soldier._physicalPath=null;var TR=root.BattleTacticalRoute;if(TR&&TR.cancel)TR.cancel(soldier,battle);}
     if(soldier._movementGoalUnreachable&&pick.kind==='formation'){soldier._movementGoalUnreachable=false;soldier._navCache=null;soldier._physicalPath=null;}
-    var routed=tacticalWaypoint(soldier,battle,pick),physical=point(routed&&routed.point)||pick.point;
-    // A window stand point needs finer placement than a marching formation slot. Tactical door/cover
-    // waypoints are also precise: they should not be skipped because they are only ~2 m apart.
+
+    var routed=tacticalWaypoint(soldier,battle,pick),rawPhysical=point(routed&&routed.point)||pick.point;
+    /* Tactical routing is allowed to substitute a cover/door waypoint, but it is not allowed to
+       reintroduce an impossible endpoint after the high-level goal was legalized. Clamp the FINAL
+       point too. If it came from a committed tactical plan, rewrite that plan step to the clamped
+       point so the route can actually complete instead of returning to the same bad point forever. */
+    var physical=projectBlockedPoint(soldier,battle,rawPhysical,routed?'tacticalWaypointBacktracks':null,pick.owner);
+    if(routed&&distance(rawPhysical,physical)>ORDER_WRITE_EPS){
+      var plan=soldier._tacticalRoute,idx=isFinite(+routed.step)?+routed.step:(plan&&isFinite(+plan.index)?+plan.index:null);
+      if(plan&&plan.steps&&idx!=null&&plan.steps[idx])plan.steps[idx]={x:physical.x,z:physical.z};
+      routed.point={x:physical.x,z:physical.z};
+    }
+
     var epsilon=(routed||!previous||previous.kind!==pick.kind)?.1:tolerance(pick.kind);
     var current=point(soldier.destination),atCurrent=current&&distance({x:+soldier.root.position.x,z:+soldier.root.position.z},current)<ARRIVAL,changed=!current||distance(current,physical)>epsilon,canChange=pick.urgent||!!routed||atCurrent||now(battle)>=(soldier._destinationCommitUntil||0);
     if(changed&&canChange){
-      /* Provenance records command/combat intent separately from the tactical waypoint. The captain
-         still owns where the man ultimately needs to end up; local survival owns the next step. */
       count(battle,'actualChanges',pick.owner);
       var pk=String(priority(pick.kind,soldier));metrics(battle).overridesByPriority[pk]=(metrics(battle).overridesByPriority[pk]||0)+1;
       var route=soldier._physicalPath,trace={time:now(battle),soldier:soldier.id,oldDestination:current,newDestination:physical,source:pick.owner,reason:pick.reason||pick.kind,kind:pick.kind,priority:priority(pick.kind,soldier),commandPhase:soldier.squad&&soldier.squad.commandPhase,engagementState:soldier.eng&&soldier.eng.state,oldGoalValid:!!oldValid,previousRoute:route?{createdAt:route.createdAt,blocked:route.blocked,remaining:route.points&&route.points.length}:null,inContact:!!(soldier.squad&&soldier.squad.inContact),localAvoidance:!!(soldier._movementYieldUntil>now(battle)||soldier._separatedAt>now(battle)-1),destinationDistanceDelta:current?distance(soldier.root.position,physical)-distance(soldier.root.position,current):null};
@@ -193,6 +210,6 @@
     out.averageChangesPerActiveSoldier=active?out.bySoldier.filter(function(r){return(roster[r.faction]||[]).some(function(s){return s.id===r.id&&!s.dead;});}).reduce(function(n,r){return n+r.changes;},0)/active:0;
     return JSON.parse(JSON.stringify(out));
   }
-  root.BattleMovementResolver={version:'2.0-goal-authority-v128-legal-endpoints',signature:signature,priority:priority,tolerance:tolerance,orderCommit:ORDER_COMMIT,combatTTL:COMBAT_TTL,proposeOrder:proposeOrder,proposeCombat:proposeCombat,resolve:resolve,resetSoldier:resetSoldier,summary:summary};
-  console.log('[MOVE] v128 resolver + legal endpoints: command intent -> legal goal -> tactical waypoint -> physical destination');
+  root.BattleMovementResolver={version:'2.0-goal-authority-v128-overlap-backtrack',signature:signature,priority:priority,tolerance:tolerance,orderCommit:ORDER_COMMIT,combatTTL:COMBAT_TTL,proposeOrder:proposeOrder,proposeCombat:proposeCombat,resolve:resolve,resetSoldier:resetSoldier,summary:summary};
+  console.log('[MOVE] v128 resolver: blocked endpoints backtrack toward the incoming path until clear');
 })(typeof window!=='undefined'?window:globalThis);
