@@ -40,7 +40,14 @@ $modulePaths=glob($root.'/battle/modules/*.js');if($modulePaths===false)$moduleP
 if(!is_file($pagePath)||!is_readable($pagePath)){http_response_code(503);echo '<!doctype html><html><body><h1>Battle sim unavailable</h1><p>Local battle page is missing.</p></body></html>';exit;}
 $deployId=0;foreach($runtimeFiles as $rel){$p=$root.'/'.$rel;if(is_file($p))$deployId=max($deployId,intval(@filemtime($p)));}if($deployId<=0)$deployId=time();
 $body=@file_get_contents($pagePath);if($body===false||stripos($body,'<html')===false){http_response_code(503);echo '<!doctype html><html><body><h1>Battle sim unavailable</h1><p>Local battle page could not be read.</p></body></html>';exit;}
-$assetBase='https://test.ivandpopov.com/grasstex/Assets/';$audioBase=$assetBase.'audio/';$apiBase='/grasstex/';
+$apiBase='/grasstex/';
+/* Assets are served from this page's own origin. Pointing them at the public host meant the
+   headless benchmark, which serves this file from 127.0.0.1, failed every texture, acoustics
+   and weapon-audio fetch on CORS - ~1,700 console errors per 100-battle run, which is what the
+   "browser/runtime errors" metric was actually counting, and which would have buried a real
+   exception. Same-origin is also correct for the deployed copy, where /grasstex/Assets/ is the
+   same directory this loader lives beside. */
+$assetBase=$apiBase.'Assets/';$audioBase=$assetBase.'audio/';
 $manifest=null;$manifestPath=$root.'/Assets/audio/manifest.json';if(is_file($manifestPath)&&is_readable($manifestPath)){$d=json_decode(@file_get_contents($manifestPath),true);if(is_array($d))$manifest=$d;}
 $policyState=null;$policyPath=$root.'/state/ai-policy.json';if(is_file($policyPath)&&is_readable($policyPath)){$d=json_decode(@file_get_contents($policyPath),true);if(is_array($d))$policyState=$d;}
 $memoryState=array('version'=>1,'experiences'=>array());$memoryPath=$root.'/state/scenario-memory.json';if(is_file($memoryPath)&&is_readable($memoryPath)){$d=json_decode(@file_get_contents($memoryPath),true);if(is_array($d)&&isset($d['experiences'])&&is_array($d['experiences'])){$d['experiences']=array_slice($d['experiences'],-180);$memoryState=$d;}}

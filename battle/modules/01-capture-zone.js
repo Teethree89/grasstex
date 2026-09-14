@@ -38,7 +38,7 @@
     return ranked[0];
   }
   function init(instance){
-    return {owner:instance.def.initialOwner||'neutral',active:null,lastActive:null,progress:0,phase:'idle',weights:{}};
+    return {owner:instance.def.initialOwner||'neutral',active:null,lastActive:null,progress:0,progressBy:null,phase:'idle',weights:{}};
   }
   function tick(instance,sim,dt,helpers){
     var def=instance.def,state=instance.state,captureSeconds=+def.captureSeconds||12,minPresence=+def.minPresence||2;
@@ -47,14 +47,25 @@
 
     if(active!==state.lastActive){
       if(active)helpers.telemetry(sim,'objective-pressure',{objective:instance.id,sector:instance.id,faction:active,weights:weights,owner:state.owner});
-      state.progress=0;state.lastActive=active;
+      state.lastActive=active;
     }
     state.active=active;
 
+    /* Losing the lead is not the same as losing the ground.
+       This used to slam progress to zero on every change of `active`, including the change to
+       nobody - and `active` goes to nobody whenever presence dips under minPresence for a moment
+       or the two sides momentarily tie, which is constantly. Twelve seconds of work was wiped by
+       one man stepping outside the ring or one casualty, so a contested zone could never be taken
+       and the decay below was unreachable dead code. Progress now decays while the zone is empty
+       and is only cancelled outright when the other side actually takes over the work. */
     if(!active){
-      state.phase='idle';state.progress=Math.max(0,state.progress-dt*.35);return;
+      state.phase='idle';state.progress=Math.max(0,state.progress-dt*.35);
+      if(state.progress<=0)state.progressBy=null;
+      return;
     }
-    if(state.owner===active){state.phase='held';state.progress=0;return;}
+    if(state.progressBy&&state.progressBy!==active)state.progress=0;
+    state.progressBy=active;
+    if(state.owner===active){state.phase='held';state.progress=0;state.progressBy=null;return;}
 
     var opposition=0;Object.keys(weights).forEach(function(f){if(f!==active)opposition+=weights[f]||0;});
     var advantage=Math.max(1,(weights[active]||0)-opposition),rate=1+Math.min(2,Math.max(0,advantage-1))*.25;
@@ -63,12 +74,12 @@
 
     if(state.progress<captureSeconds)return;
     if(state.owner!=='neutral'){
-      var previous=state.owner;state.owner='neutral';state.progress=0;
+      var previous=state.owner;state.owner='neutral';state.progress=0;state.progressBy=null;
       helpers.stats.neutralizations++;helpers.stats.neutralizationsByFaction[active]=(helpers.stats.neutralizationsByFaction[active]||0)+1;
       helpers.telemetry(sim,'objective-neutralized',{objective:instance.id,sector:instance.id,by:active,previousOwner:previous});
       return;
     }
-    state.owner=active;state.progress=0;state.phase='held';
+    state.owner=active;state.progress=0;state.progressBy=null;state.phase='held';
     helpers.stats.captures++;helpers.stats.capturesByFaction[active]=(helpers.stats.capturesByFaction[active]||0)+1;
     helpers.telemetry(sim,'objective-captured',{objective:instance.id,sector:instance.id,faction:active,seconds:captureSeconds});
   }

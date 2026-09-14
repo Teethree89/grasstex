@@ -27,8 +27,17 @@ function sideHealth(sim,faction,lastProgress){
 function reset(sim){
   if(!sim)return;var t=now(sim);sim._coordinationHealth={version:'1.0',sampledAt:t,lastSample:t,lastObjectiveProgressAt:t,objectiveSignature:objectiveSignature(sim),replanAfter:REPLAN_AFTER,sides:{us:sideHealth(sim,'us',t),ge:sideHealth(sim,'ge',t)}};
 }
+/* Not gated on trainingMode. Force Command consumes `replanDue` from this sampler, so skipping
+   it under training/benchmark runs did not disable a diagnostic - it froze one the commander
+   reads at its t=0 value (every squad targetless, so permanently "replan due", and
+   objectiveStallSeconds permanently 0) for the whole battle, and made the benchmark exercise
+   different recovery logic from live play. */
 function sample(sim){
-  if(!sim||sim.trainingMode||sim.winner)return;var h=sim._coordinationHealth;if(!h){reset(sim);return;}var t=now(sim);if(t-h.lastSample<SAMPLE_SECONDS)return;h.lastSample=t;
+  if(!sim||sim.winner)return;var h=sim._coordinationHealth;if(!h){reset(sim);return;}var t=now(sim);
+  /* A restart rewinds sim.time, which would otherwise leave lastSample in the future and stop
+     this sampler for the whole of the next battle. */
+  if(t<h.lastSample){reset(sim);return;}
+  if(t-h.lastSample<SAMPLE_SECONDS)return;h.lastSample=t;
   var sig=objectiveSignature(sim);if(sig!==h.objectiveSignature){h.objectiveSignature=sig;h.lastObjectiveProgressAt=t;}
   h.sampledAt=t;h.sides={us:sideHealth(sim,'us',h.lastObjectiveProgressAt),ge:sideHealth(sim,'ge',h.lastObjectiveProgressAt)};
 }
