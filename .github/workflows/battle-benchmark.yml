@@ -37,7 +37,7 @@ jobs:
       BATTLE_BENCHMARK_STEP: '0.15'
 
     steps:
-      - name: Checkout current main
+      - name: Checkout current branch
         uses: actions/checkout@v4
 
       - name: Setup Node
@@ -98,7 +98,7 @@ jobs:
       group: battle-benchmark-results-publish
       cancel-in-progress: false
     steps:
-      - name: Checkout current main
+      - name: Checkout current branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -118,7 +118,7 @@ jobs:
         run: node scripts/merge_battle_benchmarks.mjs
 
       - name: Prepare persistent report bundle
-        if: success()
+        if: success() && github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
           rm -rf persistent-result
@@ -163,7 +163,7 @@ jobs:
           retention-days: 30
 
       - name: Publish persistent benchmark result
-        if: success()
+        if: success() && github.ref == 'refs/heads/main'
         env:
           RESULTS_BRANCH: benchmark-results
         run: |
@@ -198,7 +198,7 @@ jobs:
             node <<'NODE'
             const fs = require('fs');
             const compact = JSON.parse(fs.readFileSync('benchmarks/results/latest/battle-benchmark-summary.json', 'utf8'));
-            const s = compact.summary || {};
+            const s = compact.summary || {}, issues = s.issueCounts || {}, health = s.health || {};
             const status = {
               status: 'complete',
               runNumber: compact.runNumber,
@@ -209,8 +209,15 @@ jobs:
               completedBattles: s.completedBattles ?? null,
               usWins: s.winners && s.winners.us || 0,
               geWins: s.winners && s.winners.ge || 0,
-              vacantObjectiveStalls: s.vacantObjectiveStalls ?? null,
-              movementStalls: s.movementStalls ?? null,
+              healthOverall: health.overall ?? null,
+              vacantObjectiveStalls: issues.vacantObjectiveStalls ?? s.vacantObjectiveStalls ?? null,
+              routeStalls: issues.routeStalls ?? null,
+              movementStalls: issues.movementStalls ?? s.movementStalls ?? null,
+              targetlessStalls: issues.targetlessStalls ?? null,
+              longRegroups: issues.longRegroups ?? null,
+              writerConflicts: issues.writerConflicts ?? null,
+              loopAlerts: issues.loopAlerts ?? null,
+              runtimeErrors: s.runtimeErrors ?? null,
               actionsUrl: compact.actionsUrl,
               markdownPath: 'benchmarks/results/latest/battle-benchmark.md',
               csvPath: 'benchmarks/results/latest/battle-benchmark.csv',
