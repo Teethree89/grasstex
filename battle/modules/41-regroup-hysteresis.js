@@ -1,13 +1,15 @@
 /* Prevent cohesion chatter from turning forward movement into a regroup yo-yo.
    Force Command still owns strategic intent. This layer adds hysteresis plus captain-authored
-   safe rally breadcrumbs: a persistent regroup uses the newest recently-safe point behind the
-   squad, falling back to the fixed entry centroid only when no breadcrumb is still valid. */
+   safe rally breadcrumbs. Cohesion is judged on the squad's formation core so one or two obvious
+   stragglers can catch up without reversing everybody. Rally safety uses only threats the squad
+   actually knows about; captains no longer query omniscient enemy positions. */
 (function(root){
 'use strict';
 if(!root.BattleModules||!root.BattleCommanderDoctrine||root.BattleRegroupHysteresis)return;
 
 var ENTER_GRACE=1.35,EXIT_RATIO=.78,MIN_REGROUP=2.4,REENTRY_COOLDOWN=4.0,FLAP_WINDOW=45,FLAP_COUNT=3;
-var RALLY_SAFE_FOR=10,RALLY_MIN_STEP=18,RALLY_MAX_AGE=180,RALLY_MAX_BACK=60,RALLY_ENEMY_RADIUS=32,RALLY_KEEP=5;
+var RALLY_SAFE_FOR=10,RALLY_MIN_STEP=18,RALLY_MAX_AGE=180,RALLY_MAX_BACK=60,RALLY_THREAT_RADIUS=34,RALLY_KEEP=5,THREAT_MEMORY=14;
+var STRAGGLER_BYPASS=2.8,CATCHUP_LEASE=4.0;
 var D=root.BattleCommanderDoctrine,lastReason={};
 
 function now(sim){return +sim.time||0;}
@@ -20,22 +22,88 @@ function spreadOf(sq){try{var p=D.avgPos(sq);return{p:p,spread:D.maxSpread(sq,p)
 function key(sq){return String(sq.faction||'?')+':'+String(sq.id||'?');}
 function snapshot(sq){return{phase:sq.commandPhase||'approach',objective:point(sq.objective),targetObjective:sq.targetObjective||null,hold:+sq.commandHoldUntil||0,routeIndex:+sq.routeIndex||0};}
 function restore(sq,s){if(!s)return;sq.commandPhase=s.phase;if(s.objective)sq.objective={x:s.objective.x,z:s.objective.z};sq.targetObjective=s.targetObjective;sq.commandHoldUntil=Math.min(+sq.commandHoldUntil||0,s.hold);if((+sq.routeIndex||0)<s.routeIndex)sq.routeIndex=s.routeIndex;}
-function state(sq){var st=sq._regroupHysteresis;if(!st)st=sq._regroupHysteresis={overSince:null,accepted:false,enteredAt:0,cooldownUntil:0,lastForward:null,anchor:null,rallies:[],safeSince:null,lastContactAt:-1e9,entries:[],flaps:0,suppressed:0,rallyUses:0};if(!Array.isArray(st.rallies))st.rallies=[];if(!Array.isArray(st.entries))st.entries=[];if(!isFinite(+st.flaps))st.flaps=0;if(!isFinite(+st.suppressed))st.suppressed=0;if(!isFinite(+st.rallyUses))st.rallyUses=0;if(!isFinite(+st.lastContactAt))st.lastContactAt=-1e9;if(st.safeSince!==null&&!isFinite(+st.safeSince))st.safeSince=null;if(st.anchor&&!point(st.anchor))st.anchor=null;return st;}
+function state(sq){
+  var st=sq._regroupHysteresis;if(!st)st=sq._regroupHysteresis={overSince:null,accepted:false,enteredAt:0,cooldownUntil:0,lastForward:null,anchor:null,rallies:[],safeSince:null,lastContactAt:-1e9,entries:[],flaps:0,suppressed:0,rallyUses:0,totalEntries:0,fallbackUses:0,exits:0,rallyDrops:0,stragglerSuppressions:0,stragglerActive:false,regroupRequests:0,requestOpen:false};
+  if(!Array.isArray(st.rallies))st.rallies=[];if(!Array.isArray(st.entries))st.entries=[];
+  ['flaps','suppressed','rallyUses','totalEntries','fallbackUses','exits','rallyDrops','stragglerSuppressions','regroupRequests'].forEach(function(k){if(!isFinite(+st[k]))st[k]=0;});
+  if(!isFinite(+st.lastContactAt))st.lastContactAt=-1e9;if(st.safeSince!==null&&!isFinite(+st.safeSince))st.safeSince=null;if(st.anchor&&!point(st.anchor))st.anchor=null;return st;
+}
 function clearAccepted(st){st.accepted=false;st.overSince=null;st.anchor=null;}
 function soldierPoint(s){return s&&s.root&&s.root.position?{x:+s.root.position.x||0,z:+s.root.position.z||0}:null;}
-function enemyNear(sim,sq,p,r){var foe=sq.faction==='us'?'ge':'us',a=sim.factions&&sim.factions[foe]&&sim.factions[foe].soldiers||[];if(!a.length){var squads=sim.factions&&sim.factions[foe]&&sim.factions[foe].squads||[];for(var q=0;q<squads.length;q++)a=a.concat(squads[q].members||[]);}for(var i=0;i<a.length;i++){var ep=!a[i].dead?soldierPoint(a[i]):null;if(ep&&distance(p,ep)<r)return true;}return false;}
+function median(a){if(!a.length)return 0;var b=a.slice().sort(function(x,y){return x-y;}),m=Math.floor(b.length/2);return b.length%2?b[m]:(b[m-1]+b[m])*.5;}
+function cohesionAssessment(sq,limit){
+  var members=(sq&&sq.members||[]).filter(function(s){return s&&!s.dead&&s.root&&s.root.position;}),n=members.length;
+  if(!n)return{center:point(sq&&sq.rally)||{x:0,z:0},rawSpread:0,coreSpread:0,stragglers:[],stragglerMembers:[],allowed:0,dispersed:false};
+  var xs=[],zs=[],i;for(i=0;i<n;i++){xs.push(+members[i].root.position.x||0);zs.push(+members[i].root.position.z||0);}var med={x:median(xs),z:median(zs)},allowed=n>=9?2:(n>=5?1:0),outside=[];
+  for(i=0;i<n;i++){var p=soldierPoint(members[i]),d=distance(p,med);if(d>limit)outside.push({s:members[i],d:d});}outside.sort(function(a,b){return b.d-a.d;});
+  var trim=outside.slice(0,Math.min(allowed,outside.length)),trimIds={};for(i=0;i<trim.length;i++)trimIds[String(trim[i].s.id)]=1;
+  var core=members.filter(function(s){return!trimIds[String(s.id)];}),cx=0,cz=0;for(i=0;i<core.length;i++){cx+=+core[i].root.position.x||0;cz+=+core[i].root.position.z||0;}var c={x:cx/Math.max(1,core.length),z:cz/Math.max(1,core.length)},coreSpread=0;for(i=0;i<core.length;i++)coreSpread=Math.max(coreSpread,distance(soldierPoint(core[i]),c));
+  var allCenter={x:xs.reduce(function(a,b){return a+b;},0)/n,z:zs.reduce(function(a,b){return a+b;},0)/n},rawSpread=0;for(i=0;i<n;i++)rawSpread=Math.max(rawSpread,distance(soldierPoint(members[i]),allCenter));
+  var strag=trim.map(function(x){return String(x.s.id);}),dispersed=outside.length>allowed||coreSpread>limit;
+  return{center:c,rawCenter:allCenter,rawSpread:rawSpread,coreSpread:coreSpread,stragglers:strag,stragglerMembers:trim.map(function(x){return x.s;}),allowed:allowed,dispersed:dispersed,outsideCount:outside.length};
+}
+function knownThreatNear(sq,p,r,t){
+  var c=sq&&sq.contact;if(c&&isFinite(+c.at)&&t-(+c.at)<=THREAT_MEMORY&&distance(p,{x:+c.x||0,z:+c.z||0})<r)return true;
+  var m=sq&&sq.members||[];for(var i=0;i<m.length;i++){
+    var s=m[i];if(!s||s.dead)continue;
+    var tp=s.target&&!s.target.dead?soldierPoint(s.target):null;if(tp&&distance(p,tp)<r)return true;
+    var e=s.eng;if(e&&e.lastSeen&&isFinite(+e.lastSeenAt)&&t-(+e.lastSeenAt)<=THREAT_MEMORY){var lp=point(e.lastSeen);if(lp&&distance(p,lp)<r)return true;}
+  }
+  return false;
+}
 function reachable(from,to){try{if(!root.BattleNavigation)return true;if(root.BattleNavigation.movementClear&&root.BattleNavigation.movementClear(from,to))return true;var path=root.BattleNavigation.findPath&&root.BattleNavigation.findPath(from,to);return!!(path&&path.length);}catch(_){return false;}}
-function markContact(st,sq,t){if(sq.inContact){st.lastContactAt=t;st.safeSince=null;return true;}var m=sq.members||[];for(var i=0;i<m.length;i++){var s=m[i],e=s&&s.eng;if(s&&((+s.suppressedUntil||0)>t||(e&&isFinite(+e.lastSeenAt)&&t-(+e.lastSeenAt)<RALLY_SAFE_FOR))){st.lastContactAt=t;st.safeSince=null;return true;}}return false;}
-function maybeDropRally(sim,sq,st,sp,t,limit){var cap=captain(sq),cp=soldierPoint(cap);if(!cap||!cp||markContact(st,sq,t)||enemyNear(sim,sq,cp,RALLY_ENEMY_RADIUS)){st.safeSince=null;return;}if(sp.spread>limit*.82){st.safeSince=null;return;}if(st.safeSince==null)st.safeSince=t;if(t-st.safeSince<RALLY_SAFE_FOR)return;var last=st.rallies.length?st.rallies[st.rallies.length-1]:null;if(last&&distance(last,cp)<RALLY_MIN_STEP)return;st.rallies.push({x:cp.x,z:cp.z,at:t,routeIndex:+sq.routeIndex||0,objectiveId:sq.targetObjective||null});while(st.rallies.length>RALLY_KEEP)st.rallies.shift();st.safeSince=t;if(root.BattleTelemetry)root.BattleTelemetry.record('rally-drop',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),x:+cp.x.toFixed(2),z:+cp.z.toFixed(2)},sim);}
-function validRally(sim,sq,r,centroid,t){if(!r||t-r.at>RALLY_MAX_AGE||distance(r,centroid)>RALLY_MAX_BACK)return false;if(enemyNear(sim,sq,r,RALLY_ENEMY_RADIUS))return false;if(!reachable(centroid,r))return false;return true;}
+function markContact(st,sq,t){if(sq.inContact){st.lastContactAt=t;st.safeSince=null;return true;}var m=sq.members||[];for(var i=0;i<m.length;i++){var s=m[i],e=s&&s.eng;if(s&&((+s.suppressedUntil||0)>t||s.target||(e&&isFinite(+e.lastSeenAt)&&t-(+e.lastSeenAt)<RALLY_SAFE_FOR))){st.lastContactAt=t;st.safeSince=null;return true;}}return false;}
+function maybeDropRally(sim,sq,st,ca,t,limit){
+  var cap=captain(sq),cp=soldierPoint(cap);if(!cap||!cp||markContact(st,sq,t)||knownThreatNear(sq,cp,RALLY_THREAT_RADIUS,t)){st.safeSince=null;return;}
+  if(ca.coreSpread>limit*.82){st.safeSince=null;return;}if(st.safeSince==null)st.safeSince=t;if(t-st.safeSince<RALLY_SAFE_FOR)return;
+  var last=st.rallies.length?st.rallies[st.rallies.length-1]:null;if(last&&distance(last,cp)<RALLY_MIN_STEP)return;
+  st.rallies.push({x:cp.x,z:cp.z,at:t,routeIndex:+sq.routeIndex||0,objectiveId:sq.targetObjective||null});while(st.rallies.length>RALLY_KEEP)st.rallies.shift();st.safeSince=t;st.rallyDrops++;
+  if(root.BattleTelemetry)root.BattleTelemetry.record('rally-drop',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),x:+cp.x.toFixed(2),z:+cp.z.toFixed(2),coreSpread:+ca.coreSpread.toFixed(2)},sim);
+}
+function validRally(sim,sq,r,centroid,t){
+  if(!r||t-r.at>RALLY_MAX_AGE||distance(r,centroid)>RALLY_MAX_BACK)return false;
+  if(r.objectiveId!=null&&sq.targetObjective!=null&&String(r.objectiveId)!==String(sq.targetObjective))return false;
+  if(knownThreatNear(sq,r,RALLY_THREAT_RADIUS,t))return false;if(!reachable(centroid,r))return false;return true;
+}
 function chooseRally(sim,sq,st,centroid,t){for(var i=st.rallies.length-1;i>=0;i--)if(validRally(sim,sq,st.rallies[i],centroid,t))return point(st.rallies[i]);return null;}
-function publish(sim){var totalEntries=0,totalFlaps=0,totalSuppressed=0,totalRallies=0,totalRallyUses=0,byFaction={us:{entries:0,flaps:0,suppressed:0,rallies:0,rallyUses:0},ge:{entries:0,flaps:0,suppressed:0,rallies:0,rallyUses:0}};['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++){var st=state(squads[i]),e=st.entries.length,fl=st.flaps||0,su=st.suppressed||0,ra=st.rallies.length,ru=st.rallyUses||0;totalEntries+=e;totalFlaps+=fl;totalSuppressed+=su;totalRallies+=ra;totalRallyUses+=ru;byFaction[f].entries+=e;byFaction[f].flaps+=fl;byFaction[f].suppressed+=su;byFaction[f].rallies+=ra;byFaction[f].rallyUses+=ru;}});sim._regroupHysteresisSummary={entries:totalEntries,flaps:totalFlaps,suppressed:totalSuppressed,rallies:totalRallies,rallyUses:totalRallyUses,byFaction:byFaction,enterGrace:ENTER_GRACE,exitRatio:EXIT_RATIO};if(sim._coordinationHealth)sim._coordinationHealth.regroupHysteresis=JSON.parse(JSON.stringify(sim._regroupHysteresisSummary));}
-function loopAlert(sim,sq,t,spread,limit){var lw=sim&&sim._aiLoopWatch;if(!lw||!Array.isArray(lw.alerts))return;lw.alerts.push({kind:'regroup-flap',severity:'hot',faction:sq.faction,squadId:sq.id,soldierId:null,time:+t.toFixed(2),travel:0,net:0,destinationChanges:0,inContact:false,phases:['approach','regroup','approach'],rules:[],sequence:['advance','regroup','advance','regroup'],message:'Repeated cohesion regroup entries while travelling; spread '+spread.toFixed(1)+'m vs '+limit.toFixed(1)+'m limit'});}
-function noteEntry(sim,sq,st,t,spread,limit,centroid){st.enteredAt=t;st.accepted=true;var rally=chooseRally(sim,sq,st,centroid,t);st.anchor=rally||point(centroid);if(rally)st.rallyUses++;st.entries.push(t);while(st.entries.length&&t-st.entries[0]>FLAP_WINDOW)st.entries.shift();if(st.entries.length>=FLAP_COUNT){st.flaps++;st.entries=[];loopAlert(sim,sq,t,spread,limit);if(root.BattleTelemetry)root.BattleTelemetry.record('regroup-flap',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),spread:+spread.toFixed(2),limit:+limit.toFixed(2)},sim);}if(root.BattleTelemetry)root.BattleTelemetry.record('regroup-enter',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),spread:+spread.toFixed(2),limit:+limit.toFixed(2),anchor:st.anchor,rally:!!rally},sim);}
-function tickSquad(sim,sq){if(!sq||sq.state==='retreat')return;var cfg=cfgFor(sim,sq),sp=spreadOf(sq);if(!cfg||!sp)return;var t=now(sim),st=state(sq),limit=+(captainAlive(sq)?cfg.cohesionRadius:cfg.captainlessCohesion)||34,release=limit*EXIT_RATIO;var reason=lastReason[key(sq)]||'',spreadRegroup=sq.commandPhase==='regroup'&&!sq.inContact&&(reason.indexOf('spread ')===0||sp.spread>limit);maybeDropRally(sim,sq,st,sp,t,limit);if(t<(+sq._regroupBypassUntil||0)){clearAccepted(st);st.cooldownUntil=Math.max(st.cooldownUntil,sq._regroupBypassUntil);if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);return;}if(sq.inContact){st.overSince=null;if(st.accepted){clearAccepted(st);st.cooldownUntil=t+REENTRY_COOLDOWN;}if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);return;}if(st.accepted){if(t-st.enteredAt>=MIN_REGROUP&&sp.spread<=release){clearAccepted(st);st.cooldownUntil=t+REENTRY_COOLDOWN;if(root.BattleTelemetry)root.BattleTelemetry.record('regroup-exit',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),spread:+sp.spread.toFixed(2),release:+release.toFixed(2)},sim);if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);return;}if(sq.commandPhase!=='regroup')sq.commandPhase='regroup';var anchor=st.anchor||sp.p;sq.objective={x:anchor.x,z:anchor.z};sq.commandHoldUntil=Math.max(+sq.commandHoldUntil||0,t+Math.min(.6,+cfg.regroupHold||.4));return;}if(sp.spread>limit){if(st.overSince==null)st.overSince=t;}else st.overSince=null;if(spreadRegroup){if(t>=st.cooldownUntil&&st.overSince!=null&&t-st.overSince>=ENTER_GRACE){noteEntry(sim,sq,st,t,sp.spread,limit,sp.p);return;}st.suppressed++;restore(sq,st.lastForward);return;}if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);}
-function reset(sim){lastReason={};['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++)delete squads[i]._regroupHysteresis;});sim._regroupHysteresisSummary={entries:0,flaps:0,suppressed:0,rallies:0,rallyUses:0,byFaction:{us:{entries:0,flaps:0,suppressed:0,rallies:0,rallyUses:0},ge:{entries:0,flaps:0,suppressed:0,rallies:0,rallyUses:0}},enterGrace:ENTER_GRACE,exitRatio:EXIT_RATIO};}
+function markCatchup(ca,t){for(var i=0;i<ca.stragglerMembers.length;i++){var s=ca.stragglerMembers[i];s._cohesionCatchupUntil=Math.max(+s._cohesionCatchupUntil||0,t+CATCHUP_LEASE);s._destinationCommitUntil=0;}}
+function publish(sim){
+  var totals={entries:0,flaps:0,suppressed:0,rallies:0,rallyDrops:0,rallyUses:0,fallbackUses:0,exits:0,stragglerSuppressions:0,regroupRequests:0},byFaction={us:{},ge:{}};
+  ['us','ge'].forEach(function(f){var side={entries:0,flaps:0,suppressed:0,rallies:0,rallyDrops:0,rallyUses:0,fallbackUses:0,exits:0,stragglerSuppressions:0,regroupRequests:0},squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++){var st=state(squads[i]);side.entries+=st.totalEntries;side.flaps+=st.flaps;side.suppressed+=st.suppressed;side.rallies+=st.rallies.length;side.rallyDrops+=st.rallyDrops;side.rallyUses+=st.rallyUses;side.fallbackUses+=st.fallbackUses;side.exits+=st.exits;side.stragglerSuppressions+=st.stragglerSuppressions;side.regroupRequests+=st.regroupRequests;}byFaction[f]=side;Object.keys(totals).forEach(function(k){totals[k]+=side[k]||0;});});
+  sim._regroupHysteresisSummary={entries:totals.entries,flaps:totals.flaps,suppressed:totals.suppressed,rallies:totals.rallies,rallyDrops:totals.rallyDrops,rallyUses:totals.rallyUses,fallbackUses:totals.fallbackUses,exits:totals.exits,stragglerSuppressions:totals.stragglerSuppressions,regroupRequests:totals.regroupRequests,byFaction:byFaction,enterGrace:ENTER_GRACE,exitRatio:EXIT_RATIO};
+  if(sim._coordinationHealth)sim._coordinationHealth.regroupHysteresis=JSON.parse(JSON.stringify(sim._regroupHysteresisSummary));
+}
+function loopAlert(sim,sq,t,spread,limit){var lw=sim&&sim._aiLoopWatch;if(!lw||!Array.isArray(lw.alerts))return;lw.alerts.push({kind:'regroup-flap',severity:'hot',faction:sq.faction,squadId:sq.id,soldierId:null,time:+t.toFixed(2),travel:0,net:0,destinationChanges:0,inContact:false,phases:['approach','regroup','approach'],rules:[],sequence:['advance','regroup','advance','regroup'],message:'Repeated core-cohesion regroup entries; spread '+spread.toFixed(1)+'m vs '+limit.toFixed(1)+'m limit'});}
+function noteEntry(sim,sq,st,t,ca,limit){
+  st.enteredAt=t;st.accepted=true;st.totalEntries++;var rally=chooseRally(sim,sq,st,ca.center,t);st.anchor=rally||point(ca.center);if(rally)st.rallyUses++;else st.fallbackUses++;
+  st.entries.push(t);while(st.entries.length&&t-st.entries[0]>FLAP_WINDOW)st.entries.shift();if(st.entries.length>=FLAP_COUNT){st.flaps++;st.entries=[];loopAlert(sim,sq,t,ca.coreSpread,limit);if(root.BattleTelemetry)root.BattleTelemetry.record('regroup-flap',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),spread:+ca.coreSpread.toFixed(2),limit:+limit.toFixed(2)},sim);}
+  if(root.BattleTelemetry)root.BattleTelemetry.record('regroup-enter',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),rawSpread:+ca.rawSpread.toFixed(2),coreSpread:+ca.coreSpread.toFixed(2),stragglers:ca.stragglers,limit:+limit.toFixed(2),anchor:st.anchor,rally:!!rally},sim);
+}
+function tickSquad(sim,sq){
+  if(!sq||sq.state==='retreat')return;var cfg=cfgFor(sim,sq),sp=spreadOf(sq);if(!cfg||!sp)return;var t=now(sim),st=state(sq),limit=+(captainAlive(sq)?cfg.cohesionRadius:cfg.captainlessCohesion)||34,release=limit*EXIT_RATIO,ca=cohesionAssessment(sq,limit);
+  sq._cohesionAssessment={rawSpread:+ca.rawSpread.toFixed(3),coreSpread:+ca.coreSpread.toFixed(3),stragglers:ca.stragglers.slice(),allowed:ca.allowed,dispersed:ca.dispersed};
+  var reason=lastReason[key(sq)]||'',spreadRegroup=sq.commandPhase==='regroup'&&!sq.inContact&&(reason.indexOf('spread ')===0||sp.spread>limit);
+  if(spreadRegroup&&!st.requestOpen){st.regroupRequests++;st.requestOpen=true;}if(!spreadRegroup&&sp.spread<=limit)st.requestOpen=false;
+  maybeDropRally(sim,sq,st,ca,t,limit);
+  if(t<(+sq._regroupBypassUntil||0)){clearAccepted(st);st.cooldownUntil=Math.max(st.cooldownUntil,sq._regroupBypassUntil);if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);return;}
+  if(sq.inContact){st.overSince=null;st.stragglerActive=false;if(st.accepted){clearAccepted(st);st.cooldownUntil=t+REENTRY_COOLDOWN;}if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);return;}
+  if(st.accepted){
+    if(t-st.enteredAt>=MIN_REGROUP&&ca.coreSpread<=release){st.exits++;clearAccepted(st);st.cooldownUntil=t+REENTRY_COOLDOWN;if(root.BattleTelemetry)root.BattleTelemetry.record('regroup-exit',{faction:sq.faction,squad:sq.id,at:+t.toFixed(2),rawSpread:+ca.rawSpread.toFixed(2),coreSpread:+ca.coreSpread.toFixed(2),release:+release.toFixed(2),stragglers:ca.stragglers},sim);if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);return;}
+    if(sq.commandPhase!=='regroup')sq.commandPhase='regroup';var anchor=st.anchor||ca.center;sq.objective={x:anchor.x,z:anchor.z};sq.commandHoldUntil=Math.max(+sq.commandHoldUntil||0,t+Math.min(.6,+cfg.regroupHold||.4));return;
+  }
+  /* Force Command still sees the raw farthest-man spread. If only a permitted outlier set is over
+     the line while the formation core is sound, suppress that regroup briefly and make those men
+     refresh their slots. This is catch-up, not permission for the whole squad to fragment. */
+  if(spreadRegroup&&!ca.dispersed&&ca.stragglers.length){
+    markCatchup(ca,t);if(!st.stragglerActive)st.stragglerSuppressions++;st.stragglerActive=true;st.overSince=null;sq._regroupBypassUntil=Math.max(+sq._regroupBypassUntil||0,t+STRAGGLER_BYPASS);st.cooldownUntil=Math.max(st.cooldownUntil,t+STRAGGLER_BYPASS);st.suppressed++;restore(sq,st.lastForward);return;
+  }
+  st.stragglerActive=false;if(ca.dispersed){if(st.overSince==null)st.overSince=t;}else st.overSince=null;
+  if(spreadRegroup){if(ca.dispersed&&t>=st.cooldownUntil&&st.overSince!=null&&t-st.overSince>=ENTER_GRACE){noteEntry(sim,sq,st,t,ca,limit);return;}st.suppressed++;restore(sq,st.lastForward);return;}
+  if(sq.commandPhase!=='regroup')st.lastForward=snapshot(sq);
+}
+function reset(sim){lastReason={};['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++)delete squads[i]._regroupHysteresis;});sim._regroupHysteresisSummary={entries:0,flaps:0,suppressed:0,rallies:0,rallyDrops:0,rallyUses:0,fallbackUses:0,exits:0,stragglerSuppressions:0,regroupRequests:0,byFaction:{us:{},ge:{}},enterGrace:ENTER_GRACE,exitRatio:EXIT_RATIO};}
 if(root.BattleTelemetry&&root.BattleTelemetry.record){var baseRecord=root.BattleTelemetry.record;root.BattleTelemetry.record=function(type,data,sim){if(type==='decision-phase'&&data&&data.squad!=null)lastReason[String(data.faction||'?')+':'+String(data.squad)]=String(data.why||'');return baseRecord.apply(this,arguments);};}
-root.BattleModules.registerSystem('regroup-hysteresis',{version:'1.4',onBattleStart:reset,onBattleRestart:reset,onCommanderTick:function(sim){['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++)tickSquad(sim,squads[i]);});publish(sim);}});
-root.BattleRegroupHysteresis={version:'1.4',enterGrace:ENTER_GRACE,exitRatio:EXIT_RATIO,minRegroup:MIN_REGROUP,reentryCooldown:REENTRY_COOLDOWN,summary:function(sim){return sim&&sim._regroupHysteresisSummary?JSON.parse(JSON.stringify(sim._regroupHysteresisSummary)):null;}};
-console.log('[COMMAND] regroup hysteresis + captain safe-rally breadcrumbs active');
+root.BattleModules.registerSystem('regroup-hysteresis',{version:'1.5',onBattleStart:reset,onBattleRestart:reset,onCommanderTick:function(sim){['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++)tickSquad(sim,squads[i]);});publish(sim);}});
+root.BattleRegroupHysteresis={version:'1.5',enterGrace:ENTER_GRACE,exitRatio:EXIT_RATIO,minRegroup:MIN_REGROUP,reentryCooldown:REENTRY_COOLDOWN,assessment:cohesionAssessment,summary:function(sim){return sim&&sim._regroupHysteresisSummary?JSON.parse(JSON.stringify(sim._regroupHysteresisSummary)):null;}};
+console.log('[COMMAND] straggler-aware regroup + knowledge-based safe rallies active');
 })(typeof window!=='undefined'?window:globalThis);
