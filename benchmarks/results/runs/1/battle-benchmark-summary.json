@@ -1,0 +1,42 @@
+{
+  "status": "complete",
+  "runNumber": 1,
+  "runId": 34787098184,
+  "sourceSha": "92e00f346943d55e4c7cfd320151e7df3417fe55",
+  "actionsUrl": "https://github.com/Teethree89/grasstex/actions/runs/34787098184",
+  "summary": {
+    "generatedAt": "2026-09-13T22:51:53.352Z",
+    "commit": "92e00f346943d55e4c7cfd320151e7df3417fe55",
+    "build": "v29-dev",
+    "policySource": "live-policy-endpoint",
+    "policyRevision": 13,
+    "requestedBattles": 100,
+    "completedBattles": 100,
+    "wallSeconds": 1126.59,
+    "simulatedSeconds": 59958,
+    "realtimeMultiplier": 53.2,
+    "battlesPerMinute": 5.33,
+    "winners": {"us": 45, "ge": 55, "draw": 0, "none": 0},
+    "usWinRate": "45.0%",
+    "geWinRate": "55.0%",
+    "drawRate": "0.0%",
+    "avgBattleSeconds": 599.58,
+    "p50BattleSeconds": 600.15,
+    "p95BattleSeconds": 600.15,
+    "avgCaptures": 3.17,
+    "noCaptureBattles": 0,
+    "vacantObjectiveStalls": 13,
+    "vacantObjectiveStallBattles": 7,
+    "movementStalls": 406,
+    "movementStallBattles": 82,
+    "maxNoObjectiveProgressSeconds": 450.1,
+    "browserErrors": 1136,
+    "browserWarnings": 5
+  },
+  "policy": {
+    "source": "live-policy-endpoint",
+    "revision": 13,
+    "genomeVersion": 2
+  },
+  "backfilledFromArtifact": true
+}
