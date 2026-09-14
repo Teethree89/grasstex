@@ -27,7 +27,8 @@ function axis(sim,sq){
   var dx=goal.x-anchor.x,dz=goal.z-anchor.z,len=Math.hypot(dx,dz);if(len<1)return null;
   return{anchor:anchor,fx:dx/len,fz:dz/len,rx:-dz/len,rz:dx/len};
 }
-function stats(sim){return sim._assaultForwardGuard||(sim._assaultForwardGuard={orderClamps:0,coverRejects:0,byFaction:{us:{orderClamps:0,coverRejects:0},ge:{orderClamps:0,coverRejects:0}}});}
+function fresh(){return{orderClamps:0,coverRejects:0,byFaction:{us:{orderClamps:0,coverRejects:0},ge:{orderClamps:0,coverRejects:0}}};}
+function stats(sim){return sim._assaultForwardGuard||(sim._assaultForwardGuard=fresh());}
 function bump(sim,sq,kind){var st=stats(sim);st[kind]++;if(st.byFaction[sq.faction])st.byFaction[sq.faction][kind]++;}
 function setProposalPoint(p,x,z){p.point={x:x,z:z};}
 function compactOrder(sim,s,q,ax){
@@ -57,6 +58,7 @@ function publish(sim){
   sim._assaultForwardGuardSummary=JSON.parse(JSON.stringify(out));
   if(sim._coordinationHealth)sim._coordinationHealth.assaultForwardGuard=JSON.parse(JSON.stringify(out));
 }
+function reset(sim){sim._assaultForwardGuard=fresh();publish(sim);}
 root.BattleMovementResolver.resolve=function(s,battle){
   if(s&&battle&&s.squad&&s.squad.commandPhase==='assault'&&s.squad.state!=='retreat'){
     var ax=axis(battle,s.squad);if(ax){compactOrder(battle,s,s.squad,ax);rejectBackwardCover(battle,s,s.squad,ax);}
@@ -64,6 +66,7 @@ root.BattleMovementResolver.resolve=function(s,battle){
   }
   return baseResolve.apply(this,arguments);
 };
-root.BattleAssaultForwardGuard={version:'1.0',summary:function(sim){return sim&&sim._assaultForwardGuardSummary?JSON.parse(JSON.stringify(sim._assaultForwardGuardSummary)):null;}};
+if(root.BattleModules)root.BattleModules.registerSystem('assault-forward-guard',{version:'1.1',onBattleStart:reset,onBattleRestart:reset});
+root.BattleAssaultForwardGuard={version:'1.1',summary:function(sim){return sim&&sim._assaultForwardGuardSummary?JSON.parse(JSON.stringify(sim._assaultForwardGuardSummary)):null;}};
 console.log('[MOVE] assault forward guard active: compact formation + no casual backward cover bounds');
 })(typeof window!=='undefined'?window:globalThis);
