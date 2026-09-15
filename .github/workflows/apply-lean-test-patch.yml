@@ -1,0 +1,24 @@
+name: Apply Lean Test Patch
+on:
+  push:
+    branches: [simplify-v134]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: simplify-v134
+      - name: Patch obsolete test reference
+        run: python3 scripts/patch_lean_test_refs.py
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Point objective nav checks at the lean command owner'
+          git push origin HEAD:simplify-v134
