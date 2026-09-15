@@ -1,0 +1,414 @@
+name: M3C Standard 100 Battle Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: Deterministic seed prefix
+        required: false
+        default: 'standard-benchmark'
+  push:
+    tags:
+      - 'standard-benchmark-*'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-source:
+    name: Verify benchmark source is on main
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate source commit
+        id: source
+        env:
+          SOURCE_REF: ${{ github.ref }}
+          SOURCE_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$SOURCE_EVENT" = workflow_dispatch ] && [ "$SOURCE_REF" != refs/heads/main ]; then
+            echo 'Manual benchmarks must be dispatched from main.' >&2
+            exit 1
+          fi
+          git fetch origin main
+          source_sha="$(git rev-parse HEAD)"
+          if ! git merge-base --is-ancestor "$source_sha" origin/main; then
+            echo 'Benchmark tags must point to a commit already merged into main.' >&2
+            exit 1
+          fi
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+  benchmark:
+    name: ${{ matrix.battle_type }} · shard ${{ matrix.shard }}/${{ matrix.shard_total }}
+    needs: validate-source
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - battle_type: meeting
+            shard: 1
+            shard_total: 6
+          - battle_type: meeting
+            shard: 2
+            shard_total: 6
+          - battle_type: meeting
+            shard: 3
+            shard_total: 6
+          - battle_type: meeting
+            shard: 4
+            shard_total: 6
+          - battle_type: meeting
+            shard: 5
+            shard_total: 6
+          - battle_type: meeting
+            shard: 6
+            shard_total: 6
+          - battle_type: us-defend
+            shard: 1
+            shard_total: 2
+          - battle_type: us-defend
+            shard: 2
+            shard_total: 2
+          - battle_type: ge-defend
+            shard: 1
+            shard_total: 2
+          - battle_type: ge-defend
+            shard: 2
+            shard_total: 2
+    env:
+      BATTLE_BENCHMARK_SOURCE_SHA: ${{ needs.validate-source.outputs.source_sha }}
+      BATTLE_BENCHMARK_COUNT: '10'
+      BATTLE_BENCHMARK_OUTPUT: reports
+      BATTLE_BENCHMARK_TIME_LIMIT: '600'
+      BATTLE_BENCHMARK_STEP: '0.15'
+
+    steps:
+      - name: Checkout verified source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate-source.outputs.source_sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install browser harness
+        run: |
+          npm install --no-save --no-package-lock playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Start local battle server
+        run: |
+          php -v
+          rm -rf /tmp/battle-www
+          mkdir -p /tmp/battle-www
+          ln -s "$GITHUB_WORKSPACE" /tmp/battle-www/grasstex
+          php -S 127.0.0.1:8765 -t /tmp/battle-www >/tmp/battle-php.log 2>&1 &
+          echo $! > /tmp/battle-php.pid
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:8765/grasstex/battle_sim_local.php?seed=healthcheck" >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/battle-php.log
+          exit 1
+
+      - name: Run headless battle shard
+        env:
+          BASE_SEED: ${{ github.event.inputs.seed || format('standard-benchmark-{0}', github.run_number) }}
+          SHARD: ${{ matrix.shard }}
+          BATTLE_TYPE: ${{ matrix.battle_type }}
+        run: |
+          set -euo pipefail
+          case "$BATTLE_TYPE" in
+            meeting)
+              defender_query=''
+              ;;
+            us-defend)
+              defender_query='?defender=us'
+              ;;
+            ge-defend)
+              defender_query='?defender=ge'
+              ;;
+            *)
+              echo "Unknown battle type: $BATTLE_TYPE" >&2
+              exit 2
+              ;;
+          esac
+          export BATTLE_BENCHMARK_URL="http://127.0.0.1:8765/grasstex/battle_sim_local.php${defender_query}"
+          export BATTLE_BENCHMARK_SEED="${BASE_SEED}-${BATTLE_TYPE}-s${SHARD}"
+          echo "Running ${BATTLE_TYPE} shard ${SHARD}: ${BATTLE_BENCHMARK_URL}"
+          node scripts/run_battle_benchmark.mjs
+
+      - name: Upload shard report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: standard-benchmark-${{ matrix.battle_type }}-shard-${{ matrix.shard }}-${{ github.run_number }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Show server log on failure
+        if: failure()
+        run: tail -n 300 /tmp/battle-php.log || true
+
+  merge:
+    name: Merge standard 100-battle report
+    needs: [validate-source, benchmark]
+    if: always() && !cancelled() && needs.validate-source.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BATTLE_BENCHMARK_SOURCE_SHA: ${{ needs.validate-source.outputs.source_sha }}
+      BENCHMARK_RESULT: ${{ needs.benchmark.result }}
+      EXPECTED_SHARDS: '10'
+      EXPECTED_BATTLES: '100'
+    permissions:
+      contents: write
+    concurrency:
+      group: battle-benchmark-results-publish
+      cancel-in-progress: false
+    steps:
+      - name: Checkout verified source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.validate-source.outputs.source_sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Download available shard reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: standard-benchmark-*-shard-*-${{ github.run_number }}
+          path: shard-reports
+
+      - name: Merge available benchmark reports
+        run: |
+          set -euo pipefail
+          reports="$(find shard-reports -name battle-benchmark.json -type f | wc -l | tr -d ' ')"
+          if [ "$reports" -lt 1 ]; then
+            echo 'No successful shard report is available to merge.' >&2
+            exit 1
+          fi
+          echo "Merging ${reports}/${EXPECTED_SHARDS} standard benchmark shards."
+          node scripts/merge_battle_benchmarks.mjs
+
+      - name: Stamp standard benchmark profile
+        if: success()
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const jsonPath = 'reports/battle-benchmark.json';
+          const report = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+          report.summary = report.summary || {};
+          report.summary.benchmarkProfile = 'standard-100';
+          report.summary.expectedShards = 10;
+          report.summary.expectedBattles = 100;
+          report.summary.scenarioMix = { meeting: 60, 'us-defend': 20, 'ge-defend': 20 };
+          fs.writeFileSync(jsonPath, JSON.stringify(report, null, 2) + '\n');
+
+          const completed = Number(report.summary.completedBattles || 0);
+          let md = fs.readFileSync('reports/battle-benchmark.md', 'utf8');
+          md = md.replace('# M3C three-scenario headless benchmark', '# M3C standard 100-battle benchmark');
+          md = md.replace(/- Scenario\/shards available: \*\*\d+\/30\*\*/, `- Scenario/shards available: **${report.summary.shardCount || 0}/10**`);
+          md = md.replace(/- Completed: \*\*\d+\/\d+\*\*/, `- Completed: **${completed}/100 expected**`);
+          md = md.replace('# M3C standard 100-battle benchmark\n', '# M3C standard 100-battle benchmark\n\n- Profile: **60 meeting / 20 US-defend / 20 GE-defend**\n');
+          fs.writeFileSync('reports/battle-benchmark.md', md);
+          NODE
+
+      - name: Prepare persistent report bundle
+        if: success()
+        run: |
+          set -euo pipefail
+          rm -rf persistent-result
+          mkdir -p persistent-result
+          cp reports/battle-benchmark.md persistent-result/
+          cp reports/battle-benchmark.csv persistent-result/
+          node <<'NODE'
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('reports/battle-benchmark.json', 'utf8'));
+          const completedBattles = Number(report.summary && report.summary.completedBattles || 0);
+          const complete = process.env.BENCHMARK_RESULT === 'success' && completedBattles >= 100;
+          const compact = {
+            profile: 'standard-100',
+            scenarioMix: { meeting: 60, 'us-defend': 20, 'ge-defend': 20 },
+            status: complete ? 'complete' : 'partial',
+            runNumber: Number(process.env.GITHUB_RUN_NUMBER),
+            runId: Number(process.env.GITHUB_RUN_ID),
+            sourceSha: process.env.BATTLE_BENCHMARK_SOURCE_SHA,
+            expectedBattles: 100,
+            completedBattles,
+            missingBattles: Math.max(0, 100 - completedBattles),
+            actionsUrl: `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+            summary: report.summary || {},
+            policy: report.policy ? {
+              source: report.policy.source || null,
+              revision: report.policy.revision ?? null,
+              genomeVersion: report.policy.genome && report.policy.genome.version || null
+            } : null
+          };
+          fs.writeFileSync('persistent-result/battle-benchmark-summary.json', JSON.stringify(compact, null, 2) + '\n');
+          NODE
+
+      - name: Publish benchmark summary
+        if: always()
+        run: |
+          if [ -f reports/battle-benchmark.md ]; then
+            if [ "$BENCHMARK_RESULT" != success ]; then
+              echo '## ⚠️ Partial standard benchmark — one or more shards failed' >> "$GITHUB_STEP_SUMMARY"
+              echo '' >> "$GITHUB_STEP_SUMMARY"
+            fi
+            cat reports/battle-benchmark.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '## Standard battle benchmark did not produce a merged report' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload merged benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: standard-benchmark-merged-${{ github.run_number }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Publish persistent standard benchmark result
+        if: success()
+        env:
+          RESULTS_BRANCH: benchmark-results
+        run: |
+          set -euo pipefail
+          bundle="$(mktemp -d)"
+          cp -a persistent-result/. "$bundle/"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          if git ls-remote --exit-code --heads origin "$RESULTS_BRANCH" >/dev/null 2>&1; then
+            git fetch origin "$RESULTS_BRANCH:refs/remotes/origin/$RESULTS_BRANCH"
+            git switch -C "$RESULTS_BRANCH" "origin/$RESULTS_BRANCH"
+          else
+            git switch --orphan "$RESULTS_BRANCH"
+            git rm -rf . || true
+          fi
+
+          base_dir='benchmarks/results/standard'
+          run_dir="${base_dir}/runs/${GITHUB_RUN_NUMBER}"
+          mkdir -p "$run_dir"
+          cp -a "$bundle/." "$run_dir/"
+
+          existing=0
+          if [ -f "${base_dir}/status.json" ]; then
+            existing="$(node -e "try{const x=require('./${base_dir}/status.json');process.stdout.write(String(Number(x.runNumber)||0))}catch(e){process.stdout.write('0')}")"
+          fi
+
+          if [ "${GITHUB_RUN_NUMBER}" -ge "$existing" ]; then
+            rm -rf "${base_dir}/latest"
+            mkdir -p "${base_dir}/latest"
+            cp -a "$bundle/." "${base_dir}/latest/"
+            node <<'NODE'
+            const fs = require('fs');
+            const base = 'benchmarks/results/standard';
+            const compact = JSON.parse(fs.readFileSync(`${base}/latest/battle-benchmark-summary.json`, 'utf8'));
+            const s = compact.summary || {}, issues = s.issueCounts || {}, health = s.health || {};
+            const status = {
+              profile: 'standard-100',
+              scenarioMix: compact.scenarioMix,
+              status: compact.status || 'partial',
+              runNumber: compact.runNumber,
+              runId: compact.runId,
+              sourceSha: compact.sourceSha,
+              completedAt: s.generatedAt || new Date().toISOString(),
+              expectedBattles: 100,
+              completedBattles: s.completedBattles ?? compact.completedBattles ?? null,
+              missingBattles: compact.missingBattles ?? null,
+              usWins: s.winners && s.winners.us || 0,
+              geWins: s.winners && s.winners.ge || 0,
+              healthOverall: health.overall ?? null,
+              battleTypes: s.battleTypes || {},
+              objectivesNeverOwned: s.objectivesNeverOwned ?? null,
+              objectivesNeverOwnedRate: s.objectivesNeverOwnedRate ?? null,
+              avgSquadObjectiveSpread: s.avgSquadObjectiveSpread ?? null,
+              vacantObjectiveStalls: issues.vacantObjectiveStalls ?? s.vacantObjectiveStalls ?? null,
+              routeStalls: issues.routeStalls ?? null,
+              movementStalls: issues.movementStalls ?? s.movementStalls ?? null,
+              targetlessStalls: issues.targetlessStalls ?? null,
+              longRegroups: issues.longRegroups ?? null,
+              writerConflicts: issues.writerConflicts ?? null,
+              loopAlerts: issues.loopAlerts ?? null,
+              runtimeErrors: s.runtimeErrors ?? null,
+              actionsUrl: compact.actionsUrl,
+              markdownPath: `${base}/latest/battle-benchmark.md`,
+              csvPath: `${base}/latest/battle-benchmark.csv`,
+              summaryPath: `${base}/latest/battle-benchmark-summary.json`,
+              historyPath: `${base}/runs/${compact.runNumber}/`
+            };
+            fs.writeFileSync(`${base}/status.json`, JSON.stringify(status, null, 2) + '\n');
+          NODE
+          fi
+
+          git add "$base_dir"
+          if git diff --cached --quiet; then
+            echo 'No standard benchmark result changes to publish.'
+            exit 0
+          fi
+          git commit -m "Standard benchmark results #${GITHUB_RUN_NUMBER}"
+          git push origin "HEAD:${RESULTS_BRANCH}"
+
+  notify:
+    name: Notify standard benchmark result
+    needs: [validate-source, benchmark, merge]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send ntfy notification
+        env:
+          VALIDATE_RESULT: ${{ needs.validate-source.result }}
+          BENCHMARK_RESULT: ${{ needs.benchmark.result }}
+          MERGE_RESULT: ${{ needs.merge.result }}
+          SOURCE_SHA: ${{ needs.validate-source.outputs.source_sha }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$VALIDATE_RESULT" != success ]; then
+            status="FAILED during source validation"
+            tags="x,warning"
+            priority="high"
+          elif [ "$BENCHMARK_RESULT" != success ] && [ "$MERGE_RESULT" = success ]; then
+            status="PARTIAL · healthy shards were merged"
+            tags="warning,crossed_swords"
+            priority="default"
+          elif [ "$BENCHMARK_RESULT" != success ]; then
+            status="FAILED during battle shards"
+            tags="x,warning"
+            priority="high"
+          elif [ "$MERGE_RESULT" != success ]; then
+            status="FAILED while merging/publishing"
+            tags="x,warning"
+            priority="high"
+          else
+            status="COMPLETE"
+            tags="white_check_mark,crossed_swords"
+            priority="default"
+          fi
+          short_sha="${SOURCE_SHA:-${GITHUB_SHA}}"
+          short_sha="${short_sha:0:7}"
+          curl -fsS \
+            -H "Title: M3C standard benchmark #${GITHUB_RUN_NUMBER}" \
+            -H "Priority: ${priority}" \
+            -H "Tags: ${tags}" \
+            -H "Click: ${RUN_URL}" \
+            -d "${status} · 100 battles · 60 meeting / 20 US-defend / 20 GE-defend · ${short_sha}" \
+            https://ntfy.sh/ww2battlesim
