@@ -110,6 +110,136 @@
       "fps": 30
     },
     {
+      "clip": "fire-rifle-automatic-crouch-walk",
+      "source": "Fire Rifle Automatic Crouch Walk.fbx",
+      "file": "fire-rifle-automatic-crouch-walk.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        36
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "fire-rifle-automatic-fast-walk",
+      "source": "Fire Rifle Automatic Fast Walk.fbx",
+      "file": "fire-rifle-automatic-fast-walk.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "fire-rifle-automatic-prone",
+      "source": "Fire Rifle Automatic Prone.fbx",
+      "file": "fire-rifle-automatic-prone.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        14
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "fire-rifle-automatic-regular-walk",
+      "source": "Fire Rifle Automatic Regular Walk.fbx",
+      "file": "fire-rifle-automatic-regular-walk.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        41
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "fire-rifle-automatic-slow-walk",
+      "source": "Fire Rifle Automatic Slow Walk.fbx",
+      "file": "fire-rifle-automatic-slow-walk.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        99
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "fire-rifle-automatic-standing",
+      "source": "Fire Rifle Automatic Standing.fbx",
+      "file": "fire-rifle-automatic-standing.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        9
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "fire-rifle-single-shot-crouched-kneel",
+      "source": "Fire Rifle Single Shot Crouched Kneel.fbx",
+      "file": "fire-rifle-single-shot-crouched-kneel.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        32
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "fire-rifle-single-shot-prone",
+      "source": "Fire Rifle Single Shot Prone.fbx",
+      "file": "fire-rifle-single-shot-prone.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        26
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "fire-rifle-single-shot-regular-walk",
+      "source": "Fire Rifle Single Shot Regular Walk.fbx",
+      "file": "fire-rifle-single-shot-regular-walk.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        42
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "fire-rifle-single-shot",
+      "source": "Fire Rifle Single Shot.fbx",
+      "file": "fire-rifle-single-shot.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        36
+      ],
+      "fps": 30
+    },
+    {
       "clip": "idle-aiming",
       "source": "idle aiming.fbx",
       "file": "idle-aiming.glb",
@@ -197,6 +327,201 @@
       "frames": [
         1,
         17
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-aim-to-kneel",
+      "source": "Rifle Aim To Kneel.fbx",
+      "file": "rifle-aim-to-kneel.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        25
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-crouch-walk-to-kneel",
+      "source": "Rifle Crouch Walk To Kneel.fbx",
+      "file": "rifle-crouch-walk-to-kneel.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        83
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-kneel-hit-to-back",
+      "source": "Rifle Kneel Hit To Back.fbx",
+      "file": "rifle-kneel-hit-to-back.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        58
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-kneel-idle",
+      "source": "Rifle Kneel Idle.fbx",
+      "file": "rifle-kneel-idle.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        52
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-kneel-to-aim",
+      "source": "Rifle Kneel To Aim.fbx",
+      "file": "rifle-kneel-to-aim.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        25
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-kneel-to-prone",
+      "source": "Rifle Kneel To Prone.fbx",
+      "file": "rifle-kneel-to-prone.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        60
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-kneel-to-stand",
+      "source": "Rifle Kneel To Stand.fbx",
+      "file": "rifle-kneel-to-stand.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        38
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-prone-idle",
+      "source": "Rifle Prone Idle.fbx",
+      "file": "rifle-prone-idle.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        149
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-prone-to-kneel",
+      "source": "Rifle Prone To Kneel.fbx",
+      "file": "rifle-prone-to-kneel.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        60
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-reload-crouched",
+      "source": "Rifle Reload Crouched.fbx",
+      "file": "rifle-reload-crouched.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        207
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-reload-prone",
+      "source": "Rifle Reload Prone.fbx",
+      "file": "rifle-reload-prone.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        193
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-reload-run",
+      "source": "Rifle Reload Run.fbx",
+      "file": "rifle-reload-run.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        111
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-reload-standing",
+      "source": "Rifle Reload Standing.fbx",
+      "file": "rifle-reload-standing.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        100
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-reload-walking",
+      "source": "Rifle Reload Walking.fbx",
+      "file": "rifle-reload-walking.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        124
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "rifle-stand-to-kneel",
+      "source": "Rifle Stand To Kneel.fbx",
+      "file": "rifle-stand-to-kneel.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        29
       ],
       "fps": 30
     },
