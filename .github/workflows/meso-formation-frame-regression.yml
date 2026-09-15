@@ -1,0 +1,25 @@
+name: Meso Formation Frame Regression
+
+on:
+  push:
+    branches:
+      - fix/meso-formation-frame-stability
+    paths:
+      - battle/modules/16-squad-plan-stability.js
+      - scripts/check-meso-formation-frame-stability.cjs
+      - .github/workflows/meso-formation-frame-regression.yml
+
+permissions:
+  contents: read
+
+jobs:
+  formation-frame:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check committed formation frame stability
+        run: node scripts/check-meso-formation-frame-stability.cjs
