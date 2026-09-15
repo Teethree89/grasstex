@@ -28,7 +28,8 @@ jobs:
       - name: Install Blender
         run: |
           sudo apt-get update
-          sudo apt-get install -y blender
+          sudo apt-get install -y blender python3-numpy
+          blender --background --python-expr 'import numpy; print("Blender numpy", numpy.__version__)'
           blender --version
       - name: Convert shared animations
         run: |
