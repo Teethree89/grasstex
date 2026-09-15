@@ -63,7 +63,7 @@ function bootstrap(opts){
   if(opts.modules!==false){
     root.BattleModules={registerSystem(){},registerUnitType(){},registerObjectiveType(){},runHook(){},unitsFor(){return[];}};
     /* One squad-command owner replaces the old stability/plan/command-lock/regroup stack. */
-    load(root,'battle/modules/16-squad-command.js');
+    load(root,'battle/modules/16-squad-plan-stability.js');
   }
   return root;
 }

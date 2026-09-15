@@ -168,7 +168,7 @@ section('assigned objective intent survives approach-route and lease boundaries'
   r.BattleCommanderAI.advanceRoute(sim,sq,town);
   check('urban mid-route recovery is not overwritten by an old waypoint',sq.objective.x===120&&sq.commandPhase==='assault');
   load(r,'battle/modules/16-squad-plan-stability.js');
-  const hook=r.BattleModules.getSystem('squad-plan-stability').onCommanderTick;
+  const hook=r.BattleModules.getSystem('squad-command').onCommanderTick;
   sq.commandPhase='assault';sq.objective={x:120,z:0};hook(sim);
   const lease=sq._stablePlan;
   check('an unchanged tactical lease gates commander reconsideration',r.BattleSquadStability.holdCommittedPlan(sim,sq)&&sq._stablePlan===lease);
@@ -189,7 +189,7 @@ section('a single assigned squad can reach and capture an outer objective');
   r.BattleSim={start(){}};
   for(const f of ['battle/movement-resolver.js','battle/objective-system.js','battle/modules/01-capture-zone.js',
     'battle/commander-doctrine.js','battle/commander-routes.js','battle/commander-ai.js',
-    'battle/modules/15-force-command-progress-recovery.js','battle/modules/16-squad-plan-stability.js'])load(r,f);
+    'battle/modules/16-squad-plan-stability.js'])load(r,f);
   const sim=H.makeBattle(r,{seed:12345});sim.scene={metadata:{}};
   const sq=H.addSquad(r,sim,{id:'us-0',faction:'us',x:65,z:0,objective:{x:180,z:0},seed:12345});
   Object.assign(sq,{route:[{x:0,z:0},{x:0,z:0}],routeIndex:1,targetObjective:'outer',commandRole:'center',commandPhase:'assault',commandHoldUntil:0});
@@ -209,8 +209,8 @@ section('a single assigned squad can reach and capture an outer objective');
 section('progress recovery respects an objective that replaced the approach route');
 {
   const {r,sq,sim,town}=commandFixture();
-  load(r,'battle/modules/15-force-command-progress-recovery.js');
-  const tick=r.BattleModules.getSystem('force-command-progress-recovery').onCommanderTick;
+  load(r,'battle/modules/16-squad-plan-stability.js');
+  const tick=r.BattleModules.getSystem('squad-command').onCommanderTick;
   sq.route=[{x:65,z:0},{x:0,z:0}];sq.routeIndex=0;
   tick(sim,{town});
   check('urban route advancement cannot overwrite assigned intent',sq.objective.x===120&&sq.routeIndex===0);
@@ -222,14 +222,14 @@ section('a stranded soldier cannot override the regroup timeout');
 {
   const {r,sq,sim,town}=commandFixture();
   r.BattleTelemetry={record(){}};
-  for(const f of ['battle/modules/15-force-command-progress-recovery.js','battle/modules/16-squad-plan-stability.js','battle/modules/41-regroup-hysteresis.js'])load(r,f);
+  for(const f of ['battle/modules/16-squad-plan-stability.js','battle/modules/41-regroup-hysteresis.js'])load(r,f);
   sq.members[3].root.position.x=-100;
   sq.commandPhase='regroup';sq.objective={x:20,z:0};
   sq._regroupRecovery={startedAt:sim.time-19,serial:1};
   sq._regroupHysteresis={overSince:sim.time-20,accepted:true,enteredAt:sim.time-19,cooldownUntil:0,lastForward:null,entries:[],flaps:0,suppressed:0};
   function tick(){
     r.BattleCommanderAI.advanceRoute(sim,sq,town);
-    for(const id of ['force-command-progress-recovery','regroup-hysteresis','squad-plan-stability'])r.BattleModules.getSystem(id).onCommanderTick(sim,{town});
+    r.BattleModules.getSystem('squad-command').onCommanderTick(sim,{town});
   }
   tick();
   check('hysteresis releases an accepted regroup when Force Command times it out',sq.commandPhase!=='regroup'&&sq.objective.x===120);

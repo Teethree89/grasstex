@@ -8,7 +8,7 @@ function root(){
   r.BattleModules={registerSystem(id,s){systems[id]=s;},getSystem(id){return systems[id];},unitsFor:b=>(b._roster.us||[]).concat(b._roster.ge||[])};
   r.BattleCommanderAI={policyFor(){return{cohesionRadius:34,captainlessCohesion:26,routeArrivalRadius:8,captureCommitRatio:.82};},chooseObjective(){return null;}};
   load(r,'battle/battle-navigation.js');load(r,'battle/movement-resolver.js');
-  load(r,'battle/modules/16-squad-command.js');load(r,'battle/modules/44-combat-mobility.js');load(r,'battle/modules/52-movement-execution.js');
+  load(r,'battle/modules/16-squad-plan-stability.js');load(r,'battle/modules/44-assault-forward-guard.js');load(r,'battle/modules/52-survival-tactical-route.js');
   return{r,systems};
 }
 test('only one consolidated owner exists for each tactical layer',()=>{

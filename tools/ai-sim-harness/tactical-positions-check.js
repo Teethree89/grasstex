@@ -11,11 +11,11 @@ function fixture({physical=true,inside=false}={}){
   r.BattleModules={registerSystem(id,h){systems[id]=h;},listSystems(){return Object.entries(systems).map(([id,h])=>({id,...h}));},unitsFor(sim){return sim._roster.us.concat(sim._roster.ge);}};
   r.BattleSoldierModel={animateWalk(){},setCrouch(s,v){s.crouching=v;},setProne(s,v){s.prone=v;},kill(s){s.dead=true;}};
   load(r,'battle/battle-navigation.js');load(r,'battle/movement-resolver.js');
-  load(r,'battle/modules/16-squad-plan-stability.js');load(r,'battle/modules/17-engagement-plan-doctrine.js');
+  load(r,'battle/modules/16-squad-plan-stability.js');
   load(r,'battle/modules/20-building-hardpoints.js');
   if(physical)load(r,'battle/modules/39-navigation-physicality-debug.js');
   load(r,'battle/modules/46-ammunition-stoppages.js');
-  load(r,'battle/modules/47-assault-bound-momentum.js');load(r,'battle/modules/49-combat-urgency.js');
+  
   load(r,'battle/modules/51-soldier-personal-space.js');load(r,'battle/modules/52-survival-tactical-route.js');load(r,'battle/modules/99-session-diagnostics-export.js');
   // Execute the real integrator and death path with rendering stubbed, as the navigation suite does.
   let code=fs.readFileSync(path.join(H.REPO,'battle/battle-sim.js'),'utf8');
