@@ -93,12 +93,16 @@ function instantiate(model,scene,faction){
   var oldMeshes=model.root&&model.root.getChildMeshes?model.root.getChildMeshes(false).slice():[],prefix='soldier'+(++instanceSerial)+'|',entry;
   try{entry=container.instantiateModelsToScene(function(n){return prefix+n;},false,{doNotInstantiate:false});}catch(err){console.warn('[ANIM] skeletal instantiate failed',err);return false;}
   if(!entry||!entry.rootNodes||!entry.rootNodes.length)return false;(entry.animationGroups||[]).forEach(function(g){try{g.stop();g.dispose();}catch(_){}});
+  /* Measure the imported asset before parenting it under the procedural role root. Role variants
+     intentionally scale that root (captain/scout), so measuring after reparenting contaminates the
+     faction-wide scale cache and makes later riflemen inherit the first role's inverse scale. */
+  var bounds=meshBounds(entry.rootNodes),scale=s.scale[faction];if(!(scale>0)&&bounds){scale=TARGET_HEIGHT/bounds.height;s.scale[faction]=scale;}if(!(scale>0))scale=1;
   var mount=new BABYLON.TransformNode(prefix+'mount',scene);mount.parent=model.poseRoot;for(var i=0;i<entry.rootNodes.length;i++)entry.rootNodes[i].parent=mount;
-  var bounds=meshBounds(entry.rootNodes),scale=s.scale[faction];if(!(scale>0)&&bounds){scale=TARGET_HEIGHT/bounds.height;s.scale[faction]=scale;}if(!(scale>0))scale=1;mount.scaling.setAll(scale);if(bounds)mount.position.y=-bounds.minY*scale;
+  mount.scaling.setAll(scale);if(bounds)mount.position.y=-bounds.minY*scale;
   var nodes=descendants(entry.rootNodes),rest=captureMap(model,nodes),mapped=Object.keys(rest.nodes).length;
   if(mapped<12){console.warn('[ANIM] skeletal mapping incomplete ('+mapped+'/'+MAP.length+'); procedural fallback active');try{mount.dispose();}catch(_){}return false;}
   disposeMeshes(oldMeshes);
-  model._skeletal={mount:mount,entry:entry,rest:rest,mapped:mapped,faction:faction,backend:'runtime-mixamo-skin',driverBackend:model.animationBinding&&model.animationBinding.backend||null,weaponFitError:null};
+  model._skeletal={mount:mount,entry:entry,rest:rest,mapped:mapped,faction:faction,backend:'runtime-mixamo-skin',driverBackend:model.animationBinding&&model.animationBinding.backend||null,weaponFitError:null,assetBounds:bounds?{minY:bounds.minY,maxY:bounds.maxY,height:bounds.height}:null,assetScale:scale};
   console.log('[ANIM] '+faction+' soldier using Mixamo skin over '+model._skeletal.driverBackend+' driver; '+mapped+' joints mapped');return true;
 }
 function moveNodeByWorldDelta(node,delta){
@@ -135,6 +139,6 @@ M.preload=function(scene){var p=oldPreload?oldPreload.call(this,scene):true;retu
 M.setImportedEnabled=function(scene,v){if(oldSetImported)oldSetImported.call(this,scene,v);actualState(scene).enabled=!!v;};
 M.createSoldier=function(scene,faction,role,parent){var model=oldCreate.call(this,scene,faction,role,parent);if(ASSET[faction]&&actualState(scene).enabled)instantiate(model,scene,faction);return model;};
 M.animateWalk=function(model,dt,speed){var out=oldAnimate.apply(this,arguments);if(model&&model._skeletal)retarget(model);return out;};
-root.BattleSkeletalSoldierBackend={version:'1.8',map:MAP.slice(),asset:ASSET,retarget:retarget};
+root.BattleSkeletalSoldierBackend={version:'1.9',map:MAP.slice(),asset:ASSET,retarget:retarget};
 console.log('[ANIM] runtime skeletal soldier skin active (procedural/Baked driver -> Mixamo renderer + two-hand weapon fit)');
 })(typeof window!=='undefined'?window:globalThis);
