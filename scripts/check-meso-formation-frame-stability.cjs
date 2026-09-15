@@ -55,7 +55,9 @@ function soldier(id, slotIndex, x) {
 const sq = {
   id: 'regression-squad',
   faction: 'us',
-  commandPhase: 'hold',
+  // Regroup freezes the squad anchor without activating defensive-post capture, so this test
+  // isolates formation-frame churn rather than a legitimate formation -> defense-post handoff.
+  commandPhase: 'regroup',
   targetObjective: 'objective-a',
   objective: { x: 1.9, z: 10 },
   home: { x: 0, z: 0 },
