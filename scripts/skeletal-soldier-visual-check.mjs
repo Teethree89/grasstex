@@ -13,8 +13,6 @@ function safeName(v){return String(v).replaceAll('.','-').replaceAll('>','-to-')
 try {
   const page=await browser.newPage({viewport:{width:1000,height:800},deviceScaleFactor:1});
   page.on('pageerror',e=>pageErrors.push(String(e?.stack||e)));
-  // Local PHP deliberately rejects telemetry writes and the checkout omits the production-only
-  // dirt/sky mirrors. Keep those resource messages for evidence, but only JS exceptions fail QA.
   page.on('console',m=>{if(m.type()==='error')consoleErrors.push(m.text());});
   await page.goto(url,{waitUntil:'domcontentloaded',timeout:120000});
   await page.waitForFunction(()=>window.__battle__ && window.BattleSkeletalSoldierBackend && window.__battle__._roster?.us?.length && window.__battle__._roster?.ge?.length,null,{timeout:120000});
@@ -31,9 +29,6 @@ try {
   await page.evaluate(()=>{
     const root=window,sim=root.__battle__,scene=sim.scene,M=root.BattleSoldierModel,W=root.BattleWeapons,B=root.BABYLON;
     sim.pause();
-    // Build a clean inspection stage from the actual battle scene so it uses the exact preloaded
-    // AssetContainers and runtime backend that live soldiers use. Existing battlefield geometry is
-    // hidden; subjects created after this point remain enabled.
     for(const mesh of scene.meshes.slice())try{mesh.setEnabled(false);}catch(_){ }
     scene.fogMode=B.Scene.FOGMODE_NONE;
     scene.clearColor=new B.Color4(.18,.20,.22,1);
@@ -41,8 +36,7 @@ try {
     const old=scene.activeCamera;try{old?.detachControl?.();}catch(_){ }
     const cam=new B.FreeCamera('__skeletalVisualCamera',new B.Vector3(2.35,1.18,3.25),scene);
     cam.minZ=.05;cam.maxZ=100;cam.fov=.72;cam.setTarget(new B.Vector3(0,.88,0));scene.activeCamera=cam;
-    const hemi=new B.HemisphericLight('__skeletalVisualHemi',new B.Vector3(.25,1,.15),scene);hemi.intensity=1.25;
-    hemi.groundColor=new B.Color3(.22,.22,.22);
+    const hemi=new B.HemisphericLight('__skeletalVisualHemi',new B.Vector3(.25,1,.15),scene);hemi.intensity=1.25;hemi.groundColor=new B.Color3(.22,.22,.22);
     const key=new B.DirectionalLight('__skeletalVisualKey',new B.Vector3(-.4,-1,-.5),scene);key.intensity=.65;key.position=new B.Vector3(3,5,4);
 
     function disposeSubject(){const s=root.__skeletalVisualSubject;if(s&&s.root)try{s.root.dispose();}catch(_){ }root.__skeletalVisualSubject=null;}
@@ -64,7 +58,9 @@ try {
       return{label,faction:s._skeletal?.faction||null,backend:s.animationBinding?.backend||null,mapped:s._skeletal?.mapped||0,meshCount:meshes.length,boundedMeshes:bounded,vertices:verts,bounds:bounded?{min:[min.x,min.y,min.z],max:[max.x,max.y,max.z],size:[max.x-min.x,max.y-min.y,max.z-min.z]}:null};
     }
     function pose(faction,name){
-      const s=make(faction);tick(s,.2,0);
+      const s=make(faction);
+      if(name==='bind')return summary(s,name);
+      tick(s,.2,0);
       const moving=name==='walk'||name==='walk-aim'||name==='crouch-walk'||name==='prone-crawl';
       if(name==='aim'||name==='fire'||name==='reload'||name==='walk-aim'||name==='crouch-aim')s.target=target(s);
       if(name==='crouch'||name==='crouch-walk'||name==='crouch-aim'){M.setCrouch(s,true);tick(s,.65,0);}
@@ -107,9 +103,9 @@ try {
     results.transitions.push(info);
   }
 
-  const usPoses=['idle','walk','aim','fire','reload','walk-aim','crouch','crouch-walk','crouch-aim','prone','prone-crawl','death.front','death.back','death.side'];
+  const usPoses=['bind','idle','walk','aim','fire','reload','walk-aim','crouch','crouch-walk','crouch-aim','prone','prone-crawl','death.front','death.back','death.side'];
   for(const pose of usPoses)await capturePose('us',pose);
-  for(const pose of ['idle','walk','aim','crouch','prone'])await capturePose('ge',pose);
+  for(const pose of ['bind','idle','walk','aim','crouch','prone'])await capturePose('ge',pose);
 
   await captureTransition('stand','crouch',.17);
   await captureTransition('crouch','stand',.16);
