@@ -1,0 +1,647 @@
+{
+  "version": 4,
+  "rig": "mixamo-compatible",
+  "shared": true,
+  "source": "Assets/animations/*.fbx",
+  "rootMotion": "locomotion horizontal travel stripped; vertical preserved",
+  "clips": [
+    {
+      "clip": "crouching-turn-90-left",
+      "source": "crouching turn 90 left.fbx",
+      "file": "crouching-turn-90-left.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        39
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "crouching-turn-90-right",
+      "source": "crouching turn 90 right.fbx",
+      "file": "crouching-turn-90-right.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        37
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "death-crouching-headshot-front",
+      "source": "death crouching headshot front.fbx",
+      "file": "death-crouching-headshot-front.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        58
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "death-from-back-headshot",
+      "source": "death from back headshot.fbx",
+      "file": "death-from-back-headshot.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        112
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "death-from-front-headshot",
+      "source": "death from front headshot.fbx",
+      "file": "death-from-front-headshot.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        86
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "death-from-right",
+      "source": "death from right.fbx",
+      "file": "death-from-right.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        100
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "death-from-the-back",
+      "source": "death from the back.fbx",
+      "file": "death-from-the-back.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        90
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "death-from-the-front",
+      "source": "death from the front.fbx",
+      "file": "death-from-the-front.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        104
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "idle-aiming",
+      "source": "idle aiming.fbx",
+      "file": "idle-aiming.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        64
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "idle-crouching-aiming",
+      "source": "idle crouching aiming.fbx",
+      "file": "idle-crouching-aiming.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        60
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "idle-crouching",
+      "source": "idle crouching.fbx",
+      "file": "idle-crouching.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        63
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "idle",
+      "source": "idle.fbx",
+      "file": "idle.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        63
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "jump-down",
+      "source": "jump down.fbx",
+      "file": "jump-down.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        21
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "jump-loop",
+      "source": "jump loop.fbx",
+      "file": "jump-loop.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        29
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "jump-up",
+      "source": "jump up.fbx",
+      "file": "jump-up.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        17
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "run-backward-left",
+      "source": "run backward left.fbx",
+      "file": "run-backward-left.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "run-backward-right",
+      "source": "run backward right.fbx",
+      "file": "run-backward-right.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "run-backward",
+      "source": "run backward.fbx",
+      "file": "run-backward.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "run-forward-left",
+      "source": "run forward left.fbx",
+      "file": "run-forward-left.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "run-forward-right",
+      "source": "run forward right.fbx",
+      "file": "run-forward-right.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "run-forward",
+      "source": "run forward.fbx",
+      "file": "run-forward.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "run-left",
+      "source": "run left.fbx",
+      "file": "run-left.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "run-right",
+      "source": "run right.fbx",
+      "file": "run-right.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "sprint-backward-left",
+      "source": "sprint backward left.fbx",
+      "file": "sprint-backward-left.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "sprint-backward-right",
+      "source": "sprint backward right.fbx",
+      "file": "sprint-backward-right.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "sprint-backward",
+      "source": "sprint backward.fbx",
+      "file": "sprint-backward.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "sprint-forward-left",
+      "source": "sprint forward left.fbx",
+      "file": "sprint-forward-left.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "sprint-forward-right",
+      "source": "sprint forward right.fbx",
+      "file": "sprint-forward-right.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "sprint-forward",
+      "source": "sprint forward.fbx",
+      "file": "sprint-forward.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "sprint-left",
+      "source": "sprint left.fbx",
+      "file": "sprint-left.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "sprint-right",
+      "source": "sprint right.fbx",
+      "file": "sprint-right.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        16
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "turn-90-left",
+      "source": "turn 90 left.fbx",
+      "file": "turn-90-left.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "turn-90-right",
+      "source": "turn 90 right.fbx",
+      "file": "turn-90-right.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-backward-left",
+      "source": "walk backward left.fbx",
+      "file": "walk-backward-left.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-backward-right",
+      "source": "walk backward right.fbx",
+      "file": "walk-backward-right.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-backward",
+      "source": "walk backward.fbx",
+      "file": "walk-backward.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-crouching-backward-left",
+      "source": "walk crouching backward left.fbx",
+      "file": "walk-crouching-backward-left.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        30
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-crouching-backward-right",
+      "source": "walk crouching backward right.fbx",
+      "file": "walk-crouching-backward-right.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        30
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-crouching-backward",
+      "source": "walk crouching backward.fbx",
+      "file": "walk-crouching-backward.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-crouching-forward-left",
+      "source": "walk crouching forward left.fbx",
+      "file": "walk-crouching-forward-left.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-crouching-forward-right",
+      "source": "walk crouching forward right.fbx",
+      "file": "walk-crouching-forward-right.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-crouching-forward",
+      "source": "walk crouching forward.fbx",
+      "file": "walk-crouching-forward.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-crouching-left",
+      "source": "walk crouching left.fbx",
+      "file": "walk-crouching-left.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-crouching-right",
+      "source": "walk crouching right.fbx",
+      "file": "walk-crouching-right.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-forward-left",
+      "source": "walk forward left.fbx",
+      "file": "walk-forward-left.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-forward-right",
+      "source": "walk forward right.fbx",
+      "file": "walk-forward-right.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-forward",
+      "source": "walk forward.fbx",
+      "file": "walk-forward.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-left",
+      "source": "walk left.fbx",
+      "file": "walk-left.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "walk-right",
+      "source": "walk right.fbx",
+      "file": "walk-right.glb",
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        31
+      ],
+      "fps": 30
+    }
+  ],
+  "failures": []
+}
