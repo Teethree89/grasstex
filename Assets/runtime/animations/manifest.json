@@ -6,6 +6,19 @@
   "rootMotion": "locomotion horizontal travel stripped; vertical preserved",
   "clips": [
     {
+      "clip": "crawl-backwards-in-prone",
+      "source": "Crawl Backwards In Prone.fbx",
+      "file": "crawl-backwards-in-prone.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        30
+      ],
+      "fps": 30
+    },
+    {
       "clip": "crouching-turn-90-left",
       "source": "crouching turn 90 left.fbx",
       "file": "crouching-turn-90-left.glb",
@@ -327,6 +340,136 @@
       "frames": [
         1,
         17
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "moving-backward-in-prone-position",
+      "source": "Moving Backward In Prone Position.fbx",
+      "file": "moving-backward-in-prone-position.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        58
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "prone-backwards-start",
+      "source": "Prone Backwards Start.fbx",
+      "file": "prone-backwards-start.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        20
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "prone-backwards-stop",
+      "source": "Prone Backwards Stop.fbx",
+      "file": "prone-backwards-stop.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        38
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "prone-death",
+      "source": "Prone Death.fbx",
+      "file": "prone-death.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        57
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "prone-forward-stop",
+      "source": "Prone Forward Stop.fbx",
+      "file": "prone-forward-stop.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        42
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "prone-forward",
+      "source": "Prone Forward.fbx",
+      "file": "prone-forward.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        71
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "prone-left-turn",
+      "source": "Prone Left Turn.fbx",
+      "file": "prone-left-turn.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        32
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "prone-right-turn",
+      "source": "Prone Right Turn.fbx",
+      "file": "prone-right-turn.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        40
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "prone-roll-right-fast",
+      "source": "Prone Roll Right Fast.fbx",
+      "file": "prone-roll-right-fast.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        52
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "prone-roll-right",
+      "source": "Prone Roll Right.fbx",
+      "file": "prone-roll-right.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        99
       ],
       "fps": 30
     },
