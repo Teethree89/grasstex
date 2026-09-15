@@ -55,14 +55,18 @@ function holdCommittedPlan(sim,sq){
   return true;
 }
 function updatePlan(sim,sq){
-  var p=sq._engagementPlan,phase=String(sq.commandPhase||'');if(sq.state==='retreat'||phase==='retreat'){closePlan(sim,sq,'retreat');return;}
+  var p=sq._engagementPlan,phase=String(sq.commandPhase||''),sig=signature(sq);if(sq.state==='retreat'||phase==='retreat'){closePlan(sim,sq,'retreat');sq._planDormantSignature=null;return;}
+  if(sq._planDormantSignature&&sq._planDormantSignature!==sig)sq._planDormantSignature=null;
   if(p){
-    if(sq.inContact){if(p.status!=='active'&&p.activatedAt==null)p.activatedAt=sim.time;p.status='active';p.lastContactAt=sim.time;p.quietSince=null;sq._regroupBypassUntil=Math.max(+sq._regroupBypassUntil||0,sim.time+1.25);}
-    else if(p.status==='active'||p.status==='quiet'){if(p.quietSince==null)p.quietSince=sim.time;p.status='quiet';if(sim.time-p.quietSince>=QUIET_CLOSE){closePlan(sim,sq,'contact clear');p=null;}else sq._regroupBypassUntil=Math.max(+sq._regroupBypassUntil||0,sim.time+1.25);}
-    if(p&&p.status==='staged'&&signature(sq)!==p.signature){closePlan(sim,sq,'intent replaced');p=null;}
+    if(sq.inContact){sq._planDormantSignature=null;if(p.status!=='active'&&p.activatedAt==null)p.activatedAt=sim.time;p.status='active';p.lastContactAt=sim.time;p.quietSince=null;sq._regroupBypassUntil=Math.max(+sq._regroupBypassUntil||0,sim.time+1.25);}
+    else if(p.status==='active'||p.status==='quiet'){if(p.quietSince==null)p.quietSince=sim.time;p.status='quiet';if(sim.time-p.quietSince>=QUIET_CLOSE){sq._planDormantSignature=p.signature;closePlan(sim,sq,'contact clear');p=null;}else sq._regroupBypassUntil=Math.max(+sq._regroupBypassUntil||0,sim.time+1.25);}
+    if(p&&p.status==='staged'&&sig!==p.signature){closePlan(sim,sq,'intent replaced');p=null;}
     if(p&&p.status==='staged'&&sim.time>=p.until){closePlan(sim,sq,'lease expired');p=null;}
   }
-  if(!sq._engagementPlan&&TACTICAL[phase]&&!EMERGENCY[phase])stagePlan(sim,sq);else if(sq._engagementPlan){sq._stablePlan=sq._engagementPlan;syncTasks(sq,sq._engagementPlan);}
+  /* A plan that just closed because the battlefield went quiet stays dormant until either contact
+     returns or the commander materially changes intent. Do not close and immediately recreate the
+     same plan with a new serial; that only churns positional tasks. */
+  if(!sq._engagementPlan&&TACTICAL[phase]&&!EMERGENCY[phase]&&(sq.inContact||sq._planDormantSignature!==sig))stagePlan(sim,sq);else if(sq._engagementPlan){sq._stablePlan=sq._engagementPlan;syncTasks(sq,sq._engagementPlan);}
 }
 
 function cohesionAssessment(sq,limit){
@@ -115,7 +119,7 @@ function progressRecovery(sim,sq,town){
 }
 
 function summary(sim){var out={plans:0,active:0,quiet:0,regroups:0,fireteams:0};['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i],p=q._engagementPlan;if(p){out.plans++;if(p.status==='active')out.active++;if(p.status==='quiet')out.quiet++;}if(q._regroupHysteresis&&q._regroupHysteresis.accepted)out.regroups++;out.fireteams+=Object.keys(q._fireteamOrders||{}).length;}});sim._squadCommandSummary=out;sim._engagementPlanSummary={live:out.plans,active:out.active,quiet:out.quiet};sim._regroupHysteresisSummary={active:out.regroups,enterGrace:REGROUP_ENTER,exitRatio:REGROUP_RELEASE};return out;}
-function reset(sim){['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i];q._engagementPlan=null;q._stablePlan=null;q._engagementPlanSerial=0;q._commandLeaseAwaitingEvaluation=false;q._regroupHysteresis=null;q._regroupRecovery=null;q._regroupRecoverySerial=0;q._regroupBypassUntil=0;q._fireteamOrders={};(q.members||[]).forEach(function(s){s._fireteamDestination=null;s._fireteamKey=null;s._defensePost=null;s._engagementTask=null;});}});summary(sim);}
+function reset(sim){['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i];q._engagementPlan=null;q._stablePlan=null;q._engagementPlanSerial=0;q._planDormantSignature=null;q._commandLeaseAwaitingEvaluation=false;q._regroupHysteresis=null;q._regroupRecovery=null;q._regroupRecoverySerial=0;q._regroupBypassUntil=0;q._fireteamOrders={};(q.members||[]).forEach(function(s){s._fireteamDestination=null;s._fireteamKey=null;s._defensePost=null;s._engagementTask=null;});}});summary(sim);}
 function protectActivePlans(sim){['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i],p=q._engagementPlan;if(!p||!(p.status==='active'||p.status==='quiet'))continue;q._regroupBypassUntil=Math.max(+q._regroupBypassUntil||0,sim.time+1.25);if(q.commandPhase==='regroup'){q.commandPhase=p.phase;if(p.objective)q.objective=copy(p.objective);q.targetObjective=p.targetObjective;}}});}
 function commanderTick(sim,payload){var town=payload&&payload.town||null;['us','ge'].forEach(function(f){var a=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i];updateCohesion(sim,q);progressRecovery(sim,q,town);updatePlan(sim,q);}});summary(sim);}
 
