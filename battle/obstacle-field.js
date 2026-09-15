@@ -95,7 +95,8 @@
   function sightHitT(ob,a,b){return isObb(ob)?prismHitT(ob,a,b):cylinderHitT(ob,a,b);}
 
   function sightBlocker(obstacles,a,b){
-    var field=fieldFor(obstacles);if(!field)return false,candidates=gatherSegment(field,a.x,a.z,b.x,b.z),best=null,bestT=Infinity;
+    var field=fieldFor(obstacles);if(!field)return false;
+    var candidates=gatherSegment(field,a.x,a.z,b.x,b.z),best=null,bestT=Infinity;
     for(var i=0;i<candidates.length;i++){var ob=candidates[i],t=sightHitT(ob,a,b);if(t!=null&&t<bestT){best=ob;bestT=t;}}
     return best||false;
   }
