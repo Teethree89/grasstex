@@ -27,6 +27,20 @@ test('committed combat plan suppresses transient cohesion regroup',()=>{
   assert.ok(q._engagementPlan&&q._engagementPlan.status==='active');
   q.commandPhase='regroup';systems['squad-command'].onSimulationStep(b);assert.equal(q.commandPhase,'assault');
 });
+test('combat mobility absorbs and coalesces legacy engagement movement proposals',()=>{
+  const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman']}),s=q.members[0];
+  for(let i=0;i<8;i++)r.BattleMovementResolver.proposeCombat(s,{x:2,z:3},b,'hold',.8,{source:'engagement',reason:'contact'});
+  assert.equal(b._combatMobilityStats.intentRequests,8);assert.equal(b._combatMobilityStats.intentPublishes,1);assert.equal(b._combatMobilityStats.intentCoalesced,7);
+  assert.equal(s._movementResolver.combat.owner,'combat-mobility');assert.equal(s._movementResolver.combat.reason,'contact');
+  b.time+=.6;r.BattleMovementResolver.proposeCombat(s,{x:2,z:3},b,'hold',.8,{source:'engagement',reason:'contact'});
+  assert.equal(b._combatMobilityStats.intentPublishes,2);
+});
+test('combat mobility publishes material intent changes immediately',()=>{
+  const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman']}),s=q.members[0];
+  r.BattleCombatMobility.request(s,{x:2,z:3},b,'hold',.8,{origin:'test',reason:'contact'});
+  r.BattleCombatMobility.request(s,{x:8,z:3},b,'cover-bound',.8,{origin:'test',reason:'move cover'});
+  assert.equal(b._combatMobilityStats.intentPublishes,2);assert.equal(s._movementResolver.combat.kind,'cover-bound');
+});
 test('retreat is never classified unreachable by movement progress',()=>{
   const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'ge-0',faction:'ge',x:0,z:0,objective:{x:0,z:-100},composition:['rifleman']}),s=q.members[0],P=r.BattleMovementProgress;
   q.state='retreat';q.commandPhase='retreat';const pick={owner:'squad-command',kind:'retreat'};
@@ -35,7 +49,7 @@ test('retreat is never classified unreachable by movement progress',()=>{
 });
 test('combat bound still gets one conservative recovery then unreachable',()=>{
   const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman']}),s=q.members[0],P=r.BattleMovementProgress;
-  const pick={owner:'engagement',kind:'cover-bound'};let rebuilds=0;
+  const pick={owner:'combat-mobility',kind:'cover-bound'};let rebuilds=0;
   for(let i=0;i<70;i++){b.time+=.5;const a=P.observe(s,b,{x:0,z:20},pick);if(a&&a.rebuild)rebuilds++;}
   assert.ok(rebuilds>=1);assert.equal(s._movementGoalUnreachable,true);
 });
