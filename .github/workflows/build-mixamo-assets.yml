@@ -1,0 +1,56 @@
+name: Build Mixamo Runtime Assets
+
+on:
+  push:
+    branches: [skeletal-soldier-runtime]
+    paths:
+      - 'Assets/animations/*.fbx'
+      - 'Assets/soldiers/*.fbx'
+      - 'tools/import-mixamo-animation-pack.py'
+      - 'tools/convert-mixamo-soldiers.py'
+      - '.github/workflows/build-mixamo-assets.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mixamo-assets-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Blender
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender
+          blender --version
+      - name: Convert shared animations
+        run: |
+          rm -rf Assets/runtime/animations
+          blender --background --python tools/import-mixamo-animation-pack.py -- --input-dir Assets/animations --output-dir Assets/runtime/animations
+      - name: Convert soldiers
+        run: |
+          rm -rf Assets/runtime/soldiers
+          blender --background --python tools/convert-mixamo-soldiers.py -- --input-dir Assets/soldiers --output-dir Assets/runtime/soldiers
+      - name: Validate outputs
+        run: |
+          test -s Assets/runtime/animations/manifest.json
+          test "$(find Assets/runtime/animations -maxdepth 1 -name '*.glb' | wc -l)" -ge 40
+          test "$(find Assets/runtime/soldiers -maxdepth 1 -name '*.glb' | wc -l)" -eq 2
+      - name: Commit generated runtime assets
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A Assets/runtime
+          if git diff --cached --quiet; then
+            echo 'Runtime assets already current.'
+            exit 0
+          fi
+          git commit -m 'Build Mixamo runtime assets'
+          git push
