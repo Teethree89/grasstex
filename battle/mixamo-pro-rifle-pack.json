@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "pack": "Pro Rifle Pack",
+  "rig": "mixamo",
+  "sharedAcrossCompatibleSoldiers": true,
+  "import": {
+    "tool": "tools/import-mixamo-animation-pack.py",
+    "locomotionRootMotion": "strip horizontal translation at import",
+    "navigationOwnsWorldPosition": true
+  },
+  "semanticDefaults": {
+    "locomotion.idle": "idle",
+    "locomotion.walk": "walk-forward",
+    "locomotion.crouch-walk": "walk-crouching-forward",
+    "combat.aim": "idle-aiming",
+    "stance.stand": "idle",
+    "stance.crouch": "idle-crouching",
+    "death.front": "death-from-the-front",
+    "death.back": "death-from-the-back",
+    "death.side": "death-from-right"
+  },
+  "missingRequiredSemantics": [
+    "locomotion.prone-crawl",
+    "combat.fire",
+    "combat.reload",
+    "stance.prone"
+  ],
+  "clips": [
+    "idle", "idle aiming", "idle crouching", "idle crouching aiming",
+    "walk forward", "walk forward right", "walk forward left", "walk right", "walk left", "walk backward", "walk backward right", "walk backward left",
+    "run forward", "run forward right", "run forward left", "run right", "run left", "run backward", "run backward right", "run backward left",
+    "sprint forward", "sprint forward right", "sprint forward left", "sprint right", "sprint left", "sprint backward", "sprint backward right", "sprint backward left",
+    "walk crouching forward", "walk crouching forward right", "walk crouching forward left", "walk crouching right", "walk crouching left", "walk crouching backward", "walk crouching backward right", "walk crouching backward left",
+    "turn 90 left", "turn 90 right", "crouching turn 90 left", "crouching turn 90 right",
+    "jump up", "jump loop", "jump down",
+    "death from front headshot", "death from right", "death crouching headshot front", "death from back headshot", "death from the back", "death from the front"
+  ]
+}
