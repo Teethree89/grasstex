@@ -1,10 +1,10 @@
 /* Runtime Mixamo skeletal soldier backend.
-   The existing procedural rig remains the animation driver/semantic contract.  When a compatible
+   The existing procedural rig remains the animation driver/semantic contract. When a compatible
    skinned GLB is available, its visible mesh is instantiated under the same soldier root and the
    driver's final pose (baked package motion + authored stance/crawl + weapon IK) is retargeted onto
    the skin every frame. Gameplay/AI never sees a second soldier representation.
 
-   Important: the source GLB's native animation groups are intentionally unused.  Our Battle Sim
+   Important: the source GLB's native animation groups are intentionally unused. Our Battle Sim
    motion remains authoritative, including crouch/prone/transitions and the rifle-hand solution. */
 (function(root){
 'use strict';
@@ -20,7 +20,7 @@ var TARGET_HEIGHT=+((M.BODY&&M.BODY.heightM)||1.70);
 var sceneStates=typeof WeakMap!=='undefined'?new WeakMap():null;
 var loaderPromise=null,instanceSerial=0;
 
-/* Driver joint -> Mixamo skin node.  Intermediate Mixamo bones (Spine1, shoulders, hands, toes)
+/* Driver joint -> Mixamo skin node. Intermediate Mixamo bones (Spine1, shoulders, hands, toes)
    retain their bind-local transforms and inherit the retargeted parent pose. */
 var MAP=[
   ['hips','mixamorig:Hips'],
@@ -102,12 +102,11 @@ function meshBounds(roots){
   }
   return isFinite(minY)&&isFinite(maxY)&&maxY>minY?{minY:minY,maxY:maxY,height:maxY-minY}:null;
 }
-function hideProceduralGeometry(model){
-  var meshes=model.root&&model.root.getChildMeshes?model.root.getChildMeshes(false):[];
-  for(var i=0;i<meshes.length;i++){
-    /* Only the primitive body exists before the GLB instance is attached.  Dispose leaves the
-       TransformNode driver hierarchy intact and removes its draw/matrix burden. */
-    try{meshes[i].dispose(false,false);}catch(_){ }
+function disposeMeshes(meshes){
+  for(var i=0;i<(meshes||[]).length;i++){
+    /* Dispose only the primitive geometry captured before the GLB is attached. The TransformNode
+       driver hierarchy must stay alive because it remains the animation/IK source. */
+    try{if(meshes[i]&&!meshes[i].isDisposed())meshes[i].dispose(false,false);}catch(_){ }
   }
 }
 function captureRest(model,targetNodes){
@@ -123,6 +122,9 @@ function captureRest(model,targetNodes){
 }
 function instantiate(model,scene,faction){
   var s=actualState(scene),container=s.containers[faction];if(!container||!s.enabled)return false;
+  /* Snapshot the old primitive body BEFORE the GLB is added below. Looking up child meshes after
+     attachment would also find and dispose the new skinned soldier. */
+  var proceduralMeshes=model.root&&model.root.getChildMeshes?model.root.getChildMeshes(false).slice():[];
   var prefix='soldier'+(++instanceSerial)+'|',entry;
   try{entry=container.instantiateModelsToScene(function(name){return prefix+name;},false,{doNotInstantiate:false});}catch(err){console.warn('[ANIM] skeletal instantiate failed',err);return false;}
   if(!entry||!entry.rootNodes||!entry.rootNodes.length)return false;
@@ -138,7 +140,7 @@ function instantiate(model,scene,faction){
     console.warn('[ANIM] skeletal mapping incomplete ('+mapped+'/'+MAP.length+'); procedural fallback active');
     try{mount.dispose();}catch(_){}return false;
   }
-  hideProceduralGeometry(model);
+  disposeMeshes(proceduralMeshes);
   model._skeletal={mount:mount,entry:entry,rest:rest,mapped:mapped,faction:faction};
   model.animationBinding.backend='runtime-mixamo-driver';
   console.log('[ANIM] '+faction+' soldier using runtime Mixamo skin; '+mapped+' driver joints mapped');
@@ -147,7 +149,7 @@ function instantiate(model,scene,faction){
 function retarget(model){
   var sk=model&&model._skeletal;if(!sk||!model.root||!model.rig)return;
   var rest=sk.rest;
-  /* Parent-before-child order is intentional.  Unmapped intermediate Mixamo nodes remain at bind
+  /* Parent-before-child order is intentional. Unmapped intermediate Mixamo nodes remain at bind
      local rotation, so they naturally inherit their retargeted parent before the next mapped bone
      is solved into its own local frame. */
   for(var i=0;i<MAP.length;i++){
@@ -176,6 +178,6 @@ M.animateWalk=function(model,dt,speed){
   var out=oldAnimate.apply(this,arguments);if(model&&model._skeletal)retarget(model);return out;
 };
 
-root.BattleSkeletalSoldierBackend={version:'1.1',map:MAP.slice(),asset:ASSET,retarget:retarget};
+root.BattleSkeletalSoldierBackend={version:'1.2',map:MAP.slice(),asset:ASSET,retarget:retarget};
 console.log('[ANIM] runtime skeletal soldier backend active (Battle Sim motion -> Mixamo skin)');
 })(typeof window!=='undefined'?window:globalThis);
