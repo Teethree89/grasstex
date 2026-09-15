@@ -1,19 +1,22 @@
-/* Battlefield clutter: the cover field. Hedgerow network, tree copses and low cover (rocks,
-   fallen logs, field-wall stubs), built from merged primitives so a dense field remains cheap.
+/* Battlefield clutter: the cover field. Hedgerows are one authoritative combat volume shared by
+   rendering, navigation, LOS, cover and ballistics. Other clutter still publishes tactical cover
+   data plus a mesh-aligned movement footprint where those representations genuinely differ.
 
-   Every feature publishes TWO representations:
-     1. circular tactical obstacles used by BattleObstacleField for LOS / cover scoring;
-     2. mesh-aligned physical footprints used by navigation for actual movement clearance.
-
-   Physical clutter is also kept clear of scenario building footprints. This matters for doors:
-   a hedge/log/wall may never occupy a building interior or threshold and accidentally turn a
-   legal navigation portal into an impossible route. */
+   The hedge volume is a short terrain-following oriented prism. Navigation uses its X/Z projection
+   and inflates it by the soldier body radius; sight and bullets use its full vertical extent. This
+   avoids the old three-hedge problem where a 1.1 m visual box, a 2D navigation rectangle and a row
+   of giant LOS circles all disagreed about where the same bocage bank actually was. */
 (function(root){
   'use strict';
   if(typeof BABYLON==='undefined')return;
 
   function c3(hex){hex=hex.replace('#','');return new BABYLON.Color3(parseInt(hex.slice(0,2),16)/255,parseInt(hex.slice(2,4),16)/255,parseInt(hex.slice(4,6),16)/255);}
   var LEAF=[c3('3d5a2c'),c3('466233'),c3('35502a')],TRUNK=c3('4a3624'),HEDGE=c3('3f5a2e'),ROCK=c3('6d6a61'),STONE=c3('7a7568');
+  /* Typical Normandy bocage is a bank/root mass with dense woody growth above it. A 2.2 m opaque
+     combat volume is deliberately conservative: a standing 1.55 m eye cannot casually see over it,
+     while gaps and hedge ends remain the natural places to see and move through. Short chunks let
+     the base follow rolling terrain instead of floating a 50 m box from one midpoint sample. */
+  var HEDGE_WIDTH=2.2,HEDGE_HEIGHT=2.2,HEDGE_CHUNK=3.0,HEDGE_BURY=.25;
 
   function paint(mesh,color){
     var n=mesh.getTotalVertices(),data=new Float32Array(n*4);
@@ -66,9 +69,23 @@
     var mesh=BABYLON.Mesh.MergeMeshes([trunk,foliage],true,true,undefined,false,false);
     mesh.material=featureMaterial(scene);mesh.isPickable=false;mesh.position.set(x,y,z);return mesh;
   }
-  function buildHedgeSegment(scene,ax,az,bx,bz,y){
-    var dx=bx-ax,dz=bz-az,len=Math.hypot(dx,dz),mesh=box(scene,[len,1.5,1.1],HEDGE,[0,.75,0]);
-    mesh.material=featureMaterial(scene);mesh.isPickable=false;mesh.position.set((ax+bx)/2,y,(az+bz)/2);mesh.rotation.y=-Math.atan2(dz,dx);return mesh;
+  /* Build the exact prism described by the combat-volume record. The lower edge is buried slightly
+     below the sampled terrain, the same trick used by ww2fps terrain skirts, so interpolation cannot
+     open a visual/LOS slit at the foot of the hedge. */
+  function buildHedgePrism(scene,fp){
+    var a={ux:fp.ux,uz:fp.uz,vx:fp.vx,vz:fp.vz},hx=fp.hx,hz=fp.hz;
+    var ax=fp.x-a.ux*hx,az=fp.z-a.uz*hx,bx=fp.x+a.ux*hx,bz=fp.z+a.uz*hx;
+    var y0=fp.y0,y1=fp.y1,top0=y0+fp.height,top1=y1+fp.height;
+    var p=[
+      ax+a.vx*hz,y0,az+a.vz*hz, ax-a.vx*hz,y0,az-a.vz*hz,
+      bx-a.vx*hz,y1,bz-a.vz*hz, bx+a.vx*hz,y1,bz+a.vz*hz,
+      ax+a.vx*hz,top0,az+a.vz*hz, ax-a.vx*hz,top0,az-a.vz*hz,
+      bx-a.vx*hz,top1,bz-a.vz*hz, bx+a.vx*hz,top1,bz+a.vz*hz
+    ];
+    var ind=[0,2,1,0,3,2, 4,5,6,4,6,7, 0,4,7,0,7,3, 1,2,6,1,6,5, 0,1,5,0,5,4, 3,7,6,3,6,2];
+    var m=new BABYLON.Mesh('hedge-prism',scene),vd=new BABYLON.VertexData(),norm=[];
+    BABYLON.VertexData.ComputeNormals(p,ind,norm);vd.positions=p;vd.indices=ind;vd.normals=norm;vd.applyToMesh(m);
+    paint(m,HEDGE);m.material=featureMaterial(scene);m.isPickable=false;return m;
   }
 
   var MERGE_CELL=260;
@@ -102,8 +119,16 @@
     function addObstacle(x,z,radius,cover,height,type,physicalId){obstacles.push({x:x,z:z,y:heightAt(x,z),radius:radius,cover:cover,height:height,type:type,physicalId:physicalId||null});}
     function axes(rot){var c=Math.cos(rot||0),s=Math.sin(rot||0);return{ux:c,uz:-s,vx:s,vz:c};}
     function addObb(x,z,hx,hz,rot,type,id){var a=axes(rot),fp={id:id||('physical-'+physicalSeq++),type:type,shape:'obb',x:x,z:z,hx:hx,hz:hz,ux:a.ux,uz:a.uz,vx:a.vx,vz:a.vz};physical.push(fp);return fp;}
-    function addSegmentObb(ax,az,bx,bz,width,type,id){var dx=bx-ax,dz=bz-az,len=Math.hypot(dx,dz)||.001,ux=dx/len,uz=dz/len,fp={id:id||('physical-'+physicalSeq++),type:type,shape:'obb',x:(ax+bx)/2,z:(az+bz)/2,hx:len/2,hz:width/2,ux:ux,uz:uz,vx:-uz,vz:ux};physical.push(fp);return fp;}
     function addCircle(x,z,radius,type,id){var fp={id:id||('physical-'+physicalSeq++),type:type,shape:'circle',x:x,z:z,radius:radius};physical.push(fp);return fp;}
+    function addHedgeVolume(ax,az,bx,bz){
+      var dx=bx-ax,dz=bz-az,len=Math.hypot(dx,dz)||.001,ux=dx/len,uz=dz/len,vx=-uz,vz=ux;
+      var y0=heightAt(ax,az)-HEDGE_BURY,y1=heightAt(bx,bz)-HEDGE_BURY,id='hedge-'+physicalSeq++;
+      var fp={id:id,physicalId:id,type:'hedge',shape:'obb',volume:'terrain-prism',x:(ax+bx)/2,z:(az+bz)/2,
+        hx:len/2,hz:HEDGE_WIDTH/2,ux:ux,uz:uz,vx:vx,vz:vz,y:(y0+y1)/2,y0:y0,y1:y1,
+        height:HEDGE_HEIGHT+HEDGE_BURY,visibleHeight:HEDGE_HEIGHT,radius:HEDGE_WIDTH/2,cover:.62};
+      /* The SAME object is published to tactical and physical consumers. */
+      physical.push(fp);obstacles.push(fp);return fp;
+    }
 
     function buildingLocal(b,x,z){var c=Math.cos(b.rot||0),s=Math.sin(b.rot||0),dx=x-b.x,dz=z-b.z;return{x:dx*c-dz*s,z:dx*s+dz*c};}
     function segmentHitsBox(a,b,hx,hz){
@@ -138,11 +163,12 @@
       while(cursor<span/2-14){
         var segLen=26+rng()*34,gap=14+rng()*26;if(cursor+segLen>span/2)segLen=span/2-cursor;if(segLen<10)break;
         var jag=(rng()-.5)*7,ax=horizontal?cursor:fixed,az=horizontal?fixed+jag:cursor,bx=horizontal?cursor+segLen:fixed-jag,bz=horizontal?fixed-jag:cursor+segLen;
-        if(!segmentBlockedByBuilding(ax,az,bx,bz,1.1)){
-          var y=heightAt((ax+bx)/2,(az+bz)/2),fp=addSegmentObb(ax,az,bx,bz,1.1,'hedge','hedge-'+physicalSeq++);
-          place(buildHedgeSegment(scene,ax,az,bx,bz,y),(ax+bx)/2,(az+bz)/2);
-          var steps=Math.max(1,Math.round(segLen/7));
-          for(var p=0;p<=steps;p++){var u=p/steps;addObstacle(ax+(bx-ax)*u,az+(bz-az)*u,3.4,.62,1.5,'hedge',fp.id);}
+        if(!segmentBlockedByBuilding(ax,az,bx,bz,HEDGE_WIDTH)){
+          var pieces=Math.max(1,Math.ceil(segLen/HEDGE_CHUNK));
+          for(var h=0;h<pieces;h++){
+            var u0=h/pieces,u1=(h+1)/pieces,pax=ax+(bx-ax)*u0,paz=az+(bz-az)*u0,pbx=ax+(bx-ax)*u1,pbz=az+(bz-az)*u1;
+            var fp=addHedgeVolume(pax,paz,pbx,pbz);place(buildHedgePrism(scene,fp),fp.x,fp.z);
+          }
         }
         cursor+=segLen+gap;
       }
@@ -185,12 +211,12 @@
     }
 
     obstacles.__physicalFootprints=physical;
-    obstacles.__physicalVersion=3;
+    obstacles.__physicalVersion=4;
 
     var meshes=mergeBuckets(scene,entries);
-    console.log('[TERRAIN] cover field: '+obstacles.length+' tactical obstacles · '+physical.length+' mesh footprints · building keepouts='+buildings.length+' in '+meshes.length+' merged meshes over '+Math.round(halfW*2)+'x'+Math.round(keepoutZ*2)+'m');
+    console.log('[TERRAIN] cover field: '+obstacles.length+' tactical volumes · '+physical.length+' physical volumes · building keepouts='+buildings.length+' in '+meshes.length+' merged meshes over '+Math.round(halfW*2)+'x'+Math.round(keepoutZ*2)+'m');
     return{obstacles:obstacles,physicalFootprints:physical,dispose:function(){for(var i=0;i<meshes.length;i++){try{meshes[i].dispose();}catch(_){}}meshes.length=0;}};
   }
 
-  root.BattleTerrainFeatures={scatter:scatter};
+  root.BattleTerrainFeatures={scatter:scatter,hedgeWidth:HEDGE_WIDTH,hedgeHeight:HEDGE_HEIGHT,hedgeChunk:HEDGE_CHUNK};
 })(typeof window!=='undefined'?window:globalThis);
