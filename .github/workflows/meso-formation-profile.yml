@@ -1,10 +1,12 @@
-name: Meso Formation Frame Profile
+name: Meso Fireteam Churn Attribution
 
 on:
   push:
     branches:
       - fix/meso-formation-frame-stability
     paths:
+      - scripts/meso-churn-profiler.cjs
+      - scripts/profile_meso_churn.mjs
       - .github/workflows/meso-formation-profile.yml
 
 permissions:
@@ -31,8 +33,7 @@ jobs:
       BATTLE_BENCHMARK_SOURCE_SHA: ${{ github.sha }}
       BATTLE_PROFILE_SECONDS: '120'
       BATTLE_PROFILE_STEP: '0.15'
-      BATTLE_PROFILE_SNAPSHOT_SECONDS: '30'
-      BATTLE_PROFILE_OUTPUT: reports/profile
+      BATTLE_PROFILE_OUTPUT: reports/meso-churn
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -56,20 +57,25 @@ jobs:
           done
           cat /tmp/battle-profile-php.log
           exit 1
-      - name: Profile deterministic battle
+      - name: Attribute deterministic Meso churn
         env:
           BATTLE_PROFILE_TYPE: ${{ matrix.battle_type }}
           BATTLE_PROFILE_SEED: ${{ matrix.seed }}
           BATTLE_PROFILE_URL: http://127.0.0.1:8765/grasstex/battle_sim_local.php${{ matrix.defender_query }}
-        run: node scripts/profile_battle_hotpaths.mjs
-      - name: Publish profile summary
+        run: node scripts/profile_meso_churn.mjs
+      - name: Publish summary
         if: always()
         run: |
-          if [ -f reports/profile/battle-hotpath-profile.md ]; then cat reports/profile/battle-hotpath-profile.md >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ -f reports/meso-churn/meso-churn-summary.json ]; then
+            echo '### Meso churn attribution' >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat reports/meso-churn/meso-churn-summary.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: meso-frame-${{ matrix.label }}-${{ github.run_number }}
-          path: reports/profile/
+          name: meso-churn-${{ matrix.label }}-${{ github.run_number }}
+          path: reports/meso-churn/
           if-no-files-found: warn
           retention-days: 14
