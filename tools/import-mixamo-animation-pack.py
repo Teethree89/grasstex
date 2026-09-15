@@ -9,10 +9,18 @@ from pathlib import Path
 try: import bpy
 except ImportError as exc: raise SystemExit("Run with Blender Python") from exc
 LOCOMOTION_PREFIXES=("walk ","run ","sprint ")
-REQUIRED_BONES={"mixamorig:Hips","mixamorig:Spine","mixamorig:Spine1","mixamorig:Spine2","mixamorig:Neck","mixamorig:Head","mixamorig:LeftArm","mixamorig:LeftForeArm","mixamorig:LeftHand","mixamorig:RightArm","mixamorig:RightForeArm","mixamorig:RightHand","mixamorig:LeftUpLeg","mixamorig:LeftLeg","mixamorig:LeftFoot","mixamorig:RightUpLeg","mixamorig:RightLeg","mixamorig:RightFoot"}
+REQUIRED_BONES={"Hips","Spine","Spine1","Spine2","Neck","Head","LeftArm","LeftForeArm","LeftHand","RightArm","RightForeArm","RightHand","LeftUpLeg","LeftLeg","LeftFoot","RightUpLeg","RightLeg","RightFoot"}
 def parse_args():
     argv=sys.argv[sys.argv.index("--")+1:] if "--" in sys.argv else []; p=argparse.ArgumentParser(); p.add_argument("--input-dir",required=True); p.add_argument("--output-dir",required=True); return p.parse_args(argv)
 def slug(s): return re.sub(r"[^a-z0-9]+","-",s.lower()).strip("-")
+def canonical_bone_name(name):
+    # Mixamo FBXs arrive with several namespace spellings depending on exporter/importer.
+    # Validate by the anatomical suffix, not a literal `mixamorig:` prefix.
+    n=name.strip()
+    for sep in (":","|"):
+        if sep in n: n=n.rsplit(sep,1)[-1]
+    n=re.sub(r"^(mixamorig|mixamo)[_.-]?", "", n, flags=re.I)
+    return n
 def clear_scene():
     bpy.ops.object.select_all(action="SELECT"); bpy.ops.object.delete(use_global=False)
     for blocks in (bpy.data.actions,bpy.data.armatures,bpy.data.meshes,bpy.data.materials):
@@ -28,14 +36,18 @@ def action_for(a):
     if len(acts)!=1: raise RuntimeError(f"expected one action, found {len(acts)}")
     if not a.animation_data: a.animation_data_create()
     a.animation_data.action=acts[0]; return acts[0]
+def bone_map(a): return {canonical_bone_name(b.name):b.name for b in a.data.bones}
 def validate(a):
-    missing=sorted(REQUIRED_BONES-{b.name for b in a.data.bones})
-    if missing: raise RuntimeError("noncanonical Mixamo rig; missing: "+", ".join(missing))
-def strip_horizontal(action):
-    changed=0
+    names=bone_map(a); missing=sorted(REQUIRED_BONES-set(names))
+    if missing:
+        actual=", ".join(sorted(b.name for b in a.data.bones))
+        raise RuntimeError("noncanonical Mixamo rig; missing: "+", ".join(missing)+"; imported bones: "+actual)
+    return names
+def strip_horizontal(action,hips_name):
+    changed=0; hips_path=f'pose.bones["{hips_name}"]'
     # Blender's imported Mixamo coordinate system uses X/Y as ground plane and Z as vertical.
     for fc in action.fcurves:
-        if 'pose.bones["mixamorig:Hips"]' not in fc.data_path or not fc.data_path.endswith("location") or fc.array_index not in (0,1) or not fc.keyframe_points: continue
+        if hips_path not in fc.data_path or not fc.data_path.endswith("location") or fc.array_index not in (0,1) or not fc.keyframe_points: continue
         base=fc.keyframe_points[0].co.y
         for kp in fc.keyframe_points: kp.co.y=base; kp.handle_left.y=base; kp.handle_right.y=base
         changed+=1
@@ -52,10 +64,10 @@ def main():
     for f in files:
         clear_scene()
         try:
-            bpy.ops.import_scene.fbx(filepath=str(f),use_anim=True,automatic_bone_orientation=False); a=armature(); validate(a); act=action_for(a); name=slug(f.stem); in_place=f.stem.lower().startswith(LOCOMOTION_PREFIXES); curves=strip_horizontal(act) if in_place else 0; discard_meshes(); out=dst/(name+".glb"); export(a,act,out)
-            records.append({"clip":name,"source":f.name,"file":out.name,"inPlaceXZ":in_place,"rootCurvesNormalized":curves,"frames":[int(act.frame_range[0]),int(act.frame_range[1])],"fps":int(bpy.context.scene.render.fps)}); print(f"[mixamo] {f.name} -> {out.name}")
+            bpy.ops.import_scene.fbx(filepath=str(f),use_anim=True,automatic_bone_orientation=False); a=armature(); names=validate(a); act=action_for(a); name=slug(f.stem); in_place=f.stem.lower().startswith(LOCOMOTION_PREFIXES); curves=strip_horizontal(act,names["Hips"]) if in_place else 0; discard_meshes(); out=dst/(name+".glb"); export(a,act,out)
+            records.append({"clip":name,"source":f.name,"file":out.name,"inPlaceXZ":in_place,"rootCurvesNormalized":curves,"frames":[int(act.frame_range[0]),int(act.frame_range[1])],"fps":int(bpy.context.scene.render.fps)}); print(f"[mixamo] {f.name} -> {out.name} (hips={names['Hips']})")
         except Exception as exc: failures.append({"source":f.name,"error":str(exc)}); print(f"[mixamo] FAILED {f.name}: {exc}",file=sys.stderr)
-    (dst/"manifest.json").write_text(json.dumps({"version":2,"rig":"mixamo","shared":True,"source":"Assets/animations/*.fbx","rootMotion":"locomotion horizontal travel stripped; vertical preserved","clips":records,"failures":failures},indent=2)+"\n")
+    (dst/"manifest.json").write_text(json.dumps({"version":3,"rig":"mixamo","shared":True,"source":"Assets/animations/*.fbx","rootMotion":"locomotion horizontal travel stripped; vertical preserved","clips":records,"failures":failures},indent=2)+"\n")
     if failures: raise SystemExit(f"{len(failures)} clip(s) failed")
     print(f"[mixamo] converted {len(records)} clips")
 if __name__=="__main__": main()
