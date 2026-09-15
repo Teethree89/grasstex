@@ -9,190 +9,39 @@
 (function(root){
 'use strict';
 if(typeof BABYLON==='undefined'||!root.BattleSoldierModel||root.BattleSkeletalSoldierBackend)return;
-
 var M=root.BattleSoldierModel;
 var oldCreate=M.createSoldier,oldPreload=M.preload,oldSetImported=M.setImportedEnabled,oldAnimate=M.animateWalk;
 if(typeof oldCreate!=='function'||typeof oldAnimate!=='function')return;
-
-var ASSET={us:'us-rifleman-mixamo.glb',ge:'ge-rifleman-mixamo.glb'};
-var MODEL_YAW=0;
-var TARGET_HEIGHT=+((M.BODY&&M.BODY.heightM)||1.70);
-var sceneStates=typeof WeakMap!=='undefined'?new WeakMap():null;
-var loaderPromise=null,instanceSerial=0;
-
-/* Driver joint -> Mixamo skin node. Intermediate Mixamo bones (Spine1, shoulders, hands, toes)
-   retain their bind-local transforms and inherit the retargeted parent pose. */
-var MAP=[
-  ['hips','mixamorig:Hips'],
-  ['spine','mixamorig:Spine'],
-  ['chest','mixamorig:Spine2'],
-  ['neck','mixamorig:Neck'],
-  ['head','mixamorig:Head'],
-  ['upperArmR','mixamorig:RightArm'],
-  ['forearmR','mixamorig:RightForeArm'],
-  ['upperArmL','mixamorig:LeftArm'],
-  ['forearmL','mixamorig:LeftForeArm'],
-  ['thighR','mixamorig:RightUpLeg'],
-  ['shinR','mixamorig:RightLeg'],
-  ['footR','mixamorig:RightFoot'],
-  ['thighL','mixamorig:LeftUpLeg'],
-  ['shinL','mixamorig:LeftLeg'],
-  ['footL','mixamorig:LeftFoot']
-];
-var CHILD={
-  spine:'mixamorig:Spine1',chest:'mixamorig:Neck',neck:'mixamorig:Head',
-  upperArmR:'mixamorig:RightForeArm',forearmR:'mixamorig:RightHand',
-  upperArmL:'mixamorig:LeftForeArm',forearmL:'mixamorig:LeftHand',
-  thighR:'mixamorig:RightLeg',shinR:'mixamorig:RightFoot',footR:'mixamorig:RightToeBase',
-  thighL:'mixamorig:LeftLeg',shinL:'mixamorig:LeftFoot',footL:'mixamorig:LeftToeBase'
-};
-
-function state(scene){
-  var s=sceneStates&&sceneStates.get(scene);
-  if(!s){s={enabled:true,containers:Object.create(null),failed:Object.create(null),scale:Object.create(null)};if(sceneStates)sceneStates.set(scene,s);else scene._battleSkeletalSoldierState=s;}
-  return s;
-}
+var ASSET={us:'us-rifleman-mixamo.glb',ge:'ge-rifleman-mixamo.glb'},MODEL_YAW=0,TARGET_HEIGHT=+((M.BODY&&M.BODY.heightM)||1.70);
+var sceneStates=typeof WeakMap!=='undefined'?new WeakMap():null,loaderPromise=null,instanceSerial=0;
+var MAP=[['hips','mixamorig:Hips'],['spine','mixamorig:Spine'],['chest','mixamorig:Spine2'],['neck','mixamorig:Neck'],['head','mixamorig:Head'],['upperArmR','mixamorig:RightArm'],['forearmR','mixamorig:RightForeArm'],['upperArmL','mixamorig:LeftArm'],['forearmL','mixamorig:LeftForeArm'],['thighR','mixamorig:RightUpLeg'],['shinR','mixamorig:RightLeg'],['footR','mixamorig:RightFoot'],['thighL','mixamorig:LeftUpLeg'],['shinL','mixamorig:LeftLeg'],['footL','mixamorig:LeftFoot']];
+var CHILD={spine:'mixamorig:Spine1',chest:'mixamorig:Neck',neck:'mixamorig:Head',upperArmR:'mixamorig:RightForeArm',forearmR:'mixamorig:RightHand',upperArmL:'mixamorig:LeftForeArm',forearmL:'mixamorig:LeftHand',thighR:'mixamorig:RightLeg',shinR:'mixamorig:RightFoot',footR:'mixamorig:RightToeBase',thighL:'mixamorig:LeftLeg',shinL:'mixamorig:LeftFoot',footL:'mixamorig:LeftToeBase'};
+function state(scene){var s=sceneStates&&sceneStates.get(scene);if(!s){s={enabled:true,containers:Object.create(null),failed:Object.create(null),scale:Object.create(null)};if(sceneStates)sceneStates.set(scene,s);else scene._battleSkeletalSoldierState=s;}return s;}
 function actualState(scene){return sceneStates?state(scene):(scene._battleSkeletalSoldierState||state(scene));}
 function assetBase(){return(root.BATTLE_ASSET_BASE||'https://test.ivandpopov.com/grasstex/Assets/').replace(/\/?$/,'/');}
-function ensureLoader(){
-  if(BABYLON.GLTFFileLoader)return Promise.resolve(true);
-  if(loaderPromise)return loaderPromise;
-  if(typeof document==='undefined')return Promise.reject(new Error('GLTF loader unavailable outside browser'));
-  loaderPromise=new Promise(function(resolve,reject){
-    var existing=document.querySelector('script[data-battle-gltf-loader]');
-    if(existing){existing.addEventListener('load',function(){resolve(true);},{once:true});existing.addEventListener('error',reject,{once:true});return;}
-    var script=document.createElement('script');script.async=true;script.dataset.battleGltfLoader='1';
-    script.src='https://cdn.jsdelivr.net/npm/babylonjs-loaders@8.26.0/babylonjs.loaders.min.js';
-    script.onload=function(){resolve(true);};script.onerror=function(){reject(new Error('Unable to load Babylon GLTF loader'));};document.head.appendChild(script);
-  });
-  return loaderPromise;
-}
-function loadFaction(scene,faction){
-  var file=ASSET[faction],s=actualState(scene);if(!file||!s.enabled)return Promise.resolve(false);
-  if(s.containers[faction])return Promise.resolve(true);if(s.failed[faction])return Promise.resolve(false);
-  return ensureLoader().then(function(){
-    return BABYLON.SceneLoader.LoadAssetContainerAsync(assetBase()+'soldiers/',file,scene,null,'.glb');
-  }).then(function(container){
-    /* Nothing from Meshy's native clip is allowed to drive the runtime. */
-    (container.animationGroups||[]).forEach(function(g){try{g.stop();g.dispose();}catch(_){}});
-    s.containers[faction]=container;console.log('[ANIM] runtime Mixamo skin ready for '+faction+' ('+file+')');return true;
-  }).catch(function(err){
-    s.failed[faction]=true;console.warn('[ANIM] skeletal '+faction+' soldier unavailable; procedural fallback active',err&&err.message||err);return false;
-  });
-}
-
-var qWorld=new BABYLON.Quaternion(),qRoot=new BABYLON.Quaternion(),qInvRoot=new BABYLON.Quaternion();
-var qSrc=new BABYLON.Quaternion(),qInvFrame=new BABYLON.Quaternion(),qDesired=new BABYLON.Quaternion();
-var qParent=new BABYLON.Quaternion(),qInvParent=new BABYLON.Quaternion(),qLocal=new BABYLON.Quaternion();
+function ensureLoader(){if(BABYLON.GLTFFileLoader)return Promise.resolve(true);if(loaderPromise)return loaderPromise;if(typeof document==='undefined')return Promise.reject(new Error('GLTF loader unavailable outside browser'));loaderPromise=new Promise(function(resolve,reject){var existing=document.querySelector('script[data-battle-gltf-loader]');if(existing){existing.addEventListener('load',function(){resolve(true);},{once:true});existing.addEventListener('error',reject,{once:true});return;}var script=document.createElement('script');script.async=true;script.dataset.battleGltfLoader='1';script.src='https://cdn.jsdelivr.net/npm/babylonjs-loaders@8.26.0/babylonjs.loaders.min.js';script.onload=function(){resolve(true);};script.onerror=function(){reject(new Error('Unable to load Babylon GLTF loader'));};document.head.appendChild(script);});return loaderPromise;}
+function loadFaction(scene,faction){var file=ASSET[faction],s=actualState(scene);if(!file||!s.enabled)return Promise.resolve(false);if(s.containers[faction])return Promise.resolve(true);if(s.failed[faction])return Promise.resolve(false);return ensureLoader().then(function(){return BABYLON.SceneLoader.LoadAssetContainerAsync(assetBase()+'soldiers/',file,scene,null,'.glb');}).then(function(container){(container.animationGroups||[]).forEach(function(g){try{g.stop();g.dispose();}catch(_){}});s.containers[faction]=container;console.log('[ANIM] runtime Mixamo skin ready for '+faction+' ('+file+')');return true;}).catch(function(err){s.failed[faction]=true;console.warn('[ANIM] skeletal '+faction+' soldier unavailable; procedural fallback active',err&&err.message||err);return false;});}
+var qWorld=new BABYLON.Quaternion(),qRoot=new BABYLON.Quaternion(),qInvRoot=new BABYLON.Quaternion(),qSrc=new BABYLON.Quaternion(),qInvFrame=new BABYLON.Quaternion(),qDesired=new BABYLON.Quaternion(),qParent=new BABYLON.Quaternion(),qInvParent=new BABYLON.Quaternion(),qLocal=new BABYLON.Quaternion();
 var decompScale=new BABYLON.Vector3(),decompPos=new BABYLON.Vector3(),invRootMatrix=new BABYLON.Matrix();
-function worldRotation(node,out){
-  if(!node){out.set(0,0,0,1);return out;}
-  node.computeWorldMatrix(true);node.getWorldMatrix().decompose(decompScale,out,decompPos);return out;
-}
-function relativeRotation(rootNode,node,out){
-  worldRotation(rootNode,qRoot);qRoot.conjugateToRef(qInvRoot);worldRotation(node,qWorld);qInvRoot.multiplyToRef(qWorld,out);return out.normalize();
-}
-function relativePosition(rootNode,node,out){
-  rootNode.computeWorldMatrix(true);rootNode.getWorldMatrix().invertToRef(invRootMatrix);node.computeWorldMatrix(true);
-  BABYLON.Vector3.TransformCoordinatesToRef(node.getAbsolutePosition(),invRootMatrix,out);return out;
-}
-function descendants(roots){
-  var out=[],seen=[];
-  function add(n){if(!n||seen.indexOf(n)>=0)return;seen.push(n);out.push(n);var kids=n.getChildren?n.getChildren():[];for(var i=0;i<kids.length;i++)add(kids[i]);}
-  for(var i=0;i<roots.length;i++)add(roots[i]);return out;
-}
+function worldRotation(node,out){if(!node){out.set(0,0,0,1);return out;}node.computeWorldMatrix(true);node.getWorldMatrix().decompose(decompScale,out,decompPos);return out;}
+function relativeRotation(rootNode,node,out){worldRotation(rootNode,qRoot);qRoot.conjugateToRef(qInvRoot);worldRotation(node,qWorld);qInvRoot.multiplyToRef(qWorld,out);return out.normalize();}
+function relativePosition(rootNode,node,out){rootNode.computeWorldMatrix(true);rootNode.getWorldMatrix().invertToRef(invRootMatrix);node.computeWorldMatrix(true);BABYLON.Vector3.TransformCoordinatesToRef(node.getAbsolutePosition(),invRootMatrix,out);return out;}
+function descendants(roots){var out=[],seen=[];function add(n){if(!n||seen.indexOf(n)>=0)return;seen.push(n);out.push(n);var kids=n.getChildren?n.getChildren():[];for(var i=0;i<kids.length;i++)add(kids[i]);}for(var i=0;i<roots.length;i++)add(roots[i]);return out;}
 function suffixName(name,target){name=String(name||'');return name===target||name.slice(-target.length)===target;}
 function findNamed(nodes,name){for(var i=0;i<nodes.length;i++)if(suffixName(nodes[i].name,name))return nodes[i];return null;}
-function meshBounds(roots){
-  var minY=Infinity,maxY=-Infinity;
-  for(var r=0;r<roots.length;r++){
-    var meshes=[];if(roots[r].getChildMeshes)meshes=roots[r].getChildMeshes(false);if(roots[r].getBoundingInfo)meshes.unshift(roots[r]);
-    for(var i=0;i<meshes.length;i++){
-      try{meshes[i].computeWorldMatrix(true);var b=meshes[i].getBoundingInfo().boundingBox;minY=Math.min(minY,b.minimumWorld.y);maxY=Math.max(maxY,b.maximumWorld.y);}catch(_){ }
-    }
-  }
-  return isFinite(minY)&&isFinite(maxY)&&maxY>minY?{minY:minY,maxY:maxY,height:maxY-minY}:null;
-}
-function disposeMeshes(meshes){
-  for(var i=0;i<(meshes||[]).length;i++)try{if(meshes[i]&&!meshes[i].isDisposed())meshes[i].dispose(false,false);}catch(_){ }
-}
+function meshBounds(roots){var minY=Infinity,maxY=-Infinity;for(var r=0;r<roots.length;r++){var meshes=[];if(roots[r].getChildMeshes)meshes=roots[r].getChildMeshes(false);if(roots[r].getBoundingInfo)meshes.unshift(roots[r]);for(var i=0;i<meshes.length;i++){try{meshes[i].computeWorldMatrix(true);var b=meshes[i].getBoundingInfo().boundingBox;minY=Math.min(minY,b.minimumWorld.y);maxY=Math.max(maxY,b.maximumWorld.y);}catch(_){}}}return isFinite(minY)&&isFinite(maxY)&&maxY>minY?{minY:minY,maxY:maxY,height:maxY-minY}:null;}
+function disposeMeshes(meshes){for(var i=0;i<(meshes||[]).length;i++)try{if(meshes[i]&&!meshes[i].isDisposed())meshes[i].dispose(false,false);}catch(_){} }
 function primaryAxis(key){if(key.indexOf('upperArm')===0||key.indexOf('forearm')===0||key.indexOf('thigh')===0||key.indexOf('shin')===0)return'-Y';if(key.indexOf('foot')===0)return'+Z';return'+Y';}
-var p0=new BABYLON.Vector3(),p1=new BABYLON.Vector3(),axisX=new BABYLON.Vector3(),axisY=new BABYLON.Vector3(),axisZ=new BABYLON.Vector3(),tmpV=new BABYLON.Vector3();
-function safePerpendicular(base,preferred,out){
-  out.copyFrom(preferred);BABYLON.Vector3.ScaleAndAddToRef(base,-BABYLON.Vector3.Dot(out,base),out);
-  if(out.lengthSquared()<1e-8){out.set(0,1,0);BABYLON.Vector3.ScaleAndAddToRef(base,-BABYLON.Vector3.Dot(out,base),out);}
-  if(out.lengthSquared()<1e-8){out.set(1,0,0);BABYLON.Vector3.ScaleAndAddToRef(base,-BABYLON.Vector3.Dot(out,base),out);}
-  return out.normalize();
-}
-function anatomicalFrame(model,key,target,child,nodes,out){
-  if(key==='hips'){out.set(0,0,0,1);return out;}
-  var a=primaryAxis(key);
-  if(key==='head'){
-    var neck=findNamed(nodes,'mixamorig:Neck');if(!neck){out.set(0,0,0,1);return out;}
-    relativePosition(model.root,neck,p0);relativePosition(model.root,target,p1);
-  }else{
-    if(!child){out.set(0,0,0,1);return out;}
-    relativePosition(model.root,target,p0);relativePosition(model.root,child,p1);
-  }
-  p1.subtractToRef(p0,tmpV);if(tmpV.lengthSquared()<1e-8){out.set(0,0,0,1);return out;}tmpV.normalize();
-  if(a==='+Z'){
-    axisZ.copyFrom(tmpV);safePerpendicular(axisZ,new BABYLON.Vector3(0,1,0),axisY);BABYLON.Vector3.CrossToRef(axisY,axisZ,axisX).normalize();BABYLON.Vector3.CrossToRef(axisX,axisY,axisZ).normalize();
-  }else{
-    axisY.copyFrom(tmpV);if(a==='-Y')axisY.scaleInPlace(-1);
-    safePerpendicular(axisY,new BABYLON.Vector3(0,0,1),axisZ);BABYLON.Vector3.CrossToRef(axisY,axisZ,axisX).normalize();BABYLON.Vector3.CrossToRef(axisX,axisY,axisZ).normalize();
-  }
-  BABYLON.Quaternion.RotationQuaternionFromAxisToRef(axisX,axisY,axisZ,out);return out.normalize();
-}
-function captureCorrection(model,targetNodes){
-  var correction=Object.create(null),targets=Object.create(null),frame=new BABYLON.Quaternion(),targetRest=new BABYLON.Quaternion();
-  for(var i=0;i<MAP.length;i++){
-    var key=MAP[i][0],source=model.rig&&model.rig[key],target=findNamed(targetNodes,MAP[i][1]);if(!source||!target)continue;
-    var child=CHILD[key]?findNamed(targetNodes,CHILD[key]):null;
-    anatomicalFrame(model,key,target,child,targetNodes,frame);frame.conjugateToRef(qInvFrame);relativeRotation(model.root,target,targetRest);
-    qInvFrame.multiplyToRef(targetRest,qDesired);correction[key]=qDesired.clone().normalize();targets[key]=target;
-  }
-  return{correction:correction,nodes:targets};
-}
-function instantiate(model,scene,faction){
-  var s=actualState(scene),container=s.containers[faction];if(!container||!s.enabled)return false;
-  /* Snapshot the old primitive body BEFORE the GLB is added below. Looking up child meshes after
-     attachment would also find and dispose the new skinned soldier. */
-  var proceduralMeshes=model.root&&model.root.getChildMeshes?model.root.getChildMeshes(false).slice():[];
-  var prefix='soldier'+(++instanceSerial)+'|',entry;
-  try{entry=container.instantiateModelsToScene(function(name){return prefix+name;},false,{doNotInstantiate:false});}catch(err){console.warn('[ANIM] skeletal instantiate failed',err);return false;}
-  if(!entry||!entry.rootNodes||!entry.rootNodes.length)return false;
-  (entry.animationGroups||[]).forEach(function(g){try{g.stop();g.dispose();}catch(_){} });
-  var mount=new BABYLON.TransformNode(prefix+'mount',scene);mount.parent=model.poseRoot;mount.rotation.y=MODEL_YAW;
-  for(var i=0;i<entry.rootNodes.length;i++)entry.rootNodes[i].parent=mount;
-  var rawBounds=meshBounds(entry.rootNodes),scale=s.scale[faction];
-  if(!(scale>0)&&rawBounds){scale=TARGET_HEIGHT/rawBounds.height;s.scale[faction]=scale;}
-  if(!(scale>0))scale=1;mount.scaling.setAll(scale);
-  if(rawBounds)mount.position.y=-rawBounds.minY*scale;
-  var nodes=descendants(entry.rootNodes),rest=captureCorrection(model,nodes),mapped=Object.keys(rest.nodes).length;
-  if(mapped<12){console.warn('[ANIM] skeletal mapping incomplete ('+mapped+'/'+MAP.length+'); procedural fallback active');try{mount.dispose();}catch(_){}return false;}
-  disposeMeshes(proceduralMeshes);
-  model._skeletal={mount:mount,entry:entry,rest:rest,mapped:mapped,faction:faction};model.animationBinding.backend='runtime-mixamo-driver';
-  console.log('[ANIM] '+faction+' soldier using runtime Mixamo skin; '+mapped+' driver joints mapped');return true;
-}
-function retarget(model){
-  var sk=model&&model._skeletal;if(!sk||!model.root||!model.rig)return;var rest=sk.rest;
-  /* The procedural rig uses canonical anatomical joint axes. Convert each driver's current
-     root-relative orientation through the target bone's fixed anatomical-frame correction, then
-     solve that desired target world orientation back into the Mixamo hierarchy. This avoids using
-     raw Mixamo local axes (many point ~180 degrees away from our procedural axes) as pose deltas. */
-  for(var i=0;i<MAP.length;i++){
-    var key=MAP[i][0],source=model.rig[key],target=rest.nodes[key],corr=rest.correction[key];if(!source||!target||!corr)continue;
-    relativeRotation(model.root,source,qSrc);qSrc.multiplyToRef(corr,qDesired).normalize();
-    var parent=target.parent;if(parent&&parent!==model.root){relativeRotation(model.root,parent,qParent);qParent.conjugateToRef(qInvParent);qInvParent.multiplyToRef(qDesired,qLocal);}else qLocal.copyFrom(qDesired);
-    if(!target.rotationQuaternion)target.rotationQuaternion=new BABYLON.Quaternion();target.rotationQuaternion.copyFrom(qLocal).normalize();if(target.rotation)target.rotation.set(0,0,0);target.computeWorldMatrix(true);
-  }
-}
-
+var p0=new BABYLON.Vector3(),p1=new BABYLON.Vector3(),axisX=new BABYLON.Vector3(),axisY=new BABYLON.Vector3(),axisZ=new BABYLON.Vector3(),tmpV=new BABYLON.Vector3(),preferredForward=new BABYLON.Vector3(0,0,1),preferredUp=new BABYLON.Vector3(0,1,0),fallbackX=new BABYLON.Vector3(1,0,0);
+function projectPerpendicular(base,preferred,out){out.copyFrom(preferred);var dot=BABYLON.Vector3.Dot(out,base);out.x-=base.x*dot;out.y-=base.y*dot;out.z-=base.z*dot;if(out.lengthSquared()<1e-8){out.copyFrom(preferredUp);dot=BABYLON.Vector3.Dot(out,base);out.x-=base.x*dot;out.y-=base.y*dot;out.z-=base.z*dot;}if(out.lengthSquared()<1e-8){out.copyFrom(fallbackX);dot=BABYLON.Vector3.Dot(out,base);out.x-=base.x*dot;out.y-=base.y*dot;out.z-=base.z*dot;}return out.normalize();}
+function anatomicalFrame(model,key,target,child,nodes,out){if(key==='hips'){out.set(0,0,0,1);return out;}var a=primaryAxis(key);if(key==='head'){var neck=findNamed(nodes,'mixamorig:Neck');if(!neck){out.set(0,0,0,1);return out;}relativePosition(model.root,neck,p0);relativePosition(model.root,target,p1);}else{if(!child){out.set(0,0,0,1);return out;}relativePosition(model.root,target,p0);relativePosition(model.root,child,p1);}p1.subtractToRef(p0,tmpV);if(tmpV.lengthSquared()<1e-8){out.set(0,0,0,1);return out;}tmpV.normalize();if(a==='+Z'){axisZ.copyFrom(tmpV);projectPerpendicular(axisZ,preferredUp,axisY);BABYLON.Vector3.CrossToRef(axisY,axisZ,axisX).normalize();BABYLON.Vector3.CrossToRef(axisX,axisY,axisZ).normalize();}else{axisY.copyFrom(tmpV);if(a==='-Y')axisY.scaleInPlace(-1);projectPerpendicular(axisY,preferredForward,axisZ);BABYLON.Vector3.CrossToRef(axisY,axisZ,axisX).normalize();BABYLON.Vector3.CrossToRef(axisX,axisY,axisZ).normalize();}BABYLON.Quaternion.RotationQuaternionFromAxisToRef(axisX,axisY,axisZ,out);return out.normalize();}
+function captureCorrection(model,targetNodes){var correction=Object.create(null),targets=Object.create(null),frame=new BABYLON.Quaternion(),targetRest=new BABYLON.Quaternion();for(var i=0;i<MAP.length;i++){var key=MAP[i][0],source=model.rig&&model.rig[key],target=findNamed(targetNodes,MAP[i][1]);if(!source||!target)continue;var child=CHILD[key]?findNamed(targetNodes,CHILD[key]):null;anatomicalFrame(model,key,target,child,targetNodes,frame);frame.conjugateToRef(qInvFrame);relativeRotation(model.root,target,targetRest);qInvFrame.multiplyToRef(targetRest,qDesired);correction[key]=qDesired.clone().normalize();targets[key]=target;}return{correction:correction,nodes:targets};}
+function instantiate(model,scene,faction){var s=actualState(scene),container=s.containers[faction];if(!container||!s.enabled)return false;var proceduralMeshes=model.root&&model.root.getChildMeshes?model.root.getChildMeshes(false).slice():[],prefix='soldier'+(++instanceSerial)+'|',entry;try{entry=container.instantiateModelsToScene(function(name){return prefix+name;},false,{doNotInstantiate:false});}catch(err){console.warn('[ANIM] skeletal instantiate failed',err);return false;}if(!entry||!entry.rootNodes||!entry.rootNodes.length)return false;(entry.animationGroups||[]).forEach(function(g){try{g.stop();g.dispose();}catch(_){}});var mount=new BABYLON.TransformNode(prefix+'mount',scene);mount.parent=model.poseRoot;mount.rotation.y=MODEL_YAW;for(var i=0;i<entry.rootNodes.length;i++)entry.rootNodes[i].parent=mount;var rawBounds=meshBounds(entry.rootNodes),scale=s.scale[faction];if(!(scale>0)&&rawBounds){scale=TARGET_HEIGHT/rawBounds.height;s.scale[faction]=scale;}if(!(scale>0))scale=1;mount.scaling.setAll(scale);if(rawBounds)mount.position.y=-rawBounds.minY*scale;var nodes=descendants(entry.rootNodes),rest=captureCorrection(model,nodes),mapped=Object.keys(rest.nodes).length;if(mapped<12){console.warn('[ANIM] skeletal mapping incomplete ('+mapped+'/'+MAP.length+'); procedural fallback active');try{mount.dispose();}catch(_){}return false;}disposeMeshes(proceduralMeshes);model._skeletal={mount:mount,entry:entry,rest:rest,mapped:mapped,faction:faction};model.animationBinding.backend='runtime-mixamo-driver';console.log('[ANIM] '+faction+' soldier using runtime Mixamo skin; '+mapped+' driver joints mapped');return true;}
+function retarget(model){var sk=model&&model._skeletal;if(!sk||!model.root||!model.rig)return;var rest=sk.rest;for(var i=0;i<MAP.length;i++){var key=MAP[i][0],source=model.rig[key],target=rest.nodes[key],corr=rest.correction[key];if(!source||!target||!corr)continue;relativeRotation(model.root,source,qSrc);qSrc.multiplyToRef(corr,qDesired).normalize();var parent=target.parent;if(parent&&parent!==model.root){relativeRotation(model.root,parent,qParent);qParent.conjugateToRef(qInvParent);qInvParent.multiplyToRef(qDesired,qLocal);}else qLocal.copyFrom(qDesired);if(!target.rotationQuaternion)target.rotationQuaternion=new BABYLON.Quaternion();target.rotationQuaternion.copyFrom(qLocal).normalize();if(target.rotation)target.rotation.set(0,0,0);target.computeWorldMatrix(true);}}
 M.preload=function(scene){var prior=oldPreload?oldPreload.call(this,scene):true;return Promise.resolve(prior).then(function(){return Promise.all([loadFaction(scene,'us'),loadFaction(scene,'ge')]);});};
 M.setImportedEnabled=function(scene,enabled){if(oldSetImported)oldSetImported.call(this,scene,enabled);actualState(scene).enabled=!!enabled;};
 M.createSoldier=function(scene,faction,role,parent){var model=oldCreate.call(this,scene,faction,role,parent);if(ASSET[faction]&&actualState(scene).enabled)instantiate(model,scene,faction);return model;};
 M.animateWalk=function(model,dt,speed){var out=oldAnimate.apply(this,arguments);if(model&&model._skeletal)retarget(model);return out;};
-
-root.BattleSkeletalSoldierBackend={version:'1.3',map:MAP.slice(),asset:ASSET,retarget:retarget};
+root.BattleSkeletalSoldierBackend={version:'1.3.1',map:MAP.slice(),asset:ASSET,retarget:retarget};
 console.log('[ANIM] runtime skeletal soldier backend active (Battle Sim motion -> Mixamo skin)');
 })(typeof window!=='undefined'?window:globalThis);
