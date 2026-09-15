@@ -14,7 +14,7 @@ var M=root.BattleSoldierModel;
 var oldCreate=M.createSoldier,oldPreload=M.preload,oldSetImported=M.setImportedEnabled,oldAnimate=M.animateWalk;
 if(typeof oldCreate!=='function'||typeof oldAnimate!=='function')return;
 
-var ASSET={us:'us-rifleman-mixamo.glb'};
+var ASSET={us:'us-rifleman-mixamo.glb',ge:'ge-rifleman-mixamo.glb'};
 var MODEL_YAW=Math.PI;
 var TARGET_HEIGHT=+((M.BODY&&M.BODY.heightM)||1.70);
 var sceneStates=typeof WeakMap!=='undefined'?new WeakMap():null;
@@ -162,7 +162,7 @@ function retarget(model){
 
 M.preload=function(scene){
   var prior=oldPreload?oldPreload.call(this,scene):true;
-  return Promise.resolve(prior).then(function(){return loadFaction(scene,'us');});
+  return Promise.resolve(prior).then(function(){return Promise.all([loadFaction(scene,'us'),loadFaction(scene,'ge')]);});
 };
 M.setImportedEnabled=function(scene,enabled){
   if(oldSetImported)oldSetImported.call(this,scene,enabled);actualState(scene).enabled=!!enabled;
@@ -176,6 +176,6 @@ M.animateWalk=function(model,dt,speed){
   var out=oldAnimate.apply(this,arguments);if(model&&model._skeletal)retarget(model);return out;
 };
 
-root.BattleSkeletalSoldierBackend={version:'1.0',map:MAP.slice(),asset:ASSET,retarget:retarget};
+root.BattleSkeletalSoldierBackend={version:'1.1',map:MAP.slice(),asset:ASSET,retarget:retarget};
 console.log('[ANIM] runtime skeletal soldier backend active (Battle Sim motion -> Mixamo skin)');
 })(typeof window!=='undefined'?window:globalThis);
