@@ -1,28 +1,33 @@
-name: Apply plan dormancy fix
+name: Validate simplified runtime head
 on:
   push:
     branches: [ci-apply-plan-dormancy]
 permissions:
-  contents: write
+  contents: read
 jobs:
-  patch:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: simplify-v134
-      - name: Apply staged dormancy patch
-        run: python3 scripts/patch_plan_dormancy.py
-      - name: Validate focused regressions
+      - name: Syntax
         run: |
           node --check battle/modules/16-squad-plan-stability.js
-          node tools/ai-sim-harness/lean-runtime-check.js
-          node tools/ai-sim-harness/tactical-positions-check.js
-      - name: Commit fix to simplify branch
+          node --check battle/modules/44-assault-forward-guard.js
+          node --check battle/modules/52-survival-tactical-route.js
+          node --check tools/ai-sim-harness/harness.js
+          node --check tools/ai-sim-harness/lean-runtime-check.js
+      - name: Lean ownership regressions
+        run: node tools/ai-sim-harness/lean-runtime-check.js
+      - name: Engagement harness seeds
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m 'Keep quiet engagement plans dormant'
-          git push origin HEAD:simplify-v134
+          for seed in 12345 1 2 3 5 8 13 21; do
+            HARNESS_SEED="$seed" node tools/ai-sim-harness/run.js
+          done
+      - name: Geometry and tactical-position regressions
+        run: |
+          node tools/ai-sim-harness/objective-nav-check.js
+          node tools/ai-sim-harness/impact-fx-check.js
+          node tools/ai-sim-harness/tactical-positions-check.js
