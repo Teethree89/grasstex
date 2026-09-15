@@ -12,6 +12,19 @@
   function bucket(label){return stats[label]||(stats[label]={label:label,calls:0,totalMs:0,maxMs:0});}
   function record(label,elapsed){var b=bucket(label);b.calls++;b.totalMs+=elapsed;if(elapsed>b.maxMs)b.maxMs=elapsed;}
   function recordCount(label){var b=bucket(label);b.calls++;}
+  function safeLabel(v){return String(v==null||v===''?'unknown':v).replace(/[^a-zA-Z0-9_.:-]+/g,'_').slice(0,80);}
+  function movementProducer(soldier){
+    var st=soldier&&soldier._movementResolver,last=st&&(st.last||st.goal)||null;
+    return{owner:safeLabel(last&&last.owner),kind:safeLabel(last&&last.kind),reason:safeLabel(last&&last.reason),tactical:safeLabel(last&&last.tacticalReason)};
+  }
+  function recordMovementAttribution(prefix,soldier){
+    var p=movementProducer(soldier);
+    recordCount(prefix+'.owner.'+p.owner);
+    recordCount(prefix+'.kind.'+p.kind);
+    recordCount(prefix+'.owner-kind.'+p.owner+'__'+p.kind);
+    if(p.reason!=='unknown')recordCount(prefix+'.reason.'+p.reason);
+    if(p.tactical!=='unknown')recordCount(prefix+'.tactical.'+p.tactical);
+  }
   function wrap(obj,key,label){
     if(!obj||typeof obj[key]!=='function')return false;
     var fn=obj[key];if(fn.__battleHotpathWrapped)return false;
@@ -71,10 +84,16 @@
       finally{
         var elapsed=clock()-start,afterNav=soldier&&soldier._navCache,afterPhysical=soldier&&soldier._physicalPath;
         record('navigation.nextWaypoint',elapsed);
-        if(afterNav!==beforeNav){record('navigation.nextWaypoint.baseCacheRebuild',elapsed);recordCount('navigation.baseRebuildReason.'+baseRebuildReason(sim,soldier,dest,beforeNav));}
-        else record('navigation.nextWaypoint.baseCacheReuse',elapsed);
-        if(afterPhysical!==beforePhysical){record('navigation.nextWaypoint.physicalReplan',elapsed);recordCount('navigation.physicalReplanReason.'+physicalReplanReason(sim,soldier,dest,beforePhysical));}
-        else record('navigation.nextWaypoint.physicalReuse',elapsed);
+        if(afterNav!==beforeNav){
+          var br=baseRebuildReason(sim,soldier,dest,beforeNav);
+          record('navigation.nextWaypoint.baseCacheRebuild',elapsed);recordCount('navigation.baseRebuildReason.'+br);
+          if(br==='missing'||br==='goal-shift')recordMovementAttribution('navigation.baseRebuild.'+br,soldier);
+        }else record('navigation.nextWaypoint.baseCacheReuse',elapsed);
+        if(afterPhysical!==beforePhysical){
+          var pr=physicalReplanReason(sim,soldier,dest,beforePhysical);
+          record('navigation.nextWaypoint.physicalReplan',elapsed);recordCount('navigation.physicalReplanReason.'+pr);
+          if(pr==='goal-shift'||pr==='missing')recordMovementAttribution('navigation.physicalReplan.'+pr,soldier);
+        }else record('navigation.nextWaypoint.physicalReuse',elapsed);
       }
     }
     profiled.__battleHotpathWrapped=true;profiled.__battleHotpathOriginal=fn;obj[key]=profiled;wrapped.push({obj:obj,key:key,fn:fn});return true;
@@ -112,10 +131,10 @@
   function snapshot(limit){
     var wallMs=Math.max(0,clock()-startedAt),rows=Object.keys(stats).map(function(k){var b=stats[k];return{label:b.label,calls:b.calls,totalMs:+b.totalMs.toFixed(3),maxMs:+b.maxMs.toFixed(3),avgUs:b.calls?+(b.totalMs*1000/b.calls).toFixed(2):0,wallPct:wallMs?+(b.totalMs/wallMs*100).toFixed(2):0};});
     rows.sort(function(a,b){return b.totalMs-a.totalMs||b.calls-a.calls;});if(limit>0)rows=rows.slice(0,limit);
-    return{version:'1.3',wallMs:+wallMs.toFixed(3),rows:rows};
+    return{version:'1.4',wallMs:+wallMs.toFixed(3),rows:rows};
   }
   function restore(){for(var i=wrapped.length-1;i>=0;i--){var w=wrapped[i];if(w.obj&&w.obj[w.key]&&w.obj[w.key].__battleHotpathWrapped)w.obj[w.key]=w.fn;}wrapped=[];scope.length=0;}
 
   install();
-  root.BattleHotpathProfiler={version:'1.3',reset:reset,snapshot:snapshot,restore:restore};
+  root.BattleHotpathProfiler={version:'1.4',reset:reset,snapshot:snapshot,restore:restore};
 })(typeof window!=='undefined'?window:globalThis);
