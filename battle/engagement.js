@@ -5,10 +5,10 @@
    tick. The last writer won, so a soldier's visible behavior was "walk to a formation slot while
    pointing a rifle": nobody ever owned the decision to stop, get down and fight.
 
-   This module is that single owner. Exactly one state machine decides, per soldier per AI tick,
-   where he is going, what stance he holds and whether he may pull the trigger. Other modules feed
-   it inputs (squad plans, fireteam slots, claimed building firing stations) instead of overriding
-   its output.
+   This module owns combat STATE, stance and fire control. It decides whether a soldier is
+   advancing, orienting, bounding, engaging, pinned, assaulting or alert. It does not own the
+   physical destination: combat movement requests go to BattleCombatMobility, the sole combat
+   locomotion owner, and squad movement remains owned by the squad-command path.
 
    Sequence a soldier now runs on contact:
      advance -> orient (halt, turn, weapon up) -> react
@@ -234,8 +234,14 @@
     }
     e.until=battle.time+(seconds||0);
   }
-  /* Engagement supplies a short-lived combat proposal; the resolver owns the physical destination. */
-  function move(s,battle,p,kind,ttl){if(root.BattleMovementResolver)return root.BattleMovementResolver.proposeCombat(s,p,battle,kind,ttl,{source:'engagement',reason:state(s).moveReason||state(s).state});s.destination={x:p.x,z:p.z};s._navCache=null;return null;}
+  /* Engagement describes combat movement; Combat Mobility is the only owner that may publish it. */
+  function move(s,battle,p,kind,ttl){
+    var reason=state(s).moveReason||state(s).state;
+    if(root.BattleCombatMobility&&root.BattleCombatMobility.request)return root.BattleCombatMobility.request(s,p,battle,kind,ttl,{origin:'engagement',reason:reason});
+    /* Isolated unit harness fallback: production loads Combat Mobility before any AI tick. */
+    if(root.BattleMovementResolver)return root.BattleMovementResolver.proposeCombat(s,p,battle,kind,ttl,{source:'engagement-fallback',reason:reason});
+    s.destination={x:p.x,z:p.z};s._navCache=null;return null;
+  }
   function holdPosition(s,battle){var p=posOf(s);move(s,battle,{x:p.x,z:p.z},'hold');}
   function orderPoint(s){
     if(s._fireteamDestination)return s._fireteamDestination;
@@ -401,8 +407,8 @@
     /* A committed rush is locomotion, not aim: losing sight for a beat must not cancel it.
        Aim tracking (target/lastSeen) may flicker, but the assaultGoal stands until arrival,
        the window lapses, or recovery reports it unreachable. Only a rush that never had a
-       goal falls back to alert. */
-    if(!s.target&&!e.assaultGoal){enter(s,battle,'alert',ALERT_HOLD,'target lost');return alert(s,battle);}
+       live target/goal falls back to alert. */
+    if((!s.target||s.target.dead)&&!e.assaultGoal){enter(s,battle,'alert',ALERT_HOLD,'target lost before rush');return alert(s,battle);}
     if(s._movementGoalUnreachable){
       s._movementGoalUnreachable=false;
       if(root.BattleMovementProgress&&e.assaultGoal)root.BattleMovementProgress.noteFailure(s,battle,e.assaultGoal,'assault-unreachable');
@@ -410,7 +416,7 @@
     }
     var p=posOf(s),hasTarget=!!(s.target&&!s.target.dead),t=hasTarget?posOf(s.target):null,d=t?dist(p.x,p.z,t.x,t.z):Infinity;
     commitStance(s,battle,'crouch',Math.max(1,e.until-battle.time));
-    if(!e.assaultGoal)e.assaultGoal={x:p.x+(t.x-p.x)*.55,z:p.z+(t.z-p.z)*.55};
+    if(!e.assaultGoal){if(!t){enter(s,battle,'alert',ALERT_HOLD,'assault target unavailable');return alert(s,battle);}e.assaultGoal={x:p.x+(t.x-p.x)*.55,z:p.z+(t.z-p.z)*.55};}
     move(s,battle,e.assaultGoal,'assault-rush');
     var arrived=Math.hypot(p.x-e.assaultGoal.x,p.z-e.assaultGoal.z)<12;
     if(arrived||d<12||battle.time>=e.until){enter(s,battle,'engage',0,'assault complete');return engage(s,battle);}
@@ -577,5 +583,5 @@
     tuning:{REACT:REACT,AIM_CONE:AIM_CONE,ALERT_HOLD:ALERT_HOLD,COVER_RANGE:COVER_RANGE,BOUND_CYCLE:BOUND_CYCLE,BOUND_DURATION:BOUND_DURATION,USEFUL_COVER:USEFUL_COVER,OPEN_COVER:OPEN_COVER,
       MAX_SUPPRESSORS:MAX_SUPPRESSORS,SUPPRESS_BURST:SUPPRESS_BURST,SUPPRESS_PAUSE:SUPPRESS_PAUSE,PREWARNED_REACT:PREWARNED_REACT}
   };
-  if(typeof console!=='undefined')console.log('[ENGAGE] contact pipeline loaded: orient -> cover -> aimed fire -> bound');
+  if(typeof console!=='undefined')console.log('[ENGAGE] state/fire owner loaded; combat locomotion delegates to Combat Mobility');
 })(typeof window!=='undefined'?window:globalThis);
