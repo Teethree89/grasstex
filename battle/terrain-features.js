@@ -83,8 +83,10 @@
       bx-a.vx*hz,top1,bz-a.vz*hz, bx+a.vx*hz,top1,bz+a.vz*hz
     ];
     var ind=[0,2,1,0,3,2, 4,5,6,4,6,7, 0,4,7,0,7,3, 1,2,6,1,6,5, 0,1,5,0,5,4, 3,7,6,3,6,2];
-    var m=new BABYLON.Mesh('hedge-prism',scene),vd=new BABYLON.VertexData(),norm=[];
-    BABYLON.VertexData.ComputeNormals(p,ind,norm);vd.positions=p;vd.indices=ind;vd.normals=norm;vd.applyToMesh(m);
+    var m=new BABYLON.Mesh('hedge-prism',scene),vd=new BABYLON.VertexData(),norm=[],uv=[];
+    BABYLON.VertexData.ComputeNormals(p,ind,norm);
+    for(var ui=0;ui<p.length/3;ui++)uv.push(0,0);
+    vd.positions=p;vd.indices=ind;vd.normals=norm;vd.uvs=uv;vd.applyToMesh(m);
     paint(m,HEDGE);m.material=featureMaterial(scene);m.isPickable=false;return m;
   }
 
