@@ -18,6 +18,22 @@
     profiled.__battleHotpathWrapped=true;profiled.__battleHotpathOriginal=fn;obj[key]=profiled;wrapped.push({obj:obj,key:key,fn:fn});return true;
   }
   function wrapMany(obj,prefix,names){for(var i=0;i<names.length;i++)wrap(obj,names[i],prefix+'.'+names[i]);}
+  function wrapNavigationWaypoint(){
+    var obj=root.BattleNavigation,key='nextWaypoint';
+    if(!obj||typeof obj[key]!=='function')return false;
+    var fn=obj[key];if(fn.__battleHotpathWrapped)return false;
+    function profiled(sim,soldier,dest){
+      var beforeNav=soldier&&soldier._navCache,beforePhysical=soldier&&soldier._physicalPath,start=clock();
+      try{return fn.apply(this,arguments);}
+      finally{
+        var elapsed=clock()-start,afterNav=soldier&&soldier._navCache,afterPhysical=soldier&&soldier._physicalPath;
+        record('navigation.nextWaypoint',elapsed);
+        record(afterNav!==beforeNav?'navigation.nextWaypoint.baseCacheRebuild':'navigation.nextWaypoint.baseCacheReuse',elapsed);
+        record(afterPhysical!==beforePhysical?'navigation.nextWaypoint.physicalReplan':'navigation.nextWaypoint.physicalReuse',elapsed);
+      }
+    }
+    profiled.__battleHotpathWrapped=true;profiled.__battleHotpathOriginal=fn;obj[key]=profiled;wrapped.push({obj:obj,key:key,fn:fn});return true;
+  }
   function wrapSystems(){
     if(!root.BattleModules||!root.BattleModules.listSystems)return;
     var systems=root.BattleModules.listSystems();
@@ -34,7 +50,8 @@
     wrapMany(root.BattleModules,'modules',['runHook']);
 
     wrapMany(root.BattleObstacleField,'obstacle',['sightBlocked','sightBlocker','coverAt','coverPotentialAt','nearby']);
-    wrapMany(root.BattleNavigation,'navigation',['findPath','nextWaypoint','movementClear','resolveStep','lineOfSightBlocked']);
+    wrapNavigationWaypoint();
+    wrapMany(root.BattleNavigation,'navigation',['findPath','movementClear','resolveStep','lineOfSightBlocked']);
     wrapMany(root.BattleMovementResolver,'movement-resolver',['proposeOrder','proposeCombat','resolve']);
     wrapMany(root.SquadAI,'squad',['updateSquad']);
     wrapMany(root.BattleCombatMobility,'combat-mobility',['request']);
@@ -48,10 +65,10 @@
   function snapshot(limit){
     var wallMs=Math.max(0,clock()-startedAt),rows=Object.keys(stats).map(function(k){var b=stats[k];return{label:b.label,calls:b.calls,totalMs:+b.totalMs.toFixed(3),maxMs:+b.maxMs.toFixed(3),avgUs:b.calls?+(b.totalMs*1000/b.calls).toFixed(2):0,wallPct:wallMs?+(b.totalMs/wallMs*100).toFixed(2):0};});
     rows.sort(function(a,b){return b.totalMs-a.totalMs;});if(limit>0)rows=rows.slice(0,limit);
-    return{version:'1.1',wallMs:+wallMs.toFixed(3),rows:rows};
+    return{version:'1.2',wallMs:+wallMs.toFixed(3),rows:rows};
   }
   function restore(){for(var i=wrapped.length-1;i>=0;i--){var w=wrapped[i];if(w.obj&&w.obj[w.key]&&w.obj[w.key].__battleHotpathWrapped)w.obj[w.key]=w.fn;}wrapped=[];}
 
   install();
-  root.BattleHotpathProfiler={version:'1.1',reset:reset,snapshot:snapshot,restore:restore};
+  root.BattleHotpathProfiler={version:'1.2',reset:reset,snapshot:snapshot,restore:restore};
 })(typeof window!=='undefined'?window:globalThis);
