@@ -1,4 +1,4 @@
-name: Meso Fireteam Churn Attribution
+name: Meso Fireteam Churn Attribution - Arrival Commit
 
 on:
   push:
@@ -39,7 +39,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Formation frame regression
+      - name: Fireteam commitment regression
         run: node scripts/check-meso-formation-frame-stability.cjs
       - name: Install browser harness
         run: |
