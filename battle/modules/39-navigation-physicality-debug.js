@@ -351,9 +351,12 @@ N.nextWaypoint=function(sim,soldier,dest){
   // Positional ingress already contains a complete, committed physical route.
   var task=root.BattleTacticalPositions&&root.BattleTacticalPositions.current(soldier),last=soldier&&soldier._movementResolver&&soldier._movementResolver.last;
   if(task&&last&&last.kind==='firing-station'&&dest&&N.movementClear(soldier.root.position,dest))return dest;
-  var base=baseNextWaypoint(sim,soldier,dest)||dest;
-  if(!soldier||!soldier.root||!dest)return base;
-  var start={x:+soldier.root.position.x,z:+soldier.root.position.z},finalGoal=point(dest);if(!finalGoal)return base;
+  /* Normal physical routing owns its rolling waypoint queue and calls baseFindPath only when
+     building/door topology is actually needed. Maintaining the base nextWaypoint cache in parallel
+     was duplicate planning work; retain it only as the malformed-call fallback. */
+  if(!soldier||!soldier.root||!dest)return baseNextWaypoint(sim,soldier,dest)||dest;
+  var start={x:+soldier.root.position.x,z:+soldier.root.position.z},finalGoal=point(dest);
+  if(!finalGoal)return baseNextWaypoint(sim,soldier,dest)||dest;
   var c=soldier._physicalPath;
   if(needsReplan(soldier,sim,finalGoal,start))c=buildRollingPlan(soldier,sim,start,finalGoal);
   consumeReached(c,start,sim,soldier);
