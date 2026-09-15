@@ -1,10 +1,11 @@
-/* Persistent positional tasks. Command owns the job; this manager alone owns its reservation,
-   lifecycle and committed ingress. Navigation supplies geometry/routes, engagement supplies fire,
-   and Movement Resolver remains the only writer of soldier.destination. */
+/* Persistent positional tasks. Captain/Squad Command owns the Meso job; this manager alone owns
+   its reservation, lifecycle and committed ingress. Navigation supplies geometry/routes,
+   Engagement supplies Micro fire control, and Movement Resolver remains the only writer of
+   soldier.destination. */
 (function(root){
 'use strict';
 if(!root.BattleModules||!root.BattleNavigation)return;
-var N=root.BattleNavigation,MAX_PER_SQUAD=3,CLAIM_RETRY=2,QUIET_CLOSE=10.5;
+var N=root.BattleNavigation,MAX_PER_SQUAD=3,CLAIM_RETRY=2;
 var contexts=new WeakMap(),assignments=new WeakMap();
 var POSITION_TASKS={'support-by-fire':1,'hold-left':1,'hold-right':1,secure:1,security:1};
 function point(p){return p?{x:+p.x,z:+p.z}:null;}
@@ -16,6 +17,10 @@ function station(s){var t=current(s);return t?t.position:null;}
 function eligible(s){return!!(s&&!s.dead&&s.hp>0&&!s.incapacitated&&(s.role==='gunner'||s.role==='rifleman'));}
 function job(s){return s._engagementTask||'support-by-fire';}
 function phase(s){return s.squad&&s.squad.commandPhase||'';}
+function commandSignature(sq){
+  var p=sq&&sq.objective||{},r=sq&&sq._preparedDefenseRequest;
+  return[String(sq&&sq.commandPhase||''),String(sq&&sq.commandRole||''),String(sq&&sq.targetObjective||''),Math.round((+p.x||0)/4),Math.round((+p.z||0)/4),String(r&&r.objectiveId||'')].join('|');
+}
 function canAssign(s){var sq=s&&s.squad;return eligible(s)&&sq&&sq.state!=='retreat'&&phase(s)!=='retreat'&&phase(s)!=='regroup'&&POSITION_TASKS[job(s)]&&(sq.state==='engaged'||['capture','defend','hold','support-hold'].indexOf(phase(s))>=0);}
 function emit(sim,type,t,extra){if(root.BattleTelemetry)root.BattleTelemetry.record('position-'+type,Object.assign({assignment:t.id,soldier:t.assignee,faction:t.faction,role:t.role,station:t.station,building:t.building,status:t.status},extra||{}),sim);}
 function snapshot(t){return JSON.parse(JSON.stringify(t));}
@@ -33,22 +38,16 @@ function release(s,sim,reason){
 }
 function invalidReason(s,sim,t){
   if(s.dead||s.hp<=0)return'death';if(s.incapacitated)return'incapacitated';
-  var sq=s.squad,plan=sq&&sq._engagementPlan;
+  var sq=s.squad;
   if(!sq)return'squad-removed';
   if(sq.state==='retreat'||phase(s)==='retreat')return'retreat';
   if(phase(s)==='regroup')return'regroup';
   if(sim.winner||sim.manualEnded)return'engagement-ended';
   if(N.version!==t.geometryVersion)return'station-invalid';
-  if(t.planSerial!=null&&!plan)return'engagement-ended';
-  if(job(s)!==t.task||phase(s)!==t.commandPhase||String(sq.targetObjective||'')!==t.objective||
-     (plan?plan.serial:null)!==t.planSerial)return'explicit-task-change';
-  // A command plan owns its own quiet closure. Without one, use SQUAD quiet, never personal LOS.
-  if(!plan){
-    var contact=sq.contact;
-    if(sq.inContact||(s.target&&!s.target.dead))t.lastContactAt=sim.time;
-    else if(contact&&isFinite(+contact.at))t.lastContactAt=Math.max(t.lastContactAt,+contact.at);
-    if(sim.time-t.lastContactAt>=QUIET_CLOSE)return'engagement-quiet';
-  }
+  /* M3C boundary: target/contact state and engagement-plan serials are Micro state. A Captain-owned
+     positional order survives target loss, plan quiet/closure and target reacquisition. Only a
+     materially different Meso command invalidates the assignment. */
+  if(commandSignature(sq)!==t.commandSignature)return'explicit-task-change';
   return null;
 }
 function update(s,sim){
@@ -81,9 +80,9 @@ function claim(s,sim,st,threat){
   st=N.firingStations.find(function(p){return p.id===st.id;});if(!st)return null;
   var c=context(sim),owner=c.reservations.get(st.id);
   if(owner){c.stats.claimCollisionsPrevented++;return null;}
-  var sq=s.squad,plan=sq._engagementPlan,t={id:++c.serial,task:job(s),positionType:'window',building:st.building,station:st.id,position:st,
+  var sq=s.squad,t={id:++c.serial,task:job(s),positionType:'window',building:st.building,station:st.id,position:st,
     assignee:s.id,faction:s.faction,role:s.role,squad:sq.id,status:'assigned',threatSector:point(threat),assignedAt:sim.time,occupiedAt:null,
-    lastContactAt:sim.time,commandPhase:phase(s),objective:String(sq.targetObjective||''),planSerial:plan?plan.serial:null,geometryVersion:N.version,route:null};
+    commandPhase:phase(s),objective:String(sq.targetObjective||''),commandSignature:commandSignature(sq),geometryVersion:N.version,route:null};
   c.revision++;c.reservations.set(st.id,s);c.live.set(s,t);assignments.set(s,{sim:sim,task:t});
   c.stats.assignmentsCreated++;if(s._positionAssignments)c.stats.reassignments++;s._positionAssignments=(s._positionAssignments||0)+1;
   c.stats.assignmentsByRole[s.role]=(c.stats.assignmentsByRole[s.role]||0)+1;if(s.role==='captain')c.stats.captainWindowAssignments++;
@@ -140,6 +139,6 @@ function summary(sim){
 }
 function publish(sim){sim._tacticalPositionSummary=summary(sim);if(sim._coordinationHealth)sim._coordinationHealth.tacticalPositions=sim._tacticalPositionSummary;}
 function reset(sim){var c=context(sim);c.live.forEach(function(t,s){release(s,sim,'battle-reset');});contexts.delete(sim);(sim._roster.us||[]).concat(sim._roster.ge||[]).forEach(function(s){s._positionAssignments=0;s._nextStationClaimAt=0;});publish(sim);}
-root.BattleTacticalPositions={version:'1.0',revision:function(sim){return context(sim).revision;},current:current,station:station,eligible:eligible,claim:claim,release:release,update:update,waypoint:waypoint,assign:assign,summary:summary};
-root.BattleModules.registerSystem('building-hardpoints',{version:'47-single-position-owner',onBattleStart:reset,onBattleRestart:reset,beforeBattleRestart:reset,onCommanderTick:assign,onSimulationStep:maintain});
+root.BattleTacticalPositions={version:'1.1-m3c-captain-owned',revision:function(sim){return context(sim).revision;},current:current,station:station,eligible:eligible,claim:claim,release:release,update:update,waypoint:waypoint,assign:assign,summary:summary};
+root.BattleModules.registerSystem('building-hardpoints',{version:'48-m3c-captain-owned-posts',onBattleStart:reset,onBattleRestart:reset,beforeBattleRestart:reset,onCommanderTick:assign,onSimulationStep:maintain});
 })(typeof window!=='undefined'?window:globalThis);
