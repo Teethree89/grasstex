@@ -99,4 +99,4 @@ for (let i = 0; i < sq.members.length; i++) {
   );
 }
 
-console.log('PASS: committed fireteam frame remains stable across same-signature command-ray jitter');
+console.log('PASS: committed fireteam frame remains stable across same-signature command-ray jitter (Meso owner regression)');
