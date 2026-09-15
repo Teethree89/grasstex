@@ -1,7 +1,7 @@
 name: Validate Simplified Battle Runtime
 on:
   push:
-    branches: [simplify-v134]
+    branches: [simplify-v134, m3c-v137]
 permissions:
   contents: read
 jobs:
@@ -12,12 +12,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Syntax
         run: |
+          node --check battle/terrain-features.js
+          node --check battle/obstacle-field.js
           node --check battle/modules/16-squad-plan-stability.js
+          node --check battle/modules/40-world-debug-overlay.js
           node --check battle/modules/44-assault-forward-guard.js
           node --check battle/modules/52-survival-tactical-route.js
           node --check tools/ai-sim-harness/harness.js
           node --check tools/ai-sim-harness/lean-runtime-check.js
-      - name: Lean ownership regressions
+      - name: Lean M3C ownership regressions
         run: node tools/ai-sim-harness/lean-runtime-check.js
       - name: Engagement harness seeds
         run: |
