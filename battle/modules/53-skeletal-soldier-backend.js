@@ -8,10 +8,10 @@
    TransformNode.rotate() to align the segment. This keeps hierarchy conversion inside Babylon and
    avoids copying quaternions between rigs with incompatible local bone axes.
 
-   IMPORTANT: animationBinding stays baked-procedural/procedural. The skeletal skin is a renderer,
-   not a second animation backend. Changing animationBinding.backend would bypass primitive stance
-   motion and holdWeapon(), which are exactly the authoritative crouch/prone/weapon-IK layers we
-   need to visualize. */
+   animationBinding stays baked-procedural/procedural. The skeletal skin is a renderer, not a second
+   animation backend. The procedural driver's weapon pose and two-hand IK remain authoritative; after
+   the skin is posed we translate the visible weapon pose by the least-squares two-hand offset so the
+   same rifle sits on the Mixamo hands despite the two rigs having different shoulder/torso proportions. */
 (function(root){
 'use strict';
 if(typeof BABYLON==='undefined'||!root.BattleSoldierModel||root.BattleSkeletalSoldierBackend)return;
@@ -57,6 +57,7 @@ function loadFaction(scene,faction){
 }
 
 var vA=new BABYLON.Vector3(),vB=new BABYLON.Vector3(),vFrom=new BABYLON.Vector3(),vTo=new BABYLON.Vector3(),vAxis=new BABYLON.Vector3(),vFallback=new BABYLON.Vector3();
+var vSrcR=new BABYLON.Vector3(),vSrcL=new BABYLON.Vector3(),vDstR=new BABYLON.Vector3(),vDstL=new BABYLON.Vector3(),vDelta=new BABYLON.Vector3(),vWorld=new BABYLON.Vector3(),mInv=new BABYLON.Matrix();
 function worldDirection(a,b,out){
   if(!a||!b){out.set(0,1,0);return out;}a.computeWorldMatrix(true);b.computeWorldMatrix(true);vA.copyFrom(a.getAbsolutePosition());vB.copyFrom(b.getAbsolutePosition());
   vB.subtractToRef(vA,out);if(out.lengthSquared()<1e-10)out.set(0,1,0);else out.normalize();return out;
@@ -85,7 +86,7 @@ function captureMap(model,nodes){
     targets[key]=target;bindLocal[key]=localQuat(target);
     var seg=SEGMENT[key];if(seg){var child=findNamed(nodes,seg[1]);if(child)children[key]=child;}
   }
-  return{nodes:targets,children:children,bindLocal:bindLocal};
+  return{nodes:targets,children:children,bindLocal:bindLocal,handR:findNamed(nodes,'mixamorig:RightHand'),handL:findNamed(nodes,'mixamorig:LeftHand')};
 }
 function instantiate(model,scene,faction){
   var s=actualState(scene),container=s.containers[faction];if(!container||!s.enabled)return false;
@@ -97,13 +98,26 @@ function instantiate(model,scene,faction){
   var nodes=descendants(entry.rootNodes),rest=captureMap(model,nodes),mapped=Object.keys(rest.nodes).length;
   if(mapped<12){console.warn('[ANIM] skeletal mapping incomplete ('+mapped+'/'+MAP.length+'); procedural fallback active');try{mount.dispose();}catch(_){}return false;}
   disposeMeshes(oldMeshes);
-  model._skeletal={mount:mount,entry:entry,rest:rest,mapped:mapped,faction:faction,backend:'runtime-mixamo-skin',driverBackend:model.animationBinding&&model.animationBinding.backend||null};
+  model._skeletal={mount:mount,entry:entry,rest:rest,mapped:mapped,faction:faction,backend:'runtime-mixamo-skin',driverBackend:model.animationBinding&&model.animationBinding.backend||null,weaponFitError:null};
   console.log('[ANIM] '+faction+' soldier using Mixamo skin over '+model._skeletal.driverBackend+' driver; '+mapped+' joints mapped');return true;
+}
+function moveNodeByWorldDelta(node,delta){
+  if(!node||!delta)return;node.computeWorldMatrix(true);vWorld.copyFrom(node.getAbsolutePosition()).addInPlace(delta);
+  if(node.parent){node.parent.computeWorldMatrix(true);node.parent.getWorldMatrix().invertToRef(mInv);BABYLON.Vector3.TransformCoordinatesToRef(vWorld,mInv,node.position);}else node.position.copyFrom(vWorld);
+  node.computeWorldMatrix(true);
+}
+function fitWeaponToVisibleHands(model){
+  var sk=model&&model._skeletal,rest=sk&&sk.rest,r=model&&model.rig,socket=model&&model.weaponSocket;
+  if(!sk||!rest||!r||!socket||!model.weapon||!model.weapon.mesh||!rest.handR||!rest.handL||!r.handR||!r.handL)return;
+  r.handR.computeWorldMatrix(true);r.handL.computeWorldMatrix(true);rest.handR.computeWorldMatrix(true);rest.handL.computeWorldMatrix(true);
+  vSrcR.copyFrom(r.handR.getAbsolutePosition());vSrcL.copyFrom(r.handL.getAbsolutePosition());vDstR.copyFrom(rest.handR.getAbsolutePosition());vDstL.copyFrom(rest.handL.getAbsolutePosition());
+  vDstR.subtractToRef(vSrcR,vDelta);vDstL.subtractToRef(vSrcL,vA);vDelta.addInPlace(vA).scaleInPlace(.5);moveNodeByWorldDelta(socket,vDelta);
+  /* Translation is the least-squares fit for two grip points. The remaining error is proportion
+     mismatch between the rigs; expose it for visual-regression evidence rather than hiding it. */
+  vSrcR.addToRef(vDelta,vA);vSrcL.addToRef(vDelta,vB);var er=BABYLON.Vector3.Distance(vA,vDstR),el=BABYLON.Vector3.Distance(vB,vDstL);sk.weaponFitError=(er+el)*.5;
 }
 function retarget(model){
   var sk=model&&model._skeletal;if(!sk||!model.rig)return;var rest=sk.rest,i,key,target,q;
-  /* Never accumulate corrections frame-to-frame: first restore every mapped node to the imported
-     bind-local rotation. Parent bones are then solved before their children in MAP order. */
   for(i=0;i<MAP.length;i++){
     key=MAP[i][0];target=rest.nodes[key];q=rest.bindLocal[key];if(!target||!q)continue;
     if(!target.rotationQuaternion)target.rotationQuaternion=q.clone();else target.rotationQuaternion.copyFrom(q);
@@ -114,12 +128,13 @@ function retarget(model){
     if(!seg||!source||!sourceChild||!target||!targetChild)continue;
     worldDirection(source,sourceChild,vTo);alignSegment(target,targetChild,vTo);
   }
+  fitWeaponToVisibleHands(model);
 }
 
 M.preload=function(scene){var p=oldPreload?oldPreload.call(this,scene):true;return Promise.resolve(p).then(function(){return Promise.all([loadFaction(scene,'us'),loadFaction(scene,'ge')]);});};
 M.setImportedEnabled=function(scene,v){if(oldSetImported)oldSetImported.call(this,scene,v);actualState(scene).enabled=!!v;};
 M.createSoldier=function(scene,faction,role,parent){var model=oldCreate.call(this,scene,faction,role,parent);if(ASSET[faction]&&actualState(scene).enabled)instantiate(model,scene,faction);return model;};
 M.animateWalk=function(model,dt,speed){var out=oldAnimate.apply(this,arguments);if(model&&model._skeletal)retarget(model);return out;};
-root.BattleSkeletalSoldierBackend={version:'1.7',map:MAP.slice(),asset:ASSET,retarget:retarget};
-console.log('[ANIM] runtime skeletal soldier skin active (authoritative procedural/Baked driver -> Mixamo renderer)');
+root.BattleSkeletalSoldierBackend={version:'1.8',map:MAP.slice(),asset:ASSET,retarget:retarget};
+console.log('[ANIM] runtime skeletal soldier skin active (procedural/Baked driver -> Mixamo renderer + two-hand weapon fit)');
 })(typeof window!=='undefined'?window:globalThis);
