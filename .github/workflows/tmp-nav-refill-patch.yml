@@ -1,0 +1,40 @@
+name: Temporary navigation refill patch
+
+on:
+  push:
+    branches:
+      - fix/meso-formation-frame-stability
+    paths:
+      - .github/workflows/tmp-nav-refill-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/meso-formation-frame-stability
+      - name: Replace low-queue full rebuild with in-place refill
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('battle/modules/39-navigation-physicality-debug.js')
+          s=p.read_text()
+          old="  if(!c.blocked&&c.points.length<=MIN_QUEUE&&dist(start,c.standGoal)>PATH_ARRIVAL*2)c=buildRollingPlan(soldier,sim,start,finalGoal);"
+          new="""  /* A low rolling queue is not a reason to throw away an otherwise-valid physical plan.\n     Extend from its committed tail. Full reconstruction remains owned by needsReplan() for\n     actual goal/version/clearance changes or the bounded periodic refresh. */\n  if(!c.blocked&&c.points.length<=MIN_QUEUE&&dist(start,c.standGoal)>PATH_ARRIVAL*2){\n    topUpQueue(sim,soldier,start,c.standGoal,c.points);\n  }"""
+          if old not in s:
+              raise SystemExit('expected low-queue rebuild line not found')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+          node --check battle/modules/39-navigation-physicality-debug.js
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add battle/modules/39-navigation-physicality-debug.js
+          git commit -m 'Refill physical waypoint queues without replanning'
+          git push origin HEAD:fix/meso-formation-frame-stability
