@@ -6,7 +6,9 @@ import bpy
 REQUIRED={'hips','spine','spine1','spine2','neck','head','leftarm','leftforearm','lefthand','rightarm','rightforearm','righthand','leftupleg','leftleg','leftfoot','rightupleg','rightleg','rightfoot'}
 MOVE=('walk','run','sprint','crawl','moving','prone forward','prone backwards','backward in prone')
 def canon(n):
- n=n.split('|')[-1].split(':')[-1].lower();n=re.sub(r'^mixamorig','',n);n=re.sub(r'[^a-z0-9]','',n);return {'pelvis':'hips','spine0':'spine'}.get(n,n)
+ n=n.split('|')[-1].split(':')[-1].lower();n=re.sub(r'^mixamorig','',n);n=re.sub(r'[^a-z0-9]','',n)
+ aliases={'pelvis':'hips','spine0':'spine','spine01':'spine1','spine02':'spine2','spine001':'spine1','spine002':'spine2'}
+ return aliases.get(n,n)
 def slug(s):return re.sub(r'[^a-z0-9]+','-',s.lower()).strip('-')
 def moving(s):return any(x in s.lower() for x in MOVE)
 def clear():bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False)
