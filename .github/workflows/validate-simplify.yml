@@ -12,9 +12,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Syntax
         run: |
-          node --check battle/modules/16-squad-command.js
-          node --check battle/modules/44-combat-mobility.js
-          node --check battle/modules/52-movement-execution.js
+          node --check battle/modules/16-squad-plan-stability.js
+          node --check battle/modules/44-assault-forward-guard.js
+          node --check battle/modules/52-survival-tactical-route.js
           node --check tools/ai-sim-harness/harness.js
           node --check tools/ai-sim-harness/lean-runtime-check.js
       - name: Lean ownership regressions
