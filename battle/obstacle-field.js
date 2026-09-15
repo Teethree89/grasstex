@@ -4,9 +4,11 @@
    hedgerow generator publishes the exact same prism object to this field and to physical navigation,
    so vision, bullets and movement no longer disagree about where a hedge is.
 
-   Sight is genuinely volumetric: a ray is tested against the obstacle's X/Z footprint and vertical
-   extent. There is no "near cover means ignore this obstacle" exemption; if a shooter can see over
-   or around cover, the ray misses the volume naturally. */
+   Authoritative prism sight is genuinely volumetric: a ray is tested against the obstacle's X/Z
+   footprint and vertical extent. Being near an M3C hedge never makes it disappear; seeing/shooting
+   over or around it requires the ray to miss the volume naturally. A compatibility escape remains
+   only for pre-v137 circular hedge records used by old scenarios/tests, which have no real face or
+   edge from which to derive a physical firing line. */
 (function(root){
   'use strict';
 
@@ -93,18 +95,23 @@
     if(dx*dx+dz*dz>r*r)return null;var y=a.y+(b.y-a.y)*t,base=baseAt(ob,px,pz);return y>=base-1e-6&&y<=base+obstacleHeight(ob)+1e-6?t:null;
   }
   function sightHitT(ob,a,b){return isObb(ob)?prismHitT(ob,a,b):cylinderHitT(ob,a,b);}
+  function legacyCircularHedgeEndpoint(ob,p){if(isObb(ob)||String(ob&&ob.type||'').toLowerCase()!=='hedge')return false;var dx=p.x-finite(ob.x,0),dz=p.z-finite(ob.z,0),r=Math.max(.01,finite(ob.radius,1))+1.5;return dx*dx+dz*dz<=r*r;}
 
   function sightBlocker(obstacles,a,b){
     var field=fieldFor(obstacles);if(!field)return false;
     var candidates=gatherSegment(field,a.x,a.z,b.x,b.z),best=null,bestT=Infinity;
-    for(var i=0;i<candidates.length;i++){var ob=candidates[i],t=sightHitT(ob,a,b);if(t!=null&&t<bestT){best=ob;bestT=t;}}
+    for(var i=0;i<candidates.length;i++){
+      var ob=candidates[i],t=sightHitT(ob,a,b);if(t==null)continue;
+      /* Pre-v137 circular hedges had no face, end or shared physical shape, so old saved/test data
+         retains its historical local-cover escape. Authoritative M3C OBB/prism hedges never enter
+         this branch. */
+      if(legacyCircularHedgeEndpoint(ob,a)||legacyCircularHedgeEndpoint(ob,b))continue;
+      if(t<bestT){best=ob;bestT=t;}
+    }
     return best||false;
   }
   function sightBlocked(obstacles,a,b){return !!sightBlocker(obstacles,a,b);}
 
-  /* Lower is better protection. 1 means fully exposed. Exact footprint distance replaces the old
-     hedge circles, so a long prism provides cover beside its face without pretending its centre is
-     a giant circular bush. */
   function coverAt(obstacles,x,z,stance){
     var field=fieldFor(obstacles);if(!field)return 1;
     var need=SILHOUETTE[stance]||SILHOUETTE.stand,candidates=gatherNear(field,x,z,6.5),best=1;
