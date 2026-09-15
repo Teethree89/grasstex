@@ -23,6 +23,22 @@ For any behavioral or performance regression, use this order:
 9. **Then run the broader regression suite.** Objective/navigation, tactical positions, engagement seeds, impact tests, and relevant M3C checks.
 10. **Benchmark only after a material ownership/behavior change is stable.** Use the standard 60 meeting / 20 US-defend / 20 GE-defend benchmark for routine checkpoints; reserve the 300-battle matrix for major milestones.
 
+## Benchmark performance is a regression gate
+
+Benchmark wall time is evidence about the runtime, not merely CI inconvenience. A standard shard currently represents **10 full 600-second battles at a fixed 0.15-second simulation step**. Reducing the number of shards changes total sample size/runner cost but does not make an individual 10-battle shard cheaper.
+
+When benchmark runtime rises materially:
+
+- **Do not hide the regression** by increasing the fixed simulation step, shortening battles, disabling gameplay systems, weakening diagnostics, or reducing the battle count before the cause is understood.
+- Compare **per-battle wall seconds**, median/p95 wall time by scenario, and simulated-seconds-per-wall-second against an accepted baseline using the same seed/profile.
+- Treat roughly **>25% median slowdown on the same benchmark profile** as a stop-and-profile condition unless there is an understood intentional cost.
+- Profile in the **benchmark harness first**, preferably by wrapping existing hot functions without changing production behavior. Measure call count and inclusive wall time for at least: obstacle-field LOS/cover/nearby queries, navigation/path search, Movement Resolver, Squad Command, Combat Mobility, tactical-position ingress, personal-space correction, and Commander updates.
+- If one subsystem dominates, fix its algorithm/data representation/caching at the owning layer. Do not add a new runtime module merely to make the profiler quieter.
+- Preserve determinism and gameplay semantics while optimizing. A faster benchmark that simulates different behavior is not a valid optimization.
+- Keep benchmark setup/install time separate from battle wall time; the benchmark already records each battle's `wallSeconds`, which is the primary simulation-performance measurement.
+
+A benchmark performance regression should end with the same root-cause chain as a behavioral bug: **observed slowdown -> measured hot path -> owning subsystem -> broken performance invariant -> structural optimization -> same-seed before/after wall time + behavior checks**.
+
 ## Anti-patch rules
 
 - **One owner per responsibility.** Never introduce a second normal writer for a field or movement intent already owned elsewhere.
