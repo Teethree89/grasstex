@@ -25,6 +25,8 @@ on:
       - main
       - fix/meso-formation-frame-stability
     paths:
+      - battle/modules/39-navigation-physicality-debug.js
+      - scripts/check-physical-waypoint-refill.cjs
       - scripts/battle-hotpath-profiler.cjs
       - scripts/profile_battle_hotpaths.mjs
       - .github/workflows/battle-hotpath-profile.yml
