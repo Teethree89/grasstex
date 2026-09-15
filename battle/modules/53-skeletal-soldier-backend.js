@@ -6,7 +6,12 @@
    as the corresponding procedural segment after our existing animation, stance and IK layers run.
    We reset the Mixamo bone to its imported bind-local rotation, then use Babylon's WORLD-space
    TransformNode.rotate() to align the segment. This keeps hierarchy conversion inside Babylon and
-   avoids copying quaternions between rigs with incompatible local bone axes. */
+   avoids copying quaternions between rigs with incompatible local bone axes.
+
+   IMPORTANT: animationBinding stays baked-procedural/procedural. The skeletal skin is a renderer,
+   not a second animation backend. Changing animationBinding.backend would bypass primitive stance
+   motion and holdWeapon(), which are exactly the authoritative crouch/prone/weapon-IK layers we
+   need to visualize. */
 (function(root){
 'use strict';
 if(typeof BABYLON==='undefined'||!root.BattleSoldierModel||root.BattleSkeletalSoldierBackend)return;
@@ -91,8 +96,9 @@ function instantiate(model,scene,faction){
   var bounds=meshBounds(entry.rootNodes),scale=s.scale[faction];if(!(scale>0)&&bounds){scale=TARGET_HEIGHT/bounds.height;s.scale[faction]=scale;}if(!(scale>0))scale=1;mount.scaling.setAll(scale);if(bounds)mount.position.y=-bounds.minY*scale;
   var nodes=descendants(entry.rootNodes),rest=captureMap(model,nodes),mapped=Object.keys(rest.nodes).length;
   if(mapped<12){console.warn('[ANIM] skeletal mapping incomplete ('+mapped+'/'+MAP.length+'); procedural fallback active');try{mount.dispose();}catch(_){}return false;}
-  disposeMeshes(oldMeshes);model._skeletal={mount:mount,entry:entry,rest:rest,mapped:mapped,faction:faction};model.animationBinding.backend='runtime-mixamo-driver';
-  console.log('[ANIM] '+faction+' soldier using bind-reset world-space Mixamo driver; '+mapped+' joints mapped');return true;
+  disposeMeshes(oldMeshes);
+  model._skeletal={mount:mount,entry:entry,rest:rest,mapped:mapped,faction:faction,backend:'runtime-mixamo-skin',driverBackend:model.animationBinding&&model.animationBinding.backend||null};
+  console.log('[ANIM] '+faction+' soldier using Mixamo skin over '+model._skeletal.driverBackend+' driver; '+mapped+' joints mapped');return true;
 }
 function retarget(model){
   var sk=model&&model._skeletal;if(!sk||!model.rig)return;var rest=sk.rest,i,key,target,q;
@@ -114,6 +120,6 @@ M.preload=function(scene){var p=oldPreload?oldPreload.call(this,scene):true;retu
 M.setImportedEnabled=function(scene,v){if(oldSetImported)oldSetImported.call(this,scene,v);actualState(scene).enabled=!!v;};
 M.createSoldier=function(scene,faction,role,parent){var model=oldCreate.call(this,scene,faction,role,parent);if(ASSET[faction]&&actualState(scene).enabled)instantiate(model,scene,faction);return model;};
 M.animateWalk=function(model,dt,speed){var out=oldAnimate.apply(this,arguments);if(model&&model._skeletal)retarget(model);return out;};
-root.BattleSkeletalSoldierBackend={version:'1.6',map:MAP.slice(),asset:ASSET,retarget:retarget};
-console.log('[ANIM] runtime skeletal soldier backend active (bind-reset world-space Battle Sim motion -> Mixamo skin)');
+root.BattleSkeletalSoldierBackend={version:'1.7',map:MAP.slice(),asset:ASSET,retarget:retarget};
+console.log('[ANIM] runtime skeletal soldier skin active (authoritative procedural/Baked driver -> Mixamo renderer)');
 })(typeof window!=='undefined'?window:globalThis);
