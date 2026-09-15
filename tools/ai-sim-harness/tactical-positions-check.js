@@ -60,10 +60,16 @@ test('death releases immediately through the shipping kill path and the station 
 });
 for(const [reason,change] of [
   ['retreat',f=>{f.sq.state='retreat';}],['regroup',f=>{f.sq.commandPhase='regroup';}],
-  ['incapacitated',f=>{f.s.incapacitated=true;}],['explicit-task-change',f=>{f.s._engagementTask='maneuver';}],
-  ['explicit-task-change',f=>{f.sq.targetObjective='different-house';}],['explicit-task-change',f=>{f.sq._engagementPlan.serial++;}],
+  ['incapacitated',f=>{f.s.incapacitated=true;}],['explicit-task-change',f=>{f.sq.commandPhase='assault';}],
+  ['explicit-task-change',f=>{f.sq.targetObjective='different-house';}],
   ['engagement-ended',f=>{f.sim.winner='us';}],['station-invalid',f=>{f.N.installScenario({buildings:[]});}]
 ])test(reason+' releases through the manager',()=>{const f=fixture();f.claim();change(f);f.M.resolve(f.s,f.sim);assert.equal(f.P.current(f.s),null);assert.equal(f.P.summary(f.sim).releaseReasons[reason],1);assert.notEqual(f.M.resolve(f.s,f.sim)?.kind,'firing-station');});
+test('Micro task, target and engagement-plan churn cannot revoke a Captain-owned post',()=>{
+  const f=fixture(),t=f.claim();
+  f.s._engagementTask='maneuver';f.sq._engagementPlan.serial++;f.s.target=null;f.sq.inContact=false;f.sq.contact=null;
+  f.sim.time=10;f.systems['squad-command'].onCommanderTick(f.sim,{town:null});f.P.update(f.s,f.sim);
+  assert.equal(f.P.current(f.s),t);assert.equal(f.P.summary(f.sim).assignmentsReleased,0);
+});
 test('normal allocation excludes captain and maneuver team; occupied slots count without personal targets',()=>{
   const f=fixture();assert.equal(f.claim(f.captain),null);f.other._engagementTask='maneuver';assert.equal(f.claim(f.other),null);
   f.P.assign(f.sim);assert.equal(f.P.current(f.captain),null);assert.equal(f.P.summary(f.sim).captainWindowAssignments,0);assert.equal(f.P.summary(f.sim).currentLiveAssignments,1);
@@ -96,10 +102,16 @@ test('occupied station survives separation while approaching soldiers remain mov
   Object.assign(f.other.root.position,{x:f.st.x+.1,z:f.st.z});const p={...f.s.root.position};
   f.systems['soldier-personal-space'].onSimulationStep(f.sim);assert.deepEqual(f.s.root.position,p);assert.ok(f.other.root.position.x>f.st.x+.1);assert.ok(t.occupiedAt!=null);
 });
-test('engagement plan owns quiet closure, including targetless holding before closure',()=>{
+test('engagement quiet closure cannot revoke a still-valid Captain positional order',()=>{
   const f=fixture(),t=f.claim();f.s.target=null;f.sq.inContact=false;f.sq.contact=null;
   f.systems['squad-command'].onCommanderTick(f.sim,{town:null});f.sim.time=8;f.P.update(f.s,f.sim);assert.equal(f.P.current(f.s),t);
-  f.sim.time=10;f.systems['squad-command'].onCommanderTick(f.sim,{town:null});f.P.update(f.s,f.sim);assert.equal(f.P.current(f.s),null);assert.equal(f.P.summary(f.sim).releaseReasons['engagement-ended'],1);
+  f.sim.time=10;f.systems['squad-command'].onCommanderTick(f.sim,{town:null});f.P.update(f.s,f.sim);assert.equal(f.P.current(f.s),t);assert.equal(f.P.summary(f.sim).assignmentsReleased,0);
+});
+test('stable Meso fireteam orders are coalesced before the movement resolver',()=>{
+  const f=fixture();f.sq.commandPhase='support-hold';f.sq.inContact=false;f.sq.members.forEach(s=>{s.target=null;});
+  for(let i=0;i<80;i++){f.r.SquadAI.updateSquad(f.sq,f.sim);f.sim.time+=.15;}
+  const p=f.sim._squadCommandPublishStats,m=f.sim._movementGoalStats?.bySource?.['squad-stability']||{requests:0};
+  assert.ok(p.intentChecks>=300,p);assert.ok(p.intentCoalesced>p.intentPublishes*5,p);assert.ok(m.requests<=p.intentPublishes,m);
 });
 test('unreachable station is rejected; real obstacle changes invalidate one cached route',()=>{
   const f=fixture(),t=f.claim(),route=t.route;
