@@ -34,7 +34,7 @@ jobs:
       - name: Convert shared animations
         run: |
           rm -rf Assets/runtime/animations
-          blender --background --python tools/import-mixamo-animation-pack.py -- --input-dir Assets/animations --output-dir Assets/runtime/animations
+          blender --background --python tools/import-mixamo-animation-pack.py -- --input Assets/animations --output Assets/runtime/animations
       - name: Convert soldiers
         run: |
           rm -rf Assets/runtime/soldiers
