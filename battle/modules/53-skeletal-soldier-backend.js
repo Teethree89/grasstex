@@ -1,167 +1,20 @@
-/* Runtime Mixamo skeletal soldier backend.
-   The procedural Battle Sim rig remains the animation/IK owner. The GLB is only the visible skin.
-   Native GLB animation groups are deliberately ignored, so Meshy's Walking clip never drives play.
-
-   Retarget invariant: each visible Mixamo limb segment must point in the same world-space direction
-   as the corresponding procedural segment after our existing animation, stance and IK layers run.
-   We reset the Mixamo bone to its imported bind-local rotation, then use Babylon's WORLD-space
-   TransformNode.rotate() to align the segment. This keeps hierarchy conversion inside Babylon and
-   avoids copying quaternions between rigs with incompatible local bone axes.
-
-   animationBinding stays baked-procedural/procedural. The skeletal skin is a renderer, not a second
-   animation backend. The procedural driver's weapon pose and two-hand IK remain authoritative. After
-   the skin is posed, living soldiers get one rigid best-fit correction from the procedural hand pair
-   to the visible hand pair; deaths follow the visible right hand only, matching the source death pose. */
-(function(root){
-'use strict';
-if(typeof BABYLON==='undefined'||!root.BattleSoldierModel||root.BattleSkeletalSoldierBackend)return;
-var M=root.BattleSoldierModel,oldCreate=M.createSoldier,oldPreload=M.preload,oldSetImported=M.setImportedEnabled,oldAnimate=M.animateWalk;
-if(typeof oldCreate!=='function'||typeof oldAnimate!=='function')return;
-
-var ASSET={us:'us-rifleman-mixamo.glb',ge:'ge-rifleman-mixamo.glb'};
-var TARGET_HEIGHT=+((M.BODY&&M.BODY.heightM)||1.70),sceneStates=typeof WeakMap!=='undefined'?new WeakMap():null,loaderPromise=null,instanceSerial=0;
-var MAP=[
-  ['hips','mixamorig:Hips'],['spine','mixamorig:Spine'],['chest','mixamorig:Spine2'],['neck','mixamorig:Neck'],['head','mixamorig:Head'],
-  ['upperArmR','mixamorig:RightArm'],['forearmR','mixamorig:RightForeArm'],['upperArmL','mixamorig:LeftArm'],['forearmL','mixamorig:LeftForeArm'],
-  ['thighR','mixamorig:RightUpLeg'],['shinR','mixamorig:RightLeg'],['footR','mixamorig:RightFoot'],
-  ['thighL','mixamorig:LeftUpLeg'],['shinL','mixamorig:LeftLeg'],['footL','mixamorig:LeftFoot']
-];
-var SEGMENT={
-  hips:['spine','mixamorig:Spine'],spine:['chest','mixamorig:Spine1'],chest:['neck','mixamorig:Neck'],neck:['head','mixamorig:Head'],
-  upperArmR:['forearmR','mixamorig:RightForeArm'],forearmR:['handR','mixamorig:RightHand'],
-  upperArmL:['forearmL','mixamorig:LeftForeArm'],forearmL:['handL','mixamorig:LeftHand'],
-  thighR:['shinR','mixamorig:RightLeg'],shinR:['footR','mixamorig:RightFoot'],footR:['toeR','mixamorig:RightToeBase'],
-  thighL:['shinL','mixamorig:LeftLeg'],shinL:['footL','mixamorig:LeftFoot'],footL:['toeL','mixamorig:LeftToeBase']
-};
-
-function state(scene){var s=sceneStates&&sceneStates.get(scene);if(!s){s={enabled:true,containers:Object.create(null),failed:Object.create(null),scale:Object.create(null)};if(sceneStates)sceneStates.set(scene,s);else scene._battleSkeletalSoldierState=s;}return s;}
-function actualState(scene){return sceneStates?state(scene):(scene._battleSkeletalSoldierState||state(scene));}
-function assetBase(){return(root.BATTLE_ASSET_BASE||'https://test.ivandpopov.com/grasstex/Assets/').replace(/\/?$/,'/');}
-function ensureLoader(){
-  if(BABYLON.GLTFFileLoader)return Promise.resolve(true);if(loaderPromise)return loaderPromise;
-  if(typeof document==='undefined')return Promise.reject(new Error('GLTF loader unavailable outside browser'));
-  loaderPromise=new Promise(function(resolve,reject){
-    var e=document.querySelector('script[data-battle-gltf-loader]');
-    if(e){e.addEventListener('load',function(){resolve(true);},{once:true});e.addEventListener('error',reject,{once:true});return;}
-    var s=document.createElement('script');s.async=true;s.dataset.battleGltfLoader='1';s.src='https://cdn.jsdelivr.net/npm/babylonjs-loaders@8.26.0/babylonjs.loaders.min.js';
-    s.onload=function(){resolve(true);};s.onerror=function(){reject(new Error('Unable to load Babylon GLTF loader'));};document.head.appendChild(s);
-  });return loaderPromise;
-}
-function loadFaction(scene,faction){
-  var file=ASSET[faction],s=actualState(scene);if(!file||!s.enabled)return Promise.resolve(false);
-  if(s.containers[faction])return Promise.resolve(true);if(s.failed[faction])return Promise.resolve(false);
-  return ensureLoader().then(function(){return BABYLON.SceneLoader.LoadAssetContainerAsync(assetBase()+'soldiers/',file,scene,null,'.glb');}).then(function(c){
-    (c.animationGroups||[]).forEach(function(g){try{g.stop();g.dispose();}catch(_){}});s.containers[faction]=c;
-    console.log('[ANIM] runtime Mixamo skin ready for '+faction+' ('+file+')');return true;
-  }).catch(function(err){s.failed[faction]=true;console.warn('[ANIM] skeletal '+faction+' soldier unavailable; procedural fallback active',err&&err.message||err);return false;});
-}
-
-var vA=new BABYLON.Vector3(),vB=new BABYLON.Vector3(),vFrom=new BABYLON.Vector3(),vTo=new BABYLON.Vector3(),vAxis=new BABYLON.Vector3(),vFallback=new BABYLON.Vector3();
-var vSrcR=new BABYLON.Vector3(),vSrcL=new BABYLON.Vector3(),vDstR=new BABYLON.Vector3(),vDstL=new BABYLON.Vector3(),vDelta=new BABYLON.Vector3(),vWorld=new BABYLON.Vector3(),mInv=new BABYLON.Matrix();
-var vLocalR=new BABYLON.Vector3(),vLocalL=new BABYLON.Vector3(),vPredR=new BABYLON.Vector3(),vPredL=new BABYLON.Vector3(),vSpanSrc=new BABYLON.Vector3(),vSpanDst=new BABYLON.Vector3();
-function worldDirection(a,b,out){
-  if(!a||!b){out.set(0,1,0);return out;}a.computeWorldMatrix(true);b.computeWorldMatrix(true);vA.copyFrom(a.getAbsolutePosition());vB.copyFrom(b.getAbsolutePosition());
-  vB.subtractToRef(vA,out);if(out.lengthSquared()<1e-10)out.set(0,1,0);else out.normalize();return out;
-}
-function alignSegment(target,targetChild,desired){
-  if(!target||!targetChild)return;
-  worldDirection(target,targetChild,vFrom);vTo.copyFrom(desired).normalize();
-  var dot=BABYLON.Scalar.Clamp(BABYLON.Vector3.Dot(vFrom,vTo),-1,1);if(dot>.999999)return;
-  BABYLON.Vector3.CrossToRef(vFrom,vTo,vAxis);
-  if(vAxis.lengthSquared()<1e-10){
-    vFallback.set(1,0,0);BABYLON.Vector3.CrossToRef(vFrom,vFallback,vAxis);
-    if(vAxis.lengthSquared()<1e-10){vFallback.set(0,0,1);BABYLON.Vector3.CrossToRef(vFrom,vFallback,vAxis);}if(vAxis.lengthSquared()<1e-10)return;
-  }
-  vAxis.normalize();target.rotate(vAxis,Math.acos(dot),BABYLON.Space.WORLD);target.computeWorldMatrix(true);
-}
-function rotateNodeVectorWorld(node,from,to){
-  if(!node||!from||!to||from.lengthSquared()<1e-10||to.lengthSquared()<1e-10)return 0;
-  vFrom.copyFrom(from).normalize();vTo.copyFrom(to).normalize();
-  var dot=BABYLON.Scalar.Clamp(BABYLON.Vector3.Dot(vFrom,vTo),-1,1);if(dot>.999999)return 0;
-  BABYLON.Vector3.CrossToRef(vFrom,vTo,vAxis);
-  if(vAxis.lengthSquared()<1e-10){
-    vFallback.set(1,0,0);BABYLON.Vector3.CrossToRef(vFrom,vFallback,vAxis);
-    if(vAxis.lengthSquared()<1e-10){vFallback.set(0,0,1);BABYLON.Vector3.CrossToRef(vFrom,vFallback,vAxis);}if(vAxis.lengthSquared()<1e-10)return 0;
-  }
-  var angle=Math.acos(dot);vAxis.normalize();node.rotate(vAxis,angle,BABYLON.Space.WORLD);node.computeWorldMatrix(true);return angle;
-}
-function descendants(roots){var out=[],seen=[];function add(n){if(!n||seen.indexOf(n)>=0)return;seen.push(n);out.push(n);var k=n.getChildren?n.getChildren():[];for(var i=0;i<k.length;i++)add(k[i]);}for(var i=0;i<roots.length;i++)add(roots[i]);return out;}
-function suffixName(n,t){n=String(n||'');return n===t||n.slice(-t.length)===t;}
-function findNamed(nodes,n){for(var i=0;i<nodes.length;i++)if(suffixName(nodes[i].name,n))return nodes[i];return null;}
-function localQuat(n){if(n.rotationQuaternion)return n.rotationQuaternion.clone();return BABYLON.Quaternion.FromEulerAngles(n.rotation.x,n.rotation.y,n.rotation.z);}
-function meshBounds(roots){var lo=Infinity,hi=-Infinity;for(var r=0;r<roots.length;r++){var ms=[];if(roots[r].getChildMeshes)ms=roots[r].getChildMeshes(false);if(roots[r].getBoundingInfo)ms.unshift(roots[r]);for(var i=0;i<ms.length;i++)try{ms[i].computeWorldMatrix(true);var b=ms[i].getBoundingInfo().boundingBox;lo=Math.min(lo,b.minimumWorld.y);hi=Math.max(hi,b.maximumWorld.y);}catch(_){}}return isFinite(lo)&&isFinite(hi)&&hi>lo?{minY:lo,maxY:hi,height:hi-lo}:null;}
-function disposeMeshes(ms){for(var i=0;i<(ms||[]).length;i++)try{if(ms[i]&&!ms[i].isDisposed())ms[i].dispose(false,false);}catch(_){} }
-function captureMap(model,nodes){
-  var targets=Object.create(null),children=Object.create(null),bindLocal=Object.create(null);
-  for(var i=0;i<MAP.length;i++){
-    var key=MAP[i][0],target=findNamed(nodes,MAP[i][1]);if(!model.rig||!model.rig[key]||!target)continue;
-    targets[key]=target;bindLocal[key]=localQuat(target);
-    var seg=SEGMENT[key];if(seg){var child=findNamed(nodes,seg[1]);if(child)children[key]=child;}
-  }
-  return{nodes:targets,children:children,bindLocal:bindLocal,handR:findNamed(nodes,'mixamorig:RightHand'),handL:findNamed(nodes,'mixamorig:LeftHand')};
-}
-function instantiate(model,scene,faction){
-  var s=actualState(scene),container=s.containers[faction];if(!container||!s.enabled)return false;
-  var oldMeshes=model.root&&model.root.getChildMeshes?model.root.getChildMeshes(false).slice():[],prefix='soldier'+(++instanceSerial)+'|',entry;
-  try{entry=container.instantiateModelsToScene(function(n){return prefix+n;},false,{doNotInstantiate:false});}catch(err){console.warn('[ANIM] skeletal instantiate failed',err);return false;}
-  if(!entry||!entry.rootNodes||!entry.rootNodes.length)return false;(entry.animationGroups||[]).forEach(function(g){try{g.stop();g.dispose();}catch(_){}});
-  /* Measure the imported asset before parenting it under the procedural role root. Role variants
-     intentionally scale that root (captain/scout), so measuring after reparenting contaminates the
-     faction-wide scale cache and makes later riflemen inherit the first role's inverse scale. */
-  var bounds=meshBounds(entry.rootNodes),scale=s.scale[faction];if(!(scale>0)&&bounds){scale=TARGET_HEIGHT/bounds.height;s.scale[faction]=scale;}if(!(scale>0))scale=1;
-  var mount=new BABYLON.TransformNode(prefix+'mount',scene);mount.parent=model.poseRoot;for(var i=0;i<entry.rootNodes.length;i++)entry.rootNodes[i].parent=mount;
-  mount.scaling.setAll(scale);if(bounds)mount.position.y=-bounds.minY*scale;
-  var nodes=descendants(entry.rootNodes),rest=captureMap(model,nodes),mapped=Object.keys(rest.nodes).length;
-  if(mapped<12){console.warn('[ANIM] skeletal mapping incomplete ('+mapped+'/'+MAP.length+'); procedural fallback active');try{mount.dispose();}catch(_){}return false;}
-  disposeMeshes(oldMeshes);
-  model._skeletal={mount:mount,entry:entry,rest:rest,mapped:mapped,faction:faction,backend:'runtime-mixamo-skin',driverBackend:model.animationBinding&&model.animationBinding.backend||null,weaponFitError:null,assetBounds:bounds?{minY:bounds.minY,maxY:bounds.maxY,height:bounds.height}:null,assetScale:scale};
-  console.log('[ANIM] '+faction+' soldier using Mixamo skin over '+model._skeletal.driverBackend+' driver; '+mapped+' joints mapped');return true;
-}
-function moveNodeByWorldDelta(node,delta){
-  if(!node||!delta)return;node.computeWorldMatrix(true);vWorld.copyFrom(node.getAbsolutePosition()).addInPlace(delta);
-  if(node.parent){node.parent.computeWorldMatrix(true);node.parent.getWorldMatrix().invertToRef(mInv);BABYLON.Vector3.TransformCoordinatesToRef(vWorld,mInv,node.position);}else node.position.copyFrom(vWorld);
-  node.computeWorldMatrix(true);
-}
-function fitWeaponToVisibleHands(model){
-  var sk=model&&model._skeletal,rest=sk&&sk.rest,r=model&&model.rig,socket=model&&model.weaponSocket;
-  if(!sk||!rest||!r||!socket||!model.weapon||!model.weapon.mesh||!rest.handR||!rest.handL||!r.handR||!r.handL)return;
-  r.handR.computeWorldMatrix(true);r.handL.computeWorldMatrix(true);rest.handR.computeWorldMatrix(true);rest.handL.computeWorldMatrix(true);
-  vSrcR.copyFrom(r.handR.getAbsolutePosition());vSrcL.copyFrom(r.handL.getAbsolutePosition());vDstR.copyFrom(rest.handR.getAbsolutePosition());vDstL.copyFrom(rest.handL.getAbsolutePosition());
-  if(model.dead){
-    /* The authoritative death pose deliberately releases the support hand. Preserve that ownership:
-       the visible rifle follows only the right-hand grip instead of averaging toward the free hand. */
-    vDstR.subtractToRef(vSrcR,vDelta);moveNodeByWorldDelta(socket,vDelta);vSrcR.addToRef(vDelta,vA);vSrcL.addToRef(vDelta,vB);
-    sk.weaponFitMode='right-hand-death';sk.weaponFitErrorR=BABYLON.Vector3.Distance(vA,vDstR);sk.weaponFitErrorL=BABYLON.Vector3.Distance(vB,vDstL);sk.weaponFitError=sk.weaponFitErrorR;sk.weaponFitAngle=0;return;
-  }
-  /* Convert the procedural hand/grip points into socket-local space before the visual correction.
-     A single rigid rotation + translation is then the least-squares fit for the two visible hands.
-     This changes only rendering; the procedural weapon pose and arm IK remain the source of truth. */
-  socket.computeWorldMatrix(true);socket.getWorldMatrix().invertToRef(mInv);BABYLON.Vector3.TransformCoordinatesToRef(vSrcR,mInv,vLocalR);BABYLON.Vector3.TransformCoordinatesToRef(vSrcL,mInv,vLocalL);
-  vSrcL.subtractToRef(vSrcR,vSpanSrc);vDstL.subtractToRef(vDstR,vSpanDst);var srcLen=vSpanSrc.length(),dstLen=vSpanDst.length();
-  var angle=rotateNodeVectorWorld(socket,vSpanSrc,vSpanDst);socket.computeWorldMatrix(true);var wm=socket.getWorldMatrix();BABYLON.Vector3.TransformCoordinatesToRef(vLocalR,wm,vPredR);BABYLON.Vector3.TransformCoordinatesToRef(vLocalL,wm,vPredL);
-  vDstR.subtractToRef(vPredR,vDelta);vDstL.subtractToRef(vPredL,vA);vDelta.addInPlace(vA).scaleInPlace(.5);moveNodeByWorldDelta(socket,vDelta);
-  vPredR.addToRef(vDelta,vA);vPredL.addToRef(vDelta,vB);var er=BABYLON.Vector3.Distance(vA,vDstR),el=BABYLON.Vector3.Distance(vB,vDstL);
-  sk.weaponFitMode='two-hand-rigid';sk.weaponFitErrorR=er;sk.weaponFitErrorL=el;sk.weaponFitError=(er+el)*.5;sk.weaponFitAngle=angle;sk.weaponFitSpanError=Math.abs(srcLen-dstLen);
-}
-function retarget(model){
-  var sk=model&&model._skeletal;if(!sk||!model.rig)return;var rest=sk.rest,i,key,target,q;
-  for(i=0;i<MAP.length;i++){
-    key=MAP[i][0];target=rest.nodes[key];q=rest.bindLocal[key];if(!target||!q)continue;
-    if(!target.rotationQuaternion)target.rotationQuaternion=q.clone();else target.rotationQuaternion.copyFrom(q);
-    if(target.rotation)target.rotation.set(0,0,0);target.computeWorldMatrix(true);
-  }
-  for(i=0;i<MAP.length;i++){
-    key=MAP[i][0];var seg=SEGMENT[key],source=model.rig[key],sourceChild=seg&&model.rig[seg[0]],targetChild=rest.children[key];target=rest.nodes[key];
-    if(!seg||!source||!sourceChild||!target||!targetChild)continue;
-    worldDirection(source,sourceChild,vTo);alignSegment(target,targetChild,vTo);
-  }
-  fitWeaponToVisibleHands(model);
-}
-
-M.preload=function(scene){var p=oldPreload?oldPreload.call(this,scene):true;return Promise.resolve(p).then(function(){return Promise.all([loadFaction(scene,'us'),loadFaction(scene,'ge')]);});};
-M.setImportedEnabled=function(scene,v){if(oldSetImported)oldSetImported.call(this,scene,v);actualState(scene).enabled=!!v;};
-M.createSoldier=function(scene,faction,role,parent){var model=oldCreate.call(this,scene,faction,role,parent);if(ASSET[faction]&&actualState(scene).enabled)instantiate(model,scene,faction);return model;};
-M.animateWalk=function(model,dt,speed){var out=oldAnimate.apply(this,arguments);if(model&&model._skeletal)retarget(model);return out;};
-root.BattleSkeletalSoldierBackend={version:'2.0',map:MAP.slice(),asset:ASSET,retarget:retarget};
-console.log('[ANIM] runtime skeletal soldier skin active (procedural/Baked driver -> Mixamo renderer + two-hand weapon fit)');
-})(typeof window!=='undefined'?window:globalThis);
+/* Native Mixamo skeletal soldier backend. Gameplay owns semantics/navigation; this module owns imported skeletal pose. */
+(function(root){'use strict';if(typeof BABYLON==='undefined'||!root.BattleSoldierModel||root.BattleSkeletalSoldierBackend)return;
+var M=root.BattleSoldierModel,oldCreate=M.createSoldier,oldPreload=M.preload,oldSet=M.setImportedEnabled,oldAnimate=M.animateWalk;
+var ASSET={us:'us-rifleman.glb',ge:'ge-rifleman.glb'},H=+((M.BODY&&M.BODY.heightM)||1.70),WM=typeof WeakMap!=='undefined'?new WeakMap():null,lp=null,serial=0;
+var C={idle:'idle',aim:'idle-aiming',crouch:'idle-crouching',crouchAim:'idle-crouching-aiming',walk:'walk-forward',crouchWalk:'walk-crouching-forward',prone:'rifle-prone-idle',crawl:'prone-forward',fire:'fire-rifle-single-shot',fireCrouch:'fire-rifle-single-shot-crouched-kneel',fireProne:'fire-rifle-single-shot-prone',reload:'rifle-reload-standing',reloadCrouch:'rifle-reload-crouched',reloadProne:'rifle-reload-prone',deathFront:'death-from-the-front',deathBack:'death-from-the-back',deathSide:'death-from-right',deathProne:'prone-death'};
+function S(sc){var s=WM&&WM.get(sc);if(!s){s={enabled:true,soldiers:{},clips:{},scale:{},failed:{}};if(WM)WM.set(sc,s);else sc._battleNativeMixamo=s;}return s;}
+function base(){return(root.BATTLE_ASSET_BASE||'https://test.ivandpopov.com/grasstex/Assets/').replace(/\/?$/,'/');}
+function loader(){if(BABYLON.GLTFFileLoader)return Promise.resolve();if(lp)return lp;if(typeof document==='undefined')return Promise.reject(Error('GLTF loader unavailable'));lp=new Promise(function(ok,no){var x=document.createElement('script');x.async=true;x.src='https://cdn.jsdelivr.net/npm/babylonjs-loaders@8.26.0/babylonjs.loaders.min.js';x.onload=ok;x.onerror=no;document.head.appendChild(x);});return lp;}
+function canon(n){n=String(n&&n.name||n||'').split('|').pop().split(':').pop().toLowerCase().replace(/^mixamorig/,'').replace(/[^a-z0-9]/g,'');return n==='pelvis'?'hips':n==='spine0'?'spine':n;}
+function desc(rs){var a=[],seen=[];function add(n){if(!n||seen.indexOf(n)>=0)return;seen.push(n);a.push(n);(n.getChildren?n.getChildren():[]).forEach(add);}rs.forEach(add);return a;}
+function bounds(rs){var lo=Infinity,hi=-Infinity;rs.forEach(function(r){var ms=r.getChildMeshes?r.getChildMeshes(false):[];if(r.getBoundingInfo)ms.unshift(r);ms.forEach(function(m){try{m.computeWorldMatrix(true);var b=m.getBoundingInfo().boundingBox;lo=Math.min(lo,b.minimumWorld.y);hi=Math.max(hi,b.maximumWorld.y);}catch(_){}});});return isFinite(lo)&&hi>lo?{minY:lo,height:hi-lo}:null;}
+function loadSoldier(sc,f){var s=S(sc);if(s.soldiers[f]||s.failed[f])return Promise.resolve(!!s.soldiers[f]);return BABYLON.SceneLoader.LoadAssetContainerAsync(base()+'runtime/soldiers/',ASSET[f],sc,null,'.glb').then(function(c){s.soldiers[f]=c;return true;}).catch(function(e){s.failed[f]=1;console.warn('[ANIM] soldier unavailable '+f,e);return false;});}
+function loadClip(sc,m){var s=S(sc);if(s.clips[m.clip])return Promise.resolve();return BABYLON.SceneLoader.LoadAssetContainerAsync(base()+'runtime/animations/',m.file,sc,null,'.glb').then(function(c){var g=(c.animationGroups||[])[0];if(!g)throw Error('no AnimationGroup');g.stop();s.clips[m.clip]={container:c,group:g};}).catch(function(e){console.warn('[ANIM] clip unavailable '+m.clip,e);});}
+function preload(sc){return loader().then(function(){return fetch(base()+'runtime/animations/manifest.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('manifest '+r.status);return r.json();});}).then(function(m){return Promise.all([loadSoldier(sc,'us'),loadSoldier(sc,'ge')].concat((m.clips||[]).map(function(x){return loadClip(sc,x);})));});}
+function map(entry){var o={};desc(entry.rootNodes||[]).forEach(function(n){var k=canon(n);if(k&&!o[k])o[k]=n;});return o;}
+function clone(sk,n){var q=S(sk.scene).clips[n],g=q&&q.group;if(!g)return null;var c=g.clone('native'+sk.id+'-'+n,function(t){return sk.targets[canon(t)]||null;});if(!c||!(c.targetedAnimations||[]).length){try{c&&c.dispose();}catch(_){}return null;}return c;}
+function play(sk,n,loop){if(!n||sk.currentName===n)return sk.current;var g=sk.groups[n]||(sk.groups[n]=clone(sk,n));if(!g){if(!sk.missing[n]){sk.missing[n]=1;console.warn('[ANIM] no compatible native clip '+n);}return null;}if(sk.current&&sk.current!==g)try{sk.current.stop();}catch(_){}sk.current=g;sk.currentName=n;try{g.start(loop!==false,1,g.from,g.to,false);}catch(e){console.warn('[ANIM] play '+n,e);}return g;}
+function stateName(m,v){if(m.dead){if(m.prone)return C.deathProne;return m.deathTag===M.TAGS.deathFront?C.deathFront:m.deathTag===M.TAGS.deathBack?C.deathBack:C.deathSide;}if(m.reloading)return m.prone?C.reloadProne:m.crouching?C.reloadCrouch:C.reload;if(m.prone)return v>.02?C.crawl:C.prone;if(m.crouching)return v>.03?C.crouchWalk:(m.target?C.crouchAim:C.crouch);if(v>.03)return C.walk;return m.target?C.aim:C.idle;}
+function inst(m,sc,f){var s=S(sc),src=s.soldiers[f],e,id=++serial;if(!src||!s.enabled)return false;try{e=src.instantiateModelsToScene(function(n){return'native'+id+'|'+n;},false,{doNotInstantiate:false});}catch(x){console.warn('[ANIM] instantiate',x);return false;}if(!e||!e.rootNodes||!e.rootNodes.length)return false;(e.animationGroups||[]).forEach(function(g){try{g.stop();g.dispose();}catch(_){}});var b=bounds(e.rootNodes),z=s.scale[f];if(!(z>0)&&b)s.scale[f]=z=H/b.height;if(!(z>0))z=1;var mount=new BABYLON.TransformNode('native'+id+'|mount',sc);mount.parent=m.poseRoot;e.rootNodes.forEach(function(r){r.parent=mount;});mount.scaling.setAll(z);if(b)mount.position.y=-b.minY*z;var old=m.root&&m.root.getChildMeshes?m.root.getChildMeshes(false).slice():[];old.forEach(function(x){try{if(x&&!x.isDisposed())x.dispose(false,false);}catch(_){}});var sk=m._skeletal={id:id,scene:sc,mount:mount,entry:e,targets:map(e),groups:{},missing:{},current:null,currentName:null,backend:'native-mixamo-v1'};m.animationBinding={backend:'native-mixamo-v1',update:function(){},play:function(tag){var n=tag===M.TAGS.fire?(m.prone?C.fireProne:m.crouching?C.fireCrouch:C.fire):tag===M.TAGS.reload?(m.prone?C.reloadProne:m.crouching?C.reloadCrouch:C.reload):null;if(n){sk.currentName=null;play(sk,n,false);}}};play(sk,C.idle,true);console.log('[ANIM] '+f+' native Mixamo soldier active');return true;}
+M.preload=function(sc){return Promise.resolve(oldPreload?oldPreload.call(this,sc):true).then(function(){return preload(sc);});};M.setImportedEnabled=function(sc,v){if(oldSet)oldSet.call(this,sc,v);S(sc).enabled=!!v;};M.createSoldier=function(sc,f,r,p){var m=oldCreate.call(this,sc,f,r,p);if(ASSET[f]&&S(sc).enabled)inst(m,sc,f);return m;};M.animateWalk=function(m,dt,v){if(!m||!m._skeletal)return oldAnimate.apply(this,arguments);var sk=m._skeletal,n=stateName(m,+v||0);if(sk.currentName!==n)play(sk,n,true);return m;};root.BattleSkeletalSoldierBackend={version:'3.0',asset:ASSET,clips:C};console.log('[ANIM] native Mixamo skeletal backend active');})(typeof window!=='undefined'?window:globalThis);

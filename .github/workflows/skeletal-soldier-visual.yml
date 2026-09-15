@@ -1,23 +1,16 @@
-name: Skeletal Soldier Visual Check
-
+name: Skeletal Soldier Visual
 on:
+  workflow_dispatch:
   push:
-    branches:
-      - skeletal-soldier-runtime
+    branches: [skeletal-soldier-runtime]
     paths:
+      - 'battle/**'
+      - 'Assets/runtime/**'
+      - 'Assets/animations/**'
       - 'Assets/soldiers/**'
-      - 'battle/soldier.js'
-      - 'battle/modules/45-stance-transition-crawl.js'
-      - 'battle/modules/53-skeletal-soldier-backend.js'
-      - 'battle/battle_sim.html'
-      - 'battle_sim_local.php'
+      - 'tools/import-mixamo-animation-pack.py'
       - 'scripts/skeletal-soldier-visual-check.mjs'
       - '.github/workflows/skeletal-soldier-visual.yml'
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
 jobs:
   visual:
     runs-on: ubuntu-latest
@@ -26,50 +19,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-      - name: Validate skeletal runtime source
-        run: |
-          node --check battle/modules/53-skeletal-soldier-backend.js
-          node --check scripts/skeletal-soldier-visual-check.mjs
-          test -s Assets/soldiers/us-rifleman-mixamo.glb
-          test -s Assets/soldiers/ge-rifleman-mixamo.glb
-      - name: Install browser harness
-        run: |
-          npm install --no-save --no-package-lock playwright@1.55.0
-          npx playwright install --with-deps chromium
-      - name: Start local battle server
-        run: |
-          rm -rf /tmp/battle-www
-          mkdir -p /tmp/battle-www
-          ln -s "$GITHUB_WORKSPACE" /tmp/battle-www/grasstex
-          php -S 127.0.0.1:8765 -t /tmp/battle-www >/tmp/skeletal-php.log 2>&1 &
-          for i in $(seq 1 45); do
-            if curl -fsS 'http://127.0.0.1:8765/grasstex/battle_sim_local.php?seed=skeletal-healthcheck' >/dev/null; then exit 0; fi
-            sleep 1
-          done
-          cat /tmp/skeletal-php.log
-          exit 1
-      - name: Render and exercise skeletal soldiers
-        env:
-          SKELETAL_VISUAL_URL: http://127.0.0.1:8765/grasstex/battle_sim_local.php?seed=skeletal-visual-check
-          SKELETAL_VISUAL_OUTPUT: reports/skeletal-soldier
+          node-version: 22
+      - name: Install Chromium harness
+        run: npm install --no-save playwright && npx playwright install --with-deps chromium
+      - name: Run skeletal soldier visual harness
         run: node scripts/skeletal-soldier-visual-check.mjs
-      - name: Summary
+      - name: Upload screenshots
         if: always()
-        run: |
-          if [ -f reports/skeletal-soldier/status.json ]; then
-            echo '### Skeletal soldier runtime' >> "$GITHUB_STEP_SUMMARY"
-            echo '```json' >> "$GITHUB_STEP_SUMMARY"
-            cat reports/skeletal-soldier/status.json >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - uses: actions/upload-artifact@v4
-        if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: skeletal-soldier-visual-${{ github.run_number }}
-          path: reports/skeletal-soldier/
+          path: artifacts/skeletal-soldier-visual/
           if-no-files-found: warn
-          retention-days: 14
-      - name: Server log on failure
-        if: failure()
-        run: tail -n 250 /tmp/skeletal-php.log || true
