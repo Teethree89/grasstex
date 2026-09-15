@@ -21,11 +21,6 @@ patch('tools/ai-sim-harness/lean-runtime-check.js', [
     ("battle/modules/44-combat-mobility.js", "battle/modules/44-assault-forward-guard.js"),
     ("battle/modules/52-movement-execution.js", "battle/modules/52-survival-tactical-route.js"),
 ])
-patch('.github/workflows/validate-simplify.yml', [
-    ('battle/modules/16-squad-command.js', 'battle/modules/16-squad-plan-stability.js'),
-    ('battle/modules/44-combat-mobility.js', 'battle/modules/44-assault-forward-guard.js'),
-    ('battle/modules/52-movement-execution.js', 'battle/modules/52-survival-tactical-route.js'),
-])
 
 # Existing movement checks now load the single execution owner instead of the deleted recovery file.
 patch('tools/ai-sim-harness/movement-state-check.js', [
@@ -67,14 +62,9 @@ remove = [
     'battle/modules/16-squad-command.js',
     'battle/modules/44-combat-mobility.js',
     'battle/modules/52-movement-execution.js',
+    'scripts/apply_lean_module_cleanup.py',
 ]
 for rel in remove:
-    p = ROOT / rel
-    if p.exists():
-        p.unlink()
-
-# This helper and its one-shot workflow should not survive the cleanup commit.
-for rel in ['scripts/apply_lean_module_cleanup.py', '.github/workflows/apply-lean-cleanup.yml']:
     p = ROOT / rel
     if p.exists():
         p.unlink()
