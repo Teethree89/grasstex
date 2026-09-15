@@ -5,6 +5,8 @@ on:
     branches:
       - fix/meso-formation-frame-stability
     paths:
+      - battle/modules/44-assault-forward-guard.js
+      - scripts/check-movement-order-ownership.cjs
       - scripts/meso-churn-profiler.cjs
       - scripts/physical-point-profiler.cjs
       - scripts/movement-goal-transition-profiler.cjs
@@ -45,6 +47,12 @@ jobs:
           node-version: '22'
       - name: Fireteam commitment regression
         run: node scripts/check-meso-formation-frame-stability.cjs
+      - name: Movement ownership regressions
+        run: |
+          node --check battle/modules/44-assault-forward-guard.js
+          node scripts/check-movement-order-ownership.cjs
+          node tools/ai-sim-harness/movement-state-check.js
+          node tools/ai-sim-harness/objective-nav-check.js
       - name: Install browser harness
         run: |
           npm install --no-save --no-package-lock playwright@1.55.0
