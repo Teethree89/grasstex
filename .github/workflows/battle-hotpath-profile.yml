@@ -1,0 +1,162 @@
+name: Battle Sim Hot Path Profile
+
+on:
+  workflow_dispatch:
+    inputs:
+      battle_type:
+        description: Scenario type
+        required: true
+        default: meeting
+        type: choice
+        options:
+          - meeting
+          - us-defend
+          - ge-defend
+      seed:
+        description: Exact deterministic scenario seed
+        required: true
+        default: standard-benchmark-meeting-s1-b0001-0001
+      sim_seconds:
+        description: Simulated seconds to profile
+        required: false
+        default: '120'
+  push:
+    branches:
+      - main
+    paths:
+      - scripts/battle-hotpath-profiler.cjs
+      - scripts/profile_battle_hotpaths.mjs
+      - .github/workflows/battle-hotpath-profile.yml
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-profile:
+    if: github.event_name == 'push'
+    name: ${{ matrix.battle_type }} · ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: pathological-meeting
+            battle_type: meeting
+            seed: standard-benchmark-meeting-s1-b0001-0001
+            defender_query: ''
+          - label: pathological-us-defend
+            battle_type: us-defend
+            seed: standard-benchmark-us-defend-s2-b0001-0001
+            defender_query: '?defender=us'
+          - label: fast-ge-defend
+            battle_type: ge-defend
+            seed: standard-benchmark-ge-defend-s2-b0001-0001
+            defender_query: '?defender=ge'
+    env:
+      BATTLE_BENCHMARK_SOURCE_SHA: ${{ github.sha }}
+      BATTLE_PROFILE_SECONDS: '120'
+      BATTLE_PROFILE_STEP: '0.15'
+      BATTLE_PROFILE_SNAPSHOT_SECONDS: '30'
+      BATTLE_PROFILE_OUTPUT: reports/profile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser harness
+        run: |
+          npm install --no-save --no-package-lock playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Start local battle server
+        run: |
+          rm -rf /tmp/battle-www
+          mkdir -p /tmp/battle-www
+          ln -s "$GITHUB_WORKSPACE" /tmp/battle-www/grasstex
+          php -S 127.0.0.1:8765 -t /tmp/battle-www >/tmp/battle-profile-php.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:8765/grasstex/battle_sim_local.php?seed=healthcheck" >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/battle-profile-php.log
+          exit 1
+      - name: Profile deterministic battle
+        env:
+          BATTLE_PROFILE_TYPE: ${{ matrix.battle_type }}
+          BATTLE_PROFILE_SEED: ${{ matrix.seed }}
+          BATTLE_PROFILE_URL: http://127.0.0.1:8765/grasstex/battle_sim_local.php${{ matrix.defender_query }}
+        run: node scripts/profile_battle_hotpaths.mjs
+      - name: Publish profile summary
+        if: always()
+        run: |
+          if [ -f reports/profile/battle-hotpath-profile.md ]; then cat reports/profile/battle-hotpath-profile.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: battle-hotpath-${{ matrix.label }}-${{ github.run_number }}
+          path: reports/profile/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Show server log on failure
+        if: failure()
+        run: tail -n 200 /tmp/battle-profile-php.log || true
+
+  manual-profile:
+    if: github.event_name == 'workflow_dispatch'
+    name: manual · ${{ inputs.battle_type }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BATTLE_BENCHMARK_SOURCE_SHA: ${{ github.sha }}
+      BATTLE_PROFILE_TYPE: ${{ inputs.battle_type }}
+      BATTLE_PROFILE_SEED: ${{ inputs.seed }}
+      BATTLE_PROFILE_SECONDS: ${{ inputs.sim_seconds }}
+      BATTLE_PROFILE_STEP: '0.15'
+      BATTLE_PROFILE_SNAPSHOT_SECONDS: '30'
+      BATTLE_PROFILE_OUTPUT: reports/profile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser harness
+        run: |
+          npm install --no-save --no-package-lock playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Start local battle server
+        run: |
+          rm -rf /tmp/battle-www
+          mkdir -p /tmp/battle-www
+          ln -s "$GITHUB_WORKSPACE" /tmp/battle-www/grasstex
+          php -S 127.0.0.1:8765 -t /tmp/battle-www >/tmp/battle-profile-php.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:8765/grasstex/battle_sim_local.php?seed=healthcheck" >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/battle-profile-php.log
+          exit 1
+      - name: Resolve scenario URL
+        run: |
+          case "${BATTLE_PROFILE_TYPE}" in
+            meeting) url='http://127.0.0.1:8765/grasstex/battle_sim_local.php' ;;
+            us-defend) url='http://127.0.0.1:8765/grasstex/battle_sim_local.php?defender=us' ;;
+            ge-defend) url='http://127.0.0.1:8765/grasstex/battle_sim_local.php?defender=ge' ;;
+            *) echo "Unknown battle type: ${BATTLE_PROFILE_TYPE}" >&2; exit 2 ;;
+          esac
+          echo "BATTLE_PROFILE_URL=$url" >> "$GITHUB_ENV"
+      - name: Profile deterministic battle
+        run: node scripts/profile_battle_hotpaths.mjs
+      - name: Publish profile summary
+        if: always()
+        run: |
+          if [ -f reports/profile/battle-hotpath-profile.md ]; then cat reports/profile/battle-hotpath-profile.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: battle-hotpath-manual-${{ github.run_number }}
+          path: reports/profile/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Show server log on failure
+        if: failure()
+        run: tail -n 200 /tmp/battle-profile-php.log || true
