@@ -6,6 +6,9 @@ on:
       - fix/meso-formation-frame-stability
     paths:
       - scripts/meso-churn-profiler.cjs
+      - scripts/physical-point-profiler.cjs
+      - scripts/movement-goal-transition-profiler.cjs
+      - scripts/order-ingress-profiler.cjs
       - scripts/profile_meso_churn.mjs
       - .github/workflows/meso-formation-profile.yml
 
