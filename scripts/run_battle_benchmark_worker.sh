@@ -68,6 +68,12 @@ report.summary.failedBattleAttempts = failed;
 report.summary.workerMinutesCutoff = cutoffMinutes;
 report.summary.workerCutoffReached = cutoffReached;
 report.summary.workerStatus = completed >= requested && !cutoffReached && failed === 0 ? 'complete' : 'partial';
+/* This report merges battles that ran sequentially inside one worker. The generic merger's
+   cpuWallSeconds is therefore the worker's aggregate simulation wall time. Preserve it under the
+   leaf-report wallSeconds key so the top-level merge can correctly take the max across parallel
+   workers instead of seeing zero or using only the slowest single battle. */
+const sequentialWall = Number(report.summary.cpuWallSeconds);
+if (Number.isFinite(sequentialWall) && sequentialWall >= 0) report.summary.wallSeconds = sequentialWall;
 fs.writeFileSync(jsonPath, JSON.stringify(report, null, 2) + '\n');
 
 const mdPath = path.join(out, 'battle-benchmark.md');
