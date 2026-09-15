@@ -27,6 +27,12 @@
     }
   }
   function install(){
+    /* Parent timings first: these make it possible to reconcile expensive leaves against the
+       enclosing simulation/command work without changing production scheduling. */
+    wrapMany(root.__battle__,'simulation',['step','_frame','_checkWinner']);
+    wrapMany(root.BattleCommanderAI,'commander',['update','advanceRoute']);
+    wrapMany(root.BattleModules,'modules',['runHook']);
+
     wrapMany(root.BattleObstacleField,'obstacle',['sightBlocked','sightBlocker','coverAt','coverPotentialAt','nearby']);
     wrapMany(root.BattleNavigation,'navigation',['findPath','nextWaypoint','movementClear','resolveStep','lineOfSightBlocked']);
     wrapMany(root.BattleMovementResolver,'movement-resolver',['proposeOrder','proposeCombat','resolve']);
@@ -42,10 +48,10 @@
   function snapshot(limit){
     var wallMs=Math.max(0,clock()-startedAt),rows=Object.keys(stats).map(function(k){var b=stats[k];return{label:b.label,calls:b.calls,totalMs:+b.totalMs.toFixed(3),maxMs:+b.maxMs.toFixed(3),avgUs:b.calls?+(b.totalMs*1000/b.calls).toFixed(2):0,wallPct:wallMs?+(b.totalMs/wallMs*100).toFixed(2):0};});
     rows.sort(function(a,b){return b.totalMs-a.totalMs;});if(limit>0)rows=rows.slice(0,limit);
-    return{version:'1.0',wallMs:+wallMs.toFixed(3),rows:rows};
+    return{version:'1.1',wallMs:+wallMs.toFixed(3),rows:rows};
   }
   function restore(){for(var i=wrapped.length-1;i>=0;i--){var w=wrapped[i];if(w.obj&&w.obj[w.key]&&w.obj[w.key].__battleHotpathWrapped)w.obj[w.key]=w.fn;}wrapped=[];}
 
   install();
-  root.BattleHotpathProfiler={version:'1.0',reset:reset,snapshot:snapshot,restore:restore};
+  root.BattleHotpathProfiler={version:'1.1',reset:reset,snapshot:snapshot,restore:restore};
 })(typeof window!=='undefined'?window:globalThis);
