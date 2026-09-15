@@ -10,8 +10,10 @@ def canon(n):
 def slug(s):return re.sub(r'[^a-z0-9]+','-',s.lower()).strip('-')
 def moving(s):return any(x in s.lower() for x in MOVE)
 def clear():bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False)
+def script_args():
+ return sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else []
 def main():
- p=argparse.ArgumentParser();p.add_argument('--input',required=True);p.add_argument('--output',required=True);a=p.parse_args();src=Path(a.input);out=Path(a.output);out.mkdir(parents=True,exist_ok=True);clips=[];failed=[]
+ p=argparse.ArgumentParser();p.add_argument('--input',required=True);p.add_argument('--output',required=True);a=p.parse_args(script_args());src=Path(a.input);out=Path(a.output);out.mkdir(parents=True,exist_ok=True);clips=[];failed=[]
  for f in sorted(src.glob('*.fbx')):
   clear()
   try:
