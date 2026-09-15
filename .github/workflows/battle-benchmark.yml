@@ -1,10 +1,10 @@
-name: 100 Battle Benchmark
+name: M3C Battle Benchmark Matrix
 
 on:
   workflow_dispatch:
     inputs:
       battles_per_shard:
-        description: Battles per parallel shard (10 shards; 10 = 100 total)
+        description: Battles per scenario/shard (3 scenarios x 10 shards; 10 = 300 total)
         required: false
         default: '10'
       seed:
@@ -48,18 +48,18 @@ jobs:
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
 
   benchmark:
-    name: Battle shard ${{ matrix.shard }}/10
+    name: ${{ matrix.battle_type }} · shard ${{ matrix.shard }}/10
     needs: validate-source
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
+        battle_type: [meeting, us-defend, ge-defend]
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     env:
       BATTLE_BENCHMARK_SOURCE_SHA: ${{ needs.validate-source.outputs.source_sha }}
       BATTLE_BENCHMARK_COUNT: ${{ github.event.inputs.battles_per_shard || '10' }}
-      BATTLE_BENCHMARK_URL: http://127.0.0.1:8765/grasstex/battle_sim_local.php
       BATTLE_BENCHMARK_OUTPUT: reports
       BATTLE_BENCHMARK_TIME_LIMIT: '600'
       BATTLE_BENCHMARK_STEP: '0.15'
@@ -99,15 +99,34 @@ jobs:
         env:
           BASE_SEED: ${{ github.event.inputs.seed || format('benchmark-{0}', github.run_number) }}
           SHARD: ${{ matrix.shard }}
+          BATTLE_TYPE: ${{ matrix.battle_type }}
         run: |
-          export BATTLE_BENCHMARK_SEED="${BASE_SEED}-s${SHARD}"
+          set -euo pipefail
+          case "$BATTLE_TYPE" in
+            meeting)
+              defender_query=''
+              ;;
+            us-defend)
+              defender_query='?defender=us'
+              ;;
+            ge-defend)
+              defender_query='?defender=ge'
+              ;;
+            *)
+              echo "Unknown battle type: $BATTLE_TYPE" >&2
+              exit 2
+              ;;
+          esac
+          export BATTLE_BENCHMARK_URL="http://127.0.0.1:8765/grasstex/battle_sim_local.php${defender_query}"
+          export BATTLE_BENCHMARK_SEED="${BASE_SEED}-${BATTLE_TYPE}-s${SHARD}"
+          echo "Running ${BATTLE_TYPE} shard ${SHARD}: ${BATTLE_BENCHMARK_URL}"
           node scripts/run_battle_benchmark.mjs
 
       - name: Upload shard report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: battle-benchmark-shard-${{ matrix.shard }}-${{ github.run_number }}
+          name: battle-benchmark-${{ matrix.battle_type }}-shard-${{ matrix.shard }}-${{ github.run_number }}
           path: reports/
           if-no-files-found: warn
           retention-days: 30
@@ -117,10 +136,10 @@ jobs:
         run: tail -n 300 /tmp/battle-php.log || true
 
   merge:
-    name: Merge available benchmark report
+    name: Merge available benchmark matrix
     needs: [validate-source, benchmark]
-    # A failed shard must not discard healthy shard data. Merge whatever reports were published and
-    # mark the persistent result partial; a total failure still fails naturally when no reports exist.
+    # A failed scenario/shard must not discard healthy data. Merge whatever reports were published
+    # and mark the persistent result partial; a total failure still fails when no report exists.
     if: always() && !cancelled() && needs.validate-source.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -128,7 +147,7 @@ jobs:
       BATTLE_BENCHMARK_SOURCE_SHA: ${{ needs.validate-source.outputs.source_sha }}
       BENCHMARK_RESULT: ${{ needs.benchmark.result }}
       BATTLES_PER_SHARD: ${{ github.event.inputs.battles_per_shard || '10' }}
-      EXPECTED_SHARDS: '10'
+      EXPECTED_SHARDS: '30'
     permissions:
       contents: write
     concurrency:
@@ -149,7 +168,7 @@ jobs:
       - name: Download available shard reports
         uses: actions/download-artifact@v4
         with:
-          pattern: battle-benchmark-shard-*-${{ github.run_number }}
+          pattern: battle-benchmark-*-shard-*-${{ github.run_number }}
           path: shard-reports
 
       - name: Merge available benchmark reports
@@ -160,7 +179,7 @@ jobs:
             echo 'No successful shard report is available to merge.' >&2
             exit 1
           fi
-          echo "Merging ${reports}/${EXPECTED_SHARDS} shard reports."
+          echo "Merging ${reports}/${EXPECTED_SHARDS} scenario/shard reports."
           node scripts/merge_battle_benchmarks.mjs
 
       - name: Prepare persistent report bundle
@@ -174,7 +193,7 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const report = JSON.parse(fs.readFileSync('reports/battle-benchmark.json', 'utf8'));
-          const expectedBattles = Number(process.env.BATTLES_PER_SHARD || 10) * Number(process.env.EXPECTED_SHARDS || 10);
+          const expectedBattles = Number(process.env.BATTLES_PER_SHARD || 10) * Number(process.env.EXPECTED_SHARDS || 30);
           const completedBattles = Number(report.summary && report.summary.completedBattles || 0);
           const complete = process.env.BENCHMARK_RESULT === 'success' && completedBattles >= expectedBattles;
           const compact = {
@@ -201,7 +220,7 @@ jobs:
         run: |
           if [ -f reports/battle-benchmark.md ]; then
             if [ "$BENCHMARK_RESULT" != success ]; then
-              echo '## ⚠️ Partial benchmark — one or more shards failed' >> "$GITHUB_STEP_SUMMARY"
+              echo '## ⚠️ Partial benchmark — one or more scenario/shards failed' >> "$GITHUB_STEP_SUMMARY"
               echo '' >> "$GITHUB_STEP_SUMMARY"
             fi
             cat reports/battle-benchmark.md >> "$GITHUB_STEP_SUMMARY"
@@ -268,6 +287,7 @@ jobs:
               usWins: s.winners && s.winners.us || 0,
               geWins: s.winners && s.winners.ge || 0,
               healthOverall: health.overall ?? null,
+              battleTypes: s.battleTypes || {},
               objectivesNeverOwned: s.objectivesNeverOwned ?? null,
               objectivesNeverOwnedRate: s.objectivesNeverOwnedRate ?? null,
               avgSquadObjectiveSpread: s.avgSquadObjectiveSpread ?? null,
@@ -318,7 +338,7 @@ jobs:
             tags="x,warning"
             priority="high"
           elif [ "$BENCHMARK_RESULT" != success ] && [ "$MERGE_RESULT" = success ]; then
-            status="PARTIAL · healthy shards were merged"
+            status="PARTIAL · healthy scenario/shards were merged"
             tags="warning,crossed_swords"
             priority="default"
           elif [ "$BENCHMARK_RESULT" != success ]; then
@@ -336,11 +356,11 @@ jobs:
           fi
           short_sha="${SOURCE_SHA:-${GITHUB_SHA}}"
           short_sha="${short_sha:0:7}"
-          total="$((BATTLES_PER_SHARD * 10))"
+          total="$((BATTLES_PER_SHARD * 30))"
           curl -fsS \
             -H "Title: WW2 Battle Sim benchmark #${GITHUB_RUN_NUMBER}" \
             -H "Priority: ${priority}" \
             -H "Tags: ${tags}" \
             -H "Click: ${RUN_URL}" \
-            -d "${status} · attempted ${total} battles · ${short_sha}" \
+            -d "${status} · attempted ${total} battles (100/type at default) · ${short_sha}" \
             https://ntfy.sh/ww2battlesim
