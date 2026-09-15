@@ -1,0 +1,28 @@
+name: Apply plan dormancy fix
+on:
+  push:
+    branches: [ci-apply-plan-dormancy]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: simplify-v134
+      - name: Apply staged dormancy patch
+        run: python3 scripts/patch_plan_dormancy.py
+      - name: Validate focused regressions
+        run: |
+          node --check battle/modules/16-squad-plan-stability.js
+          node tools/ai-sim-harness/lean-runtime-check.js
+          node tools/ai-sim-harness/tactical-positions-check.js
+      - name: Commit fix to simplify branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Keep quiet engagement plans dormant'
+          git push origin HEAD:simplify-v134
