@@ -28,7 +28,7 @@ function fixture({physical=true,inside=false}={}){
     {id:'window',type:'window',side:'north',offset:0,width:1.25,bottom:.92,top:2.08}]};
   const scenario={buildings:[room]};sim.scene={metadata:{battleScenario:scenario}};r.__battle__=sim;r.BattleNavigation.installScenario(scenario);
   sq.state='engaged';sq.commandPhase='support-hold';sq.inContact=true;sq.targetObjective='house';
-  systems['engagement-plan-doctrine'].onCommanderTick(sim);
+  sq._engagementPlan={serial:1,status:'active',phase:'support-hold',targetObjective:'house'};
   sq.members.forEach((s,i)=>{s._fireteamKey=i===2?'command':'alpha';s._engagementTask=i===2?'control':'support-by-fire';s.root.position.x=i*3;s.root.position.z=inside?0:-14;s.destination={x:s.root.position.x,z:s.root.position.z};r.BattleAmmunition.initialize(s);});
   const s=sq.members[0],other=sq.members[1],captain=sq.members[2],P=r.BattleTacticalPositions,M=r.BattleMovementResolver,N=r.BattleNavigation;
   const threat={x:0,z:40},enemy={id:99,hp:100,dead:false,root:{position:{...threat,y:0}},faction:'ge'};
