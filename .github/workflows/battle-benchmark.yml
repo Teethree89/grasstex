@@ -117,13 +117,18 @@ jobs:
         run: tail -n 300 /tmp/battle-php.log || true
 
   merge:
-    name: Merge 100-battle report
+    name: Merge available benchmark report
     needs: [validate-source, benchmark]
-    if: always() && !cancelled() && needs.validate-source.result == 'success' && needs.benchmark.result == 'success'
+    # A failed shard must not discard healthy shard data. Merge whatever reports were published and
+    # mark the persistent result partial; a total failure still fails naturally when no reports exist.
+    if: always() && !cancelled() && needs.validate-source.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       BATTLE_BENCHMARK_SOURCE_SHA: ${{ needs.validate-source.outputs.source_sha }}
+      BENCHMARK_RESULT: ${{ needs.benchmark.result }}
+      BATTLES_PER_SHARD: ${{ github.event.inputs.battles_per_shard || '10' }}
+      EXPECTED_SHARDS: '10'
     permissions:
       contents: write
     concurrency:
@@ -141,14 +146,22 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Download shard reports
+      - name: Download available shard reports
         uses: actions/download-artifact@v4
         with:
           pattern: battle-benchmark-shard-*-${{ github.run_number }}
           path: shard-reports
 
-      - name: Merge benchmark reports
-        run: node scripts/merge_battle_benchmarks.mjs
+      - name: Merge available benchmark reports
+        run: |
+          set -euo pipefail
+          reports="$(find shard-reports -name battle-benchmark.json -type f | wc -l | tr -d ' ')"
+          if [ "$reports" -lt 1 ]; then
+            echo 'No successful shard report is available to merge.' >&2
+            exit 1
+          fi
+          echo "Merging ${reports}/${EXPECTED_SHARDS} shard reports."
+          node scripts/merge_battle_benchmarks.mjs
 
       - name: Prepare persistent report bundle
         if: success()
@@ -161,11 +174,17 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const report = JSON.parse(fs.readFileSync('reports/battle-benchmark.json', 'utf8'));
+          const expectedBattles = Number(process.env.BATTLES_PER_SHARD || 10) * Number(process.env.EXPECTED_SHARDS || 10);
+          const completedBattles = Number(report.summary && report.summary.completedBattles || 0);
+          const complete = process.env.BENCHMARK_RESULT === 'success' && completedBattles >= expectedBattles;
           const compact = {
-            status: 'complete',
+            status: complete ? 'complete' : 'partial',
             runNumber: Number(process.env.GITHUB_RUN_NUMBER),
             runId: Number(process.env.GITHUB_RUN_ID),
             sourceSha: process.env.BATTLE_BENCHMARK_SOURCE_SHA,
+            expectedBattles,
+            completedBattles,
+            missingBattles: Math.max(0, expectedBattles - completedBattles),
             actionsUrl: `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
             summary: report.summary || {},
             policy: report.policy ? {
@@ -181,6 +200,10 @@ jobs:
         if: always()
         run: |
           if [ -f reports/battle-benchmark.md ]; then
+            if [ "$BENCHMARK_RESULT" != success ]; then
+              echo '## ⚠️ Partial benchmark — one or more shards failed' >> "$GITHUB_STEP_SUMMARY"
+              echo '' >> "$GITHUB_STEP_SUMMARY"
+            fi
             cat reports/battle-benchmark.md >> "$GITHUB_STEP_SUMMARY"
           else
             echo '## Battle benchmark did not produce a merged report' >> "$GITHUB_STEP_SUMMARY"
@@ -233,13 +256,15 @@ jobs:
             const compact = JSON.parse(fs.readFileSync('benchmarks/results/latest/battle-benchmark-summary.json', 'utf8'));
             const s = compact.summary || {}, issues = s.issueCounts || {}, health = s.health || {};
             const status = {
-              status: 'complete',
+              status: compact.status || 'partial',
               runNumber: compact.runNumber,
               runId: compact.runId,
               sourceSha: compact.sourceSha,
               completedAt: s.generatedAt || new Date().toISOString(),
+              expectedBattles: compact.expectedBattles ?? null,
               requestedBattles: s.requestedBattles ?? null,
-              completedBattles: s.completedBattles ?? null,
+              completedBattles: s.completedBattles ?? compact.completedBattles ?? null,
+              missingBattles: compact.missingBattles ?? null,
               usWins: s.winners && s.winners.us || 0,
               geWins: s.winners && s.winners.ge || 0,
               healthOverall: health.overall ?? null,
@@ -284,6 +309,7 @@ jobs:
           BENCHMARK_RESULT: ${{ needs.benchmark.result }}
           MERGE_RESULT: ${{ needs.merge.result }}
           SOURCE_SHA: ${{ needs.validate-source.outputs.source_sha }}
+          BATTLES_PER_SHARD: ${{ github.event.inputs.battles_per_shard || '10' }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -291,6 +317,10 @@ jobs:
             status="FAILED during source validation"
             tags="x,warning"
             priority="high"
+          elif [ "$BENCHMARK_RESULT" != success ] && [ "$MERGE_RESULT" = success ]; then
+            status="PARTIAL · healthy shards were merged"
+            tags="warning,crossed_swords"
+            priority="default"
           elif [ "$BENCHMARK_RESULT" != success ]; then
             status="FAILED during battle shards"
             tags="x,warning"
@@ -306,10 +336,11 @@ jobs:
           fi
           short_sha="${SOURCE_SHA:-${GITHUB_SHA}}"
           short_sha="${short_sha:0:7}"
+          total="$((BATTLES_PER_SHARD * 10))"
           curl -fsS \
             -H "Title: WW2 Battle Sim benchmark #${GITHUB_RUN_NUMBER}" \
             -H "Priority: ${priority}" \
             -H "Tags: ${tags}" \
             -H "Click: ${RUN_URL}" \
-            -d "${status} · 100 battles (10x10) · ${short_sha}" \
+            -d "${status} · attempted ${total} battles · ${short_sha}" \
             https://ntfy.sh/ww2battlesim
