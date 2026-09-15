@@ -9,9 +9,9 @@
    avoids copying quaternions between rigs with incompatible local bone axes.
 
    animationBinding stays baked-procedural/procedural. The skeletal skin is a renderer, not a second
-   animation backend. The procedural driver's weapon pose and two-hand IK remain authoritative; after
-   the skin is posed we translate the visible weapon pose by the least-squares two-hand offset so the
-   same rifle sits on the Mixamo hands despite the two rigs having different shoulder/torso proportions. */
+   animation backend. The procedural driver's weapon pose and two-hand IK remain authoritative. After
+   the skin is posed, living soldiers get one rigid best-fit correction from the procedural hand pair
+   to the visible hand pair; deaths follow the visible right hand only, matching the source death pose. */
 (function(root){
 'use strict';
 if(typeof BABYLON==='undefined'||!root.BattleSoldierModel||root.BattleSkeletalSoldierBackend)return;
@@ -58,6 +58,7 @@ function loadFaction(scene,faction){
 
 var vA=new BABYLON.Vector3(),vB=new BABYLON.Vector3(),vFrom=new BABYLON.Vector3(),vTo=new BABYLON.Vector3(),vAxis=new BABYLON.Vector3(),vFallback=new BABYLON.Vector3();
 var vSrcR=new BABYLON.Vector3(),vSrcL=new BABYLON.Vector3(),vDstR=new BABYLON.Vector3(),vDstL=new BABYLON.Vector3(),vDelta=new BABYLON.Vector3(),vWorld=new BABYLON.Vector3(),mInv=new BABYLON.Matrix();
+var vLocalR=new BABYLON.Vector3(),vLocalL=new BABYLON.Vector3(),vPredR=new BABYLON.Vector3(),vPredL=new BABYLON.Vector3(),vSpanSrc=new BABYLON.Vector3(),vSpanDst=new BABYLON.Vector3();
 function worldDirection(a,b,out){
   if(!a||!b){out.set(0,1,0);return out;}a.computeWorldMatrix(true);b.computeWorldMatrix(true);vA.copyFrom(a.getAbsolutePosition());vB.copyFrom(b.getAbsolutePosition());
   vB.subtractToRef(vA,out);if(out.lengthSquared()<1e-10)out.set(0,1,0);else out.normalize();return out;
@@ -72,6 +73,17 @@ function alignSegment(target,targetChild,desired){
     if(vAxis.lengthSquared()<1e-10){vFallback.set(0,0,1);BABYLON.Vector3.CrossToRef(vFrom,vFallback,vAxis);}if(vAxis.lengthSquared()<1e-10)return;
   }
   vAxis.normalize();target.rotate(vAxis,Math.acos(dot),BABYLON.Space.WORLD);target.computeWorldMatrix(true);
+}
+function rotateNodeVectorWorld(node,from,to){
+  if(!node||!from||!to||from.lengthSquared()<1e-10||to.lengthSquared()<1e-10)return 0;
+  vFrom.copyFrom(from).normalize();vTo.copyFrom(to).normalize();
+  var dot=BABYLON.Scalar.Clamp(BABYLON.Vector3.Dot(vFrom,vTo),-1,1);if(dot>.999999)return 0;
+  BABYLON.Vector3.CrossToRef(vFrom,vTo,vAxis);
+  if(vAxis.lengthSquared()<1e-10){
+    vFallback.set(1,0,0);BABYLON.Vector3.CrossToRef(vFrom,vFallback,vAxis);
+    if(vAxis.lengthSquared()<1e-10){vFallback.set(0,0,1);BABYLON.Vector3.CrossToRef(vFrom,vFallback,vAxis);}if(vAxis.lengthSquared()<1e-10)return 0;
+  }
+  var angle=Math.acos(dot);vAxis.normalize();node.rotate(vAxis,angle,BABYLON.Space.WORLD);node.computeWorldMatrix(true);return angle;
 }
 function descendants(roots){var out=[],seen=[];function add(n){if(!n||seen.indexOf(n)>=0)return;seen.push(n);out.push(n);var k=n.getChildren?n.getChildren():[];for(var i=0;i<k.length;i++)add(k[i]);}for(var i=0;i<roots.length;i++)add(roots[i]);return out;}
 function suffixName(n,t){n=String(n||'');return n===t||n.slice(-t.length)===t;}
@@ -115,10 +127,21 @@ function fitWeaponToVisibleHands(model){
   if(!sk||!rest||!r||!socket||!model.weapon||!model.weapon.mesh||!rest.handR||!rest.handL||!r.handR||!r.handL)return;
   r.handR.computeWorldMatrix(true);r.handL.computeWorldMatrix(true);rest.handR.computeWorldMatrix(true);rest.handL.computeWorldMatrix(true);
   vSrcR.copyFrom(r.handR.getAbsolutePosition());vSrcL.copyFrom(r.handL.getAbsolutePosition());vDstR.copyFrom(rest.handR.getAbsolutePosition());vDstL.copyFrom(rest.handL.getAbsolutePosition());
-  vDstR.subtractToRef(vSrcR,vDelta);vDstL.subtractToRef(vSrcL,vA);vDelta.addInPlace(vA).scaleInPlace(.5);moveNodeByWorldDelta(socket,vDelta);
-  /* Translation is the least-squares fit for two grip points. The remaining error is proportion
-     mismatch between the rigs; expose it for visual-regression evidence rather than hiding it. */
-  vSrcR.addToRef(vDelta,vA);vSrcL.addToRef(vDelta,vB);var er=BABYLON.Vector3.Distance(vA,vDstR),el=BABYLON.Vector3.Distance(vB,vDstL);sk.weaponFitError=(er+el)*.5;
+  if(model.dead){
+    /* The authoritative death pose deliberately releases the support hand. Preserve that ownership:
+       the visible rifle follows only the right-hand grip instead of averaging toward the free hand. */
+    vDstR.subtractToRef(vSrcR,vDelta);moveNodeByWorldDelta(socket,vDelta);vSrcR.addToRef(vDelta,vA);vSrcL.addToRef(vDelta,vB);
+    sk.weaponFitMode='right-hand-death';sk.weaponFitErrorR=BABYLON.Vector3.Distance(vA,vDstR);sk.weaponFitErrorL=BABYLON.Vector3.Distance(vB,vDstL);sk.weaponFitError=sk.weaponFitErrorR;sk.weaponFitAngle=0;return;
+  }
+  /* Convert the procedural hand/grip points into socket-local space before the visual correction.
+     A single rigid rotation + translation is then the least-squares fit for the two visible hands.
+     This changes only rendering; the procedural weapon pose and arm IK remain the source of truth. */
+  socket.computeWorldMatrix(true);socket.getWorldMatrix().invertToRef(mInv);BABYLON.Vector3.TransformCoordinatesToRef(vSrcR,mInv,vLocalR);BABYLON.Vector3.TransformCoordinatesToRef(vSrcL,mInv,vLocalL);
+  vSrcL.subtractToRef(vSrcR,vSpanSrc);vDstL.subtractToRef(vDstR,vSpanDst);var srcLen=vSpanSrc.length(),dstLen=vSpanDst.length();
+  var angle=rotateNodeVectorWorld(socket,vSpanSrc,vSpanDst);socket.computeWorldMatrix(true);var wm=socket.getWorldMatrix();BABYLON.Vector3.TransformCoordinatesToRef(vLocalR,wm,vPredR);BABYLON.Vector3.TransformCoordinatesToRef(vLocalL,wm,vPredL);
+  vDstR.subtractToRef(vPredR,vDelta);vDstL.subtractToRef(vPredL,vA);vDelta.addInPlace(vA).scaleInPlace(.5);moveNodeByWorldDelta(socket,vDelta);
+  vPredR.addToRef(vDelta,vA);vPredL.addToRef(vDelta,vB);var er=BABYLON.Vector3.Distance(vA,vDstR),el=BABYLON.Vector3.Distance(vB,vDstL);
+  sk.weaponFitMode='two-hand-rigid';sk.weaponFitErrorR=er;sk.weaponFitErrorL=el;sk.weaponFitError=(er+el)*.5;sk.weaponFitAngle=angle;sk.weaponFitSpanError=Math.abs(srcLen-dstLen);
 }
 function retarget(model){
   var sk=model&&model._skeletal;if(!sk||!model.rig)return;var rest=sk.rest,i,key,target,q;
@@ -139,6 +162,6 @@ M.preload=function(scene){var p=oldPreload?oldPreload.call(this,scene):true;retu
 M.setImportedEnabled=function(scene,v){if(oldSetImported)oldSetImported.call(this,scene,v);actualState(scene).enabled=!!v;};
 M.createSoldier=function(scene,faction,role,parent){var model=oldCreate.call(this,scene,faction,role,parent);if(ASSET[faction]&&actualState(scene).enabled)instantiate(model,scene,faction);return model;};
 M.animateWalk=function(model,dt,speed){var out=oldAnimate.apply(this,arguments);if(model&&model._skeletal)retarget(model);return out;};
-root.BattleSkeletalSoldierBackend={version:'1.9',map:MAP.slice(),asset:ASSET,retarget:retarget};
+root.BattleSkeletalSoldierBackend={version:'2.0',map:MAP.slice(),asset:ASSET,retarget:retarget};
 console.log('[ANIM] runtime skeletal soldier skin active (procedural/Baked driver -> Mixamo renderer + two-hand weapon fit)');
 })(typeof window!=='undefined'?window:globalThis);
