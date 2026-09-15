@@ -1,0 +1,75 @@
+name: Meso Formation Frame Profile
+
+on:
+  push:
+    branches:
+      - fix/meso-formation-frame-stability
+    paths:
+      - .github/workflows/meso-formation-profile.yml
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    name: ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: pathological-meeting
+            battle_type: meeting
+            seed: standard-benchmark-meeting-s1-b0001-0001
+            defender_query: ''
+          - label: fast-ge-defend
+            battle_type: ge-defend
+            seed: standard-benchmark-ge-defend-s2-b0001-0001
+            defender_query: '?defender=ge'
+    env:
+      BATTLE_BENCHMARK_SOURCE_SHA: ${{ github.sha }}
+      BATTLE_PROFILE_SECONDS: '120'
+      BATTLE_PROFILE_STEP: '0.15'
+      BATTLE_PROFILE_SNAPSHOT_SECONDS: '30'
+      BATTLE_PROFILE_OUTPUT: reports/profile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Formation frame regression
+        run: node scripts/check-meso-formation-frame-stability.cjs
+      - name: Install browser harness
+        run: |
+          npm install --no-save --no-package-lock playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Start local battle server
+        run: |
+          rm -rf /tmp/battle-www
+          mkdir -p /tmp/battle-www
+          ln -s "$GITHUB_WORKSPACE" /tmp/battle-www/grasstex
+          php -S 127.0.0.1:8765 -t /tmp/battle-www >/tmp/battle-profile-php.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:8765/grasstex/battle_sim_local.php?seed=healthcheck" >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/battle-profile-php.log
+          exit 1
+      - name: Profile deterministic battle
+        env:
+          BATTLE_PROFILE_TYPE: ${{ matrix.battle_type }}
+          BATTLE_PROFILE_SEED: ${{ matrix.seed }}
+          BATTLE_PROFILE_URL: http://127.0.0.1:8765/grasstex/battle_sim_local.php${{ matrix.defender_query }}
+        run: node scripts/profile_battle_hotpaths.mjs
+      - name: Publish profile summary
+        if: always()
+        run: |
+          if [ -f reports/profile/battle-hotpath-profile.md ]; then cat reports/profile/battle-hotpath-profile.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: meso-frame-${{ matrix.label }}-${{ github.run_number }}
+          path: reports/profile/
+          if-no-files-found: warn
+          retention-days: 14
