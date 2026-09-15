@@ -23,6 +23,7 @@ on:
   push:
     branches:
       - main
+      - fix/meso-formation-frame-stability
     paths:
       - scripts/battle-hotpath-profiler.cjs
       - scripts/profile_battle_hotpaths.mjs
