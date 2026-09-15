@@ -357,7 +357,12 @@ N.nextWaypoint=function(sim,soldier,dest){
   var c=soldier._physicalPath;
   if(needsReplan(soldier,sim,finalGoal,start))c=buildRollingPlan(soldier,sim,start,finalGoal);
   consumeReached(c,start,sim,soldier);
-  if(!c.blocked&&c.points.length<=MIN_QUEUE&&dist(start,c.standGoal)>PATH_ARRIVAL*2)c=buildRollingPlan(soldier,sim,start,finalGoal);
+  /* A low rolling queue is not a reason to throw away an otherwise-valid physical plan.
+     Extend from its committed tail. Full reconstruction remains owned by needsReplan() for
+     actual goal/version/clearance changes or the bounded periodic refresh. */
+  if(!c.blocked&&c.points.length<=MIN_QUEUE&&dist(start,c.standGoal)>PATH_ARRIVAL*2){
+    topUpQueue(sim,soldier,start,c.standGoal,c.points);
+  }
   consumeReached(c,start,sim,soldier);
   var wp=c.points[0];
   if(!wp)return start; // Hold a blocked route until its bounded retry; no destination write.
