@@ -222,7 +222,7 @@ section('a stranded soldier cannot override the regroup timeout');
 {
   const {r,sq,sim,town}=commandFixture();
   r.BattleTelemetry={record(){}};
-  for(const f of ['battle/modules/16-squad-plan-stability.js','battle/modules/41-regroup-hysteresis.js'])load(r,f);
+  load(r,'battle/modules/16-squad-plan-stability.js');
   sq.members[3].root.position.x=-100;
   sq.commandPhase='regroup';sq.objective={x:20,z:0};
   sq._regroupRecovery={startedAt:sim.time-19,serial:1};
