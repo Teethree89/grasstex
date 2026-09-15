@@ -1,74 +1,49 @@
-/* Assault forward-progress guard.
-   Benchmark #15 stripped the regroup false positives out of Loop Watch and exposed the stubborn
-   remainder: 991 pure-assault low-forward-progress alerts in both #14 and #15. Routes were stable;
-   men were simply spending too much motion recovering wide slots or taking lateral cover.
-
-   This guard keeps the strategic route authoritative while preserving genuine survival moves:
-     1. Assault formation/order proposals are compacted around the forward axis. Out of contact the
-        formation is especially narrow, so a man does not spend a whole window crossing the line.
-     2. A non-suppressed cover bound must gain meaningful ground. Backward or almost-pure-lateral
-        candidates are rejected before commitment. Suppressed men may still fall
-        back anywhere survival requires.
-     3. Existing assault-rush, hold and firing-station combat proposals remain untouched. */
+/* Lean combat-mobility owner.
+   Replaces three stacked wrappers (assault forward guard, assault bound momentum, combat urgency)
+   with one post-engagement pass and one pre-resolver order clamp. Engagement still owns combat
+   state; this module only supplies the few movement policies that state machine needs. */
 (function(root){
 'use strict';
-if(!root.BattleMovementResolver||root.BattleAssaultForwardGuard)return;
-
-var MAX_LATERAL_CONTACT=22,MAX_LATERAL_ADVANCE=14,MAX_FORMATION_BACK=7,MAX_ORDER_BACK_FROM_MAN=2;
-var MIN_COVER_FORWARD=1.5;
-var baseResolve=root.BattleMovementResolver.resolve;
-
+if(!root.BattleModules||!root.BattleEngagement||!root.BattleMovementResolver||root.BattleCombatMobility)return;
+var MAX_LATERAL_CONTACT=22,MAX_LATERAL_ADVANCE=14,MAX_FORMATION_BACK=7,MAX_ORDER_BACK=2,MIN_COVER_FORWARD=1.5;
+var PUSH_METERS=6.5,PUSH_ARRIVAL=1.25;
+var COVER_SEARCH=22,COVER_ARRIVED=1.3,SHARED_REACT_AGE=2.5,SHARED_HOLD=1.8,SHARED_RESET_QUIET=4.5,URGENT_TTL=.55;
+var oldUpdate=root.BattleEngagement.updateSoldier,baseResolve=root.BattleMovementResolver.resolve;
 function point(p){return p&&isFinite(+p.x)&&isFinite(+p.z)?{x:+p.x,z:+p.z}:null;}
+function dist(a,b){return a&&b?Math.hypot(a.x-b.x,a.z-b.z):Infinity;}
+function pos(s){return point(s&&s.root&&s.root.position);}
+function estate(s){try{return root.BattleEngagement.stateOf(s);}catch(_){return s.eng||{};}}
 function objectiveById(sim,id){var a=sim&&sim._objectives||[];for(var i=0;i<a.length;i++){var o=a[i];if(String(o&&o.id)===String(id)){var d=o.def||o,p=point(d);if(p)return p;}}return null;}
-function axis(sim,sq){
-  if(!sq)return null;
-  var anchor=point(sq.orderAnchor)||point(sq.rally),goal=objectiveById(sim,sq.targetObjective)||point(sq._routeFinalObjective)||point(sq.objective);
-  if(!anchor||!goal)return null;
-  var dx=goal.x-anchor.x,dz=goal.z-anchor.z,len=Math.hypot(dx,dz);if(len<1)return null;
-  return{anchor:anchor,fx:dx/len,fz:dz/len,rx:-dz/len,rz:dx/len};
-}
-function fresh(){return{orderClamps:0,coverRejects:0,lateralCoverRejects:0,byFaction:{us:{orderClamps:0,coverRejects:0,lateralCoverRejects:0},ge:{orderClamps:0,coverRejects:0,lateralCoverRejects:0}}};}
-function stats(sim){return sim._assaultForwardGuard||(sim._assaultForwardGuard=fresh());}
-function bump(sim,sq,kind){var st=stats(sim);st[kind]++;if(st.byFaction[sq.faction])st.byFaction[sq.faction][kind]++;}
-function setProposalPoint(p,x,z){p.point={x:x,z:z};}
-function compactOrder(sim,s,q,ax){
-  var st=s&&s._movementResolver,p=st&&st.order,pt=p&&point(p.point);if(!pt)return;
-  var dx=pt.x-ax.anchor.x,dz=pt.z-ax.anchor.z,forward=dx*ax.fx+dz*ax.fz,lateral=dx*ax.rx+dz*ax.rz;
-  var maxLat=q.inContact?MAX_LATERAL_CONTACT:MAX_LATERAL_ADVANCE;
-  var nf=Math.max(-MAX_FORMATION_BACK,forward),nl=Math.max(-maxLat,Math.min(maxLat,lateral));
-  var here=point(s.root&&s.root.position);
-  if(here&&!q.inContact){
-    var hx=here.x-ax.anchor.x,hz=here.z-ax.anchor.z,hf=hx*ax.fx+hz*ax.fz;
-    nf=Math.max(nf,hf-MAX_ORDER_BACK_FROM_MAN);
-  }
-  if(Math.abs(nf-forward)<.01&&Math.abs(nl-lateral)<.01)return;
-  setProposalPoint(p,ax.anchor.x+ax.fx*nf+ax.rx*nl,ax.anchor.z+ax.fz*nf+ax.rz*nl);
-  if(s.orderDestination){s.orderDestination.x=p.point.x;s.orderDestination.z=p.point.z;}
-  bump(sim,q,'orderClamps');
-}
-// Filter candidates before engagement commits. Never delete an executing cover proposal:
-// remaining forward distance naturally falls below the threshold as the man arrives.
-function allowCover(s,sim,pt){
-  var q=s&&s.squad;if(!q||q.commandPhase!=='assault'||q.state==='retreat'||s.suppressedUntil>sim.time)return true;
-  var ax=axis(sim,q),here=point(s.root&&s.root.position);if(!ax||!here)return true;
-  var forward=(pt.x-here.x)*ax.fx+(pt.z-here.z)*ax.fz;
-  if(forward>=MIN_COVER_FORWARD)return true;
-  bump(sim,q,'coverRejects');if(forward>=-.25)bump(sim,q,'lateralCoverRejects');return false;
-}
-function publish(sim){
-  var st=stats(sim),out={orderClamps:st.orderClamps,coverRejects:st.coverRejects,lateralCoverRejects:st.lateralCoverRejects,byFaction:st.byFaction,maxLateralAdvance:MAX_LATERAL_ADVANCE,maxLateralContact:MAX_LATERAL_CONTACT,maxFormationBack:MAX_FORMATION_BACK,maxOrderBackFromSoldier:MAX_ORDER_BACK_FROM_MAN,minNonSuppressedCoverForward:MIN_COVER_FORWARD};
-  sim._assaultForwardGuardSummary=JSON.parse(JSON.stringify(out));
-  if(sim._coordinationHealth)sim._coordinationHealth.assaultForwardGuard=JSON.parse(JSON.stringify(out));
-}
-function reset(sim){sim._assaultForwardGuard=fresh();publish(sim);}
-root.BattleMovementResolver.resolve=function(s,battle){
-  if(s&&battle&&s.squad&&s.squad.commandPhase==='assault'&&s.squad.state!=='retreat'){
-    var ax=axis(battle,s.squad);if(ax){compactOrder(battle,s,s.squad,ax);}
-    publish(battle);
-  }
-  return baseResolve.apply(this,arguments);
-};
-if(root.BattleModules)root.BattleModules.registerSystem('assault-forward-guard',{version:'1.2',onBattleStart:reset,onBattleRestart:reset});
-root.BattleAssaultForwardGuard={version:'1.3-candidate-admission',allowCover:allowCover,summary:function(sim){return sim&&sim._assaultForwardGuardSummary?JSON.parse(JSON.stringify(sim._assaultForwardGuardSummary)):null;}};
-console.log('[MOVE] assault forward guard v1.2: narrow advance + forward-only casual cover');
+function axis(sim,sq){var a=point(sq&&sq.orderAnchor)||point(sq&&sq.rally),g=objectiveById(sim,sq&&sq.targetObjective)||point(sq&&sq._routeFinalObjective)||point(sq&&sq.objective);if(!a||!g)return null;var dx=g.x-a.x,dz=g.z-a.z,l=Math.hypot(dx,dz);return l<1?null:{anchor:a,fx:dx/l,fz:dz/l,rx:-dz/l,rz:dx/l};}
+function fresh(){return{orderClamps:0,coverRejects:0,lateralCoverRejects:0,pushes:0,pushCompletions:0,pushCancels:0,urgentCoverStarts:0,urgentCoverArrivals:0,sharedContactReactions:0,sharedContactRepeatBlocks:0,urgentFrames:0,byFaction:{us:{},ge:{}}};}
+function stats(sim){return sim._combatMobilityStats||(sim._combatMobilityStats=fresh());}
+function bump(sim,s,field){var st=stats(sim);st[field]=(st[field]||0)+1;var f=s&&s.faction||s&&s.squad&&s.squad.faction;if(f){var row=st.byFaction[f]||(st.byFaction[f]={});row[field]=(row[field]||0)+1;}}
+function compactOrder(sim,s,q,ax){var mr=s&&s._movementResolver,p=mr&&mr.order,pt=p&&point(p.point);if(!pt)return;var dx=pt.x-ax.anchor.x,dz=pt.z-ax.anchor.z,fw=dx*ax.fx+dz*ax.fz,lat=dx*ax.rx+dz*ax.rz,max=q.inContact?MAX_LATERAL_CONTACT:MAX_LATERAL_ADVANCE;var nfw=Math.max(-MAX_FORMATION_BACK,fw),nlat=Math.max(-max,Math.min(max,lat)),here=pos(s);if(here&&!q.inContact){var hx=here.x-ax.anchor.x,hz=here.z-ax.anchor.z,hf=hx*ax.fx+hz*ax.fz;nfw=Math.max(nfw,hf-MAX_ORDER_BACK);}if(Math.abs(nfw-fw)<.01&&Math.abs(nlat-lat)<.01)return;p.point={x:ax.anchor.x+ax.fx*nfw+ax.rx*nlat,z:ax.anchor.z+ax.fz*nfw+ax.rz*nlat};if(s.orderDestination){s.orderDestination.x=p.point.x;s.orderDestination.z=p.point.z;}bump(sim,s,'orderClamps');}
+function allowCover(s,sim,pt){var q=s&&s.squad;if(!q||q.commandPhase!=='assault'||q.state==='retreat'||(+s.suppressedUntil||0)>sim.time)return true;var ax=axis(sim,q),here=pos(s);if(!ax||!here)return true;var fw=(pt.x-here.x)*ax.fx+(pt.z-here.z)*ax.fz;if(fw>=MIN_COVER_FORWARD)return true;bump(sim,s,'coverRejects');if(fw>=-.25)bump(sim,s,'lateralCoverRejects');return false;}
+root.BattleMovementResolver.resolve=function(s,battle){if(s&&battle&&s.squad&&s.squad.commandPhase==='assault'&&s.squad.state!=='retreat'){var ax=axis(battle,s.squad);if(ax)compactOrder(battle,s,s.squad,ax);}return baseResolve.apply(this,arguments);};
+function strategicForward(s){var q=s&&s.squad,h=pos(s),g=point(q&&q.objective);if(!q||!h||!g)return null;var dx=g.x-h.x,dz=g.z-h.z,l=Math.hypot(dx,dz);return l<2?null:{x:dx/l,z:dz/l,distance:l};}
+function boundToken(s){return s&&s.squad?+s.squad._boundUntil||0:0;}
+function boundUnsafe(s,b){var q=s&&s.squad;if(!q||s.dead||s.role==='gunner'||(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s))||s.reloading||s.clearingStoppage||s.outOfAmmo)return true;if((+s.suppressedUntil||0)>b.time)return true;if(q.state==='retreat'||q.commandPhase!=='assault'||!q._assaultAuthorized||!q.inContact||b.time>=boundToken(s))return true;if(s._fireteamKey&&q._boundTeam&&s._fireteamKey!==q._boundTeam)return true;return false;}
+function clearPush(s,b,cancelled){var r=s&&s._assaultBoundPush;if(!r)return;if(cancelled&&!r.completed)bump(b,s,'pushCancels');delete s._assaultBoundPush;}
+function startPush(s,b){var f=strategicForward(s);if(!f)return null;var h=pos(s),step=Math.min(PUSH_METERS,Math.max(2.5,f.distance-1)),r={token:boundToken(s),goal:{x:h.x+f.x*step,z:h.z+f.z*step},completed:false};s._assaultBoundPush=r;bump(b,s,'pushes');return r;}
+function maintainPush(s,b){var r=s._assaultBoundPush;if(r&&r.token!==boundToken(s)){clearPush(s,b,true);r=null;}if(boundUnsafe(s,b)){clearPush(s,b,!!r);return;}var combat=s._movementResolver&&s._movementResolver.combat;if(!r){if(!(combat&&combat.kind==='hold'))return;r=startPush(s,b);if(!r)return;}var h=pos(s);if(dist(h,r.goal)<=PUSH_ARRIVAL){r.completed=true;bump(b,s,'pushCompletions');delete s._assaultBoundPush;if(root.BattleMovementProgress)root.BattleMovementProgress.clearFailuresNear(s,b,r.goal);return;}if(s._movementGoalUnreachable){s._movementGoalUnreachable=false;if(root.BattleMovementProgress)root.BattleMovementProgress.noteFailure(s,b,r.goal,'bound-unreachable');clearPush(s,b,true);return;}if(root.BattleMovementProgress&&!root.BattleMovementProgress.candidateAllowed(s,b,r.goal)){clearPush(s,b,true);return;}s._combatUrgentUntil=Math.max(+s._combatUrgentUntil||0,b.time+.5);s.prone=false;s.crawling=false;s.tacticalCrouch=true;root.BattleMovementResolver.proposeCombat(s,r.goal,b,'assault-bound-push',.8,{source:'combat-mobility',reason:'authorized fireteam bound'});}
+function contact(s,b){var q=s&&s.squad,c=q&&q.contact;if(!c||!isFinite(+c.at)||b.time-(+c.at)>SHARED_REACT_AGE)return null;return c;}
+function exposed(s,b){try{var F=root.BattleObstacleField,p=pos(s);return !F||!p||F.coverPotentialAt(b.obstacles,p.x,p.z)>.88;}catch(_){return true;}}
+function threatFor(s,b){if(s.target&&!s.target.dead)return s.target;var c=contact(s,b);if(c&&c.unit&&!c.unit.dead)return c.unit;if(c&&isFinite(+c.x)&&isFinite(+c.z))return{root:{position:{x:+c.x,y:0,z:+c.z}}};return null;}
+function sectorFor(s,p){var h=pos(s);if(!h||!p)return null;var a=Math.atan2(p.z-h.z,p.x-h.x);return((Math.round((a+Math.PI)/(Math.PI/4))%8)+8)%8;}
+function sectorDistance(a,b){if(a==null||b==null)return 8;var d=Math.abs(a-b)%8;return Math.min(d,8-d);}
+function safeToMove(s,b){return!!(s&&!s.dead&&!s.reloading&&!s.clearingStoppage&&s.squad&&s.squad.state!=='retreat'&&!(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s)));}
+function startUrgent(s,b,e){if(!safeToMove(s,b)||(+s.suppressedUntil||0)<=b.time||!exposed(s,b))return false;var threat=threatFor(s,b);if(!threat||!root.BattleEngagement.findCover)return false;if(e._urgentCoverSearchAt&&b.time<e._urgentCoverSearchAt)return false;e._urgentCoverSearchAt=b.time+.9;var cover=root.BattleEngagement.findCover(s,b,{maxRange:COVER_SEARCH,threat:threat,minEnemyDistance:10});if(!cover)return false;e.cover=cover;e.state='bound';e.since=b.time;e.until=b.time+Math.max(2,cover.distance/Math.max(2.4,+s.crouchRunSpeed||+s.runSpeed||+s.speed||3)+1);e._urgentCover=true;s._combatUrgentUntil=b.time+URGENT_TTL;s.prone=false;s.crawling=false;s.tacticalCrouch=true;s.setUp=false;root.BattleMovementResolver.proposeCombat(s,cover,b,'cover-bound',.8,{source:'combat-mobility',reason:'suppressed cover move'});bump(b,s,'urgentCoverStarts');return true;}
+function maintainUrgent(s,b,e){if(!e._urgentCover||!e.cover)return false;var d=dist(pos(s),e.cover);if(d<=COVER_ARRIVED){e._urgentCover=false;s._combatUrgentUntil=0;bump(b,s,'urgentCoverArrivals');return false;}if(!safeToMove(s,b)||e.state!=='bound'){e._urgentCover=false;s._combatUrgentUntil=0;return false;}s._combatUrgentUntil=b.time+URGENT_TTL;s.prone=false;s.crawling=false;s.tacticalCrouch=true;root.BattleMovementResolver.proposeCombat(s,e.cover,b,'cover-bound',.8,{source:'combat-mobility',reason:'suppressed cover move'});return true;}
+function reactShared(s,b,e){var q=s&&s.squad;if(!q||!q.inContact){if(e._sharedContactQuietAt==null)e._sharedContactQuietAt=b.time;if(e._sharedContactAware&&b.time-e._sharedContactQuietAt>=SHARED_RESET_QUIET){e._sharedContactAware=false;e._sharedContactSector=null;e._sharedContactReactedAt=-999;}return;}e._sharedContactQuietAt=null;if(s.target||e.state!=='advance'||s.reloading||s.clearingStoppage)return;var c=contact(s,b);if(!c)return;var h=pos(s),aim={x:+c.x||0,z:+c.z||0};if(!h)return;var sec=sectorFor(s,aim);if(e._sharedContactAware&&sectorDistance(e._sharedContactSector,sec)<=1){bump(b,s,'sharedContactRepeatBlocks');return;}e._sharedContactAware=true;e._sharedContactSector=sec;e._sharedContactReactedAt=b.time;e.state='alert';e.since=b.time;e.until=b.time+SHARED_HOLD;e.lastSeen=aim;e.lastSeenAt=Math.max(+e.lastSeenAt||-999,+c.at||b.time);s._faceHint=aim;s.tacticalCrouch=true;root.BattleMovementResolver.proposeCombat(s,h,b,'contact-reaction',Math.min(.8,SHARED_HOLD),{source:'combat-mobility',reason:'new shared threat'});bump(b,s,'sharedContactReactions');}
+root.BattleEngagement.updateSoldier=function(s,b){var result=oldUpdate.apply(this,arguments);if(!s||!b||s.dead)return result;maintainPush(s,b);var e=estate(s);if(!maintainUrgent(s,b,e)&&(+s.suppressedUntil||0)>b.time&&['pinned','engage','orient'].indexOf(String(e.state||''))>=0)startUrgent(s,b,e);reactShared(s,b,e);return result;};
+function markUrgent(sim){var t=+sim.time||0,a=root.BattleModules.unitsFor(sim);for(var i=0;i<a.length;i++){var s=a[i];if(!s||s.dead||t>=(+s._combatUrgentUntil||0))continue;if(s.prone){s.prone=false;s.crawling=false;}s.tacticalCrouch=true;stats(sim).urgentFrames++;}}
+function reset(sim){sim._combatMobilityStats=fresh();var a=root.BattleModules.unitsFor(sim);for(var i=0;i<a.length;i++){delete a[i]._assaultBoundPush;a[i]._combatUrgentUntil=0;if(a[i].eng){a[i].eng._urgentCover=false;a[i].eng._urgentCoverSearchAt=0;a[i].eng._sharedContactAware=false;a[i].eng._sharedContactSector=null;a[i].eng._sharedContactQuietAt=null;}}}
+function publish(sim){var st=JSON.parse(JSON.stringify(stats(sim)));sim._combatMobilitySummary=st;sim._assaultForwardGuardSummary={orderClamps:st.orderClamps,coverRejects:st.coverRejects,lateralCoverRejects:st.lateralCoverRejects};sim._assaultBoundMomentumSummary={pushes:st.pushes,completions:st.pushCompletions,cancels:st.pushCancels,pushMeters:PUSH_METERS};sim._combatUrgencySummary={urgentCoverStarts:st.urgentCoverStarts,urgentCoverArrivals:st.urgentCoverArrivals,sharedContactReactions:st.sharedContactReactions,sharedContactRepeatBlocks:st.sharedContactRepeatBlocks,urgentFrames:st.urgentFrames};}
+root.BattleModules.registerSystem('combat-mobility',{version:'1.0-lean-owner',onBattleStart:reset,onBattleRestart:reset,onSimulationStep:markUrgent,onCommanderTick:publish});
+root.BattleAssaultForwardGuard={version:'1.0-lean-owner',allowCover:allowCover,summary:function(sim){return sim&&sim._assaultForwardGuardSummary?JSON.parse(JSON.stringify(sim._assaultForwardGuardSummary)):null;}};
+root.BattleAssaultBoundMomentum={version:'1.0-lean-owner',summary:function(sim){return sim&&sim._assaultBoundMomentumSummary?JSON.parse(JSON.stringify(sim._assaultBoundMomentumSummary)):null;}};
+root.BattleCombatUrgency={version:'1.0-lean-owner',summary:function(sim){return sim&&sim._combatUrgencySummary?JSON.parse(JSON.stringify(sim._combatUrgencySummary)):null;}};
+root.BattleCombatMobility={version:'1.0-lean-owner'};
+console.log('[ENGAGE] lean combat-mobility owner: cover direction + fixed bounds + urgent reactions');
 })(typeof window!=='undefined'?window:globalThis);
