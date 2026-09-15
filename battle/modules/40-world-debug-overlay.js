@@ -1,9 +1,10 @@
 /* World/navigation debug overlay for Battle Sim.
 
    Static collision layers render the SAME mesh-aligned physical footprints used by navigation,
-   including the hard body-clearance margin. Tactical cover influence remains separate/dashed.
-   Dynamic path lines render the committed rolling _physicalPath queue, so the picture shows the
-   future waypoints the soldier will actually consume. */
+   including the hard body-clearance margin. Hedgerow cover/LOS now uses the same oriented volume
+   rather than a second family of circles. Dynamic destination rings are the actual soldier body
+   radius centered on the final legalized destination, so a screenshot answers the occupancy
+   question directly. */
 (function(root){
 'use strict';
 if(!root.BattleModules||!root.BattleNavigation||root.BattleWorldDebug)return;
@@ -68,17 +69,21 @@ function buildingGeometry(sim){
   }
   return{solid:solid,doors:doors,windows:windows};
 }
-function physicalFootprints(sim){if(P&&P.footprints)return P.footprints(sim);var obs=sim&&sim.obstacles||[],out=[];for(var i=0;i<obs.length;i++){var o=obs[i],t=String(o.type||'').toLowerCase();if(['hedge','tree','log','wall','rock'].indexOf(t)>=0)out.push({type:t,shape:'circle',x:+o.x,z:+o.z,radius:+o.radius||1});}return out;}
+function physicalFootprints(sim){if(P&&P.footprints)return P.footprints(sim);var obs=sim&&sim.obstacles||[],out=[];for(var i=0;i<obs.length;i++){var o=obs[i],t=String(o.type||'').toLowerCase();if(['hedge','tree','log','wall','rock'].indexOf(t)>=0)out.push(o.shape?o:{type:t,shape:'circle',x:+o.x,z:+o.z,radius:+o.radius||1});}return out;}
 function navMargin(){return P&&isFinite(+P.navMargin)?+P.navMargin:.45;}
 function routeMargin(){return P&&isFinite(+P.routeMargin)?+P.routeMargin:1.15;}
+function bodyRadius(){return P&&isFinite(+P.bodyRadius)?+P.bodyRadius:.45;}
 function rebuildStatic(force){
   var sim=currentSim();if(!sim||typeof BABYLON==='undefined')return;
-  var phys=physicalFootprints(sim),sig=(N.version||0)+'|'+phys.length+'|'+((sim.obstacles&&sim.obstacles.length)||0);if(!force&&sig===staticSig)return;staticSig=sig;disposePrefix('wd-static-');
+  var phys=physicalFootprints(sim),sig=(N.version||0)+'|'+phys.length+'|'+((sim.obstacles&&sim.obstacles.length)||0)+'|'+((sim.obstacles&&sim.obstacles.__physicalVersion)||0);if(!force&&sig===staticSig)return;staticSig=sig;disposePrefix('wd-static-');
   if(settings.buildings){var bg=buildingGeometry(sim);makeLines('wd-static-building-walls',bg.solid,COLORS.building,.92);makeLines('wd-static-building-doors',bg.doors,COLORS.door,.98);makeLines('wd-static-building-windows',bg.windows,COLORS.window,.98);}
   var hardLines=[],hedgeLines=[],coverLines=[],margin=navMargin(),i;
   for(i=0;i<phys.length;i++){var fp=phys[i],type=String(fp.type||'').toLowerCase();if(settings.hedges&&type==='hedge')hedgeLines.push(footprintLine(sim,fp,margin,.11));else if(settings.obstacles&&type!=='hedge')hardLines.push(footprintLine(sim,fp,margin,.11));}
   var obstacles=sim.obstacles||[];
-  if(settings.cover)for(i=0;i<obstacles.length;i++){var ob=obstacles[i];if(!ob||!isFinite(+ob.x)||!isFinite(+ob.z))continue;dashedCircle(coverLines,sim,+ob.x,+ob.z,Math.max(.12,+ob.radius||1)+COVER_PAD,14,.07);}
+  if(settings.cover)for(i=0;i<obstacles.length;i++){
+    var ob=obstacles[i];if(!ob||!isFinite(+ob.x)||!isFinite(+ob.z))continue;
+    if(ob.shape==='obb')coverLines.push(footprintLine(sim,ob,COVER_PAD,.07));else dashedCircle(coverLines,sim,+ob.x,+ob.z,Math.max(.12,+ob.radius||1)+COVER_PAD,14,.07);
+  }
   if(settings.obstacles)makeLines('wd-static-obstacles',hardLines,COLORS.obstacle,.90);
   if(settings.hedges)makeLines('wd-static-hedges',hedgeLines,COLORS.hedge,.94);
   if(settings.cover)makeLines('wd-static-cover',coverLines,COLORS.cover,.52);
@@ -97,7 +102,7 @@ function rebuildDynamic(){
     if(!includedSoldier(s)||!s.root)return;var here={x:+s.root.position.x,z:+s.root.position.z},nav=remainingPath(s),resolved=point(s.destination);
     if(settings.paths){var pts=[v3(sim,here.x,here.z,.18)],last=here;for(var i=0;i<nav.length;i++){if(distance2(last,nav[i])>.04){pts.push(v3(sim,nav[i].x,nav[i].z,.18));last=nav[i];}}if(pts.length>1)path[f].push(pts);}
     if(settings.waypoints){for(var w=0;w<nav.length;w++)cross(way,sim,nav[w],w===0?.72:.36,.23);}
-    if(settings.destinations){if(resolved)ring(dest,sim,resolved,.62,.20);var od=point(s.orderDestination);if(od)cross(order,sim,od,.42,.21);var ft=point(s._fireteamDestination);if(ft)cross(fireteam,sim,ft,.34,.22);}
+    if(settings.destinations){if(resolved)ring(dest,sim,resolved,bodyRadius(),.20);var od=point(s.orderDestination);if(od)cross(order,sim,od,.42,.21);var ft=point(s._fireteamDestination);if(ft)cross(fireteam,sim,ft,.34,.22);}
     if(settings.detours&&s._physicalPath&&nav.length){var first=nav[0],fg={x:+s._physicalPath.finalGoalX,z:+s._physicalPath.finalGoalZ};if(first&&isFinite(fg.x)&&isFinite(fg.z)&&distance2(first,fg)>1){detour.push([v3(sim,here.x,here.z,.28),v3(sim,first.x,first.z,.28)]);cross(detour,sim,first,.78,.29);}}
   });});
   if(settings.paths){makeLines('wd-dyn-path-us',path.us,COLORS.us,.84);makeLines('wd-dyn-path-ge',path.ge,COLORS.ge,.84);}
@@ -115,7 +120,7 @@ function updateStatus(){
   for(var i=0;i<phys.length;i++){if(String(phys[i].type||'').toLowerCase()==='hedge')hh++;else hc++;}
   var slots=N.firingStations||[],occ=P&&P.occupiedStations&&sim?P.occupiedStations(sim).length:0,alive=0;
   if(sim)['us','ge'].forEach(function(f){(sim._roster[f]||[]).forEach(function(s){if(includedSoldier(s))alive++;});});
-  ui.status.textContent='physical '+hc+' · hedge '+hh+' · windows '+occ+'/'+slots.length+' · soldiers '+alive+' · collision '+navMargin().toFixed(2)+'m · route '+routeMargin().toFixed(2)+'m';
+  ui.status.textContent='physical '+hc+' · hedge '+hh+' · windows '+occ+'/'+slots.length+' · soldiers '+alive+' · body '+bodyRadius().toFixed(2)+'m · collision '+navMargin().toFixed(2)+'m · route '+routeMargin().toFixed(2)+'m';
 }
 function checkboxRow(parent,key,label,title){var l=document.createElement('label');l.className='wd-row';l.title=title||label;var c=document.createElement('input');c.type='checkbox';c.checked=!!settings[key];c.onchange=function(){setSetting(key,c.checked);};var s=document.createElement('span');s.textContent=label;l.appendChild(c);l.appendChild(s);parent.appendChild(l);ui.checks[key]=c;}
 function installUi(){
@@ -123,16 +128,16 @@ function installUi(){
   var style=document.createElement('style');style.textContent='#windowSlotDebugToggle{display:none!important}#worldDebugToggle{position:fixed;right:12px;bottom:92px;z-index:18;padding:7px 10px;border:1px solid #59666b;border-radius:5px;background:#172126;color:#e6eef0;font:700 10px Arial;cursor:pointer;box-shadow:0 4px 14px #0006}#worldDebugToggle.on{border-color:#75c9dc;background:#203c45}.wd-panel{position:fixed;right:12px;bottom:128px;z-index:18;width:294px;padding:10px;background:#11191eea;border:1px solid #53636a;border-radius:7px;box-shadow:0 8px 28px #0009;color:#dce6e9;font:11px Arial;backdrop-filter:blur(5px)}.wd-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}.wd-head b{font:700 12px Arial;letter-spacing:.04em}.wd-close{border:0;background:transparent;color:#9dafb5;cursor:pointer;font-size:16px}.wd-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 8px}.wd-row{display:flex;gap:6px;align-items:center;min-height:21px;cursor:pointer}.wd-row input{accent-color:#62bfd2}.wd-sub{margin-top:8px;padding-top:7px;border-top:1px solid #ffffff18}.wd-filter{width:100%;background:#172126;color:#dce6e9;border:1px solid #45545b;padding:4px;border-radius:4px}.wd-status{margin-top:7px;color:#92a5ab;font:10px monospace}.wd-legend{margin-top:7px;color:#8fa1a7;font-size:9px;line-height:1.45}.wd-swatch{display:inline-block;width:9px;height:2px;margin:0 3px 2px 7px;vertical-align:middle}';document.head.appendChild(style);
   var b=document.createElement('button');b.id='worldDebugToggle';b.type='button';b.textContent='World Debug';b.onclick=function(){ui.panel.hidden=!ui.panel.hidden;b.classList.toggle('on',!ui.panel.hidden);if(!ui.panel.hidden){rebuildStatic(false);rebuildDynamic();updateStatus();}};document.body.appendChild(b);ui.button=b;
   var p=document.createElement('div');p.className='wd-panel';p.hidden=true;
-  p.innerHTML='<div class="wd-head"><b>WORLD / NAV DEBUG</b><button class="wd-close" title="Close">×</button></div><div class="wd-grid"></div><div class="wd-sub"><select class="wd-filter" title="Limit soldier navigation lines"><option value="all">Paths: all soldiers</option><option value="us">Paths: US only</option><option value="ge">Paths: GER only</option></select></div><div class="wd-status"></div><div class="wd-legend"><b>Collision:</b> green hedge rectangles · red mesh-bottom obstacles · white building walls. Green door rails show an OPEN portal corridor; there is deliberately no line across the threshold.<br><b>Clearance:</b> collision outline is the hard body envelope; committed paths use a larger route envelope and should visibly stay outside it.<br><b>Tactical:</b> blue dashed circles are cover/LOS influence only.<br><b>Wayfinding:</b><span class="wd-swatch" style="background:#2fbdff"></span>US rolling path<span class="wd-swatch" style="background:#ff7d33"></span>GER rolling path<span class="wd-swatch" style="background:#ffe026"></span>queued waypoint<span class="wd-swatch" style="background:#ff33c7"></span>resolved destination</div>';
+  p.innerHTML='<div class="wd-head"><b>WORLD / NAV DEBUG</b><button class="wd-close" title="Close">×</button></div><div class="wd-grid"></div><div class="wd-sub"><select class="wd-filter" title="Limit soldier navigation lines"><option value="all">Paths: all soldiers</option><option value="us">Paths: US only</option><option value="ge">Paths: GER only</option></select></div><div class="wd-status"></div><div class="wd-legend"><b>Collision:</b> green hedge rectangles · red hard obstacles · white building walls. Green door rails show an OPEN portal corridor; there is deliberately no line across the threshold.<br><b>Clearance:</b> collision outline is the hard soldier-body envelope; committed paths use a larger route envelope and should visibly stay outside it.<br><b>Tactical:</b> blue hedge/cover outlines come from the same authoritative volume used for LOS and bullets.<br><b>Wayfinding:</b><span class="wd-swatch" style="background:#2fbdff"></span>US rolling path<span class="wd-swatch" style="background:#ff7d33"></span>GER rolling path<span class="wd-swatch" style="background:#ffe026"></span>queued waypoint<span class="wd-swatch" style="background:#ff33c7"></span>final destination BODY ring. Cyan/purple crosses remain raw squad/fireteam intent.</div>';
   document.body.appendChild(p);ui.panel=p;ui.status=p.querySelector('.wd-status');ui.filter=p.querySelector('.wd-filter');ui.filter.onchange=function(){rebuildDynamic();updateStatus();};p.querySelector('.wd-close').onclick=function(){p.hidden=true;b.classList.remove('on');};var grid=p.querySelector('.wd-grid');
   checkboxRow(grid,'windows','Window slots','Reservable interior firing positions; cyan free, orange occupied');
   checkboxRow(grid,'buildings','Buildings','White walls, cyan windows, and green OPEN door portal rails');
-  checkboxRow(grid,'obstacles','Hard obstacles','Mesh-bottom hard collision footprint plus body clearance');
-  checkboxRow(grid,'hedges','Hedgerows','One oriented collision rectangle per rendered hedge segment');
-  checkboxRow(grid,'cover','Cover influence','Dashed tactical cover/LOS influence; not movement collision');
+  checkboxRow(grid,'obstacles','Hard obstacles','Hard physical footprint plus soldier body clearance');
+  checkboxRow(grid,'hedges','Hedgerows','Authoritative terrain-following hedge prism projected to navigation plus body clearance');
+  checkboxRow(grid,'cover','Cover / LOS volume','Tactical cover/LOS footprint; hedge geometry is shared with collision');
   checkboxRow(grid,'paths','Soldier paths','Rolling committed route queue the soldier is actually following');
   checkboxRow(grid,'waypoints','Waypoints','Future queued route points; active/current is larger');
-  checkboxRow(grid,'destinations','Destinations','Resolved destination ring, squad-order cross and fireteam cross');
+  checkboxRow(grid,'destinations','Destinations','Final legalized soldier-body ring plus raw squad/fireteam intent crosses');
   checkboxRow(grid,'detours','Avoidance leg','Highlight immediate physical route leg when it differs from the final goal');
   syncChecks();applyWindowSetting();updateStatus();
 }
@@ -140,13 +145,13 @@ function clearAll(){disposePrefix('wd-static-');disposePrefix('wd-dyn-');staticS
 function attach(sim){simRef=sim;staticSig='';nextDynamicAt=0;nextStaticCheckAt=0;applyWindowSetting();if(anyStatic())rebuildStatic(true);if(anyDynamic())rebuildDynamic();updateStatus();}
 
 root.BattleModules.registerSystem('world-debug-overlay',{
-  version:'48-rolling-route-debug',
+  version:'50-m3c-authoritative-volumes',
   onBattleStart:function(sim){attach(sim);},
   beforeBattleRestart:function(){clearAll();},
   onBattleRestart:function(sim){attach(sim);},
   onSimulationStep:function(sim){simRef=sim;var t=nowMs();if(anyStatic()&&t>=nextStaticCheckAt){nextStaticCheckAt=t+650;rebuildStatic(false);}if(anyDynamic()&&t>=nextDynamicAt){nextDynamicAt=t+180;rebuildDynamic();}else if(ui.panel&&!ui.panel.hidden&&t>=nextStaticCheckAt-300)updateStatus();}
 });
 if(typeof document!=='undefined'){if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installUi,{once:true});else installUi();}
-root.BattleWorldDebug={version:'48-rolling-route-debug',settings:settings,set:setSetting,refresh:function(){rebuildStatic(true);rebuildDynamic();},dispose:clearAll};
-console.log('[WORLD-DEBUG] open door portals + buffered rolling path queue overlay loaded');
+root.BattleWorldDebug={version:'50-m3c-authoritative-volumes',settings:settings,set:setSetting,refresh:function(){rebuildStatic(true);rebuildDynamic();},dispose:clearAll};
+console.log('[WORLD-DEBUG] M3C authoritative volumes + body-sized destination rings loaded');
 })(typeof window!=='undefined'?window:globalThis);
