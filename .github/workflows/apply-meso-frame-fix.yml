@@ -1,5 +1,6 @@
 name: Apply Meso Formation Frame Fix
 
+# One-shot branch patcher; remove before merging the validated fix.
 on:
   push:
     branches:
