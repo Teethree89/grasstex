@@ -16,6 +16,11 @@ test('only one consolidated owner exists for each tactical layer',()=>{
   assert.ok(systems['squad-command']);assert.ok(systems['combat-mobility']);assert.ok(systems['movement-execution']);
   assert.ok(r.BattleSquadStability&&r.BattleCombatMobility&&r.BattleMovementExecution);
 });
+test('engagement delegates combat locomotion to combat mobility',()=>{
+  const src=fs.readFileSync(path.join(H.REPO,'battle/engagement.js'),'utf8');
+  assert.match(src,/BattleCombatMobility&&root\.BattleCombatMobility\.request/);
+  assert.doesNotMatch(src,/source:'engagement'/);
+});
 test('fireteam slots are produced by the squad-command owner',()=>{
   const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100}});
   q.commandPhase='assault';r.SquadAI.updateSquad(q,b);
@@ -27,12 +32,12 @@ test('committed combat plan suppresses transient cohesion regroup',()=>{
   assert.ok(q._engagementPlan&&q._engagementPlan.status==='active');
   q.commandPhase='regroup';systems['squad-command'].onSimulationStep(b);assert.equal(q.commandPhase,'assault');
 });
-test('combat mobility absorbs and coalesces legacy engagement movement proposals',()=>{
+test('combat mobility coalesces repeated combat intents before resolver publication',()=>{
   const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman']}),s=q.members[0];
-  for(let i=0;i<8;i++)r.BattleMovementResolver.proposeCombat(s,{x:2,z:3},b,'hold',.8,{source:'engagement',reason:'contact'});
+  for(let i=0;i<8;i++)r.BattleCombatMobility.request(s,{x:2,z:3},b,'hold',.8,{origin:'engagement',reason:'contact'});
   assert.equal(b._combatMobilityStats.intentRequests,8);assert.equal(b._combatMobilityStats.intentPublishes,1);assert.equal(b._combatMobilityStats.intentCoalesced,7);
   assert.equal(s._movementResolver.combat.owner,'combat-mobility');assert.equal(s._movementResolver.combat.reason,'contact');
-  b.time+=.6;r.BattleMovementResolver.proposeCombat(s,{x:2,z:3},b,'hold',.8,{source:'engagement',reason:'contact'});
+  b.time+=.6;r.BattleCombatMobility.request(s,{x:2,z:3},b,'hold',.8,{origin:'engagement',reason:'contact'});
   assert.equal(b._combatMobilityStats.intentPublishes,2);
 });
 test('combat mobility publishes material intent changes immediately',()=>{
