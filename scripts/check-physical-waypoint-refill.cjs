@@ -16,16 +16,14 @@ r.BattleModules.getSystem('navigation-physicality-debug').onBattleStart(sim);
 const soldier={id:'refill-probe',root:{position:{x:0,y:0,z:0}}},goal={x:0,z:180};
 let waypoint=N.nextWaypoint(sim,soldier,goal),plan=soldier._physicalPath;
 assert(plan&&plan.points.length>=4,'initial rolling plan should contain a useful lookahead queue');
-const pointsArray=plan.points;
-let observedRefill=false;
+const pointsArray=plan.points,startZ=soldier.root.position.z;
 for(let i=0;i<4;i++){
   soldier.root.position.x=waypoint.x;soldier.root.position.z=waypoint.z;sim.time+=.15;
-  const beforeCount=plan.points.length;
   waypoint=N.nextWaypoint(sim,soldier,goal);
-  assert.strictEqual(soldier._physicalPath,plan,'low queue must be refilled without replacing the physical plan');
+  assert.strictEqual(soldier._physicalPath,plan,'consuming the rolling queue must refill rather than replace the physical plan');
   assert.strictEqual(plan.points,pointsArray,'refill must extend the committed queue in place');
-  if(beforeCount<=3&&plan.points.length>beforeCount)observedRefill=true;
 }
-assert(observedRefill,'probe should exercise the low-queue refill path');
+assert(Math.abs(soldier.root.position.z-startZ)>35,'probe must consume enough lookahead to cross the old low-queue rebuild threshold');
+assert(sim.time<plan.replanAt,'probe must exercise queue refill before the bounded periodic replan');
 assert.equal(plan.finalGoalX,goal.x);assert.equal(plan.finalGoalZ,goal.z);
 console.log('PASS: low rolling waypoint queues refill in place without a full physical replan');
