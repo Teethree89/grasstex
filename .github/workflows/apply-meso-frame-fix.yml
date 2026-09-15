@@ -1,0 +1,68 @@
+name: Apply Meso Formation Frame Fix
+
+on:
+  push:
+    branches:
+      - fix/meso-formation-frame-stability
+    paths:
+      - .github/workflows/apply-meso-frame-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/meso-formation-frame-stability
+      - name: Patch Meso fireteam commitment owner
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('battle/modules/16-squad-plan-stability.js')
+          s = p.read_text()
+          old = "function teamSlot(sq,key,s,index,count,a){var f=forward(sq),r={x:-f.z,z:f.x},lat=0,fw=0;"
+          new = "function teamSlot(sq,key,s,index,count,a,frame){var f=frame||forward(sq),r={x:-f.z,z:f.x},lat=0,fw=0;"
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one teamSlot declaration, found {s.count(old)}')
+          s = s.replace(old, new)
+
+          old = "if(!cur||urgent||cur.signature!==sig)cur=sq._fireteamOrders[key]={anchor:copy(desired),origin:copy(live),signature:sig,until:battle.time+(urgent?0:TEAM_LEASE),blocked:false};"
+          new = "if(!cur||urgent||cur.signature!==sig)cur=sq._fireteamOrders[key]={anchor:copy(desired),origin:copy(live),forward:forward(sq),signature:sig,until:battle.time+(urgent?0:TEAM_LEASE),blocked:false};"
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one initial fireteam commit, found {s.count(old)}')
+          s = s.replace(old, new)
+
+          old = "if(moved||arrived)cur=sq._fireteamOrders[key]={anchor:copy(desired),origin:copy(live),signature:sig,until:battle.time+TEAM_LEASE,blocked:false};else cur.until=battle.time+TEAM_LEASE;"
+          new = "if(moved||arrived)cur=sq._fireteamOrders[key]={anchor:copy(desired),origin:copy(live),forward:forward(sq),signature:sig,until:battle.time+TEAM_LEASE,blocked:false};else cur.until=battle.time+TEAM_LEASE;"
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one renewed fireteam commit, found {s.count(old)}')
+          s = s.replace(old, new)
+
+          old = "var s=m[i],d=teamSlot(sq,key,s,i,m.length,cur.anchor),prepared=defensive&&s._preparedDefensePost"
+          new = "var s=m[i],d=teamSlot(sq,key,s,i,m.length,cur.anchor,cur.forward),prepared=defensive&&s._preparedDefensePost"
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one committed teamSlot call, found {s.count(old)}')
+          s = s.replace(old, new)
+
+          old = "/* Fireteam commitment is a meso command signature. Engagement-plan serials are micro/contact state\n   and deliberately do not belong here; including them made target/contact churn republish the same\n   formation anchor. */"
+          new = "/* Fireteam commitment is a meso command signature. Its anchor AND formation frame are committed:\n   live command-ray jitter must not rotate individual slots underneath a still-valid Captain order.\n   Engagement-plan serials are micro/contact state and deliberately do not belong here. */"
+          if s.count(old) != 1:
+              raise SystemExit('fireteam commitment comment changed unexpectedly')
+          s = s.replace(old, new)
+
+          s = s.replace("version:'1.2-m3c-stable-publisher'", "version:'1.3-m3c-committed-frame'")
+          p.write_text(s)
+          PY
+          node --check battle/modules/16-squad-plan-stability.js
+          node scripts/check-meso-formation-frame-stability.cjs
+      - name: Commit structural fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add battle/modules/16-squad-plan-stability.js
+          git commit -m 'Commit formation frame with fireteam orders'
+          git push origin HEAD:fix/meso-formation-frame-stability
