@@ -6,25 +6,48 @@
   <title>FBX Motion Lab</title>
   <style>
     :root { color-scheme: dark; --ink:#eaf0f6; --muted:#99a9bb; --line:#253443; --panel:#101a24; --panel2:#142231; --accent:#6ee7b7; --warn:#f8c46a; }
-    * { box-sizing:border-box; } body { margin:0; overflow:hidden; background:#081018; color:var(--ink); font:14px/1.4 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    * { box-sizing:border-box; }
+    body { margin:0; overflow:hidden; background:#081018; color:var(--ink); font:14px/1.4 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     #app { display:grid; grid-template-columns:320px 1fr 286px; height:100vh; }
     aside { background:linear-gradient(160deg,#101c28,#0d151e); border-right:1px solid var(--line); overflow:auto; padding:20px; }
     #right { border-left:1px solid var(--line); border-right:0; }
-    h1 { margin:0 0 5px; font-size:21px; letter-spacing:-.04em; } h2 { color:#cfdae5; font-size:11px; letter-spacing:.13em; text-transform:uppercase; margin:24px 0 9px; }
+    h1 { margin:0 0 5px; font-size:21px; letter-spacing:-.04em; }
+    h2 { color:#cfdae5; font-size:11px; letter-spacing:.13em; text-transform:uppercase; margin:24px 0 9px; }
     .eyebrow { color:var(--accent); font-size:10px; letter-spacing:.16em; font-weight:700; text-transform:uppercase; }
-    .hint, .empty { color:var(--muted); font-size:12px; margin:0; } .empty { padding:10px 0; }
+    .hint, .empty { color:var(--muted); font-size:12px; margin:0; }
+    .empty { padding:10px 0; }
     .drop { display:block; position:relative; min-height:104px; border:1px dashed #496174; border-radius:12px; padding:15px; background:rgba(110,231,183,.035); cursor:pointer; transition:.15s; }
-    .drop:hover, .drop.drag { border-color:var(--accent); background:rgba(110,231,183,.09); } .drop strong { display:block; font-size:13px; margin-bottom:5px; } .drop input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+    .drop:hover, .drop.drag { border-color:var(--accent); background:rgba(110,231,183,.09); }
+    .drop strong { display:block; font-size:13px; margin-bottom:5px; }
+    .drop input { position:absolute; inset:0; opacity:0; cursor:pointer; }
     .file { margin-top:8px; padding:8px 9px; border-left:2px solid var(--accent); background:#0b131c; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     button, select { width:100%; border:1px solid #385064; border-radius:8px; background:#172635; color:var(--ink); padding:9px 10px; font:inherit; cursor:pointer; }
-    button:hover { background:#203447; } button:disabled { cursor:not-allowed; opacity:.45; } .row { display:flex; gap:8px; } .row button { width:auto; flex:1; } button.primary { background:#247c65; border-color:#39a889; color:white; } button.primary:hover { background:#2d9076; }
-    label.control { display:grid; gap:6px; color:var(--muted); font-size:11px; } input[type=range] { accent-color:var(--accent); width:100%; } .check { display:flex; align-items:center; gap:8px; color:#c5d1dc; font-size:12px; margin-top:11px; cursor:pointer; } .check input { accent-color:var(--accent); }
-    #viewport { position:relative; min-width:0; } canvas { width:100%; height:100%; display:block; outline:none; } #viewport::after { content:""; position:absolute; inset:0; pointer-events:none; border:1px solid rgba(255,255,255,.035); }
+    button:hover { background:#203447; }
+    button:disabled { cursor:not-allowed; opacity:.45; }
+    .row { display:flex; gap:8px; }
+    .row button { width:auto; flex:1; }
+    button.primary { background:#247c65; border-color:#39a889; color:white; }
+    button.primary:hover { background:#2d9076; }
+    label.control { display:grid; gap:6px; color:var(--muted); font-size:11px; }
+    input[type=range] { accent-color:var(--accent); width:100%; }
+    .check { display:flex; align-items:center; gap:8px; color:#c5d1dc; font-size:12px; margin-top:11px; cursor:pointer; }
+    .check input { accent-color:var(--accent); }
+    #viewport { position:relative; min-width:0; }
+    canvas { width:100%; height:100%; display:block; outline:none; }
+    #viewport::after { content:""; position:absolute; inset:0; pointer-events:none; border:1px solid rgba(255,255,255,.035); }
     #overlay { position:absolute; left:18px; bottom:17px; padding:8px 10px; border-radius:7px; background:rgba(6,12,18,.72); color:#c4d2dd; font:11px ui-monospace, SFMono-Regular, Menlo, monospace; pointer-events:none; }
-    #status { min-height:38px; color:#bccbd6; font-size:12px; } #status.error { color:#ff9a9a; } .stats { display:grid; grid-template-columns:1fr auto; gap:7px 11px; margin:0; font-size:12px; } .stats dt { color:var(--muted); } .stats dd { margin:0; text-align:right; color:#e9f0f5; font-variant-numeric:tabular-nums; }
-    #clips { display:grid; gap:6px; } .clip { text-align:left; padding:9px; border-radius:7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; } .clip.active { border-color:var(--accent); background:#17382f; }
-    .key { color:var(--accent); font-family:ui-monospace, monospace; } .foot { position:sticky; bottom:-20px; margin:22px -20px -20px; padding:14px 20px; background:#0d151e; border-top:1px solid var(--line); font-size:11px; color:var(--muted); }
-    @media (max-width:900px) { #app { grid-template-columns:270px 1fr; } #right { display:none; } } @media (max-width:600px) { #app { grid-template-columns:1fr; grid-template-rows:47vh 53vh; } aside { padding:15px; } #left { grid-row:2; } #viewport { grid-row:1; } }
+    #status { min-height:38px; color:#bccbd6; font-size:12px; }
+    #status.error { color:#ff9a9a; }
+    .stats { display:grid; grid-template-columns:1fr auto; gap:7px 11px; margin:0; font-size:12px; }
+    .stats dt { color:var(--muted); }
+    .stats dd { margin:0; text-align:right; color:#e9f0f5; font-variant-numeric:tabular-nums; }
+    #clips { display:grid; gap:6px; }
+    .clip { text-align:left; padding:9px; border-radius:7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+    .clip.active { border-color:var(--accent); background:#17382f; }
+    .key { color:var(--accent); font-family:ui-monospace, monospace; }
+    .foot { position:sticky; bottom:-20px; margin:22px -20px -20px; padding:14px 20px; background:#0d151e; border-top:1px solid var(--line); font-size:11px; color:var(--muted); }
+    @media (max-width:900px) { #app { grid-template-columns:270px 1fr; } #right { display:none; } }
+    @media (max-width:600px) { #app { grid-template-columns:1fr; grid-template-rows:47vh 53vh; } aside { padding:15px; } #left { grid-row:2; } #viewport { grid-row:1; } }
   </style>
 </head>
 <body>
@@ -49,9 +72,9 @@
       <label class="check"><input id="loop" type="checkbox" checked> Loop active clip</label>
       <label class="check"><input id="skeleton" type="checkbox"> Show skeleton</label>
 
-      <h2>Notes</h2>
-      <p class="hint">Animation tracks bind by bone name. Export the model and animation with the same rig and naming. FBX files with embedded media are the most reliable for a browser-local preview.</p>
-      <div class="foot">Orbit: drag · Pan: right-drag · Zoom: wheel<br>Runs locally in your browser; files are never uploaded.</div>
+      <h2>Preview normalization</h2>
+      <p class="hint">The imported character is uniformly scaled to <span class="key">1.80 units</span> tall, centered over X/Z = 0 and planted on Y = 0. Imported materials render two-sided for diagnosis. This does not remove animation root motion.</p>
+      <div class="foot">Orbit: drag · Pan: right-drag · Zoom: wheel<br>Grid spacing: 1 unit · files stay local to your browser.</div>
     </aside>
 
     <section id="viewport"><div id="overlay">No model · drag an FBX onto the left panel</div></section>
@@ -59,52 +82,396 @@
     <aside id="right">
       <div class="eyebrow">Import report</div>
       <h2 style="margin-top:10px">Status</h2><div id="status">Ready for a model FBX.</div>
-      <h2>Model</h2><dl class="stats"><dt>Meshes</dt><dd id="meshCount">—</dd><dt>Skinned meshes</dt><dd id="skinnedCount">—</dd><dt>Bones</dt><dd id="boneCount">—</dd><dt>Embedded clips</dt><dd id="modelClips">—</dd></dl>
+      <h2>Model</h2>
+      <dl class="stats">
+        <dt>Meshes</dt><dd id="meshCount">—</dd>
+        <dt>Skinned meshes</dt><dd id="skinnedCount">—</dd>
+        <dt>Bones</dt><dd id="boneCount">—</dd>
+        <dt>Embedded clips</dt><dd id="modelClips">—</dd>
+        <dt>Source height</dt><dd id="sourceHeight">—</dd>
+        <dt>Preview scale</dt><dd id="previewScale">—</dd>
+        <dt>Two-sided materials</dt><dd id="materialCount">—</dd>
+      </dl>
       <h2>Available clips</h2><div id="clips"><p class="empty">Import an animation to see clips here.</p></div>
       <h2>Compatibility</h2><p class="hint" id="compatibility">Waiting for model and animation.</p>
-      <h2>Workflow</h2><p class="hint">Model FBX → animation FBX → select clip → play. If a clip does not move the character, inspect its bone names and export both files from the same rig.</p>
+      <h2>Workflow</h2><p class="hint">Model FBX → normalize preview → animation FBX → select clip → play. The wrapper handles import scale/origin only; animation tracks still bind to the model rig.</p>
     </aside>
   </main>
 
-  <!-- Babylon's stable CDN endpoints always serve the newest stable UMD engine and its FBX plugin. -->
   <script src="https://cdn.babylonjs.com/babylon.js"></script>
   <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
   <script>
+    const TARGET_MODEL_HEIGHT = 1.80;
     const $ = id => document.getElementById(id);
     const viewport = $('viewport'), overlay = $('overlay'), status = $('status'), clipsEl = $('clips'), clipSelect = $('clipSelect');
-    const canvas = document.createElement('canvas'); viewport.prepend(canvas);
-    const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer:true, stencil:true });
-    const scene = new BABYLON.Scene(engine); scene.clearColor = new BABYLON.Color4(.031, .063, .094, 1);
-    const camera = new BABYLON.ArcRotateCamera('labCamera', -Math.PI / 2.4, Math.PI / 2.75, 5, new BABYLON.Vector3(0, 1, 0), scene); camera.attachControl(canvas, true); camera.wheelDeltaPercentage = .01; camera.lowerRadiusLimit = .05;
-    new BABYLON.HemisphericLight('skyLight', new BABYLON.Vector3(0,1,0), scene).intensity = 1.45;
-    const sun = new BABYLON.DirectionalLight('sun', new BABYLON.Vector3(-.5,-1,-.35), scene); sun.position.set(4,7,4); sun.intensity = 1.5;
-    const shadow = new BABYLON.ShadowGenerator(2048, sun); shadow.useBlurExponentialShadowMap = true; shadow.blurKernel = 16;
-    const ground = BABYLON.MeshBuilder.CreateGround('floor', { width:200, height:200 }, scene); const floorMaterial = new BABYLON.StandardMaterial('floorMaterial',scene); floorMaterial.diffuseColor = new BABYLON.Color3(.025,.05,.07); floorMaterial.specularColor = BABYLON.Color3.Black(); ground.material = floorMaterial; ground.receiveShadows = true;
-    const gridLines = []; for(let i=-6;i<=6;i++){ gridLines.push([new BABYLON.Vector3(i,0,i*-0+ -6),new BABYLON.Vector3(i,0,6)]); gridLines.push([new BABYLON.Vector3(-6,0,i),new BABYLON.Vector3(6,0,i)]); } const grid = BABYLON.MeshBuilder.CreateLineSystem('grid',{lines:gridLines},scene); grid.color = new BABYLON.Color3(.18,.31,.39);
-    let modelAssets = null, modelMeshes = [], modelSkeletons = [], modelTargets = new Map(), activeGroup = null, loadedClips = [], skeletonViewers = [];
+    const canvas = document.createElement('canvas');
+    viewport.prepend(canvas);
 
-    function setStatus(message, error=false){ status.textContent=message; status.className=error?'error':''; }
-    function displayLength(group){ const fps=group.targetedAnimations[0]?.animation?.framePerSecond || 30; const seconds=Math.max(0,(group.to-group.from)/fps); return seconds ? seconds.toFixed(2)+' s' : 'animation'; }
-    function stopAll(){ loadedClips.forEach(entry=>entry.group.stop()); activeGroup=null; }
-    function disposeSkeletonViewers(){ skeletonViewers.forEach(viewer=>viewer.dispose()); skeletonViewers=[]; }
-    function disposeModel(){ stopAll(); disposeSkeletonViewers(); if(modelAssets){ modelAssets.animationGroups.forEach(group=>group.dispose()); modelAssets.meshes.forEach(mesh=>mesh.dispose(false,true)); modelAssets.skeletons.forEach(skeleton=>skeleton.dispose()); modelAssets.transformNodes.forEach(node=>node.dispose()); } modelAssets=null; modelMeshes=[]; modelSkeletons=[]; modelTargets.clear(); loadedClips=[]; }
-    function scanModel(){ let meshes=0, skinned=0; const bones=new Set(); modelTargets.clear(); modelMeshes.forEach(mesh=>{ if(mesh.getTotalVertices()>0){ meshes++; mesh.receiveShadows=true; shadow.addShadowCaster(mesh); } modelTargets.set(mesh.name,mesh); if(mesh.skeleton){ skinned++; mesh.skeleton.bones.forEach(bone=>{ bones.add(bone.name); modelTargets.set(bone.name,bone); }); } }); modelAssets.transformNodes.forEach(node=>modelTargets.set(node.name,node)); $('meshCount').textContent=meshes; $('skinnedCount').textContent=skinned; $('boneCount').textContent=bones.size; $('modelClips').textContent=modelAssets.animationGroups.length; return bones; }
-    function frame(){ if(!modelMeshes.length) return; let min=new BABYLON.Vector3(Infinity,Infinity,Infinity), max=new BABYLON.Vector3(-Infinity,-Infinity,-Infinity), found=false; modelMeshes.forEach(mesh=>{ if(!mesh.getTotalVertices()) return; mesh.computeWorldMatrix(true); const box=mesh.getBoundingInfo().boundingBox; min=BABYLON.Vector3.Minimize(min,box.minimumWorld); max=BABYLON.Vector3.Maximize(max,box.maximumWorld); found=true; }); if(!found) return; const center=min.add(max).scale(.5), size=max.subtract(min), largest=Math.max(size.x,size.y,size.z,.25); camera.target.copyFrom(center); camera.radius=largest*2.2; camera.lowerRadiusLimit=largest*.25; ground.position.y=min.y-.004; grid.position.y=min.y; overlay.textContent=$('modelName').textContent+' · '+$('boneCount').textContent+' rig bones'; }
-    function refreshClipUI(){ clipSelect.innerHTML=''; clipsEl.innerHTML=''; if(!loadedClips.length){ clipSelect.disabled=true; clipSelect.innerHTML='<option>Load an animation FBX</option>'; clipsEl.innerHTML='<p class="empty">Import an animation to see clips here.</p>'; $('play').disabled=$('pause').disabled=$('stop').disabled=true; return; } clipSelect.disabled=false; $('play').disabled=$('pause').disabled=$('stop').disabled=false; loadedClips.forEach((entry,i)=>{ const option=document.createElement('option'); option.value=i; option.textContent=entry.name; clipSelect.append(option); const button=document.createElement('button'); button.className='clip'+(i===+clipSelect.value?' active':''); button.textContent=entry.name+'  ·  '+displayLength(entry.group); button.onclick=()=>{clipSelect.value=i;selectClip(i)}; clipsEl.append(button); }); }
-    function reportCompatibility(group){ const targets=[...new Set(group.targetedAnimations.map(item=>item.target?.name).filter(Boolean))]; const match=targets.filter(name=>modelTargets.has(name)).length; $('compatibility').innerHTML='<span class="key">'+match+'/'+targets.length+'</span> imported animation targets map to this model.'+(match===0?' The FBX files likely use different bone or node names.':''); }
-    function selectClip(index){ const entry=loadedClips[index]; if(!entry) return; stopAll(); activeGroup=entry.group; activeGroup.speedRatio=+$('speed').value; activeGroup.start($('loop').checked); overlay.textContent='Playing '+entry.name; reportCompatibility(activeGroup); [...clipsEl.children].forEach((node,i)=>node.classList.toggle('active',i===+index)); }
-    async function importModel(file){ try { setStatus('Importing '+file.name+' with Babylon FBX loader…'); disposeModel(); const result=await BABYLON.SceneLoader.ImportMeshAsync('', 'file:', file, scene, undefined, '.fbx'); modelAssets={meshes:result.meshes||[],skeletons:result.skeletons||[],transformNodes:result.transformNodes||[],animationGroups:result.animationGroups||[]}; modelMeshes=modelAssets.meshes; modelSkeletons=modelAssets.skeletons; const bones=scanModel(); $('modelName').textContent=file.name; modelAssets.animationGroups.forEach((group,i)=>loadedClips.push({group,name:'Model: '+(group.name||'Clip '+(i+1))})); refreshClipUI(); frame(); setStatus('Model ready. '+(bones.size?'Load a matching animation FBX.':'No skeleton found; static model loaded.')); $('compatibility').textContent='Load an animation FBX to compare its targets.'; if(loadedClips.length) selectClip(0); }
-      catch(error){ console.error(error); setStatus('Could not import '+file.name+': '+(error.message||'invalid FBX'),true); } }
-    async function importAnimations(files){ if(!modelAssets){ setStatus('Load the character model before its animation.',true); return; } for(const file of files){ try { setStatus('Retargeting '+file.name+' onto the loaded rig…'); const before=new Set(scene.animationGroups); await BABYLON.SceneLoader.ImportAnimationsAsync('file:', file, scene, false, BABYLON.SceneLoaderAnimationGroupLoadingMode.NoSync, target=>modelTargets.get(target.name)||null); const groups=scene.animationGroups.filter(group=>!before.has(group)); if(!groups.length){ setStatus(file.name+' contains no usable animation groups.',true); continue; } groups.forEach((group,i)=>loadedClips.push({group,name:file.name+' — '+(group.name||'Clip '+(i+1))})); setStatus('Added '+groups.length+' clip'+(groups.length===1?'':'s')+' from '+file.name+'.'); }
-        catch(error){ console.error(error); setStatus('Could not import '+file.name+': '+(error.message||'invalid FBX'),true); } }
-      refreshClipUI(); if(loadedClips.length){ clipSelect.value=loadedClips.length-1; selectClip(+clipSelect.value); } }
-    function setupDrop(id, handler){ const el=$(id); ['dragenter','dragover'].forEach(type=>el.addEventListener(type,event=>{event.preventDefault();el.classList.add('drag')})); ['dragleave','drop'].forEach(type=>el.addEventListener(type,event=>{event.preventDefault();el.classList.remove('drag')})); el.addEventListener('drop',event=>handler([...event.dataTransfer.files].filter(file=>/\.fbx$/i.test(file.name)))); }
-    function setSkeletonVisible(show){ disposeSkeletonViewers(); if(!show || !modelSkeletons.length) return; if(!BABYLON.Debug?.SkeletonViewer){ setStatus('The loaded Babylon build does not expose SkeletonViewer.',true); $('skeleton').checked=false; return; } modelSkeletons.forEach(skeleton=>{ const mesh=modelMeshes.find(candidate=>candidate.skeleton===skeleton); if(!mesh) return; const viewer=new BABYLON.Debug.SkeletonViewer(skeleton,mesh,scene); viewer.color=new BABYLON.Color3(.43,.91,.72); viewer.isEnabled=true; skeletonViewers.push(viewer); }); }
-    $('modelInput').onchange=event=>event.target.files[0]&&importModel(event.target.files[0]); $('animationInput').onchange=event=>importAnimations([...event.target.files]); setupDrop('modelDrop',files=>files[0]&&importModel(files[0])); setupDrop('animationDrop',importAnimations);
-    $('clearAnimations').onclick=()=>{ stopAll(); loadedClips.forEach(entry=>entry.group.dispose()); loadedClips=[]; refreshClipUI(); $('compatibility').textContent='Animation list cleared.'; overlay.textContent=modelAssets?'Model loaded · no clip selected':'No model'; };
-    $('frameModel').onclick=frame; clipSelect.onchange=()=>selectClip(+clipSelect.value); $('play').onclick=()=>activeGroup?activeGroup.play($('loop').checked):selectClip(+clipSelect.value); $('pause').onclick=()=>activeGroup&&activeGroup.pause(); $('stop').onclick=()=>{if(activeGroup){activeGroup.stop();overlay.textContent='Stopped · '+loadedClips[clipSelect.value].name}};
-    $('speed').oninput=event=>{ const value=+event.target.value; $('speedValue').textContent=value.toFixed(2)+'×'; if(activeGroup) activeGroup.speedRatio=value; }; $('loop').onchange=()=>{if(activeGroup){const current=activeGroup;current.stop();current.start($('loop').checked);}}; $('skeleton').onchange=event=>setSkeletonVisible(event.target.checked);
-    window.addEventListener('resize',()=>engine.resize()); engine.runRenderLoop(()=>scene.render());
+    const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer:true, stencil:true });
+    const scene = new BABYLON.Scene(engine);
+    scene.clearColor = new BABYLON.Color4(.031, .063, .094, 1);
+    scene.ambientColor = new BABYLON.Color3(.04, .045, .05);
+    scene.imageProcessingConfiguration.exposure = .92;
+    scene.imageProcessingConfiguration.contrast = 1.04;
+
+    const camera = new BABYLON.ArcRotateCamera('labCamera', -Math.PI / 2.4, Math.PI / 2.75, 4.4, new BABYLON.Vector3(0, .9, 0), scene);
+    camera.attachControl(canvas, true);
+    camera.wheelDeltaPercentage = .01;
+    camera.lowerRadiusLimit = .25;
+
+    const skyLight = new BABYLON.HemisphericLight('skyLight', new BABYLON.Vector3(0,1,0), scene);
+    skyLight.intensity = .62;
+    skyLight.groundColor = new BABYLON.Color3(.12, .14, .17);
+    const sun = new BABYLON.DirectionalLight('sun', new BABYLON.Vector3(-.5,-1,-.35), scene);
+    sun.position.set(4,7,4);
+    sun.intensity = .78;
+    const shadow = new BABYLON.ShadowGenerator(2048, sun);
+    shadow.useBlurExponentialShadowMap = true;
+    shadow.blurKernel = 18;
+    shadow.bias = .0004;
+    shadow.normalBias = .02;
+
+    const ground = BABYLON.MeshBuilder.CreateGround('floor', { width:40, height:40 }, scene);
+    const floorMaterial = new BABYLON.StandardMaterial('floorMaterial', scene);
+    floorMaterial.diffuseColor = new BABYLON.Color3(.025,.05,.07);
+    floorMaterial.specularColor = BABYLON.Color3.Black();
+    ground.material = floorMaterial;
+    ground.receiveShadows = true;
+
+    const gridLines = [];
+    for (let i=-6; i<=6; i++) {
+      gridLines.push([new BABYLON.Vector3(i,.002,-6), new BABYLON.Vector3(i,.002,6)]);
+      gridLines.push([new BABYLON.Vector3(-6,.002,i), new BABYLON.Vector3(6,.002,i)]);
+    }
+    const grid = BABYLON.MeshBuilder.CreateLineSystem('grid', { lines:gridLines }, scene);
+    grid.color = new BABYLON.Color3(.18,.31,.39);
+
+    let modelAssets = null;
+    let modelContainer = null;
+    let modelMeshes = [];
+    let modelSkeletons = [];
+    let modelTargets = new Map();
+    let activeGroup = null;
+    let loadedClips = [];
+    let skeletonViewers = [];
+    let sourceHeight = 0;
+    let previewScale = 1;
+
+    function setStatus(message, error=false) {
+      status.textContent = message;
+      status.className = error ? 'error' : '';
+    }
+
+    function displayLength(group) {
+      const fps = group.targetedAnimations[0]?.animation?.framePerSecond || 30;
+      const seconds = Math.max(0, (group.to-group.from) / fps);
+      return seconds ? seconds.toFixed(2)+' s' : 'animation';
+    }
+
+    function stopAll() {
+      loadedClips.forEach(entry => entry.group.stop());
+      activeGroup = null;
+    }
+
+    function disposeSkeletonViewers() {
+      skeletonViewers.forEach(viewer => viewer.dispose());
+      skeletonViewers = [];
+    }
+
+    function disposeModel() {
+      stopAll();
+      disposeSkeletonViewers();
+      if (modelAssets) {
+        modelAssets.animationGroups.forEach(group => group.dispose());
+        modelAssets.meshes.forEach(mesh => { if (!mesh.isDisposed()) mesh.dispose(false, true); });
+        modelAssets.skeletons.forEach(skeleton => skeleton.dispose());
+        modelAssets.transformNodes.forEach(node => { if (!node.isDisposed()) node.dispose(); });
+      }
+      if (modelContainer && !modelContainer.isDisposed()) modelContainer.dispose();
+      modelAssets = null;
+      modelContainer = null;
+      modelMeshes = [];
+      modelSkeletons = [];
+      modelTargets.clear();
+      loadedClips = [];
+      sourceHeight = 0;
+      previewScale = 1;
+    }
+
+    function renderableMeshes() {
+      return modelMeshes.filter(mesh => mesh.getTotalVertices() > 0 && mesh.isEnabled());
+    }
+
+    function getBounds() {
+      let min = new BABYLON.Vector3(Infinity, Infinity, Infinity);
+      let max = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
+      let found = false;
+      renderableMeshes().forEach(mesh => {
+        mesh.computeWorldMatrix(true);
+        const box = mesh.getBoundingInfo().boundingBox;
+        min = BABYLON.Vector3.Minimize(min, box.minimumWorld);
+        max = BABYLON.Vector3.Maximize(max, box.maximumWorld);
+        found = true;
+      });
+      return found ? { min, max, size:max.subtract(min), center:min.add(max).scale(.5) } : null;
+    }
+
+    function attachModelContainer() {
+      modelContainer = new BABYLON.TransformNode('labModelContainer', scene);
+      const owned = new Set([...modelMeshes, ...modelAssets.transformNodes]);
+      owned.forEach(node => {
+        if (!node.parent || !owned.has(node.parent)) node.parent = modelContainer;
+      });
+    }
+
+    function normalizePreviewTransform() {
+      if (!modelContainer) return;
+      modelContainer.position.set(0,0,0);
+      modelContainer.scaling.setAll(1);
+      modelContainer.computeWorldMatrix(true);
+
+      const original = getBounds();
+      if (!original || !Number.isFinite(original.size.y) || original.size.y <= 1e-6) return;
+      sourceHeight = original.size.y;
+      previewScale = TARGET_MODEL_HEIGHT / sourceHeight;
+      modelContainer.scaling.setAll(previewScale);
+      modelContainer.computeWorldMatrix(true);
+
+      const scaled = getBounds();
+      if (!scaled) return;
+      modelContainer.position.x -= scaled.center.x;
+      modelContainer.position.z -= scaled.center.z;
+      modelContainer.position.y -= scaled.min.y;
+      modelContainer.computeWorldMatrix(true);
+      renderableMeshes().forEach(mesh => mesh.computeWorldMatrix(true));
+
+      $('sourceHeight').textContent = sourceHeight.toFixed(3)+' u';
+      $('previewScale').textContent = previewScale.toFixed(5)+'×';
+    }
+
+    function collectMaterials() {
+      const materials = new Set();
+      const visit = material => {
+        if (!material || materials.has(material)) return;
+        materials.add(material);
+        if (Array.isArray(material.subMaterials)) material.subMaterials.forEach(visit);
+      };
+      renderableMeshes().forEach(mesh => visit(mesh.material));
+      return materials;
+    }
+
+    function normalizePreviewMaterials() {
+      const materials = collectMaterials();
+      materials.forEach(material => {
+        material.backFaceCulling = false;
+        if ('twoSidedLighting' in material) material.twoSidedLighting = true;
+        if (material instanceof BABYLON.StandardMaterial) {
+          material.specularColor = new BABYLON.Color3(.10,.10,.10);
+          material.specularPower = 48;
+        }
+        if (BABYLON.PBRMaterial && material instanceof BABYLON.PBRMaterial) {
+          if (material.metallic == null || material.metallic > .15) material.metallic = 0;
+          if (material.roughness == null || material.roughness < .55) material.roughness = .7;
+        }
+      });
+      $('materialCount').textContent = materials.size;
+      return materials.size;
+    }
+
+    function scanModel() {
+      let meshes = 0, skinned = 0;
+      const bones = new Set();
+      modelTargets.clear();
+      modelMeshes.forEach(mesh => {
+        if (mesh.getTotalVertices() > 0) {
+          meshes++;
+          // The character casts onto the floor but does not self-receive in the lab.
+          // This avoids FBX-normal/shadow-acne artifacts being mistaken for missing faces.
+          mesh.receiveShadows = false;
+          shadow.addShadowCaster(mesh);
+        }
+        modelTargets.set(mesh.name, mesh);
+        if (mesh.skeleton) {
+          skinned++;
+          mesh.skeleton.bones.forEach(bone => {
+            bones.add(bone.name);
+            modelTargets.set(bone.name, bone);
+          });
+        }
+      });
+      modelAssets.transformNodes.forEach(node => modelTargets.set(node.name, node));
+      $('meshCount').textContent = meshes;
+      $('skinnedCount').textContent = skinned;
+      $('boneCount').textContent = bones.size;
+      $('modelClips').textContent = modelAssets.animationGroups.length;
+      return bones;
+    }
+
+    function frame() {
+      if (!modelMeshes.length) return;
+      const bounds = getBounds();
+      if (!bounds) return;
+      const largest = Math.max(bounds.size.x, bounds.size.y, bounds.size.z, .25);
+      camera.target.copyFrom(bounds.center);
+      camera.radius = largest * 2.15;
+      camera.lowerRadiusLimit = largest * .35;
+      overlay.textContent = $('modelName').textContent+' · '+$('boneCount').textContent+' rig bones · '+TARGET_MODEL_HEIGHT.toFixed(2)+'u preview';
+    }
+
+    function refreshClipUI() {
+      clipSelect.innerHTML = '';
+      clipsEl.innerHTML = '';
+      if (!loadedClips.length) {
+        clipSelect.disabled = true;
+        clipSelect.innerHTML = '<option>Load an animation FBX</option>';
+        clipsEl.innerHTML = '<p class="empty">Import an animation to see clips here.</p>';
+        $('play').disabled = $('pause').disabled = $('stop').disabled = true;
+        return;
+      }
+      clipSelect.disabled = false;
+      $('play').disabled = $('pause').disabled = $('stop').disabled = false;
+      loadedClips.forEach((entry, i) => {
+        const option = document.createElement('option');
+        option.value = i;
+        option.textContent = entry.name;
+        clipSelect.append(option);
+        const button = document.createElement('button');
+        button.className = 'clip'+(i===+clipSelect.value?' active':'');
+        button.textContent = entry.name+'  ·  '+displayLength(entry.group);
+        button.onclick = () => { clipSelect.value=i; selectClip(i); };
+        clipsEl.append(button);
+      });
+    }
+
+    function reportCompatibility(group) {
+      const targets = [...new Set(group.targetedAnimations.map(item => item.target?.name).filter(Boolean))];
+      const match = targets.filter(name => modelTargets.has(name)).length;
+      $('compatibility').innerHTML = '<span class="key">'+match+'/'+targets.length+'</span> imported animation targets map to this model.'+(match===0?' The FBX files likely use different bone or node names.':'');
+    }
+
+    function selectClip(index) {
+      const entry = loadedClips[index];
+      if (!entry) return;
+      stopAll();
+      activeGroup = entry.group;
+      activeGroup.speedRatio = +$('speed').value;
+      activeGroup.start($('loop').checked);
+      overlay.textContent = 'Playing '+entry.name;
+      reportCompatibility(activeGroup);
+      [...clipsEl.children].forEach((node, i) => node.classList.toggle('active', i===+index));
+    }
+
+    async function importModel(file) {
+      try {
+        setStatus('Importing '+file.name+' with Babylon FBX loader…');
+        disposeModel();
+        const result = await BABYLON.SceneLoader.ImportMeshAsync('', 'file:', file, scene, undefined, '.fbx');
+        modelAssets = {
+          meshes:result.meshes||[],
+          skeletons:result.skeletons||[],
+          transformNodes:result.transformNodes||[],
+          animationGroups:result.animationGroups||[]
+        };
+        modelMeshes = modelAssets.meshes;
+        modelSkeletons = modelAssets.skeletons;
+        const bones = scanModel();
+        attachModelContainer();
+        const materialCount = normalizePreviewMaterials();
+        normalizePreviewTransform();
+        $('modelName').textContent = file.name;
+        modelAssets.animationGroups.forEach((group, i) => loadedClips.push({ group, name:'Model: '+(group.name||'Clip '+(i+1)) }));
+        refreshClipUI();
+        frame();
+        setStatus('Model ready at '+TARGET_MODEL_HEIGHT.toFixed(2)+'u tall. '+materialCount+' material'+(materialCount===1?'':'s')+' rendered two-sided. '+(bones.size?'Load a matching animation FBX.':'No skeleton found; static model loaded.'));
+        $('compatibility').textContent = 'Load an animation FBX to compare its targets.';
+        if (loadedClips.length) selectClip(0);
+      } catch (error) {
+        console.error(error);
+        setStatus('Could not import '+file.name+': '+(error.message||'invalid FBX'), true);
+      }
+    }
+
+    async function importAnimations(files) {
+      if (!modelAssets) {
+        setStatus('Load the character model before its animation.', true);
+        return;
+      }
+      for (const file of files) {
+        try {
+          setStatus('Retargeting '+file.name+' onto the loaded rig…');
+          const before = new Set(scene.animationGroups);
+          await BABYLON.SceneLoader.ImportAnimationsAsync('file:', file, scene, false, BABYLON.SceneLoaderAnimationGroupLoadingMode.NoSync, target => modelTargets.get(target.name)||null);
+          const groups = scene.animationGroups.filter(group => !before.has(group));
+          if (!groups.length) {
+            setStatus(file.name+' contains no usable animation groups.', true);
+            continue;
+          }
+          groups.forEach((group, i) => loadedClips.push({ group, name:file.name+' — '+(group.name||'Clip '+(i+1)) }));
+          setStatus('Added '+groups.length+' clip'+(groups.length===1?'':'s')+' from '+file.name+'.');
+        } catch (error) {
+          console.error(error);
+          setStatus('Could not import '+file.name+': '+(error.message||'invalid FBX'), true);
+        }
+      }
+      refreshClipUI();
+      if (loadedClips.length) {
+        clipSelect.value = loadedClips.length-1;
+        selectClip(+clipSelect.value);
+      }
+    }
+
+    function setupDrop(id, handler) {
+      const el = $(id);
+      ['dragenter','dragover'].forEach(type => el.addEventListener(type, event => { event.preventDefault(); el.classList.add('drag'); }));
+      ['dragleave','drop'].forEach(type => el.addEventListener(type, event => { event.preventDefault(); el.classList.remove('drag'); }));
+      el.addEventListener('drop', event => handler([...event.dataTransfer.files].filter(file => /\.fbx$/i.test(file.name))));
+    }
+
+    function setSkeletonVisible(show) {
+      disposeSkeletonViewers();
+      if (!show || !modelSkeletons.length) return;
+      if (!BABYLON.Debug?.SkeletonViewer) {
+        setStatus('The loaded Babylon build does not expose SkeletonViewer.', true);
+        $('skeleton').checked = false;
+        return;
+      }
+      modelSkeletons.forEach(skeleton => {
+        const mesh = modelMeshes.find(candidate => candidate.skeleton===skeleton);
+        if (!mesh) return;
+        const viewer = new BABYLON.Debug.SkeletonViewer(skeleton, mesh, scene);
+        viewer.color = new BABYLON.Color3(.43,.91,.72);
+        viewer.isEnabled = true;
+        skeletonViewers.push(viewer);
+      });
+    }
+
+    $('modelInput').onchange = event => event.target.files[0] && importModel(event.target.files[0]);
+    $('animationInput').onchange = event => importAnimations([...event.target.files]);
+    setupDrop('modelDrop', files => files[0] && importModel(files[0]));
+    setupDrop('animationDrop', importAnimations);
+    $('clearAnimations').onclick = () => {
+      stopAll();
+      loadedClips.forEach(entry => entry.group.dispose());
+      loadedClips = [];
+      refreshClipUI();
+      $('compatibility').textContent = 'Animation list cleared.';
+      overlay.textContent = modelAssets ? 'Model loaded · no clip selected' : 'No model';
+    };
+    $('frameModel').onclick = frame;
+    clipSelect.onchange = () => selectClip(+clipSelect.value);
+    $('play').onclick = () => activeGroup ? activeGroup.play($('loop').checked) : selectClip(+clipSelect.value);
+    $('pause').onclick = () => activeGroup && activeGroup.pause();
+    $('stop').onclick = () => { if (activeGroup) { activeGroup.stop(); overlay.textContent='Stopped · '+loadedClips[clipSelect.value].name; } };
+    $('speed').oninput = event => {
+      const value = +event.target.value;
+      $('speedValue').textContent = value.toFixed(2)+'×';
+      if (activeGroup) activeGroup.speedRatio = value;
+    };
+    $('loop').onchange = () => { if (activeGroup) { const current=activeGroup; current.stop(); current.start($('loop').checked); } };
+    $('skeleton').onchange = event => setSkeletonVisible(event.target.checked);
+
+    window.addEventListener('resize', () => engine.resize());
+    engine.runRenderLoop(() => scene.render());
   </script>
 </body>
 </html>
