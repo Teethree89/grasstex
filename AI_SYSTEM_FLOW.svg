@@ -1,0 +1,258 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1720" viewBox="0 0 1600 1720">
+<defs><marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="#8fa0c2"/></marker></defs>
+<rect x="0" y="0" width="1600" height="1720" fill="#0f141c"/>
+<text x="30" y="42" font-family="Arial" font-size="24" font-weight="bold" fill="#ffffff">grasstex Battle AI — system flow (v129)</text>
+<text x="30" y="62" font-family="Arial" font-size="12" fill="#7f8db0">50v50 US-vs-German squad AI · deterministic · sole writers per layer · files in battle/ + battle/modules/</text>
+<rect x="30" y="76" width="14" height="10" fill="#274a63" stroke="#5b6b8c"/>
+<text x="48" y="86" font-family="Arial" font-size="11" fill="#c9d2e3">pipeline</text>
+<rect x="126" y="76" width="14" height="10" fill="#233a24" stroke="#5b6b8c"/>
+<text x="144" y="86" font-family="Arial" font-size="11" fill="#c9d2e3">authority</text>
+<rect x="228" y="76" width="14" height="10" fill="#4a3a22" stroke="#5b6b8c"/>
+<text x="246" y="86" font-family="Arial" font-size="11" fill="#c9d2e3">recovery</text>
+<rect x="324" y="76" width="14" height="10" fill="#3a2a4a" stroke="#5b6b8c"/>
+<text x="342" y="86" font-family="Arial" font-size="11" fill="#c9d2e3">strategy</text>
+<rect x="420" y="76" width="14" height="10" fill="#26303f" stroke="#5b6b8c"/>
+<text x="438" y="86" font-family="Arial" font-size="11" fill="#c9d2e3">support</text>
+<rect x="510" y="76" width="14" height="10" fill="#3f4654" stroke="#5b6b8c"/>
+<text x="528" y="86" font-family="Arial" font-size="11" fill="#c9d2e3">observe</text>
+<rect x="20" y="100" width="1560" height="120" rx="10" fill="none" stroke="#33405a" stroke-width="1" stroke-dasharray="6 4"/>
+<text x="32" y="120" font-family="Arial" font-size="12" font-weight="bold" fill="#7f8db0">CLOCKS — battle-sim.js _frame</text>
+<rect x="50" y="128" width="420" height="76" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="260.0" y="150" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">Render frame (every frame)</text>
+<text x="260.0" y="168" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">stepMovement per soldier: speed ramp,</text>
+<text x="260.0" y="183" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">crouch/crawl factors, turn, prone blocks</text>
+<text x="260.0" y="198" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">→ positions integrate continuously</text>
+<rect x="590" y="128" width="420" height="76" rx="8" fill="#274a63" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="800.0" y="150" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">AI tick · 0.15 s (~6.7 Hz)</text>
+<text x="800.0" y="168" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">updateSquad ×10 squads, then</text>
+<text x="800.0" y="183" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">updateSoldier ×100 soldiers</text>
+<text x="800.0" y="198" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">→ all decisions tick here, not per-frame</text>
+<rect x="1030" y="128" width="420" height="76" rx="8" fill="#3a2a4a" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="1240.0" y="150" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">Commander tick · 0.45 s</text>
+<text x="1240.0" y="168" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">objective tick, advanceRoute / squad,</text>
+<text x="1240.0" y="183" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">onCommanderTick module publishes</text>
+<text x="1240.0" y="198" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">→ strategy layer, victory check</text>
+<line x1="470" y1="166" x2="590" y2="166" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="1010" y1="166" x2="1030" y2="166" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="20" y="240" width="1560" height="190" rx="10" fill="none" stroke="#33405a" stroke-width="1" stroke-dasharray="6 4"/>
+<text x="32" y="260" font-family="Arial" font-size="12" font-weight="bold" fill="#7f8db0">SQUAD TICK — SquadAI.updateSquad wrappers (per squad, in order)</text>
+<rect x="50" y="268" width="270" height="136" rx="8" fill="#3a2a4a" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="185.0" y="290" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">1 · Commander lease gate</text>
+<text x="185.0" y="308" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">commander-ai wraps updateSquad</text>
+<text x="185.0" y="323" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">holdCommittedPlan: unchanged</text>
+<text x="185.0" y="338" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">accepted plan retains intent</text>
+<rect x="340" y="268" width="270" height="136" rx="8" fill="#274a63" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="475.0" y="290" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">2 · Plan stability (16)</text>
+<text x="475.0" y="308" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">committed plan leases (26/38 s)</text>
+<text x="475.0" y="323" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">fireteam slots: cmd/α/β/χ</text>
+<text x="475.0" y="338" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">proposeOrder only on real change</text>
+<rect x="630" y="268" width="270" height="136" rx="8" fill="#274a63" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="765.0" y="290" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">3 · Base squad update</text>
+<text x="765.0" y="308" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">alive count, retreat on losses</text>
+<text x="765.0" y="323" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">Engagement.updateSquad:</text>
+<text x="765.0" y="338" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">contact, suppressors, bound auth</text>
+<rect x="920" y="268" width="270" height="136" rx="8" fill="#274a63" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="1055.0" y="290" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">4 · issueOrders</text>
+<text x="1055.0" y="308" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">orderAnchor creep (in-contact freeze)</text>
+<text x="1055.0" y="323" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">formationSlot per member</text>
+<text x="1055.0" y="338" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">proposeOrder (same-value skip)</text>
+<rect x="1210" y="268" width="270" height="136" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="1345.0" y="290" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">Regroup hysteresis (41)</text>
+<text x="1345.0" y="308" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">enter grace 1.35 s, exit ratio</text>
+<text x="1345.0" y="323" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">rally hold, straggler suppression</text>
+<text x="1345.0" y="338" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">blocks regroup oscillation</text>
+<line x1="320" y1="336" x2="340" y2="336" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="610" y1="336" x2="630" y2="336" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="900" y1="336" x2="920" y2="336" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="1190" y1="336" x2="1210" y2="336" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="20" y="450" width="1560" height="330" rx="10" fill="none" stroke="#33405a" stroke-width="1" stroke-dasharray="6 4"/>
+<text x="32" y="470" font-family="Arial" font-size="12" font-weight="bold" fill="#7f8db0">SOLDIER TICK — SquadAI.updateSoldier → engagement → movement (per soldier)</text>
+<rect x="50" y="478" width="300" height="120" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="200.0" y="500" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">perceive (squad-ai)</text>
+<text x="200.0" y="518" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">vision / hearing scan</text>
+<text x="200.0" y="533" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">findTarget, stillTracking</text>
+<text x="200.0" y="548" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">shareContact → squad contact</text>
+<rect x="370" y="478" width="380" height="120" rx="8" fill="#233a24" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="560.0" y="500" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">Engagement FSM (authority)</text>
+<text x="560.0" y="518" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">advance · orient · bound · engage</text>
+<text x="560.0" y="533" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">pinned · assault · alert</text>
+<text x="560.0" y="548" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">withdraw · station — ONE owner</text>
+<rect x="770" y="478" width="330" height="120" rx="8" fill="#274a63" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="935.0" y="500" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">Combat wrappers</text>
+<text x="935.0" y="518" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">49 urgency: cover dash + shared-</text>
+<text x="935.0" y="533" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">contact (1/sector); 47 momentum:</text>
+<text x="935.0" y="548" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">fixed 6.5 m no-cover bound</text>
+<rect x="1120" y="478" width="330" height="120" rx="8" fill="#274a63" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="1285.0" y="500" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">propose intents</text>
+<text x="1285.0" y="518" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">move(): proposeCombat (hold /</text>
+<text x="1285.0" y="533" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">cover-bound / assault-rush …)</text>
+<text x="1285.0" y="548" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">followOrders(): proposeOrder</text>
+<line x1="350" y1="538" x2="370" y2="538" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="750" y1="538" x2="770" y2="538" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="1100" y1="538" x2="1120" y2="538" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="50" y="618" width="340" height="136" rx="8" fill="#233a24" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="220.0" y="640" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">Resolver: sole writer (authority)</text>
+<text x="220.0" y="658" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">retreat &gt; regroup &gt; reload-hold &gt;</text>
+<text x="220.0" y="673" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">station &gt; bound-push &gt; cover-bound &gt;</text>
+<text x="220.0" y="688" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">hold &gt; formation · commit gate</text>
+<rect x="410" y="618" width="360" height="136" rx="8" fill="#4a3a22" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="590.0" y="640" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">Progress: observer (53 v2)</text>
+<text x="590.0" y="658" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">suspect→confirm→rebuild→observe→</text>
+<text x="590.0" y="673" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">alternate→observe→unreachable</text>
+<text x="590.0" y="688" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">never writes destination</text>
+<rect x="790" y="618" width="360" height="136" rx="8" fill="#274a63" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="970.0" y="640" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">Tactical route (52 + 20)</text>
+<text x="970.0" y="658" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">cover detours, door ingress</text>
+<text x="970.0" y="673" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">versioned routes, cancel+cooldown</text>
+<text x="970.0" y="688" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">hardpoint waypoint if tasked</text>
+<rect x="1170" y="618" width="310" height="136" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="1325.0" y="640" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">destination → integrate</text>
+<text x="1325.0" y="658" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">physical dest + ORDER_COMMIT</text>
+<text x="1325.0" y="673" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">stepMovement next frame</text>
+<text x="1325.0" y="688" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">trace → provenance 36/37</text>
+<line x1="390" y1="686" x2="410" y2="686" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="770" y1="686" x2="790" y2="686" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="1150" y1="686" x2="1170" y2="686" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="1455" y1="478" x2="1455" y2="618" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="1330" y="500" font-family="Arial" font-size="11" fill="#7f8db0">engagement proposes,</text>
+<text x="1330" y="514" font-family="Arial" font-size="11" fill="#7f8db0">resolver disposes</text>
+<line x1="220" y1="428" x2="220" y2="478" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="220.0" y="448.0" text-anchor="middle" font-family="Arial" font-size="10.5" fill="#9fb0d0">per soldier</text>
+<line x1="800" y1="220" x2="800" y2="240" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="800.0" y="225.0" text-anchor="middle" font-family="Arial" font-size="10.5" fill="#9fb0d0">AI tick</text>
+<rect x="20" y="800" width="1560" height="180" rx="10" fill="none" stroke="#33405a" stroke-width="1" stroke-dasharray="6 4"/>
+<text x="32" y="820" font-family="Arial" font-size="12" font-weight="bold" fill="#7f8db0">STRATEGY — commander tick 0.45 s</text>
+<rect x="50" y="828" width="280" height="126" rx="8" fill="#3a2a4a" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="190.0" y="850" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">Scenario (seed)</text>
+<text x="190.0" y="868" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">scenario-generator: town,</text>
+<text x="190.0" y="883" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">buildings, roads, objectives</text>
+<text x="190.0" y="898" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">fingerprint + policy recall</text>
+<rect x="350" y="828" width="280" height="126" rx="8" fill="#3a2a4a" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="490.0" y="850" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">Objectives</text>
+<text x="490.0" y="868" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">01 capture zones · 02 occupancy</text>
+<text x="490.0" y="883" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">town-objectives · commander-</text>
+<text x="490.0" y="898" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">routes · hold/win 35 s</text>
+<rect x="650" y="828" width="280" height="126" rx="8" fill="#3a2a4a" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="790.0" y="850" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">Doctrine + policy</text>
+<text x="790.0" y="868" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">commander-doctrine, ai-policy</text>
+<text x="790.0" y="883" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">genome (cohesion, risk, …)</text>
+<text x="790.0" y="898" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">assault / flank / hold / regroup</text>
+<rect x="950" y="828" width="260" height="126" rx="8" fill="#3a2a4a" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="1080.0" y="850" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">advanceRoute / victory</text>
+<text x="1080.0" y="868" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">per-squad routes to objectives</text>
+<text x="1080.0" y="883" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">objective victory / time limit</text>
+<text x="1080.0" y="898" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">_checkWinner</text>
+<rect x="1230" y="828" width="250" height="126" rx="8" fill="#3a2a4a" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="1355.0" y="850" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">Support commands</text>
+<text x="1355.0" y="868" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">15 vacant assault · 15 force-</text>
+<text x="1355.0" y="883" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">command recovery · 17 plan</text>
+<text x="1355.0" y="898" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">doctrine · 21 engineers</text>
+<line x1="330" y1="891" x2="350" y2="891" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="630" y1="891" x2="650" y2="891" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="930" y1="891" x2="950" y2="891" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="1210" y1="891" x2="1230" y2="891" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="20" y="1000" width="1560" height="344" rx="10" fill="none" stroke="#33405a" stroke-width="1" stroke-dasharray="6 4"/>
+<text x="32" y="1020" font-family="Arial" font-size="12" font-weight="bold" fill="#7f8db0">SUPPORT — data + constraints read by the pipeline</text>
+<rect x="50" y="1028" width="340" height="92" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="220.0" y="1050" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">obstacle-field</text>
+<text x="220.0" y="1068" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">spatial index, height-aware LOS</text>
+<text x="220.0" y="1083" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">coverPotentialAt / nearby</text>
+<text x="220.0" y="1098" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">battle/obstacle-field.js</text>
+<rect x="422" y="1028" width="340" height="92" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="592.0" y="1050" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">navigation + 39</text>
+<text x="592.0" y="1068" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">mesh routing + body clearance</text>
+<text x="592.0" y="1083" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">bridge/door settling</text>
+<text x="592.0" y="1098" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">battle-navigation.js</text>
+<rect x="794" y="1028" width="340" height="92" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="964.0" y="1050" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">weapons + ammo (46)</text>
+<text x="964.0" y="1068" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">ranges, bursts, jams, reloads</text>
+<text x="964.0" y="1083" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">finite reserve, stoppages</text>
+<text x="964.0" y="1098" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">weapons.js</text>
+<rect x="1166" y="1028" width="340" height="92" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="1336.0" y="1050" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">personal space (51)</text>
+<text x="1336.0" y="1068" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">pair separation, 0.9 m min</text>
+<text x="1336.0" y="1083" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">blocked corrections</text>
+<text x="1336.0" y="1098" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">51-…-personal-space</text>
+<rect x="50" y="1130" width="340" height="92" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="220.0" y="1152" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">forward guard (44)</text>
+<text x="220.0" y="1170" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">order clamps, cover rejects</text>
+<text x="220.0" y="1185" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">lateral advance limits</text>
+<text x="220.0" y="1200" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">44-assault-forward-guard</text>
+<rect x="422" y="1130" width="340" height="92" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="592.0" y="1152" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">individuality (11)</text>
+<text x="592.0" y="1170" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">gaits, speeds, urgency→sprint</text>
+<text x="592.0" y="1185" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">sole speed owner</text>
+<text x="592.0" y="1200" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">11-soldier-individuality</text>
+<rect x="794" y="1130" width="340" height="92" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="964.0" y="1152" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">forward progress (43)</text>
+<text x="964.0" y="1170" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">15 s squad windows</text>
+<text x="964.0" y="1185" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">low-efficiency alerts</text>
+<text x="964.0" y="1200" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">43-squad-forward-progress</text>
+<rect x="1166" y="1130" width="340" height="92" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="1336.0" y="1152" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">captain throttle (13)</text>
+<text x="1336.0" y="1170" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">command rate limits</text>
+<text x="1336.0" y="1185" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">orders per tick budget</text>
+<text x="1336.0" y="1200" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">13-captain-…-throttle</text>
+<rect x="50" y="1232" width="340" height="92" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="220.0" y="1254" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">tactical positions (20)</text>
+<text x="220.0" y="1272" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">window stations, claims</text>
+<text x="220.0" y="1287" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">ingress ownership</text>
+<text x="220.0" y="1302" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">20-building-hardpoints</text>
+<rect x="422" y="1232" width="340" height="92" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="592.0" y="1254" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">engagement lock (16a)</text>
+<text x="592.0" y="1272" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">bypass refresh 1.25 s</text>
+<text x="592.0" y="1287" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">active plan outranks regroup</text>
+<text x="592.0" y="1302" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">16a-…-command-lock</text>
+<rect x="794" y="1232" width="340" height="92" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="964.0" y="1254" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">voice / acoustics</text>
+<text x="964.0" y="1272" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">09 runtime · 11 variation · 47 ctx</text>
+<text x="964.0" y="1287" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">50 awareness · positional shots</text>
+<text x="964.0" y="1302" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">battle/acoustics.js</text>
+<rect x="1166" y="1232" width="340" height="92" rx="8" fill="#26303f" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="1336.0" y="1254" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">FX (13/14/15)</text>
+<text x="1336.0" y="1272" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">muzzle consistency, ballistic</text>
+<text x="1336.0" y="1287" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">raycast, impact decals</text>
+<text x="1336.0" y="1302" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">14-z-ballistic-raycast</text>
+<rect x="20" y="1364" width="1560" height="180" rx="10" fill="none" stroke="#33405a" stroke-width="1" stroke-dasharray="6 4"/>
+<text x="32" y="1384" font-family="Arial" font-size="12" font-weight="bold" fill="#7f8db0">OBSERVE — every tick publishes; nothing here decides</text>
+<rect x="50" y="1392" width="240" height="126" rx="8" fill="#3f4654" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="170.0" y="1414" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">battle-telemetry</text>
+<text x="170.0" y="1432" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">event stream (decisions,</text>
+<text x="170.0" y="1447" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">shots, covers, bounds)</text>
+<text x="170.0" y="1462" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">→ battle_log.php</text>
+<rect x="310" y="1392" width="240" height="126" rx="8" fill="#3f4654" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="430.0" y="1414" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">loop watch (32)</text>
+<text x="430.0" y="1432" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">order/dest signatures</text>
+<text x="430.0" y="1447" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">position-seeking +</text>
+<text x="430.0" y="1462" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">forward-progress alerts</text>
+<rect x="570" y="1392" width="240" height="126" rx="8" fill="#3f4654" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="690.0" y="1414" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">coord. health (40)</text>
+<text x="690.0" y="1432" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">roles, targets, stall secs</text>
+<text x="690.0" y="1447" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">replan-due, summaries</text>
+<text x="690.0" y="1462" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">per module</text>
+<rect x="830" y="1392" width="230" height="126" rx="8" fill="#3f4654" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="945.0" y="1414" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">provenance 36/37</text>
+<text x="945.0" y="1432" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">owner per field write</text>
+<text x="945.0" y="1447" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">goal-writer chains</text>
+<text x="945.0" y="1462" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">churn forensics</text>
+<rect x="1080" y="1392" width="240" height="126" rx="8" fill="#3f4654" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="1200.0" y="1414" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">exports 38/99</text>
+<text x="1200.0" y="1432" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">full diagnostic JSON</text>
+<text x="1200.0" y="1447" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">per-soldier movement</text>
+<text x="1200.0" y="1462" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">history + stats</text>
+<rect x="1340" y="1392" width="140" height="126" rx="8" fill="#3f4654" stroke="#5b6b8c" stroke-width="1.5"/>
+<text x="1410.0" y="1414" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#ffffff">HUD + trainer</text>
+<text x="1410.0" y="1432" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">battle-control.js</text>
+<text x="1410.0" y="1447" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">ai-trainer, policy</text>
+<text x="1410.0" y="1462" text-anchor="middle" font-family="Arial" font-size="11" fill="#c9d2e3">learning/metrics</text>
+<line x1="290" y1="1455" x2="310" y2="1455" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="550" y1="1455" x2="570" y2="1455" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="810" y1="1455" x2="830" y2="1455" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="1060" y1="1455" x2="1080" y2="1455" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<line x1="1320" y1="1455" x2="1340" y2="1455" stroke="#8fa0c2" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="30" y="1576" font-family="Arial" font-size="11" fill="#7f8db0">Solid rule: engagement owns combat state · resolver owns destination · progress only observes · commander owns strategy. Retreat/regroup outrank everything; firing stations outrank bounds.</text>
+<text x="30" y="1594" font-family="Arial" font-size="11" fill="#7f8db0">Flows: clocks ↓ squad chain → soldier chain (perceive → FSM → intents → resolver → progress → route → destination) · strategy ↓ objectives/doctrine → leases/routes → squad intents · support → constraints · all → telemetry.</text>
+<text x="30" y="1612" font-family="Arial" font-size="11" fill="#7f8db0">Key files: battle/battle-sim.js · squad-ai.js · engagement.js · movement-resolver.js · commander-ai.js · battle/modules/{16,20,44,47,49,52,53}.js · tools/ai-sim-harness/ for headless checks.</text>
+<text x="30" y="1630" font-family="Arial" font-size="11" fill="#7f8db0">Module versions change; run battle_sim.php and read X-Grasstex-Modules / window.BATTLE_BUILD_DEPLOYED for the live set.</text>
+<text x="30" y="1648" font-family="Arial" font-size="11" fill="#7f8db0">Generated 2026-09-14 from main at v129.</text>
+</svg>
