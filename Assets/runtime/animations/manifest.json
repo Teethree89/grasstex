@@ -1,9 +1,10 @@
 {
-  "version": 7,
+  "version": 8,
   "rig": "mixamo-compatible",
   "shared": true,
   "source": "Assets/animations/*.fbx",
   "boneOrientation": "source-rest-preserved",
+  "exportReferencePose": "armature-rest",
   "retargeting": "Babylon AnimatorAvatar reference-pose compensation",
   "rootMotion": "detected locomotion horizontal travel stripped; vertical preserved",
   "clips": [
@@ -19,7 +20,8 @@
         30
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "fire-rifle-automatic-crouch-walk",
@@ -33,7 +35,8 @@
         36
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "fire-rifle-automatic-fast-walk",
@@ -47,7 +50,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "fire-rifle-automatic-prone",
@@ -61,7 +65,8 @@
         14
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "fire-rifle-automatic-regular-walk",
@@ -75,7 +80,8 @@
         41
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "fire-rifle-automatic-slow-walk",
@@ -89,7 +95,8 @@
         99
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "fire-rifle-automatic-standing",
@@ -103,7 +110,8 @@
         9
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "fire-rifle-single-shot-crouched-kneel",
@@ -117,7 +125,8 @@
         32
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "fire-rifle-single-shot-prone",
@@ -131,7 +140,8 @@
         26
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "fire-rifle-single-shot-regular-walk",
@@ -145,7 +155,8 @@
         42
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "fire-rifle-single-shot",
@@ -159,7 +170,8 @@
         36
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "moving-backward-in-prone-position",
@@ -173,7 +185,8 @@
         58
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "prone-backwards-start",
@@ -187,7 +200,8 @@
         20
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "prone-backwards-stop",
@@ -201,7 +215,8 @@
         38
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "prone-death",
@@ -215,7 +230,8 @@
         57
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "prone-forward-stop",
@@ -229,7 +245,8 @@
         42
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "prone-forward",
@@ -243,7 +260,8 @@
         71
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "prone-left-turn",
@@ -257,7 +275,8 @@
         32
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "prone-right-turn",
@@ -271,7 +290,8 @@
         40
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "prone-roll-right-fast",
@@ -285,7 +305,8 @@
         52
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "prone-roll-right",
@@ -299,7 +320,8 @@
         99
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-aim-to-kneel",
@@ -313,7 +335,8 @@
         25
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-crouch-walk-to-kneel",
@@ -327,7 +350,8 @@
         83
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-kneel-hit-to-back",
@@ -341,7 +365,8 @@
         58
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-kneel-idle",
@@ -355,7 +380,8 @@
         52
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-kneel-to-aim",
@@ -369,7 +395,8 @@
         25
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-kneel-to-prone",
@@ -383,7 +410,8 @@
         60
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-kneel-to-stand",
@@ -397,7 +425,8 @@
         38
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-prone-idle",
@@ -411,7 +440,8 @@
         149
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-prone-to-kneel",
@@ -425,7 +455,8 @@
         60
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-reload-crouched",
@@ -439,7 +470,8 @@
         207
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-reload-prone",
@@ -453,7 +485,8 @@
         193
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-reload-run",
@@ -467,7 +500,8 @@
         111
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-reload-standing",
@@ -481,7 +515,8 @@
         100
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-reload-walking",
@@ -495,7 +530,8 @@
         124
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "rifle-stand-to-kneel",
@@ -509,7 +545,8 @@
         29
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "crouching-turn-90-left",
@@ -523,7 +560,8 @@
         39
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "crouching-turn-90-right",
@@ -537,7 +575,8 @@
         37
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "death-crouching-headshot-front",
@@ -551,7 +590,8 @@
         58
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "death-from-back-headshot",
@@ -565,7 +605,8 @@
         112
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "death-from-front-headshot",
@@ -579,7 +620,8 @@
         86
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "death-from-right",
@@ -593,7 +635,8 @@
         100
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "death-from-the-back",
@@ -607,7 +650,8 @@
         90
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "death-from-the-front",
@@ -621,7 +665,8 @@
         104
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "idle-aiming",
@@ -635,7 +680,8 @@
         64
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "idle-crouching-aiming",
@@ -649,7 +695,8 @@
         60
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "idle-crouching",
@@ -663,7 +710,8 @@
         63
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "idle",
@@ -677,7 +725,8 @@
         63
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "jump-down",
@@ -691,7 +740,8 @@
         21
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "jump-loop",
@@ -705,7 +755,8 @@
         29
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "jump-up",
@@ -719,7 +770,8 @@
         17
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "run-backward-left",
@@ -733,7 +785,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "run-backward-right",
@@ -747,7 +800,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "run-backward",
@@ -761,7 +815,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "run-forward-left",
@@ -775,7 +830,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "run-forward-right",
@@ -789,7 +845,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "run-forward",
@@ -803,7 +860,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "run-left",
@@ -817,7 +875,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "run-right",
@@ -831,7 +890,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "sprint-backward-left",
@@ -845,7 +905,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "sprint-backward-right",
@@ -859,7 +920,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "sprint-backward",
@@ -873,7 +935,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "sprint-forward-left",
@@ -887,7 +950,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "sprint-forward-right",
@@ -901,7 +965,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "sprint-forward",
@@ -915,7 +980,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "sprint-left",
@@ -929,7 +995,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "sprint-right",
@@ -943,7 +1010,8 @@
         16
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "turn-90-left",
@@ -957,7 +1025,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "turn-90-right",
@@ -971,7 +1040,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-backward-left",
@@ -985,7 +1055,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-backward-right",
@@ -999,7 +1070,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-backward",
@@ -1013,7 +1085,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-crouching-backward-left",
@@ -1027,7 +1100,8 @@
         30
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-crouching-backward-right",
@@ -1041,7 +1115,8 @@
         30
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-crouching-backward",
@@ -1055,7 +1130,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-crouching-forward-left",
@@ -1069,7 +1145,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-crouching-forward-right",
@@ -1083,7 +1160,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-crouching-forward",
@@ -1097,7 +1175,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-crouching-left",
@@ -1111,7 +1190,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-crouching-right",
@@ -1125,7 +1205,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-forward-left",
@@ -1139,7 +1220,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-forward-right",
@@ -1153,7 +1235,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-forward",
@@ -1167,7 +1250,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-left",
@@ -1181,7 +1265,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     },
     {
       "clip": "walk-right",
@@ -1195,7 +1280,8 @@
         31
       ],
       "fps": 30,
-      "boneOrientation": "source-rest-preserved"
+      "boneOrientation": "source-rest-preserved",
+      "exportReferencePose": "armature-rest"
     }
   ],
   "failed": []
