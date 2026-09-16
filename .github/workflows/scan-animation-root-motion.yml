@@ -1,0 +1,132 @@
+name: Scan FBX Animation Root Motion
+
+on:
+  push:
+    branches: [skeletal-soldier-runtime]
+    paths:
+      - '.github/workflows/scan-animation-root-motion.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Blender
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq blender
+      - name: Scan authored FBX root motion
+        shell: bash
+        run: |
+          cat > /tmp/scan_root_motion.py <<'PY'
+          import bpy, sys, math, re
+          from pathlib import Path
+
+          FBX_TICK = 46186158000.0
+          def canon(n):
+              n=n.split('|')[-1].split(':')[-1].lower()
+              n=re.sub(r'^mixamorig','',n)
+              return re.sub(r'[^a-z0-9]','',n)
+
+          def clear():
+              bpy.ops.object.select_all(action='SELECT')
+              bpy.ops.object.delete(use_global=False)
+              for datablocks in (bpy.data.actions, bpy.data.armatures):
+                  for item in list(datablocks):
+                      try: datablocks.remove(item)
+                      except Exception: pass
+
+          def curve_map(action, data_path, prop='location'):
+              out={}
+              target=f'pose.bones["{data_path}"].{prop}'
+              for fc in action.fcurves:
+                  if fc.data_path == target:
+                      out[fc.array_index]=fc
+              return out
+
+          def object_curve_map(action, prop='location'):
+              out={}
+              for fc in action.fcurves:
+                  if fc.data_path == prop:
+                      out[fc.array_index]=fc
+              return out
+
+          def sample_motion(curves, start, end, horizontal=(0,1)):
+              frames=set([start,end])
+              for fc in curves.values():
+                  frames.update(k.co.x for k in fc.keyframe_points)
+              frames=sorted(frames)
+              vals=[]
+              for fr in frames:
+                  v=[curves[i].evaluate(fr) if i in curves else 0.0 for i in range(3)]
+                  vals.append(v)
+              if not vals:
+                  return dict(net=0.0, span=0.0, max_step=0.0, start=(0,0), end=(0,0))
+              ax0,ax1=horizontal
+              sx,sy=vals[0][ax0],vals[0][ax1]
+              ex,ey=vals[-1][ax0],vals[-1][ax1]
+              net=math.hypot(ex-sx,ey-sy)
+              max_pair=0.0
+              for a in vals:
+                  for b in vals:
+                      max_pair=max(max_pair,math.hypot(a[ax0]-b[ax0],a[ax1]-b[ax1]))
+              max_step=0.0
+              for a,b in zip(vals, vals[1:]):
+                  max_step=max(max_step, math.hypot(a[ax0]-b[ax0],a[ax1]-b[ax1]))
+              return dict(net=net, span=max_pair, max_step=max_step, start=(sx,sy), end=(ex,ey))
+
+          def rot_motion(curves, start, end):
+              if not curves: return 0.0
+              # Mixamo FBX imported into Blender normally exposes Euler radians.
+              total=0.0
+              for i,fc in curves.items():
+                  total += (fc.evaluate(end)-fc.evaluate(start))**2
+              return math.degrees(math.sqrt(total))
+
+          src=Path('Assets/animations')
+          print('ROOT_MOTION_SCAN_V1')
+          print('file\troot_bone\thips_net\thips_span\troot_net\troot_span\tobject_net\troot_rot_deg\thips_rot_deg')
+          for f in sorted(src.glob('*.fbx')):
+              clear()
+              try:
+                  bpy.ops.import_scene.fbx(filepath=str(f),use_anim=True,automatic_bone_orientation=False,use_prepost_rot=True)
+                  arms=[o for o in bpy.context.scene.objects if o.type=='ARMATURE']
+                  if not arms: raise RuntimeError('no armature')
+                  arm=arms[0]
+                  act=arm.animation_data and arm.animation_data.action
+                  if not act: raise RuntimeError('no action')
+                  start,end=act.frame_range
+                  hips=next((b for b in arm.data.bones if canon(b.name)=='hips'),None)
+                  roots=[b for b in arm.data.bones if b.parent is None]
+                  # Prefer a root literally named Root; otherwise the parentless bone with Hips ancestry;
+                  # otherwise first parentless bone. This mirrors what we care about in the lab viewer.
+                  root=None
+                  for b in roots:
+                      if canon(b.name)=='root': root=b; break
+                  if root is None:
+                      for b in roots:
+                          stack=list(b.children)
+                          if any(canon(x.name)=='hips' for x in stack): root=b; break
+                  if root is None and roots: root=roots[0]
+                  hips_loc=curve_map(act, hips.name) if hips else {}
+                  root_loc=curve_map(act, root.name) if root else {}
+                  obj_loc=object_curve_map(act)
+                  hips_rot=curve_map(act, hips.name, 'rotation_euler') if hips else {}
+                  root_rot=curve_map(act, root.name, 'rotation_euler') if root else {}
+                  hm=sample_motion(hips_loc,start,end)
+                  rm=sample_motion(root_loc,start,end)
+                  om=sample_motion(obj_loc,start,end)
+                  rr=rot_motion(root_rot,start,end)
+                  hr=rot_motion(hips_rot,start,end)
+                  print(f'{f.name}\t{root.name if root else "-"}\t{hm["net"]:.6f}\t{hm["span"]:.6f}\t{rm["net"]:.6f}\t{rm["span"]:.6f}\t{om["net"]:.6f}\t{rr:.3f}\t{hr:.3f}')
+              except Exception as e:
+                  print(f'{f.name}\tERROR:{e}')
+          PY
+          blender --background --python /tmp/scan_root_motion.py 2>/tmp/blender.err | tee /tmp/root-motion-scan.txt
+          echo '--- ROOT MOTION SCAN START ---'
+          sed -n '/ROOT_MOTION_SCAN_V1/,$p' /tmp/root-motion-scan.txt
+          echo '--- ROOT MOTION SCAN END ---'
