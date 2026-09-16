@@ -1,16 +1,16 @@
 {
-  "version": 4,
+  "version": 5,
   "rig": "mixamo-compatible",
   "shared": true,
   "source": "Assets/animations/*.fbx",
-  "rootMotion": "locomotion horizontal travel stripped; vertical preserved",
+  "rootMotion": "detected locomotion horizontal travel stripped; vertical preserved",
   "clips": [
     {
       "clip": "crawl-backwards-in-prone",
       "source": "Crawl Backwards In Prone.fbx",
       "file": "crawl-backwards-in-prone.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
       "hipsBone": "Hips",
       "frames": [
         1,
@@ -19,115 +19,11 @@
       "fps": 30
     },
     {
-      "clip": "crouching-turn-90-left",
-      "source": "crouching turn 90 left.fbx",
-      "file": "crouching-turn-90-left.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        39
-      ],
-      "fps": 30
-    },
-    {
-      "clip": "crouching-turn-90-right",
-      "source": "crouching turn 90 right.fbx",
-      "file": "crouching-turn-90-right.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        37
-      ],
-      "fps": 30
-    },
-    {
-      "clip": "death-crouching-headshot-front",
-      "source": "death crouching headshot front.fbx",
-      "file": "death-crouching-headshot-front.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        58
-      ],
-      "fps": 30
-    },
-    {
-      "clip": "death-from-back-headshot",
-      "source": "death from back headshot.fbx",
-      "file": "death-from-back-headshot.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        112
-      ],
-      "fps": 30
-    },
-    {
-      "clip": "death-from-front-headshot",
-      "source": "death from front headshot.fbx",
-      "file": "death-from-front-headshot.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        86
-      ],
-      "fps": 30
-    },
-    {
-      "clip": "death-from-right",
-      "source": "death from right.fbx",
-      "file": "death-from-right.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        100
-      ],
-      "fps": 30
-    },
-    {
-      "clip": "death-from-the-back",
-      "source": "death from the back.fbx",
-      "file": "death-from-the-back.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        90
-      ],
-      "fps": 30
-    },
-    {
-      "clip": "death-from-the-front",
-      "source": "death from the front.fbx",
-      "file": "death-from-the-front.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        104
-      ],
-      "fps": 30
-    },
-    {
       "clip": "fire-rifle-automatic-crouch-walk",
       "source": "Fire Rifle Automatic Crouch Walk.fbx",
       "file": "fire-rifle-automatic-crouch-walk.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
       "hipsBone": "Hips",
       "frames": [
         1,
@@ -139,8 +35,8 @@
       "clip": "fire-rifle-automatic-fast-walk",
       "source": "Fire Rifle Automatic Fast Walk.fbx",
       "file": "fire-rifle-automatic-fast-walk.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
       "hipsBone": "Hips",
       "frames": [
         1,
@@ -165,8 +61,8 @@
       "clip": "fire-rifle-automatic-regular-walk",
       "source": "Fire Rifle Automatic Regular Walk.fbx",
       "file": "fire-rifle-automatic-regular-walk.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
       "hipsBone": "Hips",
       "frames": [
         1,
@@ -178,8 +74,8 @@
       "clip": "fire-rifle-automatic-slow-walk",
       "source": "Fire Rifle Automatic Slow Walk.fbx",
       "file": "fire-rifle-automatic-slow-walk.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
       "hipsBone": "Hips",
       "frames": [
         1,
@@ -230,8 +126,8 @@
       "clip": "fire-rifle-single-shot-regular-walk",
       "source": "Fire Rifle Single Shot Regular Walk.fbx",
       "file": "fire-rifle-single-shot-regular-walk.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
       "hipsBone": "Hips",
       "frames": [
         1,
@@ -253,102 +149,11 @@
       "fps": 30
     },
     {
-      "clip": "idle-aiming",
-      "source": "idle aiming.fbx",
-      "file": "idle-aiming.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        64
-      ],
-      "fps": 30
-    },
-    {
-      "clip": "idle-crouching-aiming",
-      "source": "idle crouching aiming.fbx",
-      "file": "idle-crouching-aiming.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        60
-      ],
-      "fps": 30
-    },
-    {
-      "clip": "idle-crouching",
-      "source": "idle crouching.fbx",
-      "file": "idle-crouching.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        63
-      ],
-      "fps": 30
-    },
-    {
-      "clip": "idle",
-      "source": "idle.fbx",
-      "file": "idle.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        63
-      ],
-      "fps": 30
-    },
-    {
-      "clip": "jump-down",
-      "source": "jump down.fbx",
-      "file": "jump-down.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        21
-      ],
-      "fps": 30
-    },
-    {
-      "clip": "jump-loop",
-      "source": "jump loop.fbx",
-      "file": "jump-loop.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        29
-      ],
-      "fps": 30
-    },
-    {
-      "clip": "jump-up",
-      "source": "jump up.fbx",
-      "file": "jump-up.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
-      "hipsBone": "Hips",
-      "frames": [
-        1,
-        17
-      ],
-      "fps": 30
-    },
-    {
       "clip": "moving-backward-in-prone-position",
       "source": "Moving Backward In Prone Position.fbx",
       "file": "moving-backward-in-prone-position.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
       "hipsBone": "Hips",
       "frames": [
         1,
@@ -360,8 +165,8 @@
       "clip": "prone-backwards-start",
       "source": "Prone Backwards Start.fbx",
       "file": "prone-backwards-start.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
       "hipsBone": "Hips",
       "frames": [
         1,
@@ -373,8 +178,8 @@
       "clip": "prone-backwards-stop",
       "source": "Prone Backwards Stop.fbx",
       "file": "prone-backwards-stop.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
       "hipsBone": "Hips",
       "frames": [
         1,
@@ -399,8 +204,8 @@
       "clip": "prone-forward-stop",
       "source": "Prone Forward Stop.fbx",
       "file": "prone-forward-stop.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
       "hipsBone": "Hips",
       "frames": [
         1,
@@ -412,8 +217,8 @@
       "clip": "prone-forward",
       "source": "Prone Forward.fbx",
       "file": "prone-forward.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
       "hipsBone": "Hips",
       "frames": [
         1,
@@ -490,8 +295,8 @@
       "clip": "rifle-crouch-walk-to-kneel",
       "source": "Rifle Crouch Walk To Kneel.fbx",
       "file": "rifle-crouch-walk-to-kneel.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
       "hipsBone": "Hips",
       "frames": [
         1,
@@ -620,8 +425,8 @@
       "clip": "rifle-reload-run",
       "source": "Rifle Reload Run.fbx",
       "file": "rifle-reload-run.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
       "hipsBone": "Hips",
       "frames": [
         1,
@@ -646,8 +451,8 @@
       "clip": "rifle-reload-walking",
       "source": "Rifle Reload Walking.fbx",
       "file": "rifle-reload-walking.glb",
-      "inPlaceXZ": false,
-      "rootCurvesNormalized": 0,
+      "inPlaceXZ": true,
+      "rootCurvesNormalized": 2,
       "hipsBone": "Hips",
       "frames": [
         1,
@@ -665,6 +470,201 @@
       "frames": [
         1,
         29
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "crouching-turn-90-left",
+      "source": "crouching turn 90 left.fbx",
+      "file": "crouching-turn-90-left.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        39
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "crouching-turn-90-right",
+      "source": "crouching turn 90 right.fbx",
+      "file": "crouching-turn-90-right.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        37
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "death-crouching-headshot-front",
+      "source": "death crouching headshot front.fbx",
+      "file": "death-crouching-headshot-front.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        58
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "death-from-back-headshot",
+      "source": "death from back headshot.fbx",
+      "file": "death-from-back-headshot.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        112
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "death-from-front-headshot",
+      "source": "death from front headshot.fbx",
+      "file": "death-from-front-headshot.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        86
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "death-from-right",
+      "source": "death from right.fbx",
+      "file": "death-from-right.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        100
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "death-from-the-back",
+      "source": "death from the back.fbx",
+      "file": "death-from-the-back.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        90
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "death-from-the-front",
+      "source": "death from the front.fbx",
+      "file": "death-from-the-front.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        104
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "idle-aiming",
+      "source": "idle aiming.fbx",
+      "file": "idle-aiming.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        64
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "idle-crouching-aiming",
+      "source": "idle crouching aiming.fbx",
+      "file": "idle-crouching-aiming.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        60
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "idle-crouching",
+      "source": "idle crouching.fbx",
+      "file": "idle-crouching.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        63
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "idle",
+      "source": "idle.fbx",
+      "file": "idle.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        63
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "jump-down",
+      "source": "jump down.fbx",
+      "file": "jump-down.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        21
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "jump-loop",
+      "source": "jump loop.fbx",
+      "file": "jump-loop.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        29
+      ],
+      "fps": 30
+    },
+    {
+      "clip": "jump-up",
+      "source": "jump up.fbx",
+      "file": "jump-up.glb",
+      "inPlaceXZ": false,
+      "rootCurvesNormalized": 0,
+      "hipsBone": "Hips",
+      "frames": [
+        1,
+        17
       ],
       "fps": 30
     },
@@ -1111,5 +1111,5 @@
       "fps": 30
     }
   ],
-  "failures": []
+  "failed": []
 }
