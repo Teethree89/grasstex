@@ -1,0 +1,114 @@
+name: Temporary hedge same-run performance gate
+
+on:
+  push:
+    branches:
+      - fix/hedge-destination-stalls
+    paths:
+      - .github/workflows/tmp-hedge-perf-compare.yml
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/hedge-destination-stalls
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install browser runtime once
+        run: |
+          npm install --no-save --no-package-lock playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Start local battle server
+        run: |
+          rm -rf /tmp/battle-www
+          mkdir -p /tmp/battle-www
+          ln -s "$GITHUB_WORKSPACE" /tmp/battle-www/grasstex
+          php -S 127.0.0.1:8765 -t /tmp/battle-www >/tmp/hedge-perf-php.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:8765/grasstex/battle_sim_local.php?seed=healthcheck" >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/hedge-perf-php.log
+          exit 1
+      - name: Compare exact baseline and candidate on the same runner
+        env:
+          BASE_SHA: 059467936d93065dcb9784433d0e4987e0679413
+          CAND_SHA: 03fb72a462ba1ea0e85f6711d878c7f49b096136
+          BATTLE_PROFILE_SECONDS: 120
+          BATTLE_PROFILE_STEP: 0.15
+          BATTLE_PROFILE_URL: http://127.0.0.1:8765/grasstex/battle_sim_local.php
+          BATTLE_BENCHMARK_POLICY_URL: http://127.0.0.1:9/disabled-policy
+        run: |
+          set -euo pipefail
+          mkdir -p reports/hedge-perf
+          run_case() {
+            ref="$1"; label="$2"; type="$3"; seed="$4"; round="$5"
+            git checkout --force "$ref" >/dev/null
+            out="$GITHUB_WORKSPACE/reports/hedge-perf/${label}-${type}-${round}"
+            mkdir -p "$out"
+            echo "=== ${label} ${type} round ${round} @ ${ref} ==="
+            BATTLE_PROFILE_TYPE="$type" \
+            BATTLE_PROFILE_SEED="$seed" \
+            BATTLE_PROFILE_OUTPUT="$out" \
+            BATTLE_BENCHMARK_SOURCE_SHA="$ref" \
+            node scripts/profile_meso_churn.mjs | tee "$out/run.log"
+          }
+          MEETING_SEED=standard-benchmark-meeting-s1-b0001-0001
+          DEFEND_SEED=standard-benchmark-ge-defend-s2-b0001-0001
+
+          # Alternate order each round so runner warmup/thermal effects do not favor one revision.
+          run_case "$BASE_SHA" baseline meeting "$MEETING_SEED" 1
+          run_case "$CAND_SHA" candidate meeting "$MEETING_SEED" 1
+          run_case "$CAND_SHA" candidate ge-defend "$DEFEND_SEED" 1
+          run_case "$BASE_SHA" baseline ge-defend "$DEFEND_SEED" 1
+
+          run_case "$CAND_SHA" candidate meeting "$MEETING_SEED" 2
+          run_case "$BASE_SHA" baseline meeting "$MEETING_SEED" 2
+          run_case "$BASE_SHA" baseline ge-defend "$DEFEND_SEED" 2
+          run_case "$CAND_SHA" candidate ge-defend "$DEFEND_SEED" 2
+
+          run_case "$BASE_SHA" baseline meeting "$MEETING_SEED" 3
+          run_case "$CAND_SHA" candidate meeting "$MEETING_SEED" 3
+          run_case "$CAND_SHA" candidate ge-defend "$DEFEND_SEED" 3
+          run_case "$BASE_SHA" baseline ge-defend "$DEFEND_SEED" 3
+
+          git checkout --force "$CAND_SHA" >/dev/null
+          node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const root='reports/hedge-perf';
+          const median=a=>{a=[...a].sort((x,y)=>x-y);return a[Math.floor(a.length/2)];};
+          const rows=[];
+          for(const type of ['meeting','ge-defend']){
+            const vals={baseline:[],candidate:[]};
+            for(const label of Object.keys(vals))for(let round=1;round<=3;round++){
+              const p=path.join(root,`${label}-${type}-${round}`,'meso-churn-summary.json');
+              vals[label].push(JSON.parse(fs.readFileSync(p,'utf8')).wallSeconds);
+            }
+            const b=median(vals.baseline),c=median(vals.candidate),ratio=c/b;
+            rows.push({type,baselineRuns:vals.baseline,candidateRuns:vals.candidate,baselineMedian:+b.toFixed(3),candidateMedian:+c.toFixed(3),ratio:+ratio.toFixed(4),slowdownPct:+((ratio-1)*100).toFixed(2),pass:ratio<=1.25});
+          }
+          const result={baseline:process.env.BASE_SHA,candidate:process.env.CAND_SHA,thresholdRatio:1.25,rows,pass:rows.every(r=>r.pass)};
+          fs.writeFileSync(path.join(root,'comparison.json'),JSON.stringify(result,null,2)+'\n');
+          console.log('HEDGE_PERF_COMPARISON '+JSON.stringify(result));
+          if(!result.pass)process.exit(1);
+          NODE
+      - name: Publish comparison summary
+        if: always()
+        run: |
+          if [ -f reports/hedge-perf/comparison.json ]; then
+            echo '### Hedge destination performance gate' >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat reports/hedge-perf/comparison.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hedge-same-run-performance
+          path: reports/hedge-perf/
+          retention-days: 14
