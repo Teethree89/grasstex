@@ -351,13 +351,21 @@ N.nextWaypoint=function(sim,soldier,dest){
   // Positional ingress already contains a complete, committed physical route.
   var task=root.BattleTacticalPositions&&root.BattleTacticalPositions.current(soldier),last=soldier&&soldier._movementResolver&&soldier._movementResolver.last;
   if(task&&last&&last.kind==='firing-station'&&dest&&N.movementClear(soldier.root.position,dest))return dest;
-  var base=baseNextWaypoint(sim,soldier,dest)||dest;
-  if(!soldier||!soldier.root||!dest)return base;
-  var start={x:+soldier.root.position.x,z:+soldier.root.position.z},finalGoal=point(dest);if(!finalGoal)return base;
+  /* Normal physical routing owns its rolling waypoint queue and calls baseFindPath only when
+     building/door topology is actually needed. Maintaining the base nextWaypoint cache in parallel
+     was duplicate planning work; retain it only as the malformed-call fallback. */
+  if(!soldier||!soldier.root||!dest)return baseNextWaypoint(sim,soldier,dest)||dest;
+  var start={x:+soldier.root.position.x,z:+soldier.root.position.z},finalGoal=point(dest);
+  if(!finalGoal)return baseNextWaypoint(sim,soldier,dest)||dest;
   var c=soldier._physicalPath;
   if(needsReplan(soldier,sim,finalGoal,start))c=buildRollingPlan(soldier,sim,start,finalGoal);
   consumeReached(c,start,sim,soldier);
-  if(!c.blocked&&c.points.length<=MIN_QUEUE&&dist(start,c.standGoal)>PATH_ARRIVAL*2)c=buildRollingPlan(soldier,sim,start,finalGoal);
+  /* A low rolling queue is not a reason to throw away an otherwise-valid physical plan.
+     Extend from its committed tail. Full reconstruction remains owned by needsReplan() for
+     actual goal/version/clearance changes or the bounded periodic refresh. */
+  if(!c.blocked&&c.points.length<=MIN_QUEUE&&dist(start,c.standGoal)>PATH_ARRIVAL*2){
+    topUpQueue(sim,soldier,start,c.standGoal,c.points);
+  }
   consumeReached(c,start,sim,soldier);
   var wp=c.points[0];
   if(!wp)return start; // Hold a blocked route until its bounded retry; no destination write.
