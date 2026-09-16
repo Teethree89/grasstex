@@ -1,4 +1,5 @@
 name: Skeletal Soldier Visual
+# Asset-build bot pushes do not start dependent workflows, so this workflow is also dispatchable for regenerated-asset validation.
 on:
   workflow_dispatch:
   push:
