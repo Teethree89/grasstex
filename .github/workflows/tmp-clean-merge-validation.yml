@@ -10,7 +10,7 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,7 +19,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Syntax and deterministic regression checks
+      - name: Syntax and targeted deterministic regression checks
         run: |
           set -euo pipefail
           node --check battle/modules/16-squad-plan-stability.js
@@ -30,4 +30,15 @@ jobs:
           node scripts/check-movement-order-ownership.cjs
           node scripts/check-physical-waypoint-refill.cjs
           node tools/ai-sim-harness/lean-runtime-check.js
+      - name: Engagement harness seeds
+        run: |
+          set -euo pipefail
+          for seed in 12345 1 2 3 5 8 13 21; do
+            HARNESS_SEED="$seed" node tools/ai-sim-harness/run.js
+          done
+      - name: Geometry tactical position and impact regressions
+        run: |
+          set -euo pipefail
           node tools/ai-sim-harness/objective-nav-check.js
+          node tools/ai-sim-harness/tactical-positions-check.js
+          node tools/ai-sim-harness/impact-fx-check.js
