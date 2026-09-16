@@ -19,9 +19,8 @@ def main():
  for f in sorted(src.glob('*.fbx')):
   clear()
   try:
-   # Preserve the FBX-authored bind/rest axes. The glTF exporter serializes the armature's current
-   # pose as the static node transforms, so force REST here: animation remains in the Action while
-   # Babylon AnimatorAvatar sees the actual Mixamo reference pose before sampling animation keys.
+   # Preserve Mixamo's authored animation exactly. Reference-pose alignment belongs at the
+   # Babylon retarget boundary; forcing Blender REST here suppresses evaluated animation.
    bpy.ops.import_scene.fbx(filepath=str(f),use_anim=True,automatic_bone_orientation=False,use_prepost_rot=True);arms=[o for o in bpy.context.scene.objects if o.type=='ARMATURE']
    if not arms:raise RuntimeError('no armature')
    arm=arms[0];bones={canon(b.name):b for b in arm.data.bones};miss=sorted(REQUIRED-set(bones))
@@ -36,9 +35,9 @@ def main():
       norm+=1
    for o in list(bpy.context.scene.objects):
     if o.type=='MESH':bpy.data.objects.remove(o,do_unlink=True)
-   arm.data.pose_position='REST';bpy.context.view_layer.update()
+   arm.data.pose_position='POSE';bpy.context.view_layer.update()
    dest=out/(slug(f.stem)+'.glb');bpy.context.view_layer.objects.active=arm;arm.select_set(True);bpy.ops.export_scene.gltf(filepath=str(dest),export_format='GLB',use_selection=False,export_animations=True,export_skins=True)
-   clips.append({'clip':slug(f.stem),'source':f.name,'file':dest.name,'inPlaceXZ':loc,'rootCurvesNormalized':norm,'hipsBone':hips,'frames':[int(act.frame_range[0]),int(act.frame_range[1])],'fps':int(bpy.context.scene.render.fps),'boneOrientation':'source-rest-preserved','exportReferencePose':'armature-rest'})
+   clips.append({'clip':slug(f.stem),'source':f.name,'file':dest.name,'inPlaceXZ':loc,'rootCurvesNormalized':norm,'hipsBone':hips,'frames':[int(act.frame_range[0]),int(act.frame_range[1])],'fps':int(bpy.context.scene.render.fps),'boneOrientation':'source-rest-preserved','referencePoseAlignment':'runtime-before-retarget'})
   except Exception as e:failed.append({'source':f.name,'error':str(e)});print('FAILED',f.name,e,file=sys.stderr)
- (out/'manifest.json').write_text(json.dumps({'version':8,'rig':'mixamo-compatible','shared':True,'source':'Assets/animations/*.fbx','boneOrientation':'source-rest-preserved','exportReferencePose':'armature-rest','retargeting':'Babylon AnimatorAvatar reference-pose compensation','rootMotion':'detected locomotion horizontal travel stripped; vertical preserved','clips':clips,'failed':failed},indent=2)+'\n');return 1 if failed else 0
+ (out/'manifest.json').write_text(json.dumps({'version':9,'rig':'mixamo-compatible','shared':True,'source':'Assets/animations/*.fbx','boneOrientation':'source-rest-preserved','referencePoseAlignment':'runtime-before-retarget','retargeting':'Babylon AnimatorAvatar reference-pose compensation','rootMotion':'detected locomotion horizontal travel stripped; vertical preserved','clips':clips,'failed':failed},indent=2)+'\n');return 1 if failed else 0
 if __name__=='__main__':raise SystemExit(main())
