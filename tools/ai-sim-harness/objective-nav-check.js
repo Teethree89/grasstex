@@ -378,6 +378,20 @@ section('physical wayfinding respects body clearance through hedgerows');
   r.BattleMovementResolver.proposeCombat(close,station,roomWorld,'firing-station');r.BattleMovementResolver.resolve(close,roomWorld);
   check('the resolver accepts a sub-metre adjustment to a window station',close.destination.x===station.x&&close.destination.z===station.z);
 
+  const crossingWorld=world([hedge('crossing-hedge',0,0,8,.8)]),crossingSquad={state:'advance',commandPhase:'approach',orderAnchor:{x:0,z:-10},rally:{x:0,z:-10},objective:{x:0,z:30},members:[]};
+  const crossing={id:'crossing-man',slotIndex:4,root:{position:{x:0,z:-12},rotation:{y:0}},destination:{x:0,z:-12},orderDestination:null,_fireteamDestination:{x:0,z:0},squad:crossingSquad,speed:2.9,moveSpeed:0,fireCooldown:0};crossingSquad.members=[crossing];
+  r.BattleMovementResolver.proposeOrder(crossing,crossing._fireteamDestination,crossingWorld,false);r.BattleMovementResolver.resolve(crossing,crossingWorld);
+  check('a formation slot inside a transverse hedge resolves on the command-progress side',crossing.orderDestination.z>1.5,JSON.stringify(crossing.orderDestination));
+  check('physical endpoint resolution preserves the Captain fireteam intent',crossing._fireteamDestination.x===0&&crossing._fireteamDestination.z===0&&crossing._movementResolver.order.intentPoint.z===0);
+  check('the resolved formation endpoint itself has route-margin clearance',!P.shapeContains(crossing.orderDestination,crossingWorld.obstacles.__physicalFootprints[0],P.routeMargin),JSON.stringify(crossing.orderDestination));
+  let crossingIllegal=0;
+  for(let i=0;i<500&&Math.hypot(crossing.root.position.x-crossing.orderDestination.x,crossing.root.position.z-crossing.orderDestination.z)>.7;i++){
+    crossingWorld.time+=.15;r.BattleMovementResolver.resolve(crossing,crossingWorld);const before={x:crossing.root.position.x,z:crossing.root.position.z};r.stepMovementProbe(crossingWorld,crossing,.15);
+    if(Math.hypot(before.x-crossing.root.position.x,before.z-crossing.root.position.z)>1e-8&&!N.movementClear(before,crossing.root.position))crossingIllegal++;
+  }
+  check('a blocked formation intent routes around the hedge instead of parking on its near face',crossing.root.position.z>1.0&&Math.hypot(crossing.root.position.x-crossing.orderDestination.x,crossing.root.position.z-crossing.orderDestination.z)<=.7,JSON.stringify(crossing.root.position));
+  check('hedge-crossing endpoint recovery never violates body clearance',crossingIllegal===0,'illegal steps='+crossingIllegal);
+
   const aimWorld=world([]),aim={root:{position:{x:0,z:0},rotation:{y:0}},destination:{x:0,z:0},speed:2.9,fireCooldown:0,_faceHint:{x:Math.sin(.02)*20,z:Math.cos(.02)*20}};
   r.stepMovementProbe(aimWorld,aim,1/60);
   check('small aim changes ease over frames instead of snapping to the target',aim.root.rotation.y>0&&aim.root.rotation.y<.02);
