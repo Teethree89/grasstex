@@ -41,54 +41,6 @@ jobs:
                       except Exception:
                           pass
 
-          def curve_map(action, bone_name, prop='location'):
-              target = f'pose.bones["{bone_name}"].{prop}'
-              return {fc.array_index: fc for fc in action.fcurves if fc.data_path == target}
-
-          def object_curve_map(action, prop='location'):
-              return {fc.array_index: fc for fc in action.fcurves if fc.data_path == prop}
-
-          def keyed_frames(curves, start, end):
-              frames = {float(start), float(end)}
-              for fc in curves.values():
-                  frames.update(float(k.co.x) for k in fc.keyframe_points)
-              return sorted(frames)
-
-          def sample_xyz(curves, start, end):
-              frames = keyed_frames(curves, start, end)
-              vals = []
-              for fr in frames:
-                  vals.append(tuple(curves[i].evaluate(fr) if i in curves else 0.0 for i in range(3)))
-              return vals
-
-          def translation_motion(curves, start, end):
-              vals = sample_xyz(curves, start, end)
-              if not vals:
-                  return dict(h_net=0.0, h_span=0.0, v_net=0.0, v_span=0.0)
-              # Blender FBX import uses Z-up, so X/Y are the horizontal plane.
-              x0, y0, z0 = vals[0]
-              x1, y1, z1 = vals[-1]
-              h_net = math.hypot(x1 - x0, y1 - y0)
-              h_span = 0.0
-              for a in vals:
-                  for b in vals:
-                      h_span = max(h_span, math.hypot(a[0] - b[0], a[1] - b[1]))
-              zs = [v[2] for v in vals]
-              return dict(
-                  h_net=h_net,
-                  h_span=h_span,
-                  v_net=abs(z1 - z0),
-                  v_span=max(zs) - min(zs),
-              )
-
-          def rotation_delta(curves, start, end):
-              if not curves:
-                  return 0.0
-              total = 0.0
-              for fc in curves.values():
-                  total += (fc.evaluate(end) - fc.evaluate(start)) ** 2
-              return math.degrees(math.sqrt(total))
-
           def descendants(bone):
               stack = list(bone.children)
               while stack:
@@ -109,10 +61,50 @@ jobs:
                           return b
               return roots[0]
 
+          def evaluated_track(scene, arm, bone, start, end):
+              positions = []
+              rotations = []
+              for frame in range(int(math.floor(start)), int(math.ceil(end)) + 1):
+                  scene.frame_set(frame)
+                  bpy.context.view_layer.update()
+                  pb = arm.pose.bones.get(bone.name)
+                  if pb is None:
+                      raise RuntimeError(f'missing pose bone {bone.name}')
+                  world = arm.matrix_world @ pb.matrix
+                  p = world.translation.copy()
+                  q = world.to_quaternion().normalized()
+                  positions.append((float(p.x), float(p.y), float(p.z)))
+                  rotations.append(q)
+              return positions, rotations
+
+          def position_metrics(positions):
+              if not positions:
+                  return dict(h_net=0.0, h_span=0.0, z_net=0.0, z_span=0.0)
+              p0, p1 = positions[0], positions[-1]
+              h_net = math.hypot(p1[0] - p0[0], p1[1] - p0[1])
+              h_span = 0.0
+              for a in positions:
+                  for b in positions:
+                      h_span = max(h_span, math.hypot(a[0] - b[0], a[1] - b[1]))
+              zs = [p[2] for p in positions]
+              return dict(
+                  h_net=h_net,
+                  h_span=h_span,
+                  z_net=abs(p1[2] - p0[2]),
+                  z_span=max(zs) - min(zs),
+              )
+
+          def rotation_metrics(rotations):
+              if len(rotations) < 2:
+                  return 0.0
+              q0, q1 = rotations[0], rotations[-1]
+              return math.degrees(q0.rotation_difference(q1).angle)
+
           src = Path('Assets/animations')
+          scene = bpy.context.scene
           errors = 0
-          print('ROOT_MOTION_SCAN_V2')
-          print('file\tframes\troot_bone\thips_h_net\thips_h_span\thips_v_net\thips_v_span\troot_h_net\troot_h_span\troot_v_net\troot_v_span\tobject_h_net\tobject_h_span\tobject_v_net\tobject_v_span\troot_rot_deg\thips_rot_deg')
+          print('ROOT_MOTION_SCAN_V3')
+          print('file\tframes\troot_bone\troot_h_net\troot_h_span\troot_z_net\troot_z_span\troot_rot_delta_deg')
 
           for f in sorted(src.glob('*.fbx')):
               clear()
@@ -123,7 +115,7 @@ jobs:
                       automatic_bone_orientation=False,
                       use_prepost_rot=True,
                   )
-                  arms = [o for o in bpy.context.scene.objects if o.type == 'ARMATURE']
+                  arms = [o for o in scene.objects if o.type == 'ARMATURE']
                   if not arms:
                       raise RuntimeError('no armature')
                   arm = arms[0]
@@ -133,20 +125,18 @@ jobs:
                   start, end = action.frame_range
                   hips = next((b for b in arm.data.bones if canon(b.name) == 'hips'), None)
                   root = choose_root(arm, hips)
+                  if not root:
+                      raise RuntimeError('no root bone')
 
-                  hm = translation_motion(curve_map(action, hips.name) if hips else {}, start, end)
-                  rm = translation_motion(curve_map(action, root.name) if root else {}, start, end)
-                  om = translation_motion(object_curve_map(action), start, end)
-                  rr = rotation_delta(curve_map(action, root.name, 'rotation_euler') if root else {}, start, end)
-                  hr = rotation_delta(curve_map(action, hips.name, 'rotation_euler') if hips else {}, start, end)
+                  positions, rotations = evaluated_track(scene, arm, root, start, end)
+                  m = position_metrics(positions)
+                  rd = rotation_metrics(rotations)
                   frame_count = int(round(end - start + 1))
-
                   print(
-                      f'{f.name}\t{frame_count}\t{root.name if root else "-"}'
-                      f'\t{hm["h_net"]:.6f}\t{hm["h_span"]:.6f}\t{hm["v_net"]:.6f}\t{hm["v_span"]:.6f}'
-                      f'\t{rm["h_net"]:.6f}\t{rm["h_span"]:.6f}\t{rm["v_net"]:.6f}\t{rm["v_span"]:.6f}'
-                      f'\t{om["h_net"]:.6f}\t{om["h_span"]:.6f}\t{om["v_net"]:.6f}\t{om["v_span"]:.6f}'
-                      f'\t{rr:.3f}\t{hr:.3f}'
+                      f'{f.name}\t{frame_count}\t{root.name}'
+                      f'\t{m["h_net"]:.6f}\t{m["h_span"]:.6f}'
+                      f'\t{m["z_net"]:.6f}\t{m["z_span"]:.6f}'
+                      f'\t{rd:.3f}'
                   )
               except Exception as exc:
                   errors += 1
@@ -159,5 +149,5 @@ jobs:
 
           blender --background --python /tmp/scan_root_motion.py 2>/tmp/blender.err | tee /tmp/root-motion-scan.txt
           echo '--- ROOT MOTION SCAN START ---'
-          sed -n '/ROOT_MOTION_SCAN_V2/,$p' /tmp/root-motion-scan.txt
+          sed -n '/ROOT_MOTION_SCAN_V3/,$p' /tmp/root-motion-scan.txt
           echo '--- ROOT MOTION SCAN END ---'
