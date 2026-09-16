@@ -1,0 +1,59 @@
+name: Temporary hedge browser visual QA rerun
+
+on:
+  push:
+    branches:
+      - fix/hedge-destination-stalls
+    paths:
+      - .github/workflows/tmp-hedge-visual-rerun.yml
+
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/hedge-destination-stalls
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Extract corrected visual probe
+        run: |
+          git show 45921d469b104f8c2ea018832edcc9627c47202f:.github/workflows/tmp-hedge-visual-qa.yml > /tmp/hedge-workflow.yml
+          python - <<'PY'
+          from pathlib import Path
+          lines=Path('/tmp/hedge-workflow.yml').read_text().splitlines()
+          start=next(i for i,l in enumerate(lines) if "cat > .tmp-hedge-visual.mjs <<'NODE'" in l)+1
+          end=next(i for i in range(start,len(lines)) if lines[i].strip()=='NODE')
+          script='\n'.join((l[10:] if l.startswith('          ') else l) for l in lines[start:end])+'\n'
+          script=script.replace('return{found:true,seed,hedge:', 'return{found:true,hedge:')
+          Path('/tmp/hedge-visual.mjs').write_text(script)
+          PY
+      - name: Check out exact runtime candidate
+        run: git checkout --force 03fb72a462ba1ea0e85f6711d878c7f49b096136
+      - name: Start local battle server
+        run: |
+          rm -rf /tmp/battle-www
+          mkdir -p /tmp/battle-www
+          ln -s "$GITHUB_WORKSPACE" /tmp/battle-www/grasstex
+          php -S 127.0.0.1:8765 -t /tmp/battle-www >/tmp/hedge-visual-php.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:8765/grasstex/battle_sim_local.php?seed=healthcheck" >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/hedge-visual-php.log
+          exit 1
+      - name: Run corrected visual probe
+        run: node /tmp/hedge-visual.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hedge-browser-visual-qa-rerun
+          path: reports/hedge-visual/
+          retention-days: 14
