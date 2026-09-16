@@ -2,15 +2,15 @@
    One boundary owns ALL combat locomotion. Engagement owns combat state, stance and fire control;
    it requests a movement intent here, and only this owner publishes combat movement to the resolver.
    Repeated identical intents are coalesced instead of making the resolver reject the same request
-   every AI tick. */
+   every AI tick. Combat mobility never rewrites Squad/Meso formation orders. */
 (function(root){
 'use strict';
 if(!root.BattleModules||!root.BattleEngagement||!root.BattleMovementResolver||root.BattleCombatMobility)return;
-var MAX_LATERAL_CONTACT=22,MAX_LATERAL_ADVANCE=14,MAX_FORMATION_BACK=7,MAX_ORDER_BACK=2,MIN_COVER_FORWARD=1.5;
+var MIN_COVER_FORWARD=1.5;
 var PUSH_METERS=6.5,PUSH_ARRIVAL=1.25;
 var COVER_SEARCH=22,COVER_ARRIVED=1.3,SHARED_REACT_AGE=2.5,SHARED_HOLD=1.8,SHARED_RESET_QUIET=4.5,URGENT_TTL=.55;
 var INTENT_REFRESH=.55,INTENT_EPS=.18,HOLD_EPS=1.0;
-var oldUpdate=root.BattleEngagement.updateSoldier,baseResolve=root.BattleMovementResolver.resolve,baseProposeCombat=root.BattleMovementResolver.proposeCombat;
+var oldUpdate=root.BattleEngagement.updateSoldier,baseProposeCombat=root.BattleMovementResolver.proposeCombat;
 function point(p){return p&&isFinite(+p.x)&&isFinite(+p.z)?{x:+p.x,z:+p.z}:null;}
 function dist(a,b){return a&&b?Math.hypot(a.x-b.x,a.z-b.z):Infinity;}
 function pos(s){return point(s&&s.root&&s.root.position);}
@@ -37,9 +37,7 @@ function request(s,p,b,kind,ttl,meta){
   bump(b,s,'intentPublishes');originBump(b,origin,'publishes');
   return baseProposeCombat.call(root.BattleMovementResolver,s,p,b,kind,Math.max(life,INTENT_REFRESH+.25),{source:'combat-mobility',reason:reason});
 }
-function compactOrder(sim,s,q,ax){var mr=s&&s._movementResolver,p=mr&&mr.order,pt=p&&point(p.point);if(!pt)return;var dx=pt.x-ax.anchor.x,dz=pt.z-ax.anchor.z,fw=dx*ax.fx+dz*ax.fz,lat=dx*ax.rx+dz*ax.rz,max=q.inContact?MAX_LATERAL_CONTACT:MAX_LATERAL_ADVANCE;var nfw=Math.max(-MAX_FORMATION_BACK,fw),nlat=Math.max(-max,Math.min(max,lat)),here=pos(s);if(here&&!q.inContact){var hx=here.x-ax.anchor.x,hz=here.z-ax.anchor.z,hf=hx*ax.fx+hz*ax.fz;nfw=Math.max(nfw,hf-MAX_ORDER_BACK);}if(Math.abs(nfw-fw)<.01&&Math.abs(nlat-lat)<.01)return;p.point={x:ax.anchor.x+ax.fx*nfw+ax.rx*nlat,z:ax.anchor.z+ax.fz*nfw+ax.rz*nlat};if(s.orderDestination){s.orderDestination.x=p.point.x;s.orderDestination.z=p.point.z;}bump(sim,s,'orderClamps');}
 function allowCover(s,sim,pt){var q=s&&s.squad;if(!q||q.commandPhase!=='assault'||q.state==='retreat'||(+s.suppressedUntil||0)>sim.time)return true;var ax=axis(sim,q),here=pos(s);if(!ax||!here)return true;var fw=(pt.x-here.x)*ax.fx+(pt.z-here.z)*ax.fz;if(fw>=MIN_COVER_FORWARD)return true;bump(sim,s,'coverRejects');if(fw>=-.25)bump(sim,s,'lateralCoverRejects');return false;}
-root.BattleMovementResolver.resolve=function(s,battle){if(s&&battle&&s.squad&&s.squad.commandPhase==='assault'&&s.squad.state!=='retreat'){var ax=axis(battle,s.squad);if(ax)compactOrder(battle,s,s.squad,ax);}return baseResolve.apply(this,arguments);};
 function strategicForward(s){var q=s&&s.squad,h=pos(s),g=point(q&&q.objective);if(!q||!h||!g)return null;var dx=g.x-h.x,dz=g.z-h.z,l=Math.hypot(dx,dz);return l<2?null:{x:dx/l,z:dz/l,distance:l};}
 function boundToken(s){return s&&s.squad?+s.squad._boundUntil||0:0;}
 function boundUnsafe(s,b){var q=s&&s.squad;if(!q||s.dead||s.role==='gunner'||(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s))||s.reloading||s.clearingStoppage||s.outOfAmmo)return true;if((+s.suppressedUntil||0)>b.time)return true;if(q.state==='retreat'||q.commandPhase!=='assault'||!q._assaultAuthorized||!q.inContact||b.time>=boundToken(s))return true;if(s._fireteamKey&&q._boundTeam&&s._fireteamKey!==q._boundTeam)return true;return false;}
@@ -59,10 +57,10 @@ root.BattleEngagement.updateSoldier=function(s,b){var result=oldUpdate.apply(thi
 function markUrgent(sim){var t=+sim.time||0,a=root.BattleModules.unitsFor(sim);for(var i=0;i<a.length;i++){var s=a[i];if(!s||s.dead||t>=(+s._combatUrgentUntil||0))continue;if(s.prone){s.prone=false;s.crawling=false;}s.tacticalCrouch=true;stats(sim).urgentFrames++;}}
 function reset(sim){sim._combatMobilityStats=fresh();var a=root.BattleModules.unitsFor(sim);for(var i=0;i<a.length;i++){delete a[i]._assaultBoundPush;delete a[i]._combatMobilityIntent;a[i]._combatUrgentUntil=0;if(a[i].eng){a[i].eng._urgentCover=false;a[i].eng._urgentCoverSearchAt=0;a[i].eng._sharedContactAware=false;a[i].eng._sharedContactSector=null;a[i].eng._sharedContactQuietAt=null;}}}
 function publish(sim){var st=JSON.parse(JSON.stringify(stats(sim)));sim._combatMobilitySummary=st;sim._assaultForwardGuardSummary={orderClamps:st.orderClamps,coverRejects:st.coverRejects,lateralCoverRejects:st.lateralCoverRejects};sim._assaultBoundMomentumSummary={pushes:st.pushes,completions:st.pushCompletions,cancels:st.pushCancels,pushMeters:PUSH_METERS};sim._combatUrgencySummary={urgentCoverStarts:st.urgentCoverStarts,urgentCoverArrivals:st.urgentCoverArrivals,sharedContactReactions:st.sharedContactReactions,sharedContactRepeatBlocks:st.sharedContactRepeatBlocks,urgentFrames:st.urgentFrames};}
-root.BattleModules.registerSystem('combat-mobility',{version:'1.1-single-combat-writer',onBattleStart:reset,onBattleRestart:reset,onSimulationStep:markUrgent,onCommanderTick:publish});
-root.BattleAssaultForwardGuard={version:'1.1-single-combat-writer',allowCover:allowCover,summary:function(sim){return sim&&sim._assaultForwardGuardSummary?JSON.parse(JSON.stringify(sim._assaultForwardGuardSummary)):null;}};
-root.BattleAssaultBoundMomentum={version:'1.1-single-combat-writer',summary:function(sim){return sim&&sim._assaultBoundMomentumSummary?JSON.parse(JSON.stringify(sim._assaultBoundMomentumSummary)):null;}};
-root.BattleCombatUrgency={version:'1.1-single-combat-writer',summary:function(sim){return sim&&sim._combatUrgencySummary?JSON.parse(JSON.stringify(sim._combatUrgencySummary)):null;}};
-root.BattleCombatMobility={version:'1.1-single-combat-writer',request:request};
-console.log('[ENGAGE] lean combat-mobility owner: sole combat locomotion writer + intent coalescing');
+root.BattleModules.registerSystem('combat-mobility',{version:'1.2-single-combat-writer',onBattleStart:reset,onBattleRestart:reset,onSimulationStep:markUrgent,onCommanderTick:publish});
+root.BattleAssaultForwardGuard={version:'1.2-single-combat-writer',allowCover:allowCover,summary:function(sim){return sim&&sim._assaultForwardGuardSummary?JSON.parse(JSON.stringify(sim._assaultForwardGuardSummary)):null;}};
+root.BattleAssaultBoundMomentum={version:'1.2-single-combat-writer',summary:function(sim){return sim&&sim._assaultBoundMomentumSummary?JSON.parse(JSON.stringify(sim._assaultBoundMomentumSummary)):null;}};
+root.BattleCombatUrgency={version:'1.2-single-combat-writer',summary:function(sim){return sim&&sim._combatUrgencySummary?JSON.parse(JSON.stringify(sim._combatUrgencySummary)):null;}};
+root.BattleCombatMobility={version:'1.2-single-combat-writer',request:request};
+console.log('[ENGAGE] lean combat-mobility owner: sole combat locomotion writer; formation intent remains Meso-owned');
 })(typeof window!=='undefined'?window:globalThis);

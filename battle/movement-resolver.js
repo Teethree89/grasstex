@@ -17,7 +17,7 @@
   function signature(s){var q=s.squad||{};return[q.commandPhase||'',q.targetObjective||'',q._engagementPlan&&q._engagementPlan.serial||0,q.state==='retreat'?'retreat':''].join('|');}
   function priority(kind,s){return kind==='retreat'?100:kind==='regroup'?95:kind==='reload-hold'?90:kind==='firing-station'?80:kind==='assault-rush'||kind==='assault-bound-push'?70:kind==='cover-bound'?60:kind==='contact-reaction'?55:kind==='hold'?(s.eng&&s.eng.state==='pinned'?85:50):20;}
   function tolerance(kind){return ['firing-station','hold','reload-hold','contact-reaction'].indexOf(kind)>=0?.1:ORDER_EPS;}
-  function metrics(b){return b._movementGoalStats||(b._movementGoalStats={requests:0,actualChanges:0,equivalentRequestsIgnored:0,hysteresisRetains:0,lowerPriorityRejected:0,emergencyOverrides:0,formationShadowsIgnored:0,goalLegalizations:0,tacticalWaypointBacktracks:0,blockedGoalFallbacks:0,illegalGoalsUnresolved:0,overridesByPriority:{},bySource:{}});}
+  function metrics(b){return b._movementGoalStats||(b._movementGoalStats={requests:0,actualChanges:0,equivalentRequestsIgnored:0,hysteresisRetains:0,lowerPriorityRejected:0,emergencyOverrides:0,formationShadowsIgnored:0,goalLegalizations:0,formationEndpointResolutions:0,tacticalWaypointBacktracks:0,blockedGoalFallbacks:0,illegalGoalsUnresolved:0,overridesByPriority:{},bySource:{}});}
   function count(b,key,source){var m=metrics(b);m[key]=(m[key]||0)+1;if(source){var row=m.bySource[source]||(m.bySource[source]={requests:0,changes:0});if(key==='requests')row.requests++;if(key==='actualChanges')row.changes++;}}
   function valid(s,p,b){
     if(!p||p.signature!==signature(s))return false;
@@ -85,9 +85,25 @@
 
   function legalizeGoal(soldier,battle,raw,kind,source){
     var p=point(raw);if(!p||!battle||PRECISE_GOALS[kind])return p;
+    var P=root.BattleNavigationPhysicality,out;
+    /* Formation intent is Meso-owned and terrain-blind. Do not collapse it onto the soldier's
+       current side of a hedge. Physical Navigation resolves a route-margin-clear endpoint while
+       intentPoint keeps the Captain's original slot for ownership/provenance. */
+    if(kind==='formation'&&P&&typeof P.resolveStandGoal==='function'){
+      out=P.resolveStandGoal(battle,soldier,p);
+      if(out&&distance(out,p)>ORDER_WRITE_EPS){
+        count(battle,'goalLegalizations',source);count(battle,'formationEndpointResolutions',source);
+        if(soldier)soldier._movementEndpointResolution={kind:'formation',intent:{x:p.x,z:p.z},point:{x:out.x,z:out.z},at:now(battle)};
+      }else if(soldier)delete soldier._movementEndpointResolution;
+      var N=root.BattleNavigation;
+      if(out&&(!N||typeof N.movementClear!=='function'||N.movementClear(out,out)))return{x:out.x,z:out.z};
+      /* No bounded stand point was available. Retain the old conservative safety fallback rather
+         than ever publishing a body-illegal endpoint. */
+      return projectBlockedPoint(soldier,battle,p,'goalLegalizations',source);
+    }
     var cache=soldier&&soldier._movementLegalGoalCache;
     if(cache&&cache.kind===kind&&distance(cache.raw,p)<=ORDER_WRITE_EPS)return{x:cache.point.x,z:cache.point.z};
-    var out=projectBlockedPoint(soldier,battle,p,'goalLegalizations',source);
+    out=projectBlockedPoint(soldier,battle,p,'goalLegalizations',source);
     if(soldier)soldier._movementLegalGoalCache={kind:kind,raw:{x:p.x,z:p.z},point:{x:out.x,z:out.z}};
     return out;
   }
@@ -200,7 +216,7 @@
     if(pick.owner==='engagement'||pick.owner==='tactical-positions')st.combatWins++;else st.orderWins++;
     return st.last;
   }
-  function resetSoldier(soldier){if(soldier){delete soldier._movementResolver;delete soldier._movementTacticalReason;delete soldier._tacticalRoute;delete soldier._movementLegalGoalCache;}}
+  function resetSoldier(soldier){if(soldier){delete soldier._movementResolver;delete soldier._movementTacticalReason;delete soldier._tacticalRoute;delete soldier._movementLegalGoalCache;delete soldier._movementEndpointResolution;}}
   function summary(sim){
     var out=Object.assign({orders:0,combat:0,byKind:{},changed:0,stickyCombatWins:0,tacticalWins:0,bySoldier:[],highestChurnSoldier:null},metrics(sim)),roster=sim&&sim._roster||{},active=0;
     ['us','ge'].forEach(function(f){(roster[f]||[]).forEach(function(s){var st=s._movementResolver;if(!st)return;out.changed+=st.changes||0;

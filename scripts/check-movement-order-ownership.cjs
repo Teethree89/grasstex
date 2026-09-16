@@ -1,0 +1,32 @@
+#!/usr/bin/env node
+'use strict';
+const assert=require('node:assert/strict'),fs=require('fs'),path=require('path'),H=require('../tools/ai-sim-harness/harness');
+function load(r,p){new Function('window','globalThis','console',fs.readFileSync(path.join(H.REPO,p),'utf8'))(r,r,{log(){},warn(){}});}
+const r=H.bootstrap({modules:false}),systems={};
+r.BattleModules={registerSystem(id,s){systems[id]=s;},unitsFor:b=>(b._roster.us||[]).concat(b._roster.ge||[])};
+load(r,'battle/battle-navigation.js');
+load(r,'battle/movement-resolver.js');
+load(r,'battle/modules/44-assault-forward-guard.js');
+load(r,'battle/modules/52-survival-tactical-route.js');
+const b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman','rifleman']});
+q.state='engaged';q.commandPhase='assault';q.inContact=false;q.orderAnchor={x:0,z:0};
+const s=q.members[0],M=r.BattleMovementResolver;
+s.root.position.x=0;s.root.position.z=40;s.destination={x:0,z:0};
+s._fireteamDestination={x:0,z:30};
+M.proposeOrder(s,s._fireteamDestination,b,false);
+const order=s._movementResolver.order,orderPoint=order.point,expected={x:0,z:30};
+assert.deepEqual(order.point,expected);
+assert.deepEqual(s.orderDestination,expected);
+M.resolve(s,b);
+assert.strictEqual(s._movementResolver.order,order,'resolve must not replace the committed formation order');
+assert.strictEqual(order.point,orderPoint,'resolve must not replace the committed formation point');
+assert.deepEqual(order.point,expected,'combat mobility must not compact Meso formation intent');
+assert.deepEqual(s.orderDestination,expected,'physical resolution must not rewrite orderDestination');
+assert.deepEqual(s._fireteamDestination,expected,'Meso fireteam destination must remain authoritative');
+s.root.position.z=44;b.time+=.15;
+M.resolve(s,b);
+assert.strictEqual(order.point,orderPoint,'advancing body position must not drag the formation point');
+assert.deepEqual(order.point,expected);
+assert.deepEqual(s.orderDestination,expected);
+assert.deepEqual(s._fireteamDestination,expected);
+console.log('PASS: movement execution preserves committed Meso formation order across resolve calls');
