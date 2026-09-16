@@ -1,8 +1,9 @@
 {
-  "version": 5,
+  "version": 6,
   "rig": "mixamo-compatible",
   "shared": true,
   "source": "Assets/animations/*.fbx",
+  "boneOrientation": "automatic",
   "rootMotion": "detected locomotion horizontal travel stripped; vertical preserved",
   "clips": [
     {
@@ -16,7 +17,8 @@
         1,
         30
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "fire-rifle-automatic-crouch-walk",
@@ -29,7 +31,8 @@
         1,
         36
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "fire-rifle-automatic-fast-walk",
@@ -42,7 +45,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "fire-rifle-automatic-prone",
@@ -55,7 +59,8 @@
         1,
         14
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "fire-rifle-automatic-regular-walk",
@@ -68,7 +73,8 @@
         1,
         41
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "fire-rifle-automatic-slow-walk",
@@ -81,7 +87,8 @@
         1,
         99
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "fire-rifle-automatic-standing",
@@ -94,7 +101,8 @@
         1,
         9
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "fire-rifle-single-shot-crouched-kneel",
@@ -107,7 +115,8 @@
         1,
         32
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "fire-rifle-single-shot-prone",
@@ -120,7 +129,8 @@
         1,
         26
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "fire-rifle-single-shot-regular-walk",
@@ -133,7 +143,8 @@
         1,
         42
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "fire-rifle-single-shot",
@@ -146,7 +157,8 @@
         1,
         36
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "moving-backward-in-prone-position",
@@ -159,7 +171,8 @@
         1,
         58
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "prone-backwards-start",
@@ -172,7 +185,8 @@
         1,
         20
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "prone-backwards-stop",
@@ -185,7 +199,8 @@
         1,
         38
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "prone-death",
@@ -198,7 +213,8 @@
         1,
         57
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "prone-forward-stop",
@@ -211,7 +227,8 @@
         1,
         42
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "prone-forward",
@@ -224,7 +241,8 @@
         1,
         71
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "prone-left-turn",
@@ -237,7 +255,8 @@
         1,
         32
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "prone-right-turn",
@@ -250,7 +269,8 @@
         1,
         40
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "prone-roll-right-fast",
@@ -263,7 +283,8 @@
         1,
         52
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "prone-roll-right",
@@ -276,7 +297,8 @@
         1,
         99
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-aim-to-kneel",
@@ -289,7 +311,8 @@
         1,
         25
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-crouch-walk-to-kneel",
@@ -302,7 +325,8 @@
         1,
         83
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-kneel-hit-to-back",
@@ -315,7 +339,8 @@
         1,
         58
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-kneel-idle",
@@ -328,7 +353,8 @@
         1,
         52
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-kneel-to-aim",
@@ -341,7 +367,8 @@
         1,
         25
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-kneel-to-prone",
@@ -354,7 +381,8 @@
         1,
         60
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-kneel-to-stand",
@@ -367,7 +395,8 @@
         1,
         38
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-prone-idle",
@@ -380,7 +409,8 @@
         1,
         149
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-prone-to-kneel",
@@ -393,7 +423,8 @@
         1,
         60
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-reload-crouched",
@@ -406,7 +437,8 @@
         1,
         207
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-reload-prone",
@@ -419,7 +451,8 @@
         1,
         193
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-reload-run",
@@ -432,7 +465,8 @@
         1,
         111
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-reload-standing",
@@ -445,7 +479,8 @@
         1,
         100
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-reload-walking",
@@ -458,7 +493,8 @@
         1,
         124
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "rifle-stand-to-kneel",
@@ -471,7 +507,8 @@
         1,
         29
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "crouching-turn-90-left",
@@ -484,7 +521,8 @@
         1,
         39
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "crouching-turn-90-right",
@@ -497,7 +535,8 @@
         1,
         37
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "death-crouching-headshot-front",
@@ -510,7 +549,8 @@
         1,
         58
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "death-from-back-headshot",
@@ -523,7 +563,8 @@
         1,
         112
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "death-from-front-headshot",
@@ -536,7 +577,8 @@
         1,
         86
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "death-from-right",
@@ -549,7 +591,8 @@
         1,
         100
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "death-from-the-back",
@@ -562,7 +605,8 @@
         1,
         90
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "death-from-the-front",
@@ -575,7 +619,8 @@
         1,
         104
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "idle-aiming",
@@ -588,7 +633,8 @@
         1,
         64
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "idle-crouching-aiming",
@@ -601,7 +647,8 @@
         1,
         60
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "idle-crouching",
@@ -614,7 +661,8 @@
         1,
         63
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "idle",
@@ -627,7 +675,8 @@
         1,
         63
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "jump-down",
@@ -640,7 +689,8 @@
         1,
         21
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "jump-loop",
@@ -653,7 +703,8 @@
         1,
         29
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "jump-up",
@@ -666,7 +717,8 @@
         1,
         17
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "run-backward-left",
@@ -679,7 +731,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "run-backward-right",
@@ -692,7 +745,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "run-backward",
@@ -705,7 +759,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "run-forward-left",
@@ -718,7 +773,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "run-forward-right",
@@ -731,7 +787,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "run-forward",
@@ -744,7 +801,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "run-left",
@@ -757,7 +815,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "run-right",
@@ -770,7 +829,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "sprint-backward-left",
@@ -783,7 +843,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "sprint-backward-right",
@@ -796,7 +857,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "sprint-backward",
@@ -809,7 +871,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "sprint-forward-left",
@@ -822,7 +885,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "sprint-forward-right",
@@ -835,7 +899,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "sprint-forward",
@@ -848,7 +913,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "sprint-left",
@@ -861,7 +927,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "sprint-right",
@@ -874,7 +941,8 @@
         1,
         16
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "turn-90-left",
@@ -887,7 +955,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "turn-90-right",
@@ -900,7 +969,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-backward-left",
@@ -913,7 +983,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-backward-right",
@@ -926,7 +997,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-backward",
@@ -939,7 +1011,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-crouching-backward-left",
@@ -952,7 +1025,8 @@
         1,
         30
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-crouching-backward-right",
@@ -965,7 +1039,8 @@
         1,
         30
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-crouching-backward",
@@ -978,7 +1053,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-crouching-forward-left",
@@ -991,7 +1067,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-crouching-forward-right",
@@ -1004,7 +1081,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-crouching-forward",
@@ -1017,7 +1095,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-crouching-left",
@@ -1030,7 +1109,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-crouching-right",
@@ -1043,7 +1123,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-forward-left",
@@ -1056,7 +1137,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-forward-right",
@@ -1069,7 +1151,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-forward",
@@ -1082,7 +1165,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-left",
@@ -1095,7 +1179,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     },
     {
       "clip": "walk-right",
@@ -1108,7 +1193,8 @@
         1,
         31
       ],
-      "fps": 30
+      "fps": 30,
+      "boneOrientation": "automatic"
     }
   ],
   "failed": []
