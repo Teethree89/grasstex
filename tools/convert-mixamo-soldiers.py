@@ -22,7 +22,11 @@ def clear(): bpy.ops.object.select_all(action="SELECT"); bpy.ops.object.delete(u
 def main():
     ns=args(); src=Path(ns.input_dir); dst=Path(ns.output_dir); dst.mkdir(parents=True,exist_ok=True); count=0
     for f in sorted(src.glob("*.fbx"),key=lambda p:p.name.lower()):
-        clear(); bpy.ops.import_scene.fbx(filepath=str(f),use_anim=False,automatic_bone_orientation=False)
+        clear()
+        # Keep the character and animation conversion paths on the same normalized Blender bone basis.
+        # Mixamo FBX joint axes can otherwise survive into independently-exported GLBs with different
+        # local rest matrices even when every bone name/hierarchy matches.
+        bpy.ops.import_scene.fbx(filepath=str(f),use_anim=False,automatic_bone_orientation=True,use_prepost_rot=True)
         arms=[o for o in bpy.context.scene.objects if o.type=="ARMATURE"]
         if len(arms)!=1: raise RuntimeError(f"{f.name}: expected one armature, found {len(arms)}")
         normalized={canonical_bone_name(b.name):b.name for b in arms[0].data.bones}
@@ -37,6 +41,6 @@ def main():
         out=dst/(name+".glb")
         bpy.ops.object.select_all(action="SELECT")
         bpy.ops.export_scene.gltf(filepath=str(out),export_format="GLB",use_selection=True,export_animations=False,export_skins=True,export_morph=False)
-        print(f"[soldier] {f.name} -> {out.name} (hips={normalized['hips']})"); count+=1
+        print(f"[soldier] {f.name} -> {out.name} (hips={normalized['hips']}, boneOrientation=automatic)"); count+=1
     if not count: raise SystemExit(f"No soldier FBXs in {src}")
 if __name__=="__main__": main()
