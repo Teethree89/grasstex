@@ -1,12 +1,12 @@
-name: Meso Fireteam Churn Attribution - Arrival Commit
+name: Meso Fireteam Churn Attribution - Hedge Endpoint Fix
 
 on:
   push:
     branches:
-      - fix/meso-formation-frame-stability
+      - fix/hedge-destination-stalls
     paths:
       - battle/modules/39-navigation-physicality-debug.js
-      - battle/modules/44-assault-forward-guard.js
+      - battle/movement-resolver.js
       - scripts/check-movement-order-ownership.cjs
       - scripts/check-physical-waypoint-refill.cjs
       - scripts/meso-churn-profiler.cjs
@@ -52,6 +52,7 @@ jobs:
       - name: Movement ownership and navigation regressions
         run: |
           node --check battle/modules/39-navigation-physicality-debug.js
+          node --check battle/movement-resolver.js
           node --check battle/modules/44-assault-forward-guard.js
           node scripts/check-movement-order-ownership.cjs
           node scripts/check-physical-waypoint-refill.cjs
