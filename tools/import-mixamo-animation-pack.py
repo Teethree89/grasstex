@@ -19,9 +19,9 @@ def main():
  for f in sorted(src.glob('*.fbx')):
   clear()
   try:
-   # Use the same automatic bone-axis normalization as the soldier converter. Matching names alone
-   # are not enough when independently imported FBXs produce different local rest/bind matrices.
-   bpy.ops.import_scene.fbx(filepath=str(f),use_anim=True,automatic_bone_orientation=True,use_prepost_rot=True);arms=[o for o in bpy.context.scene.objects if o.type=='ARMATURE']
+   # Preserve each Mixamo FBX's authored reference transforms. Babylon AnimatorAvatar consumes the
+   # source transform-node rest pose and compensates it against the target soldier skeleton.
+   bpy.ops.import_scene.fbx(filepath=str(f),use_anim=True,automatic_bone_orientation=False,use_prepost_rot=True);arms=[o for o in bpy.context.scene.objects if o.type=='ARMATURE']
    if not arms:raise RuntimeError('no armature')
    arm=arms[0];bones={canon(b.name):b for b in arm.data.bones};miss=sorted(REQUIRED-set(bones))
    if miss:raise RuntimeError('missing required bones: '+','.join(miss))
@@ -36,7 +36,7 @@ def main():
    for o in list(bpy.context.scene.objects):
     if o.type=='MESH':bpy.data.objects.remove(o,do_unlink=True)
    dest=out/(slug(f.stem)+'.glb');bpy.context.view_layer.objects.active=arm;arm.select_set(True);bpy.ops.export_scene.gltf(filepath=str(dest),export_format='GLB',use_selection=False,export_animations=True,export_skins=True)
-   clips.append({'clip':slug(f.stem),'source':f.name,'file':dest.name,'inPlaceXZ':loc,'rootCurvesNormalized':norm,'hipsBone':hips,'frames':[int(act.frame_range[0]),int(act.frame_range[1])],'fps':int(bpy.context.scene.render.fps),'boneOrientation':'automatic'})
+   clips.append({'clip':slug(f.stem),'source':f.name,'file':dest.name,'inPlaceXZ':loc,'rootCurvesNormalized':norm,'hipsBone':hips,'frames':[int(act.frame_range[0]),int(act.frame_range[1])],'fps':int(bpy.context.scene.render.fps),'boneOrientation':'source-rest-preserved'})
   except Exception as e:failed.append({'source':f.name,'error':str(e)});print('FAILED',f.name,e,file=sys.stderr)
- (out/'manifest.json').write_text(json.dumps({'version':6,'rig':'mixamo-compatible','shared':True,'source':'Assets/animations/*.fbx','boneOrientation':'automatic','rootMotion':'detected locomotion horizontal travel stripped; vertical preserved','clips':clips,'failed':failed},indent=2)+'\n');return 1 if failed else 0
+ (out/'manifest.json').write_text(json.dumps({'version':7,'rig':'mixamo-compatible','shared':True,'source':'Assets/animations/*.fbx','boneOrientation':'source-rest-preserved','retargeting':'Babylon AnimatorAvatar reference-pose compensation','rootMotion':'detected locomotion horizontal travel stripped; vertical preserved','clips':clips,'failed':failed},indent=2)+'\n');return 1 if failed else 0
 if __name__=='__main__':raise SystemExit(main())
