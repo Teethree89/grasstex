@@ -1,0 +1,80 @@
+name: Deploy FBX Animation Lab Preview
+
+on:
+  push:
+    branches:
+      - fbx-lab-normalization
+    paths:
+      - fbx-animation-lab.html
+      - .github/workflows/deploy-fbx-lab-preview.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-fbx-animation-lab-preview
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Upload FBX animation lab preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout preview branch
+        uses: actions/checkout@v4
+        with:
+          ref: fbx-lab-normalization
+
+      - name: Validate preview file
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s fbx-animation-lab.html
+          grep -q '<title>FBX Motion Lab</title>' fbx-animation-lab.html
+          echo "Preview source: $(git rev-parse HEAD)"
+
+      - name: Install FTP client
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lftp
+
+      - name: Upload preview only
+        shell: bash
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASS }}
+        run: |
+          set -euo pipefail
+          : "${FTP_HOST:?Missing repository secret FTP_HOST}"
+          : "${FTP_USER:?Missing repository secret FTP_USER}"
+          : "${FTP_PASSWORD:?Missing repository secret FTP_PASS}"
+
+          lftp -u "$FTP_USER","$FTP_PASSWORD" "$FTP_HOST" <<LFTP
+          set cmd:fail-exit yes
+          set net:max-retries 2
+          set net:timeout 15
+          set ftp:ssl-allow no
+          set ftp:passive-mode true
+          cd grasstex
+          mkdir -p labs
+          put "$GITHUB_WORKSPACE/fbx-animation-lab.html" -o "labs/fbx-animation-lab.html"
+          cls -l labs/fbx-animation-lab.html
+          bye
+          LFTP
+
+      - name: Deployment summary
+        shell: bash
+        run: |
+          {
+            echo "### FBX Animation Lab preview"
+            echo ""
+            echo "- Source branch: \`fbx-lab-normalization\`"
+            echo "- Source commit: \`$(git rev-parse HEAD)\`"
+            echo "- Remote path: \`/grasstex/labs/fbx-animation-lab.html\`"
+            echo "- Production Battle Sim files: untouched"
+          } >> "$GITHUB_STEP_SUMMARY"
