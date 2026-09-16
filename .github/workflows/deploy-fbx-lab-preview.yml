@@ -7,6 +7,7 @@ on:
     paths:
       - fbx-animation-lab.html
       - fbx-animation-root-lock.js
+      - fbx-animation-compat.js
       - .github/workflows/deploy-fbx-lab-preview.yml
   workflow_dispatch:
 
@@ -35,6 +36,7 @@ jobs:
           set -euo pipefail
           test -s fbx-animation-lab.html
           test -s fbx-animation-root-lock.js
+          test -s fbx-animation-compat.js
           grep -q '<title>FBX Motion Lab</title>' fbx-animation-lab.html
           python3 - <<'PY'
           from pathlib import Path
@@ -48,6 +50,7 @@ jobs:
           PY
           node --check /tmp/fbx-animation-lab.js
           node --check fbx-animation-root-lock.js
+          node --check fbx-animation-compat.js
           echo "Preview source: $(git rev-parse HEAD)"
 
       - name: Build preview page
@@ -64,12 +67,17 @@ jobs:
           if marker not in source:
               raise SystemExit('fbx-animation-lab.html is missing </body>')
           sha = os.environ.get('GITHUB_SHA', 'dev')
-          include = f'  <script src="fbx-animation-root-lock.js?v={sha}"></script>\n'
-          staged = source.replace(marker, include + marker, 1)
+          includes = (
+              f'  <script src="fbx-animation-root-lock.js?v={sha}"></script>\n'
+              f'  <script src="fbx-animation-compat.js?v={sha}"></script>\n'
+          )
+          staged = source.replace(marker, includes + marker, 1)
           Path('.preview/fbx-animation-lab.html').write_text(staged, encoding='utf-8')
           PY
           cp fbx-animation-root-lock.js .preview/fbx-animation-root-lock.js
+          cp fbx-animation-compat.js .preview/fbx-animation-compat.js
           grep -q 'fbx-animation-root-lock.js' .preview/fbx-animation-lab.html
+          grep -q 'fbx-animation-compat.js' .preview/fbx-animation-lab.html
 
       - name: Install FTP client
         shell: bash
@@ -98,8 +106,10 @@ jobs:
           cd grasstex/labs
           put "$GITHUB_WORKSPACE/.preview/fbx-animation-lab.html" -o "fbx-animation-lab.html"
           put "$GITHUB_WORKSPACE/.preview/fbx-animation-root-lock.js" -o "fbx-animation-root-lock.js"
+          put "$GITHUB_WORKSPACE/.preview/fbx-animation-compat.js" -o "fbx-animation-compat.js"
           cls -l fbx-animation-lab.html
           cls -l fbx-animation-root-lock.js
+          cls -l fbx-animation-compat.js
           bye
           LFTP
 
@@ -113,5 +123,6 @@ jobs:
             echo "- Source commit: \`$(git rev-parse HEAD)\`"
             echo "- Remote page: \`/grasstex/labs/fbx-animation-lab.html\`"
             echo "- Root-lock experiment: \`/grasstex/labs/fbx-animation-root-lock.js\`"
+            echo "- Animation compatibility guard: \`/grasstex/labs/fbx-animation-compat.js\`"
             echo "- Production Battle Sim files: untouched"
           } >> "$GITHUB_STEP_SUMMARY"
