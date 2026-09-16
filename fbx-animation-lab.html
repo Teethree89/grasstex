@@ -70,7 +70,11 @@
       <div class="row" style="margin-top:9px"><button class="primary" id="play" disabled>Play</button><button id="pause" disabled>Pause</button><button id="stop" disabled>Stop</button></div>
       <label class="control" style="margin-top:13px">Speed <span id="speedValue">1.00×</span><input id="speed" type="range" min="0.1" max="2" step="0.05" value="1"></label>
       <label class="check"><input id="loop" type="checkbox" checked> Loop active clip</label>
+
+      <h2>Debug tools</h2>
       <label class="check"><input id="skeleton" type="checkbox"> Show skeleton</label>
+      <label class="check"><input id="animationBounds" type="checkbox"> Show animation container outline</label>
+      <p class="hint" style="margin-top:9px">The orange <span class="key">+</span> always marks the bottom center of the current animated width/depth footprint. The outline is diagnostic only; nothing is recentered or root-locked yet.</p>
 
       <h2>Preview normalization</h2>
       <p class="hint">The imported character is uniformly scaled to <span class="key">1.80 units</span> tall, centered over X/Z = 0 and planted on Y = 0. Imported materials render two-sided for diagnosis. This does not remove animation root motion.</p>
@@ -91,10 +95,12 @@
         <dt>Source height</dt><dd id="sourceHeight">—</dd>
         <dt>Preview scale</dt><dd id="previewScale">—</dd>
         <dt>Two-sided materials</dt><dd id="materialCount">—</dd>
+        <dt>Animation W×H×D</dt><dd id="animationSize">—</dd>
+        <dt>Bottom center</dt><dd id="animationCenter">—</dd>
       </dl>
       <h2>Available clips</h2><div id="clips"><p class="empty">Import an animation to see clips here.</p></div>
       <h2>Compatibility</h2><p class="hint" id="compatibility">Waiting for model and animation.</p>
-      <h2>Workflow</h2><p class="hint">Model FBX → normalize preview → animation FBX → select clip → play. The wrapper handles import scale/origin only; animation tracks still bind to the model rig.</p>
+      <h2>Workflow</h2><p class="hint">Model FBX → normalize preview → animation FBX → measure current deformed frame → play. The animation container currently measures only; it does not move the model.</p>
     </aside>
   </main>
 
@@ -147,7 +153,10 @@
     grid.color = new BABYLON.Color3(.18,.31,.39);
 
     let modelAssets = null;
+    let animationContainer = null;
     let modelContainer = null;
+    let animationBoundsLines = null;
+    let animationCenterCross = null;
     let modelMeshes = [];
     let modelSkeletons = [];
     let modelTargets = new Map();
@@ -178,9 +187,19 @@
       skeletonViewers = [];
     }
 
+    function disposeAnimationDebug() {
+      if (animationBoundsLines && !animationBoundsLines.isDisposed()) animationBoundsLines.dispose();
+      if (animationCenterCross && !animationCenterCross.isDisposed()) animationCenterCross.dispose();
+      animationBoundsLines = null;
+      animationCenterCross = null;
+      $('animationSize').textContent = '—';
+      $('animationCenter').textContent = '—';
+    }
+
     function disposeModel() {
       stopAll();
       disposeSkeletonViewers();
+      disposeAnimationDebug();
       if (modelAssets) {
         modelAssets.animationGroups.forEach(group => group.dispose());
         modelAssets.meshes.forEach(mesh => { if (!mesh.isDisposed()) mesh.dispose(false, true); });
@@ -188,7 +207,9 @@
         modelAssets.transformNodes.forEach(node => { if (!node.isDisposed()) node.dispose(); });
       }
       if (modelContainer && !modelContainer.isDisposed()) modelContainer.dispose();
+      if (animationContainer && !animationContainer.isDisposed()) animationContainer.dispose();
       modelAssets = null;
+      animationContainer = null;
       modelContainer = null;
       modelMeshes = [];
       modelSkeletons = [];
@@ -216,8 +237,26 @@
       return found ? { min, max, size:max.subtract(min), center:min.add(max).scale(.5) } : null;
     }
 
+    function refreshAnimatedBounds() {
+      renderableMeshes().forEach(mesh => {
+        if (mesh.skeleton) {
+          try {
+            mesh.refreshBoundingInfo({ applySkeleton:true, applyMorph:true, updatePositionsArray:false });
+          } catch (error) {
+            mesh.refreshBoundingInfo(true, true);
+          }
+        } else {
+          mesh.refreshBoundingInfo();
+        }
+        mesh.computeWorldMatrix(true);
+      });
+      return getBounds();
+    }
+
     function attachModelContainer() {
+      animationContainer = new BABYLON.TransformNode('labAnimationContainer', scene);
       modelContainer = new BABYLON.TransformNode('labModelContainer', scene);
+      modelContainer.parent = animationContainer;
       const owned = new Set([...modelMeshes, ...modelAssets.transformNodes]);
       owned.forEach(node => {
         if (!node.parent || !owned.has(node.parent)) node.parent = modelContainer;
@@ -226,6 +265,9 @@
 
     function normalizePreviewTransform() {
       if (!modelContainer) return;
+      animationContainer.position.set(0,0,0);
+      animationContainer.rotation.set(0,0,0);
+      animationContainer.scaling.setAll(1);
       modelContainer.position.set(0,0,0);
       modelContainer.scaling.setAll(1);
       modelContainer.computeWorldMatrix(true);
@@ -285,8 +327,6 @@
       modelMeshes.forEach(mesh => {
         if (mesh.getTotalVertices() > 0) {
           meshes++;
-          // The character casts onto the floor but does not self-receive in the lab.
-          // This avoids FBX-normal/shadow-acne artifacts being mistaken for missing faces.
           mesh.receiveShadows = false;
           shadow.addShadowCaster(mesh);
         }
@@ -307,9 +347,64 @@
       return bones;
     }
 
+    function boxLines(bounds) {
+      const { min, max } = bounds;
+      const p = [
+        new BABYLON.Vector3(min.x,min.y,min.z), new BABYLON.Vector3(max.x,min.y,min.z),
+        new BABYLON.Vector3(max.x,min.y,max.z), new BABYLON.Vector3(min.x,min.y,max.z),
+        new BABYLON.Vector3(min.x,max.y,min.z), new BABYLON.Vector3(max.x,max.y,min.z),
+        new BABYLON.Vector3(max.x,max.y,max.z), new BABYLON.Vector3(min.x,max.y,max.z)
+      ];
+      return [
+        [p[0],p[1]],[p[1],p[2]],[p[2],p[3]],[p[3],p[0]],
+        [p[4],p[5]],[p[5],p[6]],[p[6],p[7]],[p[7],p[4]],
+        [p[0],p[4]],[p[1],p[5]],[p[2],p[6]],[p[3],p[7]]
+      ];
+    }
+
+    function updateAnimationContainerDebug() {
+      if (!modelAssets || !modelMeshes.length) return;
+      const bounds = refreshAnimatedBounds();
+      if (!bounds) return;
+
+      const bottomCenter = new BABYLON.Vector3(
+        (bounds.min.x + bounds.max.x) * .5,
+        bounds.min.y + .006,
+        (bounds.min.z + bounds.max.z) * .5
+      );
+      const crossRadius = Math.max(.07, Math.min(.18, Math.max(bounds.size.x, bounds.size.z) * .18));
+      const crossLines = [
+        [new BABYLON.Vector3(bottomCenter.x-crossRadius,bottomCenter.y,bottomCenter.z), new BABYLON.Vector3(bottomCenter.x+crossRadius,bottomCenter.y,bottomCenter.z)],
+        [new BABYLON.Vector3(bottomCenter.x,bottomCenter.y,bottomCenter.z-crossRadius), new BABYLON.Vector3(bottomCenter.x,bottomCenter.y,bottomCenter.z+crossRadius)]
+      ];
+
+      if (!animationCenterCross) {
+        animationCenterCross = BABYLON.MeshBuilder.CreateLineSystem('animationBottomCenter', { lines:crossLines, updatable:true }, scene);
+        animationCenterCross.color = new BABYLON.Color3(1,.55,.12);
+        animationCenterCross.isPickable = false;
+        animationCenterCross.renderingGroupId = 3;
+      } else {
+        BABYLON.MeshBuilder.CreateLineSystem(null, { lines:crossLines, instance:animationCenterCross }, scene);
+      }
+
+      const outlineLines = boxLines(bounds);
+      if (!animationBoundsLines) {
+        animationBoundsLines = BABYLON.MeshBuilder.CreateLineSystem('animationContainerOutline', { lines:outlineLines, updatable:true }, scene);
+        animationBoundsLines.color = new BABYLON.Color3(.94,.74,.24);
+        animationBoundsLines.isPickable = false;
+        animationBoundsLines.renderingGroupId = 3;
+      } else {
+        BABYLON.MeshBuilder.CreateLineSystem(null, { lines:outlineLines, instance:animationBoundsLines }, scene);
+      }
+      animationBoundsLines.setEnabled($('animationBounds').checked);
+
+      $('animationSize').textContent = bounds.size.x.toFixed(3)+' × '+bounds.size.y.toFixed(3)+' × '+bounds.size.z.toFixed(3);
+      $('animationCenter').textContent = bottomCenter.x.toFixed(3)+', '+bounds.min.y.toFixed(3)+', '+bottomCenter.z.toFixed(3);
+    }
+
     function frame() {
       if (!modelMeshes.length) return;
-      const bounds = getBounds();
+      const bounds = refreshAnimatedBounds() || getBounds();
       if (!bounds) return;
       const largest = Math.max(bounds.size.x, bounds.size.y, bounds.size.z, .25);
       camera.target.copyFrom(bounds.center);
@@ -382,6 +477,7 @@
         modelAssets.animationGroups.forEach((group, i) => loadedClips.push({ group, name:'Model: '+(group.name||'Clip '+(i+1)) }));
         refreshClipUI();
         frame();
+        updateAnimationContainerDebug();
         setStatus('Model ready at '+TARGET_MODEL_HEIGHT.toFixed(2)+'u tall. '+materialCount+' material'+(materialCount===1?'':'s')+' rendered two-sided. '+(bones.size?'Load a matching animation FBX.':'No skeleton found; static model loaded.'));
         $('compatibility').textContent = 'Load an animation FBX to compare its targets.';
         if (loadedClips.length) selectClip(0);
@@ -469,7 +565,14 @@
     };
     $('loop').onchange = () => { if (activeGroup) { const current=activeGroup; current.stop(); current.start($('loop').checked); } };
     $('skeleton').onchange = event => setSkeletonVisible(event.target.checked);
+    $('animationBounds').onchange = event => {
+      if (animationBoundsLines) animationBoundsLines.setEnabled(event.target.checked);
+      if (modelAssets) updateAnimationContainerDebug();
+    };
 
+    scene.onBeforeRenderObservable.add(() => {
+      if (modelAssets) updateAnimationContainerDebug();
+    });
     window.addEventListener('resize', () => engine.resize());
     engine.runRenderLoop(() => scene.render());
   </script>
