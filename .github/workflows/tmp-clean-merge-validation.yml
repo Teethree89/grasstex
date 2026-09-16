@@ -1,0 +1,33 @@
+name: Temporary clean Meso hedge merge validation
+
+on:
+  push:
+    branches:
+      - fix/hedge-destination-stalls
+    paths:
+      - .github/workflows/tmp-clean-merge-validation.yml
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: merge/meso-hedge-clean
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax and deterministic regression checks
+        run: |
+          set -euo pipefail
+          node --check battle/modules/16-squad-plan-stability.js
+          node --check battle/modules/39-navigation-physicality-debug.js
+          node --check battle/modules/44-assault-forward-guard.js
+          node --check battle/movement-resolver.js
+          node scripts/check-meso-formation-frame-stability.cjs
+          node scripts/check-movement-order-ownership.cjs
+          node scripts/check-physical-waypoint-refill.cjs
+          node tools/ai-sim-harness/lean-runtime-check.js
+          node tools/ai-sim-harness/objective-nav-check.js
