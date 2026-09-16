@@ -19,8 +19,9 @@ def main():
  for f in sorted(src.glob('*.fbx')):
   clear()
   try:
-   # Preserve Mixamo's authored animation exactly. Reference-pose alignment belongs at the
-   # Babylon retarget boundary; forcing Blender REST here suppresses evaluated animation.
+   # Keep the armature in POSE so animation is evaluated/exported, but tell Blender's glTF
+   # exporter to serialize the armature REST position as the joints' reference pose. This gives
+   # Babylon a real Mixamo rest frame at load time without freezing the animation in rest pose.
    bpy.ops.import_scene.fbx(filepath=str(f),use_anim=True,automatic_bone_orientation=False,use_prepost_rot=True);arms=[o for o in bpy.context.scene.objects if o.type=='ARMATURE']
    if not arms:raise RuntimeError('no armature')
    arm=arms[0];bones={canon(b.name):b for b in arm.data.bones};miss=sorted(REQUIRED-set(bones))
@@ -36,8 +37,8 @@ def main():
    for o in list(bpy.context.scene.objects):
     if o.type=='MESH':bpy.data.objects.remove(o,do_unlink=True)
    arm.data.pose_position='POSE';bpy.context.view_layer.update()
-   dest=out/(slug(f.stem)+'.glb');bpy.context.view_layer.objects.active=arm;arm.select_set(True);bpy.ops.export_scene.gltf(filepath=str(dest),export_format='GLB',use_selection=False,export_animations=True,export_skins=True)
-   clips.append({'clip':slug(f.stem),'source':f.name,'file':dest.name,'inPlaceXZ':loc,'rootCurvesNormalized':norm,'hipsBone':hips,'frames':[int(act.frame_range[0]),int(act.frame_range[1])],'fps':int(bpy.context.scene.render.fps),'boneOrientation':'source-rest-preserved','referencePoseAlignment':'runtime-before-retarget'})
+   dest=out/(slug(f.stem)+'.glb');bpy.context.view_layer.objects.active=arm;arm.select_set(True);bpy.ops.export_scene.gltf(filepath=str(dest),export_format='GLB',use_selection=False,export_animations=True,export_skins=True,export_rest_position_armature=True,export_current_frame=False,export_reset_pose_bones=True)
+   clips.append({'clip':slug(f.stem),'source':f.name,'file':dest.name,'inPlaceXZ':loc,'rootCurvesNormalized':norm,'hipsBone':hips,'frames':[int(act.frame_range[0]),int(act.frame_range[1])],'fps':int(bpy.context.scene.render.fps),'boneOrientation':'source-rest-preserved','exportReferencePose':'armature-rest','referencePoseMethod':'gltf-export-rest-position-armature','animationEvaluation':'pose'})
   except Exception as e:failed.append({'source':f.name,'error':str(e)});print('FAILED',f.name,e,file=sys.stderr)
- (out/'manifest.json').write_text(json.dumps({'version':9,'rig':'mixamo-compatible','shared':True,'source':'Assets/animations/*.fbx','boneOrientation':'source-rest-preserved','referencePoseAlignment':'runtime-before-retarget','retargeting':'Babylon AnimatorAvatar reference-pose compensation','rootMotion':'detected locomotion horizontal travel stripped; vertical preserved','clips':clips,'failed':failed},indent=2)+'\n');return 1 if failed else 0
+ (out/'manifest.json').write_text(json.dumps({'version':10,'rig':'mixamo-compatible','shared':True,'source':'Assets/animations/*.fbx','boneOrientation':'source-rest-preserved','exportReferencePose':'armature-rest','referencePoseMethod':'gltf-export-rest-position-armature','animationEvaluation':'pose','retargeting':'Babylon AnimatorAvatar reference-pose compensation','rootMotion':'detected locomotion horizontal travel stripped; vertical preserved','clips':clips,'failed':failed},indent=2)+'\n');return 1 if failed else 0
 if __name__=='__main__':raise SystemExit(main())
