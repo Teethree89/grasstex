@@ -22,6 +22,16 @@ jobs:
           node-version: 22
       - name: Install Chromium harness
         run: npm install --no-save playwright && npx playwright install --with-deps chromium
+      - name: Start local Battle Sim server
+        run: |
+          php -S 127.0.0.1:8765 -t .. > /tmp/skeletal-visual-php.log 2>&1 &
+          echo $! > /tmp/skeletal-visual-php.pid
+          for i in {1..30}; do
+            if curl -fsS 'http://127.0.0.1:8765/grasstex/battle_sim_local.php?seed=skeletal-visual-check' >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/skeletal-visual-php.log
+          exit 1
       - name: Run skeletal soldier visual harness
         run: node scripts/skeletal-soldier-visual-check.mjs
       - name: Upload screenshots
