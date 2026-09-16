@@ -33,6 +33,7 @@ jobs:
           end=next(i for i in range(start,len(lines)) if lines[i].strip()=='NODE')
           script='\n'.join((l[10:] if l.startswith('          ') else l) for l in lines[start:end])+'\n'
           script=script.replace('return{found:true,seed,hedge:', 'return{found:true,hedge:')
+          script=script.replace('directBlocked:directHit', 'directBlocked:row.directHit')
           Path('.tmp-hedge-visual.mjs').write_text(script)
           PY
       - name: Check out exact runtime candidate
