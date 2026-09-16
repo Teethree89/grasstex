@@ -1,0 +1,142 @@
+name: Temporary hedge browser visual QA
+
+on:
+  push:
+    branches:
+      - fix/hedge-destination-stalls
+    paths:
+      - .github/workflows/tmp-hedge-visual-qa.yml
+
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/hedge-destination-stalls
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Create visual probe
+        run: |
+          cat > .tmp-hedge-visual.mjs <<'NODE'
+          import { chromium } from 'playwright';
+          import fs from 'node:fs';
+
+          const out='reports/hedge-visual';fs.mkdirSync(out,{recursive:true});
+          const seed='standard-benchmark-meeting-s1-b0001-0001';
+          const url=`http://127.0.0.1:8765/grasstex/battle_sim_local.php?seed=${encodeURIComponent(seed)}`;
+          const browser=await chromium.launch({headless:true,args:['--disable-dev-shm-usage','--use-gl=swiftshader','--enable-webgl','--ignore-gpu-blocklist']});
+          const browserErrors=[];
+          try{
+            const page=await browser.newPage({viewport:{width:1440,height:1000},deviceScaleFactor:1});
+            page.setDefaultTimeout(120000);
+            page.on('pageerror',e=>browserErrors.push(String(e?.stack||e)));
+            await page.route('**/*',async route=>{const t=route.request().resourceType();return(t==='media'||t==='font')?route.abort():route.continue();});
+            await page.goto(url,{waitUntil:'domcontentloaded',timeout:120000});
+            await page.waitForFunction(()=>!!(window.__battle__&&window.BattleCommanderAI&&window.BattleNavigationPhysicality&&window.BABYLON),null,{timeout:120000});
+
+            const result=await page.evaluate(async()=>{
+              const root=window,sim=root.__battle__,scene=sim.scene,engine=scene?.getEngine?.(),renderLoop=root.__battleRenderLoop__;
+              if(engine&&renderLoop)engine.stopRenderLoop(renderLoop);sim.pause();
+              const telemetry=root.BattleTelemetry||null;if(telemetry?.end)try{await telemetry.end(sim,'hedge-visual-start');}catch(_){}
+              if(telemetry){telemetry.record=function(){};telemetry.start=function(){};telemetry.ensure=function(){};telemetry.end=async()=>true;telemetry.checkpoint=async()=>true;telemetry.flush=async()=>true;}
+              sim.trainingMode=true;root.BattleSoldierModel?.setImportedEnabled?.(scene,false);
+              const rawRestart=sim._controlRawRestart||sim.restart.bind(sim);rawRestart();
+              sim.manualEnded=false;sim.winner=null;sim.winReason=null;sim.paused=false;sim.timeScale=1;sim.timeLimit=120;
+
+              const P=root.BattleNavigationPhysicality,N=root.BattleNavigation;
+              const hedges=(P.footprints(sim)||[]).filter(h=>String(h?.type||'').toLowerCase()==='hedge'&&h.shape==='obb');
+              function hedgeDistance(p,h){
+                const ux=+h.ux||1,uz=+h.uz||0,dx=p.x-(+h.x||0),dz=p.z-(+h.z||0),lx=dx*ux+dz*uz,lz=-dx*uz+dz*ux;
+                return Math.hypot(Math.max(Math.abs(lx)-(+h.hx||0),0),Math.max(Math.abs(lz)-(+h.hz||0),0));
+              }
+              function units(){return (sim._units||[]).filter(u=>u&&u.root&&u.root.position&&u.squad);}
+              const dt=.15,commandTick=+root.BattleCommanderAI.commandTick||.45,maxSteps=Math.ceil(120/dt);let commandAccum=0,event=null,selected=null;
+              for(let step=0;step<maxSteps&&!event&&!sim.winner;step++){
+                sim._trainerStepActive=true;try{sim.step?sim.step(dt):sim._frame(dt);}finally{sim._trainerStepActive=false;}
+                commandAccum+=dt;while(commandAccum+1e-9>=commandTick&&!sim.winner){commandAccum-=commandTick;root.BattleCommanderAI.update(sim,root.__scenario__||scene?.metadata?.battleScenario||null,commandTick);}
+                for(const u of units()){
+                  const r=u._movementEndpointResolution;if(!r?.intent||!r?.point)continue;
+                  let nearest=null,near=Infinity;for(const h of hedges){const d=hedgeDistance(r.intent,h);if(d<near){near=d;nearest=h;}}
+                  if(nearest&&near<=2.0){selected=u;event={time:+sim.time.toFixed(2),id:u.id||u.name||'unit',start:{x:+u.root.position.x,z:+u.root.position.z},intent:{x:+r.intent.x,z:+r.intent.z},endpoint:{x:+r.point.x,z:+r.point.z},hedge:{x:+nearest.x,z:+nearest.z,hx:+nearest.hx,hz:+nearest.hz,ux:+nearest.ux,uz:+nearest.uz},intentHedgeDistance:+near.toFixed(3)};break;}
+                }
+              }
+              if(!event||!selected)throw new Error('No live formation endpoint resolution adjacent to a hedgerow was observed');
+
+              const trajectory=[{x:+selected.root.position.x,z:+selected.root.position.z,t:+sim.time.toFixed(2)}];let clearanceViolations=0,closest=Infinity,planned=[];
+              for(let step=0;step<Math.ceil(24/dt)&&!sim.winner;step++){
+                const before={x:+selected.root.position.x,z:+selected.root.position.z};
+                sim._trainerStepActive=true;try{sim.step?sim.step(dt):sim._frame(dt);}finally{sim._trainerStepActive=false;}
+                commandAccum+=dt;while(commandAccum+1e-9>=commandTick&&!sim.winner){commandAccum-=commandTick;root.BattleCommanderAI.update(sim,root.__scenario__||scene?.metadata?.battleScenario||null,commandTick);}
+                const after={x:+selected.root.position.x,z:+selected.root.position.z};
+                if(N&&typeof N.movementClear==='function'&&!N.movementClear(before,after))clearanceViolations++;
+                const d=Math.hypot(after.x-event.endpoint.x,after.z-event.endpoint.z);closest=Math.min(closest,d);
+                if(step%3===0)trajectory.push({x:after.x,z:after.z,t:+sim.time.toFixed(2)});
+                const pp=selected._physicalPath?.points;if(Array.isArray(pp)&&pp.length)planned=pp.map(p=>({x:+p.x,z:+p.z}));
+                if(d<1.4)break;
+              }
+              event.final={x:+selected.root.position.x,z:+selected.root.position.z};event.closestEndpointDistance=+closest.toFixed(3);event.clearanceViolations=clearanceViolations;event.trajectory=trajectory;event.planned=planned.slice(0,20);
+              event.displacement=+Math.hypot(event.final.x-event.start.x,event.final.z-event.start.z).toFixed(3);
+
+              // Draw non-gameplay QA overlays: raw Meso intent, resolved physical endpoint, actual trail, planned queue, and the blocking hedge OBB.
+              const B=root.BABYLON;
+              const mk=(name,p,color,diam=1.0)=>{const m=B.MeshBuilder.CreateSphere(name,{diameter:diam,segments:12},scene);m.position.set(p.x,(sim.heightAt?.(p.x,p.z)||0)+1.4,p.z);const mat=new B.StandardMaterial(name+'Mat',scene);mat.emissiveColor=color;mat.diffuseColor=color;m.material=mat;return m;};
+              mk('qaRawIntent',event.intent,new B.Color3(1,.12,.12),1.4);mk('qaResolvedEndpoint',event.endpoint,new B.Color3(.15,1,.2),1.4);mk('qaSoldierFinal',event.final,new B.Color3(1,.85,.1),1.2);
+              const toV=p=>new B.Vector3(p.x,(sim.heightAt?.(p.x,p.z)||0)+1.05,p.z);
+              if(trajectory.length>1){const l=B.MeshBuilder.CreateLines('qaActualTrail',{points:trajectory.map(toV)},scene);l.color=new B.Color3(1,.15,1);}
+              if(planned.length>1){const l=B.MeshBuilder.CreateLines('qaPlannedRoute',{points:[event.final,...planned].map(toV)},scene);l.color=new B.Color3(.1,.9,1);}
+              const h=event.hedge,ax={x:h.ux,z:h.uz},nx={x:-h.uz,z:h.ux},corners=[
+                {x:h.x+ax.x*h.hx+nx.x*h.hz,z:h.z+ax.z*h.hx+nx.z*h.hz},
+                {x:h.x-ax.x*h.hx+nx.x*h.hz,z:h.z-ax.z*h.hx+nx.z*h.hz},
+                {x:h.x-ax.x*h.hx-nx.x*h.hz,z:h.z-ax.z*h.hx-nx.z*h.hz},
+                {x:h.x+ax.x*h.hx-nx.x*h.hz,z:h.z+ax.z*h.hx-nx.z*h.hz}
+              ];corners.push(corners[0]);const hl=B.MeshBuilder.CreateLines('qaHedgeOBB',{points:corners.map(toV)},scene);hl.color=new B.Color3(1,.55,.05);
+
+              const pts=[event.start,event.intent,event.endpoint,event.final,...trajectory,...planned,...corners],xs=pts.map(p=>p.x),zs=pts.map(p=>p.z),minX=Math.min(...xs),maxX=Math.max(...xs),minZ=Math.min(...zs),maxZ=Math.max(...zs),cx=(minX+maxX)/2,cz=(minZ+maxZ)/2,span=Math.max(maxX-minX,maxZ-minZ,12),cy=(sim.heightAt?.(cx,cz)||0)+1;
+              const cam=scene.activeCamera,target=new B.Vector3(cx,cy,cz),radius=Math.max(34,span*2.1);
+              if(cam&&'radius' in cam){cam.target=target;cam.radius=radius;cam.alpha=-Math.PI/2.3;cam.beta=.78;}else if(cam){cam.position=new B.Vector3(cx+radius*.7,cy+radius*.55,cz-radius*.7);cam.setTarget?.(target);}
+              document.getElementById('hud')?.setAttribute('style','display:none!important');document.getElementById('hudToggle')?.setAttribute('style','display:none!important');document.getElementById('animationLabToggle')?.setAttribute('style','display:none!important');
+              scene.render();scene.render();
+              root.__hedgeVisualQA={event,target:{x:cx,y:cy,z:cz},radius};
+              return event;
+            });
+
+            await page.screenshot({path:`${out}/route-oblique.png`});
+            await page.evaluate(()=>{const q=window.__hedgeVisualQA,cam=window.__battle__?.scene?.activeCamera;if(cam&&q&&'radius' in cam){cam.beta=.30;cam.radius=Math.max(cam.radius,48);window.__battle__.scene.render();window.__battle__.scene.render();}});
+            await page.screenshot({path:`${out}/route-topdown.png`});
+            fs.writeFileSync(`${out}/visual-result.json`,JSON.stringify({seed,result,browserErrors},null,2)+'\n');
+            console.log('HEDGE_VISUAL_QA '+JSON.stringify({time:result.time,id:result.id,intentHedgeDistance:result.intentHedgeDistance,displacement:result.displacement,closestEndpointDistance:result.closestEndpointDistance,clearanceViolations:result.clearanceViolations,plannedPoints:result.planned.length,trajectoryPoints:result.trajectory.length}));
+            if(browserErrors.length)throw new Error('Browser exceptions: '+browserErrors.join('\n'));
+            if(result.clearanceViolations!==0)throw new Error(`Observed ${result.clearanceViolations} body-clearance violations`);
+            if(result.displacement<1.5)throw new Error(`Selected soldier did not make meaningful progress after endpoint resolution (${result.displacement}m)`);
+          } finally { await browser.close(); }
+          NODE
+      - name: Check out exact runtime candidate
+        run: git checkout --force 03fb72a462ba1ea0e85f6711d878c7f49b096136
+      - name: Start local battle server
+        run: |
+          rm -rf /tmp/battle-www
+          mkdir -p /tmp/battle-www
+          ln -s "$GITHUB_WORKSPACE" /tmp/battle-www/grasstex
+          php -S 127.0.0.1:8765 -t /tmp/battle-www >/tmp/hedge-visual-php.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:8765/grasstex/battle_sim_local.php?seed=healthcheck" >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/hedge-visual-php.log
+          exit 1
+      - name: Run real browser hedge visual probe
+        run: node .tmp-hedge-visual.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hedge-browser-visual-qa
+          path: reports/hedge-visual/
+          retention-days: 14
