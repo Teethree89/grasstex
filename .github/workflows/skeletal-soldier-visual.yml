@@ -27,19 +27,19 @@ jobs:
           from pathlib import Path
           p=Path('Assets/runtime/animations/manifest.json')
           m=json.loads(p.read_text())
-          assert m.get('version') == 8, m.get('version')
+          assert m.get('version') == 9, m.get('version')
           assert m.get('boneOrientation') == 'source-rest-preserved', m.get('boneOrientation')
-          assert m.get('exportReferencePose') == 'armature-rest', m.get('exportReferencePose')
+          assert m.get('referencePoseAlignment') == 'runtime-before-retarget', m.get('referencePoseAlignment')
           assert m.get('retargeting') == 'Babylon AnimatorAvatar reference-pose compensation', m.get('retargeting')
           assert not m.get('failed'), m.get('failed')
           clips={x['clip']:x for x in m.get('clips',[])}
-          assert clips and all(x.get('exportReferencePose') == 'armature-rest' for x in clips.values())
+          assert clips and all(x.get('referencePoseAlignment') == 'runtime-before-retarget' for x in clips.values())
           assert 'prone-forward' in clips
           assert clips['prone-forward'].get('inPlaceXZ') is True
           assert clips['prone-forward'].get('rootCurvesNormalized',0) >= 2
           assert Path('Assets/runtime/soldiers/us-rifleman.glb').stat().st_size > 0
           assert Path('Assets/runtime/soldiers/ge-rifleman.glb').stat().st_size > 0
-          print(f"validated {len(clips)} shared clips; source armatures exported from rest pose")
+          print(f"validated {len(clips)} shared clips; reference pose aligns at runtime before retarget")
           PY
       - name: Install Chromium harness
         run: npm install --no-save playwright && npx playwright install --with-deps chromium
