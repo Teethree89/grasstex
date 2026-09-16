@@ -1,4 +1,4 @@
-name: Temporary hedge baseline validation
+name: Temporary hedge endpoint ownership patch
 
 on:
   push:
@@ -7,29 +7,42 @@ on:
     paths:
       - .github/workflows/tmp-nav-refill-patch.yml
 
+permissions:
+  contents: write
+
 jobs:
-  baseline:
+  patch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/hedge-destination-stalls
-      - name: Run unchanged branch regression baseline
+      - name: Apply candidate
+        run: |
+          python .tmp/apply-hedge-endpoint-fix.py
+          node --check battle/modules/39-navigation-physicality-debug.js
+          node --check battle/movement-resolver.js
+          node --check tools/ai-sim-harness/objective-nav-check.js
+      - name: Deterministic physical-navigation regression
+        run: node tools/ai-sim-harness/objective-nav-check.js
+      - name: Lean M3C regression
+        run: node tools/ai-sim-harness/lean-runtime-check.js
+      - name: Confirm known branch-baseline failures did not change class
         run: |
           set +e
-          {
-            echo '--- movement state baseline ---'
-            node tools/ai-sim-harness/movement-state-check.js; echo "movement-state-status=$?"
-            echo '--- movement recovery baseline ---'
-            node tools/ai-sim-harness/movement-recovery-check.js; echo "movement-recovery-status=$?"
-            echo '--- objective/nav baseline ---'
-            node tools/ai-sim-harness/objective-nav-check.js; echo "objective-nav-status=$?"
-            echo '--- lean runtime baseline ---'
-            node tools/ai-sim-harness/lean-runtime-check.js; echo "lean-runtime-status=$?"
-          } > hedge-baseline-validation.log 2>&1
-          cat hedge-baseline-validation.log
-          exit 0
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hedge-baseline-validation
-          path: hedge-baseline-validation.log
+          node tools/ai-sim-harness/movement-state-check.js > movement-state.log 2>&1
+          ms=$?
+          node tools/ai-sim-harness/movement-recovery-check.js > movement-recovery.log 2>&1
+          mr=$?
+          cat movement-state.log
+          cat movement-recovery.log
+          grep -q '3 !== 1' movement-state.log || { echo 'movement-state failure changed'; exit 1; }
+          grep -q 'undefined !== 0' movement-recovery.log || { echo 'movement-recovery failure changed'; exit 1; }
+          test "$ms" -eq 1 && test "$mr" -eq 1
+      - name: Commit runtime fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add battle/modules/39-navigation-physicality-debug.js battle/movement-resolver.js tools/ai-sim-harness/objective-nav-check.js
+          git commit -m 'Keep blocked formation intent moving through hedgerows'
+          git push origin HEAD:fix/hedge-destination-stalls
