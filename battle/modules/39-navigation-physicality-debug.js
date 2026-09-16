@@ -197,23 +197,35 @@ function baseTargets(start,dest){
   var d=point(dest);if(d&&(!out.length||dist(out[out.length-1],d)>.25))out.push(d);
   return out;
 }
-/* Formation/cover orders can land inside a mesh or its clearance buffer. Settle at a nearby
-   legal stand point instead of repeatedly circling an unreachable point. Keep the resolved
-   destination intact; only navigation owns this bounded endpoint adjustment. Building walls
-   still gate the adjustment so a room/window order cannot jump to the other side of a wall. */
+/* Formation/cover orders can land inside a mesh or its clearance buffer. Physical execution
+   owns the legal stand point, but it must preserve the *direction* of the command intent. The old
+   resolver projected every blocked formation point back toward the soldier, permanently turning a
+   terrain-blind slot in a hedge into a 'stand on this near hedge face' order. Prefer an equally
+   close legal point on the command-progress side instead, then let normal pathfinding route around
+   the obstacle. Building walls still gate the adjustment so a room/window order cannot jump sides. */
+function endpointForward(soldier,start,dest){
+  var sq=soldier&&soldier.squad,anchor=sq&&(sq.orderAnchor||sq.rally),goal=sq&&(sq.state==='retreat'?sq.home:(sq.objective||sq.home));
+  var dx=goal&&anchor?(+goal.x||0)-(+anchor.x||0):dest.x-start.x,dz=goal&&anchor?(+goal.z||0)-(+anchor.z||0):dest.z-start.z,len=Math.hypot(dx,dz);
+  if(len<.1){dx=dest.x-start.x;dz=dest.z-start.z;len=Math.hypot(dx,dz);}
+  return{x:dx/(len||1),z:dz/(len||1)};
+}
 function standGoal(sim,soldier,start,dest){
   var shapes=routeFootprints(sim,dest,dest,soldier);
   if(edgeClear(sim,dest,dest,shapes,ROUTE_MARGIN))return dest;
-  var radii=[.5,1,1.5,2,2.5,3,4,6],best=null;
+  var f=endpointForward(soldier,start,dest),radii=[.5,1,1.5,2,2.5,3,4,6],best=null;
   for(var ri=0;ri<radii.length;ri++){
     for(var i=0;i<16;i++){
       var a=i*Math.PI/8,p={x:dest.x+Math.cos(a)*radii[ri],z:dest.z+Math.sin(a)*radii[ri],kind:'stand-goal'};
       if(!baseMovementClear(dest,p)||!edgeClear(sim,p,p,shapes,ROUTE_MARGIN))continue;
-      var score=dist(start,p);if(!best||score<best.score)best={point:p,score:score};
+      var ox=p.x-dest.x,oz=p.z-dest.z,progress=ox*f.x+oz*f.z;
+      /* Distance keeps the adjustment local; forward projection breaks the near/far tie in favor
+         of continuing the Captain's movement intent. A tiny start-distance term is deterministic
+         only and cannot overpower the command-side preference. */
+      var score=dist(dest,p)-progress*.65+dist(start,p)*.002;
+      if(!best||score<best.score)best={point:p,score:score};
     }
-    if(best)return best.point;
   }
-  return dest;
+  return best?best.point:dest;
 }
 function rawLookahead(sim,soldier,start,dest){
   var targets=baseTargets(start,dest);if(!targets.length)return[];
@@ -415,6 +427,7 @@ root.BattleNavigationPhysicality={
   occupiedStations:function(sim){return refreshOccupied(sim||currentSim(),true).slice();},hardTypes:Object.keys(HARD_TYPES),
   bodyRadius:BODY_RADIUS,bodyWidth:BODY_RADIUS*2,navMargin:COLLISION_MARGIN,routeMargin:ROUTE_MARGIN,routeHorizon:ROUTE_HORIZON,minLookahead:MIN_QUEUE,maxLookahead:MAX_QUEUE,
   footprints:function(sim){return staticFootprints(sim||currentSim()).slice();},shapeHit:shapeHit,shapeContains:shapeContains,routeNodes:routeNodes,
+  resolveStandGoal:function(sim,soldier,end){sim=sim||currentSim();var dest=point(end);if(!sim||!dest)return dest;var start=point(soldier&&soldier.root&&soldier.root.position)||dest;return standGoal(sim,soldier,start,dest);},
   planIngressPath:function(sim,soldier,start,end){return planComplete(sim,start,end,soldier,true);},
   planPath:function(sim,start,end){return planComplete(sim||currentSim(),start,end);},planLocal:function(sim,start,end){return planLocal(sim||currentSim(),null,start,end);}
 };
