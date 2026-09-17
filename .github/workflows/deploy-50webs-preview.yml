@@ -1,0 +1,127 @@
+name: Deploy Battle Sim Branch Preview
+
+# Publishes an in-progress branch to its own URL for visual checks:
+#   https://test.ivandpopov.com/grasstex/preview/<branch-slug>/battle_sim.php
+# Production (/grasstex/battle_sim.php, build tags, deploy hash state) is never touched. A preview reads
+# production assets, policy and scenario memory, and makes no telemetry, policy or learning writes.
+
+on:
+  push:
+    branches:
+      - 'work/**'
+      - 'preview/**'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to preview (defaults to the selected branch)
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-50webs-preview-${{ github.event.inputs.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Upload branch preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout preview ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Resolve preview identity
+        id: id
+        shell: bash
+        env:
+          PREVIEW_REF: ${{ github.event.inputs.ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          slug="$(printf '%s' "$PREVIEW_REF" | tr '[:upper:]' '[:lower:]' | sed -E 's#^(work|preview)/##; s#[^a-z0-9]+#-#g; s#^-+|-+$##g' | cut -c1-48)"
+          test -n "$slug"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "slug=$slug" >> "$GITHUB_OUTPUT"
+          echo "ref=$PREVIEW_REF" >> "$GITHUB_OUTPUT"
+
+      - name: Validate preview runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l battle_sim_local.php
+          # A loader without preview support would silently serve production scripts and write production logs.
+          grep -q 'BATTLE_PREVIEW' battle_sim_local.php
+          grep -q 'BATTLE_PREVIEW' battle/battle-telemetry.js
+          grep -q 'BATTLE_PREVIEW' battle/ai-policy.js
+          test -s battle/battle_sim.html
+          for f in battle/*.js battle/modules/*.js; do node --check "$f"; done
+
+      - name: Stage preview directory
+        shell: bash
+        env:
+          PREVIEW_REF: ${{ steps.id.outputs.ref }}
+          PREVIEW_SHA: ${{ steps.id.outputs.sha }}
+        run: |
+          set -euo pipefail
+          rm -rf .preview && mkdir -p .preview/battle/modules
+          cp battle_sim_local.php .preview/battle_sim.php
+          cp battle/battle_sim.html battle/*.js .preview/battle/
+          cp battle/modules/*.js .preview/battle/modules/
+          python3 - <<'PY'
+          import json, os, datetime
+          json.dump({"ref": os.environ["PREVIEW_REF"], "sha": os.environ["PREVIEW_SHA"],
+                     "deployedAt": datetime.datetime.utcnow().isoformat() + "Z"},
+                    open(".preview/preview.json", "w"))
+          PY
+          find .preview -type f | wc -l
+
+      - name: Upload preview to 50webs
+        shell: bash
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASS }}
+          SLUG: ${{ steps.id.outputs.slug }}
+        run: |
+          set -euo pipefail
+          : "${FTP_HOST:?Missing repository secret FTP_HOST}"
+          : "${FTP_USER:?Missing repository secret FTP_USER}"
+          : "${FTP_PASSWORD:?Missing repository secret FTP_PASS}"
+          sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+          # mirror --delete is confined to this preview's own directory.
+          lftp -u "$FTP_USER","$FTP_PASSWORD" "$FTP_HOST" <<LFTP
+          set cmd:fail-exit yes
+          set net:max-retries 2
+          set net:timeout 15
+          set ftp:ssl-allow no
+          set ftp:passive-mode true
+          cd grasstex
+          mkdir -f -p preview/$SLUG
+          mirror -R --delete --verbose=1 .preview preview/$SLUG
+          bye
+          LFTP
+
+      - name: Verify preview is serving this commit
+        shell: bash
+        env:
+          SLUG: ${{ steps.id.outputs.slug }}
+          SHA: ${{ steps.id.outputs.sha }}
+        run: |
+          set -euo pipefail
+          url="https://test.ivandpopov.com/grasstex/preview/$SLUG/battle_sim.php"
+          body="$(curl -fsS "$url")"
+          echo "$body" | grep -q "preview-${SHA:0:7}"
+          echo "$body" | grep -q "/grasstex/preview/$SLUG/battle/commander-ai.js"
+          {
+            echo "### Battle Sim preview"
+            echo "- Ref: \`${{ steps.id.outputs.ref }}\` @ \`${SHA:0:7}\`"
+            echo "- Meeting: $url"
+            echo "- US defending: $url?defender=us"
+            echo "- German defending: $url?defender=ge"
+            echo "- Production untouched; preview makes no telemetry, policy or learning writes."
+          } >> "$GITHUB_STEP_SUMMARY"

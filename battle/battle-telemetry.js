@@ -19,7 +19,7 @@
     if(consoleLogging&&(type.indexOf('decision')===0||type.indexOf('objective')===0||type.indexOf('policy-')===0||type==='reinforcement'||type==='module-spawn'||type==='battle-end'||type==='training-result'))console.log('[AI]',type,JSON.stringify(e.data));
     if(queue.length>=BATCH_MAX&&!inFlight&&Date.now()>=retryAfter)drain(false,false);
   }
-  function send(events,beacon){if(!events.length)return Promise.resolve(true);var body=JSON.stringify({events:events});if(beacon&&navigator.sendBeacon){try{return Promise.resolve(navigator.sendBeacon(ENDPOINT,new Blob([body],{type:'application/json'})));}catch(_){}}return fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:body,cache:'no-store',keepalive:true}).then(function(r){return r.ok;}).catch(function(){return false;});}
+  function send(events,beacon){if(!events.length||root.BATTLE_PREVIEW)return Promise.resolve(true); /* branch previews never write production logs */var body=JSON.stringify({events:events});if(beacon&&navigator.sendBeacon){try{return Promise.resolve(navigator.sendBeacon(ENDPOINT,new Blob([body],{type:'application/json'})));}catch(_){}}return fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:body,cache:'no-store',keepalive:true}).then(function(r){return r.ok;}).catch(function(){return false;});}
   function drain(beacon,all){
     if(inFlight)return inFlight.then(function(ok){return ok&&all&&queue.length?drain(beacon,true):ok;});
     if(!queue.length)return Promise.resolve(true);
