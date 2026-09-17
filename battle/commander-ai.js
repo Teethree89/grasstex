@@ -28,6 +28,14 @@
   function telemetry(sim,type,data){if(root.BattleTelemetry)root.BattleTelemetry.record(type,data,sim);}
   function setPhase(sim,sq,next,why){if(sq.commandPhase===next)return;sq.commandPhase=next;telemetry(sim,'decision-phase',{faction:sq.faction,squad:sq.id,phase:next,why:why||''});}
   function declare(sim,winner,reason){if(sim.winner)return;sim.winner=winner;sim.winReason=reason;telemetry(sim,'objective-victory',{winner:winner,reason:reason});console.log('[COMMAND] objective victory '+winner+' reason='+reason);if(sim.onWinner)sim.onWinner(winner,sim);}
+  function macroEnabled(sim){return !sim||sim.macroCommandEnabled!==false;}
+  function setMacroEnabled(sim,enabled){
+    if(!sim)return false;
+    var next=enabled!==false,prev=macroEnabled(sim);
+    sim.macroCommandEnabled=next;
+    if(prev!==next)telemetry(sim,'decision-macro-command',{enabled:next,time:+(+sim.time||0).toFixed(2)});
+    return next;
+  }
 
   /* Capture Zone publishes this as a tactical constraint. Force Command is deliberately the only
      writer of strategic squad fields, so a post-capture secure window cannot race a regroup or
@@ -170,15 +178,17 @@
   }
 
   function updateCommander(sim,town,dt){
-    dt=dt||COMMAND_TICK;R.ensureAssignments(sim,town);
+    dt=dt||COMMAND_TICK;
+    var macro=macroEnabled(sim);
+    if(macro)R.ensureAssignments(sim,town);
     if(root.BattleObjectiveSystem)root.BattleObjectiveSystem.tick(sim,dt);
-    ['us','ge'].forEach(function(f){var squads=sim.factions[f].squads;for(var i=0;i<squads.length;i++)advanceRoute(sim,squads[i],town);});
-    if(root.BattleModules)root.BattleModules.runHook('onCommanderTick',sim,{town:town,dt:dt});
+    if(macro)['us','ge'].forEach(function(f){var squads=sim.factions[f].squads;for(var i=0;i<squads.length;i++)advanceRoute(sim,squads[i],town);});
+    if(root.BattleModules)root.BattleModules.runHook('onCommanderTick',sim,{town:town,dt:dt,macroCommandEnabled:macro});
     var snapshotSeconds=policy(sim,'us').decisionSnapshotSeconds||5;
     if(!sim._nextDecisionSnapshot||sim.time>=sim._nextDecisionSnapshot){
       sim._nextDecisionSnapshot=sim.time+snapshotSeconds;
       var counts=sim.objectiveControl&&sim.objectiveControl.counts||{};
-      telemetry(sim,'decision-snapshot',{scenarioId:town&&town.id||null,seed:town&&town.seed||null,usAlive:D.forceUnits(sim,'us').length,geAlive:D.forceUnits(sim,'ge').length,usObjectives:counts.us||0,geObjectives:counts.ge||0,
+      telemetry(sim,'decision-snapshot',{scenarioId:town&&town.id||null,seed:town&&town.seed||null,macroCommandEnabled:macro,usAlive:D.forceUnits(sim,'us').length,geAlive:D.forceUnits(sim,'ge').length,usObjectives:counts.us||0,geObjectives:counts.ge||0,
         squads:{us:sim.factions.us.squads.map(function(q){return q.commandPhase;}),ge:sim.factions.ge.squads.map(function(q){return q.commandPhase;})},
         contact:{us:sim.factions.us.squads.filter(function(q){return q.inContact;}).length,ge:sim.factions.ge.squads.filter(function(q){return q.inContact;}).length}});
     }
@@ -214,6 +224,7 @@
     if(!town){console.warn('[COMMAND] no scenario metadata; hierarchical infantry AI disabled');return sim;}
     if(root.BattleObjectiveSystem)root.BattleObjectiveSystem.attach(sim,root.BattleObjectiveSystem.definitionsFromTown(town),{town:town});
     R.initForce(sim,'us',town);R.initForce(sim,'ge',town);
+    sim.macroCommandEnabled=!(opts&&opts.macroCommandEnabled===false);
     sim.objectives=sim._objectives||[];sim._commandAccum=0;sim._nextDecisionSnapshot=0;sim._objectiveRecovery={us:{count:0,last:null},ge:{count:0,last:null}};
     var adapted={};
     if(root.BattleAIPolicy){['us','ge'].forEach(function(f){adapted[f]=root.BattleAIPolicy.adaptedForScenario(town);});telemetry(sim,'decision-scenario-recall',{scenarioId:town.id,seed:town.seed,sources:adapted.us.sources,fingerprint:town.fingerprint});}
@@ -222,10 +233,12 @@
 
     var stockRestart=sim.restart.bind(sim);
     sim.restart=function(){
+      var macroCommandEnabled=sim.macroCommandEnabled!==false;
       stockRestart();
       town=scene.metadata&&scene.metadata.battleScenario||scene.metadata&&scene.metadata.battleTown||town;
       if(root.BattleObjectiveSystem)root.BattleObjectiveSystem.reset(sim,root.BattleObjectiveSystem.definitionsFromTown(town),{town:town});
       R.initForce(sim,'us',town);R.initForce(sim,'ge',town);
+      sim.macroCommandEnabled=macroCommandEnabled;
       sim._commandAccum=0;sim._nextDecisionSnapshot=0;sim._objectiveRecovery={us:{count:0,last:null},ge:{count:0,last:null}};
       if(root.BattleModules)root.BattleModules.runHook('onBattleRestart',sim,{town:town});
     };
@@ -244,6 +257,7 @@
     acceptObjectiveDefenseRequest:acceptObjectiveDefenseRequest,
     acceptPreparedDefenseRequest:acceptPreparedDefenseRequest,
     recoverTargetlessObjective:recoverTargetlessObjective,
+    isMacroEnabled:macroEnabled,setMacroEnabled:setMacroEnabled,
     commandTick:COMMAND_TICK,objectiveHoldWin:OBJECTIVE_HOLD_WIN,
     policyFor:policy,genomeFor:genome,doctrineFor:doctrine,
     chooseObjective:D.chooseObjective,buildContext:D.buildContext
