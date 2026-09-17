@@ -118,4 +118,11 @@ test('pressure flicker on an objective already being defended is not a new brief
   assert.strictEqual(f.sq._macroMission,mission);
   assert.equal(f.events.filter(e=>e.type==='decision-macro-replan'&&e.data.reason==='request-changed').length,0);
 });
+test('the initial approach axis is walked outside the objective area and spent on entering it',()=>{
+  const f=fixture();f.town.radius=20;f.sq.targetObjective=null;f.sq.routeIndex=0;f.sq.route=[{x:0,z:0},{x:20,z:30},{x:50,z:0}];
+  f.tick();assert.equal(f.sq._macroMission.action,null);assert.equal(f.sq.objective.x,20,'outside the objective area the Captain walks the General axis');
+  f.sq.members[0].root.position={x:38,z:5};for(let i=0;i<3;i++)f.tick();
+  assert.equal(f.sq.objective.x,100,'entering the objective area must spend the approach axis');
+  assert.equal(f.decisions,1,'doctrine should be decided once at the objective leg');
+});
 console.log(`macro-mission-command: ${passed} passed, ${failed} failed`);if(failed)process.exitCode=1;

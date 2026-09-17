@@ -188,6 +188,9 @@ function executeMission(sim,sq,town){
   if(m&&m.intent==='hold'){setPhase(sim,sq,'hold','mission hold');sq.objective=copy(legs[last]);return;}
   if(sq.commandRole==='support'&&idx>=1&&t<(+c.supportDelay||0)&&!assaultCommitted(sim,sq)){setPhase(sim,sq,'support-hold','waiting for assault');sq.objective=copy(legs[Math.min(1,last)]);return;}
   if(t<(+sq.commandHoldUntil||0)){sq.objective=copy(wp);return;}
+  /* The General's initial approach axis exists to bring the squad into the objective area. Once inside
+     it, the axis is spent: go for the assigned objective and report back for doctrine. */
+  if(m&&m.objectiveId&&m.action==null&&idx<last&&inTown(town,pos)){telemetry(sim,'decision-route',{faction:sq.faction,squad:sq.id,from:idx,to:last,reason:'objective area reached'});sq.routeIndex=idx=last;wp=legs[idx];sq.commandHoldUntil=0;}
   var axisEnd=m?(m.route||[]).length-1:last,limit=+(captainAlive(sq)?c.cohesionRadius:c.captainlessCohesion)||34,urban=inTown(town,wp);
   var arrival=idx===axisEnd?Math.max(+c.finalRouteRadius||14,32):(urban?Math.max(+c.routeArrivalRadius||8,limit*URBAN_ARRIVAL_COHESION):+c.routeArrivalRadius||8);
   if(idx<last&&dist(pos,wp)<arrival){
