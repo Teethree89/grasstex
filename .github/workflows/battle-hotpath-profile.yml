@@ -20,6 +20,18 @@ on:
         description: Simulated seconds to profile
         required: false
         default: '120'
+      setup_mode:
+        description: page = exact page seed; benchmark = mirror run_battle_benchmark.mjs regenerate setup
+        required: false
+        default: page
+        type: choice
+        options:
+          - page
+          - benchmark
+      wall_budget_seconds:
+        description: Stop profiling after this many wall seconds (0 = no budget)
+        required: false
+        default: '0'
   push:
     branches:
       - main
@@ -105,9 +117,11 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     name: manual · ${{ inputs.battle_type }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     env:
       BATTLE_BENCHMARK_SOURCE_SHA: ${{ github.sha }}
+      BATTLE_PROFILE_SETUP: ${{ inputs.setup_mode }}
+      BATTLE_PROFILE_WALL_BUDGET: ${{ inputs.wall_budget_seconds }}
       BATTLE_PROFILE_TYPE: ${{ inputs.battle_type }}
       BATTLE_PROFILE_SEED: ${{ inputs.seed }}
       BATTLE_PROFILE_SECONDS: ${{ inputs.sim_seconds }}
@@ -153,7 +167,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: battle-hotpath-manual-${{ github.run_number }}
+          name: battle-hotpath-manual-${{ inputs.setup_mode }}-${{ github.run_number }}
           path: reports/profile/
           if-no-files-found: warn
           retention-days: 30
