@@ -38,7 +38,7 @@ var HOLD={hold:1,'reload-hold':1,'firing-station':1,'contact-reaction':1,retreat
 var GATED={'cover-bound':1,'assault-bound-push':1};
 function freshProgress(){return{stuckDetections:0,recoveryAttempts:0,routeRebuilds:0,alternateApproaches:0,unreachableFlags:0,candidatesSuppressed:0,candidateChecks:0,failuresRecorded:0,failuresClearedOnArrival:0};}
 function progressStats(b){return b._movementProgressStats||(b._movementProgressStats=freshProgress());}
-function prog(s){return s._movementProgress||(s._movementProgress={goal:null,owner:null,kind:null,since:0,samples:[],confirm:0,rebuildAt:0,recovered:false,stuck:false,failures:{}});}
+function prog(s){return s._movementProgress||(s._movementProgress={goal:null,owner:null,kind:null,goalSince:0,samples:[],confirmCount:0,recoveryAt:0,recoveries:0,terminal:false,stuck:false,failures:{}});}
 function key(p){return Math.round(p.x/GRID)+','+Math.round(p.z/GRID);}
 function expire(st,t){for(var k in st.failures)if(st.failures[k].until<=t)delete st.failures[k];}
 function candidateAllowed(s,b,p){p=point(p);if(!s||!b||!p)return true;var st=prog(s),t=b.time;expire(st,t);progressStats(b).candidateChecks++;var cx=Math.round(p.x/GRID),cz=Math.round(p.z/GRID);for(var x=-1;x<=1;x++)for(var z=-1;z<=1;z++){var f=st.failures[(cx+x)+','+(cz+z)];if(f&&f.until>t){progressStats(b).candidatesSuppressed++;return false;}}return true;}
@@ -47,8 +47,54 @@ function clearFailuresNear(s,b,p,r){p=point(p);if(!s||!p)return 0;var st=prog(s)
 function routeRemaining(s){var a=s._tacticalRoute;if(a&&a.steps)return a.steps.length-(+a.index||0);a=s._physicalPath;if(a&&a.points)return a.points.length-(+a.index||0);a=s._navCache;if(a&&a.path)return a.path.length-(+a.index||0);return null;}
 function routeIndex(s){if(s._tacticalRoute&&isFinite(+s._tacticalRoute.index))return+s._tacticalRoute.index;if(s._physicalPath&&isFinite(+s._physicalPath.index))return+s._physicalPath.index;if(s._navCache&&isFinite(+s._navCache.index))return+s._navCache.index;return 0;}
 function expected(s,pick,b){if(!s||s.dead||HOLD[pick&&pick.kind]||s.reloading||s.clearingStoppage||(+s.suppressedUntil||0)>b.time)return false;if(s.squad&&(s.squad.state==='retreat'||s.squad.commandPhase==='regroup'||s.squad.commandPhase==='retreat'))return false;if(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s))return false;if((s._movementYieldUntil||0)>b.time||(s._separatedAt||0)>b.time-1)return false;return true;}
-function resetEpisode(s,st,p,pick,b){st.goal=clone(p);st.owner=String(pick&&pick.owner||'');st.kind=String(pick&&pick.kind||'');st.since=b.time;st.samples=[];st.confirm=0;st.recovered=false;st.stuck=false;st.routeIndex=routeIndex(s);st.remaining=routeRemaining(s);if(s._movementGoalUnreachable)s._movementGoalUnreachable=false;}
-function observe(s,b,p,pick){p=point(p);if(!s||!b||!p||!expected(s,pick,b)){if(s&&s._movementProgress){s._movementProgress.samples=[];s._movementProgress.stuck=false;}return null;}var st=prog(s),owner=String(pick&&pick.owner||''),kind=String(pick&&pick.kind||'');expire(st,b.time);if(!st.goal||dist(st.goal,p)>2.4||st.owner!==owner||st.kind!==kind)resetEpisode(s,st,p,pick,b);var h=pos(s);if(!h)return null;var last=st.samples[st.samples.length-1];if(!last||b.time-last.t>=SAMPLE_DT)st.samples.push({t:b.time,x:h.x,z:h.z});while(st.samples.length&&b.time-st.samples[0].t>WINDOW*1.6)st.samples.shift();if(dist(h,st.goal)<=FAR){clearFailuresNear(s,b,st.goal);st.samples=[];st.stuck=false;return null;}var first=st.samples[0];if(!first||b.time-first.t<WINDOW||b.time-st.since<WINDOW)return null;var net=Math.hypot(h.x-first.x,h.z-first.z),idx=routeIndex(s),rem=routeRemaining(s),odo=0;for(var i=1;i<st.samples.length;i++)odo+=Math.hypot(st.samples[i].x-st.samples[i-1].x,st.samples[i].z-st.samples[i-1].z);if(net>=NET||idx>(st.routeIndex||0)||(rem!=null&&st.remaining!=null&&rem<st.remaining)||odo>=NET){st.confirm=0;st.stuck=false;st.routeIndex=idx;st.remaining=rem;return null;}st.confirm++;if(st.confirm<CONFIRMS)return null;st.confirm=0;if(!st.stuck){st.stuck=true;progressStats(b).stuckDetections++;}if(!st.recovered){st.recovered=true;st.rebuildAt=b.time;st.samples=[{t:b.time,x:h.x,z:h.z}];st.since=b.time;progressStats(b).recoveryAttempts++;progressStats(b).routeRebuilds++;return{rebuild:true,round:1};}if(b.time-st.rebuildAt<OBSERVE)return null;if(GATED[kind]){noteFailure(s,b,st.goal,'no-progress');s._movementGoalUnreachable=true;progressStats(b).unreachableFlags++;progressStats(b).alternateApproaches++;st.samples=[];st.stuck=false;return{rebuild:true,alternate:true,unreachable:true,round:2};}st.rebuildAt=b.time;st.samples=[{t:b.time,x:h.x,z:h.z}];st.since=b.time;st.stuck=false;progressStats(b).recoveryAttempts++;progressStats(b).routeRebuilds++;return{rebuild:true,round:2};}
+/* One physical failure episode belongs to one winning goal. Recovery never republishes an
+   order: rebuild once, observe, request one local alternate, observe, then report unreachable.
+   Actual movement/waypoint progress or a new winner starts a fresh episode. */
+function resetEpisode(s,st,p,pick,b){
+  st.goal=p?clone(p):null;st.owner=String(pick&&pick.owner||'');st.kind=String(pick&&pick.kind||'');
+  st.goalSince=b.time;st.samples=[];st.confirmCount=0;st.recoveries=0;st.recoveryAt=0;st.terminal=false;st.stuck=false;
+  st.routeIndex=routeIndex(s);st.remaining=routeRemaining(s);s._movementGoalUnreachable=false;
+}
+function observe(s,b,p,pick){
+  p=point(p);
+  if(!s||!b||!p||!expected(s,pick,b)){
+    if(s&&s._movementProgress&&s._movementProgress.goal)resetEpisode(s,s._movementProgress,null,pick,b);
+    return null;
+  }
+  var st=prog(s),owner=String(pick&&pick.owner||''),kind=String(pick&&pick.kind||'');expire(st,b.time);
+  if(!st.goal||dist(st.goal,p)>2.4||st.owner!==owner||st.kind!==kind)resetEpisode(s,st,p,pick,b);
+  var h=pos(s);if(!h)return null;
+  var last=st.samples[st.samples.length-1];
+  if(last&&b.time-last.t<SAMPLE_DT)return null;
+  st.samples.push({t:b.time,x:h.x,z:h.z});
+  while(st.samples.length&&b.time-st.samples[0].t>WINDOW*1.6)st.samples.shift();
+  if(dist(h,st.goal)<=FAR){clearFailuresNear(s,b,st.goal);resetEpisode(s,st,p,pick,b);return null;}
+  var first=st.samples[0];if(!first||b.time-first.t<WINDOW||b.time-st.goalSince<WINDOW)return null;
+  var net=Math.hypot(h.x-first.x,h.z-first.z),idx=routeIndex(s),rem=routeRemaining(s),odo=0;
+  for(var i=1;i<st.samples.length;i++)odo+=Math.hypot(st.samples[i].x-st.samples[i-1].x,st.samples[i].z-st.samples[i-1].z);
+  if(net>=NET||idx>(st.routeIndex||0)||(rem!=null&&st.remaining!=null&&rem<st.remaining)||odo>=NET){
+    resetEpisode(s,st,p,pick,b);return null;
+  }
+  if(st.terminal||(st.recoveries&&b.time-st.recoveryAt<OBSERVE))return null;
+  st.confirmCount++;if(st.confirmCount<CONFIRMS)return null;st.confirmCount=0;
+  if(!st.stuck){st.stuck=true;progressStats(b).stuckDetections++;}
+  if(st.recoveries===0){
+    st.recoveries=1;st.recoveryAt=b.time;st.samples=[{t:b.time,x:h.x,z:h.z}];
+    progressStats(b).recoveryAttempts++;progressStats(b).routeRebuilds++;return{rebuild:true,round:1};
+  }
+  if(st.recoveries===1&&GATED[kind]){
+    st.recoveries=2;st.recoveryAt=b.time;st.samples=[{t:b.time,x:h.x,z:h.z}];
+    progressStats(b).recoveryAttempts++;progressStats(b).alternateApproaches++;return{rebuild:true,alternate:true,round:2};
+  }
+  st.terminal=true;
+  if(GATED[kind]){
+    noteFailure(s,b,st.goal,'no-progress');s._movementGoalUnreachable=true;
+    progressStats(b).unreachableFlags++;return{unreachable:true,round:3};
+  }
+  // A Meso formation slot is not a disposable Micro candidate. Keep the failed execution visible
+  // while ordinary physical navigation retries; never invent another command or rebuild loop.
+  return null;
+}
 function isStuck(s){return!!(s&&s._movementProgress&&s._movementProgress.stuck);}
 function progressSummary(sim){var out=Object.assign({},progressStats(sim)),active=0,t=sim.time,supp=0;['us','ge'].forEach(function(f){var a=sim&&sim._roster&&sim._roster[f]||[];for(var i=0;i<a.length;i++){var st=a[i]._movementProgress;if(!st)continue;if(st.stuck&&!a[i].dead)active++;for(var k in st.failures)if(st.failures[k].until>t)supp++;}});out.activeStuck=active;out.suppressedCandidates=supp;sim._movementProgressSummary=JSON.parse(JSON.stringify(out));return out;}
 function reset(sim){sim._tacticalRouteStats=freshRoute();sim._movementProgressStats=freshProgress();var a=root.BattleModules.unitsFor(sim);for(var i=0;i<a.length;i++){delete a[i]._tacticalRoute;a[i]._tacticalRouteCooldownUntil=0;delete a[i]._movementProgress;delete a[i]._movementGoalUnreachable;}publish(sim);}

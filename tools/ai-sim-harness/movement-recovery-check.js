@@ -88,7 +88,7 @@ test('waypoint advancement excuses low Euclidean net progress',()=>{
   const{b,s,M}=bareFixture();
   M.proposeOrder(s,{x:0,z:0},b,true);tickCombat(M,s,b,{x:30,z:0});
   const steps=[];for(let i=0;i<60;i++)steps.push({x:i,z:0});
-  s._tacticalRoute={kind:'cover-bound',owner:'engagement',steps:steps,index:0,createdAt:0};
+  s._tacticalRoute={kind:'cover-bound',owner:'engagement',intent:{x:30,z:0},steps:steps,index:0,createdAt:0};
   for(let i=0;i<40;i++){
     b.time+=.5;
     holdStill(s,Math.sin(i)*0.1,Math.cos(i*0.7)*0.1); // shuffles in place: net and odometer tiny
