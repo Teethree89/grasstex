@@ -46,7 +46,7 @@
     return true;
   }
   function tick(sim){
-    if(!sim)return;var now=+sim.time||0;
+    if(!sim||sim.macroCommandEnabled===false)return;var now=+sim.time||0;
     ['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++)push(sim,squads[i],now);});
   }
   function reset(sim){['us','ge'].forEach(function(f){var squads=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++){squads[i]._vacantObjectiveAdvanceId=null;squads[i]._vacantObjectiveAdvanceUntil=0;}});}
