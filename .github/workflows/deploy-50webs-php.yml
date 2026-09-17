@@ -98,6 +98,7 @@ jobs:
           # the stored benchmark reports, so a regression is caught here rather than 100 battles
           # later.
           node tools/ai-sim-harness/objective-nav-check.js
+          node tools/ai-sim-harness/map-pipeline-check.js
           node tools/ai-sim-harness/impact-fx-check.js
           node tools/ai-sim-harness/tactical-positions-check.js
 
