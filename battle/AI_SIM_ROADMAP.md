@@ -76,6 +76,24 @@ The mission brief is the only contract between Macro and Meso.
 - **Captain (`modules/16-squad-plan-stability.js`)** executes the brief in `executeMission`: flank leg, corner pauses, objective phase (assault/capture/defend), doctrine holds, reserve hold. Regroup is the Captain's own cohesion decision. Contact freezes legs and phase under the same brief version. Macro OFF: no brief; the Captain walks the assigned approach route.
 - Deleted duplicate writers: `advanceRoute`/`applyDoctrine`/`recoverTargetlessObjective`, `holdCommittedPlan`, `restoreForward`, `progressRecovery`, `protectActivePlans`, the vacant-objective tick writer, Engagement's per-tick order republish and the assault-bound-push producer.
 
+## Open issues after the 2026-09-17 ownership sweep
+
+Evidence: paired deterministic replays (`scripts/run_m3c_replay.cjs`), 12 random seeds, main `5c0e0f3` vs `work/m3c-ownership-sweep-20260917`.
+
+- [ ] **Win split shifted, cause unknown.** US wins 10/12 on main vs 5/12 on the sweep while casualties are flat (US alive 29.8 -> 29.2, GE 27.2 -> 28.1) and captures are flat (3.9 -> 3.8/battle; US 2.3 -> 2.0, GE 1.6 -> 1.8). Main's strong US bias in symmetric battles may itself be the defect. Needs the large seed sample split by scenario type before concluding either way.
+- [ ] **Personal-space corrections rose slightly** (15.7k -> 17.4k pair corrections/battle, exact overlaps 0, blocked 0). Not root-caused. Determine whether a remaining producer (formation slot, tactical position ingress, Captain regroup anchor) converges bodies before touching personal space.
+- [ ] **Window / ingress crowding not root-caused.** Claim collisions fell (133 -> 73) as a side effect of fewer command writes, but reservation vs physical occupancy was not investigated separately.
+- [ ] **Captain regroup frequency has no baseline.** The sweep records 7-13 regroup entries/battle; main's export read regroup fields that did not exist, so there is nothing to compare against. Confirm visually that these are real dispersal recoveries and not a new A -> B -> A.
+- [ ] **Strategic stall wakes are usually no-ops.** Most `strategic-stall` wakes re-select the same objective (`decisionsUnchanged`). That is an objective-selection/doctrine limitation, not an ownership fault: the General has no alternative plan to offer.
+- [ ] **Broad axes are no longer part of the brief.** Walking the approach route before the objective cut captures (3.2 vs 3.8). If axes should be a strategic concept again they need a design that does not delay objective commitment.
+- [ ] **Hot path is now navigation and LOS.** Profile (live seed): physical replans ~3.3 s and `sightBlocked` ~3.5 s of ~13.7 s simulated-battle wall time. Profile further before optimizing; no ownership fault found there.
+- [ ] **Movement Progress still ignores retreat.** Both stationary-retreat causes were navigation bugs (fixed); retreat remains unobserved by stuck detection by design. The new `movementStopReason` export is the observable if it recurs.
+
+### Validation order for this sweep
+1. [ ] Visual check on the branch preview (`/grasstex/preview/m3c-ownership-sweep-20260917/battle_sim.php`, plus `?defender=us` / `?defender=ge`): coherent missions, no General twitching, cover without strategic backtracking, window/ingress stacking, retreaters leaving, sensible orders after captures.
+2. [ ] Standard 60 meeting / 20 US-defend / 20 GE-defend benchmark on the branch.
+3. [ ] Large paired seed sample (main vs branch) by scenario type, alongside or after the benchmark.
+
 ## World / navigation foundation
 
 - [x] **One authoritative hedgerow definition.** Rendering, navigation, LOS, cover and ballistics derive from the same oriented 3D hedge record.
