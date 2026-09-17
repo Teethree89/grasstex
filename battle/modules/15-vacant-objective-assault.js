@@ -45,8 +45,8 @@
     if(changed)telemetry(sim,'decision-vacant-objective-advance',{faction:sq.faction,squad:sq.id,objective:String(obj.id),distance:+d.toFixed(2),nearestEnemy:isFinite(threat)?+threat.toFixed(2):null,phase:next});
     return true;
   }
-  function tick(sim){
-    if(!sim||sim.macroCommandEnabled===false)return;var now=+sim.time||0;
+  function tick(sim,ctx){
+    if(!sim||sim.macroCommandEnabled===false||!ctx||ctx.macroCommandWake!==true)return;var now=+sim.time||0;
     ['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++)push(sim,squads[i],now);});
   }
   function reset(sim){['us','ge'].forEach(function(f){var squads=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++){squads[i]._vacantObjectiveAdvanceId=null;squads[i]._vacantObjectiveAdvanceUntil=0;}});}
