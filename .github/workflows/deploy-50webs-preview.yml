@@ -115,8 +115,8 @@ jobs:
           set -euo pipefail
           url="https://test.ivandpopov.com/grasstex/preview/$SLUG/battle_sim.php"
           body="$(curl -fsS "$url")"
-          echo "$body" | grep -q "preview-${SHA:0:7}"
-          echo "$body" | grep -q "/grasstex/preview/$SLUG/battle/commander-ai.js"
+          grep -q "preview-${SHA:0:7}" <<<"$body"
+          grep -q "/grasstex/preview/$SLUG/battle/commander-ai.js" <<<"$body"
           {
             echo "### Battle Sim preview"
             echo "- Ref: \`${{ steps.id.outputs.ref }}\` @ \`${SHA:0:7}\`"
