@@ -110,7 +110,7 @@
     /* Parent timings first: these make it possible to reconcile expensive leaves against the
        enclosing simulation/command work without changing production scheduling. */
     wrapMany(root.__battle__,'simulation',['step','_frame','_checkWinner']);
-    wrapScoped(root.BattleCommanderAI,'update','commander.update');wrap(root.BattleCommanderAI,'advanceRoute','commander.advanceRoute');
+    wrapScoped(root.BattleCommanderAI,'update','commander.update');wrap(root.BattleSquadStability,'executeMission','squad-command.executeMission');
     wrapMany(root.BattleModules,'modules',['runHook']);
 
     wrapSightQuery('sightBlocked');wrapSightQuery('sightBlocker');

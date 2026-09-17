@@ -41,7 +41,7 @@ function soldier(s){
     id:s&&s.id,faction:s&&s.faction,role:s&&s.role,dead:!!(s&&s.dead),hp:finite(+s.hp),maxHp:finite(+s.maxHp),
     position:{x:finite(+p.x),y:finite(+p.y),z:finite(+p.z)},destination:point(s&&s.destination),orderDestination:point(s&&s.orderDestination),
     targetId:s&&s.target?s.target.id:null,state:s&&s.state||null,gait:s&&s._locomotionGait||null,speed:finite(+(s&&s.speed)),moveSpeed:finite(+(s&&s.moveSpeed)),
-    moving:!!(s&&s.moving),crouching:!!(s&&(s.crouching||s.tacticalCrouch)),prone:!!(s&&s.prone),crawling:!!(s&&s.crawling),
+    moving:!!(s&&s.moving),movementStopReason:s&&s._movementStopReason||null,crouching:!!(s&&(s.crouching||s.tacticalCrouch)),prone:!!(s&&s.prone),crawling:!!(s&&s.crawling),
     suppressedUntil:finite(+(s&&s.suppressedUntil)),setUp:!!(s&&s.setUp),reloading:!!(s&&s.reloading),reloadUntil:finite(+(s&&s.reloadUntil)),
     clearingStoppage:!!(s&&s.clearingStoppage),stoppageUntil:finite(+(s&&s.stoppageUntil)),outOfAmmo:!!(s&&s.outOfAmmo),
     weapon:{kind:w.kind||null,ammo:finite(+w.ammo),reserveAmmo:finite(+w.reserveAmmo),magSize:finite(+w.magSize),heat:finite(+w.heat),jammed:!!w.jammed},
@@ -57,7 +57,11 @@ function squad(sq){
     aliveCount:finite(+sq.aliveCount),captainAlive:sq.captainAlive!==false,inContact:!!sq.inContact,targetObjective:sq.targetObjective||null,
     objective:point(sq.objective),rally:point(sq.rally),routeIndex:finite(+sq.routeIndex),route:safePlain(sq.route,3),
     commandHoldUntil:finite(+sq.commandHoldUntil),accuracyMultiplier:finite(+sq.accuracyMultiplier),
-    regroup:{accepted:point(sq._regroupAnchor),rally:point(sq._regroupRally),enteredAt:finite(+sq._regroupEnteredAt),bypassUntil:finite(+sq._regroupBypassUntil)},
+    regroup:{accepted:!!(sq._regroupHysteresis&&sq._regroupHysteresis.accepted),anchor:point(sq._regroupHysteresis&&sq._regroupHysteresis.anchor),enteredAt:finite(+(sq._regroupHysteresis&&sq._regroupHysteresis.enteredAt)),entries:finite(+(sq._regroupHysteresis&&sq._regroupHysteresis.entries)),bypassUntil:finite(+sq._regroupBypassUntil)},
+    /* Macro brief (General-owned) vs Captain execution (Meso-owned): the two halves of the mission contract. */
+    mission:safePlain(sq._macroMission?Object.assign({},sq._macroMission,{key:undefined}):null,4),lastMission:safePlain(sq._lastMacroMission?Object.assign({},sq._lastMacroMission,{key:undefined}):null,4),
+    captainRequest:safePlain(sq._macroMissionRequest,3),
+    missionExecution:sq._missionExecution?{version:sq._missionExecution.mission?sq._missionExecution.mission.version:null,acceptedAt:finite(+sq._missionExecution.acceptedAt),holdPoint:point(sq._missionExecution.holdPoint)}:null,
     contact:safePlain(sq._contact,4),members:(sq.members||[]).map(soldier)
   };
 }
@@ -101,6 +105,8 @@ function buildPayload(sim){
     objectiveControl:safePlain(sim.objectiveControl,6),objectiveHold:safePlain(sim.objectiveHold,4),
     ammunition:ammo,
     tacticalPositions:root.BattleTacticalPositions?root.BattleTacticalPositions.summary(sim):null,
+    macroCommand:{enabled:sim.macroCommandEnabled!==false,mode:sim._macroMissionState&&sim._macroMissionState.mode||'event-driven',state:safePlain(sim._macroMissionState,5)},
+    ownership:sim._orderProvenance?{events:(sim._orderProvenance.seq||0),conflicts:(sim._orderProvenance.conflicts||[]).length,recentConflicts:safePlain((sim._orderProvenance.conflicts||[]).slice(0,20).map(function(c){return{kind:c.kind,time:c.time,field:c.field,squad:c.squad,soldier:c.soldier,owners:c.owners};}),4)}:null,
     factions:{
       us:{alive:sim.factions&&sim.factions.us&&sim.factions.us.alive,kills:sim.factions&&sim.factions.us&&sim.factions.us.kills,squads:(sim.factions&&sim.factions.us&&sim.factions.us.squads||[]).map(squad)},
       ge:{alive:sim.factions&&sim.factions.ge&&sim.factions.ge.alive,kills:sim.factions&&sim.factions.ge&&sim.factions.ge.kills,squads:(sim.factions&&sim.factions.ge&&sim.factions.ge.squads||[]).map(squad)}

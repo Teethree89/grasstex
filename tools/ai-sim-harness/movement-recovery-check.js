@@ -319,7 +319,7 @@ test('identical fireteam slots are proposed once, not every squad tick',()=>{
   const beforeChange=req();
   q.objective={x:60,z:120}; // genuine intent change proposes again
   r.SquadAI.updateSquad(q,b);
-  assert.ok(req()-beforeChange>=4);
+  assert.ok(req()-beforeChange>=q.members.length); // every member receives the new slot once
   // And the slots are still correct destinations.
   for(const m of q.members)assert.deepEqual(m.orderDestination,m._fireteamDestination);
 });

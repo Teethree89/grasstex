@@ -6,7 +6,7 @@ let n=0;function test(name,fn){fn();n++;console.log('PASS '+name);}
 function root(){
   const r=H.bootstrap({modules:false}),systems={};
   r.BattleModules={registerSystem(id,s){systems[id]=s;},getSystem(id){return systems[id];},unitsFor:b=>(b._roster.us||[]).concat(b._roster.ge||[])};
-  r.BattleCommanderAI={policyFor(){return{cohesionRadius:34,captainlessCohesion:26,routeArrivalRadius:8,captureCommitRatio:.82};},chooseObjective(){return null;}};
+  r.BattleCommanderDoctrine={policyFor(){return{cohesionRadius:34,captainlessCohesion:26,routeArrivalRadius:8,captureCommitRatio:.82};}};
   load(r,'battle/obstacle-field.js');load(r,'battle/battle-navigation.js');load(r,'battle/movement-resolver.js');
   load(r,'battle/modules/16-squad-plan-stability.js');load(r,'battle/modules/44-assault-forward-guard.js');load(r,'battle/modules/52-survival-tactical-route.js');
   return{r,systems};
@@ -30,7 +30,10 @@ test('committed combat plan suppresses transient cohesion regroup',()=>{
   const {r,systems}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100}});
   q.commandPhase='assault';q.inContact=true;systems['squad-command'].onCommanderTick(b,{town:null});
   assert.ok(q._engagementPlan&&q._engagementPlan.status==='active');
-  q.commandPhase='regroup';systems['squad-command'].onSimulationStep(b);assert.equal(q.commandPhase,'assault');
+  // The Captain is the only regroup producer; a dispersed squad in a firefight is deployed, not scattered.
+  q.members.forEach((s,i)=>{s.root.position.x=(i%2?-1:1)*60;});
+  for(let i=0;i<10;i++){b.time+=.45;systems['squad-command'].onCommanderTick(b,{town:null});assert.equal(q.commandPhase,'assault');}
+  assert.equal(systems['squad-command'].onSimulationStep,undefined,'no per-step phase revert should exist');
 });
 test('combat mobility coalesces repeated combat intents before resolver publication',()=>{
   const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman']}),s=q.members[0];
