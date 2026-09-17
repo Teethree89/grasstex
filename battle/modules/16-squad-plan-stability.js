@@ -3,13 +3,13 @@
    the Captain layer that executes it. It is the only runtime writer of the squad's commandPhase,
    objective point, route legs and routeIndex, and it owns:
 
-     - mission execution: approach legs, corner pauses, objective phase, doctrine holds,
+     - mission execution: route legs, corner pauses, objective phase, doctrine holds,
      - one tactical command lease (`_engagementPlan`),
      - one cohesion/regroup state,
      - one set of committed fireteam slots.
 
-   It never selects an objective. When its part of a brief is finished (approach axis walked,
-   doctrine hold lease ended) it escalates to the General through `_macroMissionRequest`.
+   It never selects an objective. When a doctrine hold/support/regroup commitment ends it escalates to
+   the General through `_macroMissionRequest`.
 
    It does NOT choose soldier cover, stance, physical paths or soldier.destination. Those are micro
    responsibilities. Contact may change micro combat behaviour without silently rewriting the meso
@@ -188,9 +188,6 @@ function executeMission(sim,sq,town){
   if(m&&m.intent==='hold'){setPhase(sim,sq,'hold','mission hold');sq.objective=copy(legs[last]);return;}
   if(sq.commandRole==='support'&&idx>=1&&t<(+c.supportDelay||0)&&!assaultCommitted(sim,sq)){setPhase(sim,sq,'support-hold','waiting for assault');sq.objective=copy(legs[Math.min(1,last)]);return;}
   if(t<(+sq.commandHoldUntil||0)){sq.objective=copy(wp);return;}
-  /* The General's initial approach axis exists to bring the squad into the objective area. Once inside
-     it, the axis is spent: go for the assigned objective and report back for doctrine. */
-  if(m&&m.objectiveId&&m.action==null&&idx<last&&inTown(town,pos)){telemetry(sim,'decision-route',{faction:sq.faction,squad:sq.id,from:idx,to:last,reason:'objective area reached'});sq.routeIndex=idx=last;wp=legs[idx];sq.commandHoldUntil=0;}
   var axisEnd=m?(m.route||[]).length-1:last,limit=+(captainAlive(sq)?c.cohesionRadius:c.captainlessCohesion)||34,urban=inTown(town,wp);
   var arrival=idx===axisEnd?Math.max(+c.finalRouteRadius||14,32):(urban?Math.max(+c.routeArrivalRadius||8,limit*URBAN_ARRIVAL_COHESION):+c.routeArrivalRadius||8);
   if(idx<last&&dist(pos,wp)<arrival){
@@ -199,7 +196,6 @@ function executeMission(sim,sq,town){
     if(urban){sq.commandHoldUntil=t+(+c.cornerHold||0)+(captainAlive(sq)?0:(+c.cornerNoCaptainExtra||0));setPhase(sim,sq,'corner-check','route '+from);sq.objective=copy(wp);return;}
   }
   if(m&&m.objectiveId&&idx===last){
-    if(m.action==null){var r=sq._macroMissionRequest;if(!r||r.missionVersion!==m.version){sq._macroMissionRequest={missionVersion:m.version,reason:'axis-complete',at:t};telemetry(sim,'decision-captain-request',{faction:sq.faction,squad:sq.id,version:m.version,reason:'axis-complete'});}}
     if(m.action==='hold'||m.action==='regroup'){setPhase(sim,sq,'hold','doctrine '+m.action);sq.objective=copy(ex.holdPoint||pos);return;}
     if(m.action==='support'){setPhase(sim,sq,'support-hold','doctrine support');sq.objective=copy(ex.holdPoint||pos);return;}
     setPhase(sim,sq,objectivePhase(sim,sq,m,c,pos),'mission '+m.objectiveId);sq.objective=copy(wp);return;

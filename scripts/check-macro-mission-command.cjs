@@ -66,15 +66,11 @@ test('vacant-objective extension never rewrites another squad on a global wake',
   f.sq.objective={x:71,z:0};f.sq.commandPhase='regroup';f.tick();
   assert.equal(f.sq.objective.x,100,'Captain did not restore the vacant objective mission');assert.equal(f.sq._macroMission.action,'assault');
 });
-test('approach axis completion is one Captain escalation and one doctrine decision',()=>{
+test('a brief decides doctrine once and goes straight for its objective',()=>{
   const f=fixture();f.sq.targetObjective=null;f.sq.routeIndex=0;f.tick();
-  const first=f.sq._macroMission;assert.equal(first.action,null,'doctrine must wait for the objective leg');assert.equal(f.decisions,0);
-  f.sq.members[0].root.position.x=50;for(let i=0;i<6;i++)f.tick();
-  assert.equal(first.status,'completed');assert.equal(first.endReason,'axis-complete');
-  assert.equal(f.decisions,1,'doctrine should run exactly once at the objective leg');assert.equal(f.sq._macroMission.action,'assault');
-  const version=f.sq._macroMission.version;for(let i=0;i<20;i++)f.tick();
-  assert.equal(f.sq._macroMission.version,version);assert.equal(f.decisions,1);
-  assert.equal(f.events.filter(e=>e.type==='decision-macro-replan'&&e.data.reason==='axis-complete').length,1);
+  const mission=f.sq._macroMission;assert.equal(mission.action,'assault');assert.equal(f.decisions,1);assert.equal(f.sq.objective.x,100);
+  for(let i=0;i<20;i++){f.sq.inContact=!!(i%3);f.tick();}
+  assert.strictEqual(f.sq._macroMission,mission);assert.equal(f.decisions,1,'doctrine re-evaluated during an unchanged mission');
 });
 test('Captain regroup is Meso-owned: no General wake, no restore writes, mission resumes',()=>{
   const f=fixture();const extra=[];
@@ -118,11 +114,10 @@ test('pressure flicker on an objective already being defended is not a new brief
   assert.strictEqual(f.sq._macroMission,mission);
   assert.equal(f.events.filter(e=>e.type==='decision-macro-replan'&&e.data.reason==='request-changed').length,0);
 });
-test('the initial approach axis is walked outside the objective area and spent on entering it',()=>{
-  const f=fixture();f.town.radius=20;f.sq.targetObjective=null;f.sq.routeIndex=0;f.sq.route=[{x:0,z:0},{x:20,z:30},{x:50,z:0}];
-  f.tick();assert.equal(f.sq._macroMission.action,null);assert.equal(f.sq.objective.x,20,'outside the objective area the Captain walks the General axis');
-  f.sq.members[0].root.position={x:38,z:5};for(let i=0;i<3;i++)f.tick();
-  assert.equal(f.sq.objective.x,100,'entering the objective area must spend the approach axis');
-  assert.equal(f.decisions,1,'doctrine should be decided once at the objective leg');
+test('Macro OFF from the start: no brief, the Captain walks the assigned approach route',()=>{
+  const f=fixture();f.sim.macroCommandEnabled=false;f.town.radius=20;f.sq.targetObjective=null;f.sq.routeIndex=0;f.sq.route=[{x:0,z:0},{x:20,z:30},{x:50,z:0}];
+  f.tick();assert.equal(f.sq._macroMission,undefined);assert.equal(f.sq.objective.x,20);
+  f.sq.members[0].root.position={x:20,z:30};for(let i=0;i<4;i++)f.tick();
+  assert.equal(f.sq.objective.x,50);assert.equal(f.decisions,0);assert.equal(f.r.BattleCommanderAI.missionState(f.sim).wakeCount,0);
 });
 console.log(`macro-mission-command: ${passed} passed, ${failed} failed`);if(failed)process.exitCode=1;

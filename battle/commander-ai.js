@@ -117,25 +117,22 @@
     if(!chosen)chosen=D.chooseObjective(sim,sq,false)||D.chooseObjective(sim,sq,true);
     if(!chosen)return issueMission(sim,sq,{intent:'hold',action:'hold',objectiveId:null,point:D.avgPos(sq),role:role,route:[]},reason);
     var intent=chosen.status&&chosen.status.owner===sq.faction?'defend':'capture';
-    /* The first brief carries the assigned approach axis. Doctrine is how to take the objective, so
-       it is evaluated once the squad is at its objective leg: now when there is no axis to walk,
-       otherwise when the Captain reports the axis complete. It is never a per-tick re-evaluation. */
-    var axis=!old&&!sq.targetObjective?(sq.route||[]).slice(+sq.routeIndex||0).map(point):[],action=null;
-    if(!axis.length){
-      var p=D.avgPos(sq),enemy=D.nearestEnemyToSquad(sim,sq),context=D.buildContext(sim,sq,chosen,enemy,p),rule=root.BattleAIPolicy?root.BattleAIPolicy.decide(genome(sim,sq.faction),context):null;
-      action=rule&&rule.action||'assault';
-      var vacant=root.BattleVacantObjectiveAssault;
-      if(vacant&&vacant.isVacantEnemyObjective(sim,sq,chosen.instance)&&enemy.distance>=vacant.immediateThreat)action='assault';
-      if(action==='defend'){var defend=D.chooseObjective(sim,sq,true);if(defend){chosen=defend;intent='defend';}}
-      if(action==='flank')axis.push(D.flankPoint(sq,chosen,town));
-      if(rule)telemetry(sim,'decision-doctrine',{faction:sq.faction,squad:sq.id,rule:rule.id,action:action,conditions:rule.when,objective:chosen.instance.id,localRatio:+context.localRatio.toFixed(2)});
-    }
-    if(intent==='defend'&&action!=null)action='defend';
+    /* Doctrine is decided once per brief, when it is issued - never re-evaluated per tick. The brief goes
+       straight for the objective: walking the old approach route first cost captures (12-seed replay
+       3.2 vs 3.8/battle) and on main a shadow writer had already abandoned it within the first minute. */
+    var p=D.avgPos(sq),enemy=D.nearestEnemyToSquad(sim,sq),context=D.buildContext(sim,sq,chosen,enemy,p),rule=root.BattleAIPolicy?root.BattleAIPolicy.decide(genome(sim,sq.faction),context):null;
+    var action=rule&&rule.action||'assault',axis=[];
+    var vacant=root.BattleVacantObjectiveAssault;
+    if(vacant&&vacant.isVacantEnemyObjective(sim,sq,chosen.instance)&&enemy.distance>=vacant.immediateThreat)action='assault';
+    if(action==='defend'){var defend=D.chooseObjective(sim,sq,true);if(defend){chosen=defend;intent='defend';}}
+    if(action==='flank')axis.push(D.flankPoint(sq,chosen,town));
+    if(rule)telemetry(sim,'decision-doctrine',{faction:sq.faction,squad:sq.id,rule:rule.id,action:action,conditions:rule.when,objective:chosen.instance.id,localRatio:+context.localRatio.toFixed(2)});
+    if(intent==='defend')action='defend';
     return issueMission(sim,sq,{intent:intent,action:action,objectiveId:chosen.instance.id,point:chosen.point,role:role,route:axis},reason);
   }
   function reconsiderMission(sim,sq,town,reason){
     recordMacroWake(sim,sq,reason);
-    if(reason==='mission-complete'||reason==='axis-complete')finishMission(sim,sq,'completed',reason);
+    if(reason==='mission-complete')finishMission(sim,sq,'completed',reason);
     else if(reason==='mission-invalid')finishMission(sim,sq,'invalid',reason);
     selectMission(sim,sq,town,reason);sq._macroMissionRequest=null;
   }
