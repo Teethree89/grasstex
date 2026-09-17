@@ -36,7 +36,7 @@
      nearly fully exposed. */
   var OPEN_COVER=.92,USEFUL_COVER=.88;
   var PRONE_ROLES={rifleman:1,gunner:1};
-  var BOUND_CYCLE=9.0,BOUND_DURATION=3.6,BOUND_TEAMS=['alpha','bravo','charlie'];
+  var BOUND_CYCLE=9.0,BOUND_DURATION=3.6,BOUND_METERS=6.5,BOUND_ARRIVED=1.25,BOUND_TEAMS=['alpha','bravo','charlie'];
   /* Suppressing a known position. Capped per squad so it reads as suppressing fire rather than
      everyone emptying magazines into a hedge, and fired in short bursts so the sound of a
      firefight has a rhythm. */
@@ -249,6 +249,9 @@
     return SA().formationSlot(s.squad,s,s.slotIndex);
   }
   function followOrders(s,battle,urgent){
+    /* Captain already published this persistent order. Micro relinquishes combat authority;
+       it must not republish the Captain's point once per soldier tick. */
+    if(root.BattleMovementResolver)return;
     var pt=orderPoint(s);
     SA().setDestination(s,pt,battle,!!urgent);
   }
@@ -257,6 +260,25 @@
     var goal=sq.objective||sq.home,anchor=sq.orderAnchor||sq.rally;if(!goal||!anchor)return null;
     var dx=goal.x-anchor.x,dz=goal.z-anchor.z,len=Math.hypot(dx,dz);
     return len>.1?{x:dx/len,z:dz/len}:null;
+  }
+
+  /* One Captain permission produces one displacement. Cover and a no-cover rush use the same
+     engagement lifecycle, so target flicker cannot create a second, invisible movement drill. */
+  function orderedBound(s,battle){
+    var e=state(s),sq=s.squad;
+    if(!e.boundOrder||!sq||!sq._assaultAuthorized||battle.time>=(sq._boundUntil||0))return false;
+    if(s.role==='gunner'||s.reloading||s.clearingStoppage||s.outOfAmmo||s.suppressedUntil>battle.time)return false;
+    e.boundOrder=false;
+    var threat=s.target,known=knownThreat(s,battle);
+    if(!threat&&known)threat={root:{position:known}};
+    var cover=findCover(s,battle,{maxRange:COVER_RANGE_UNDER_FIRE,forward:squadForward(s),threat:threat});
+    if(cover){e.cover=cover;enter(s,battle,'bound',Math.max(3,cover.distance/Math.max(.6,s.speed*.6)+2),'authorized fireteam bound: cover');bound(s,battle);return true;}
+    var p=posOf(s),goal=sq.objective||sq.home,dx=goal&&goal.x-p.x,dz=goal&&goal.z-p.z,len=Math.hypot(dx,dz);
+    if(!isFinite(len)||len<=BOUND_ARRIVED)return false;
+    var step=Math.min(BOUND_METERS,len),next={x:p.x+dx/len*step,z:p.z+dz/len*step};
+    if(root.BattleMovementProgress&&!root.BattleMovementProgress.candidateAllowed(s,battle,next))return false;
+    enter(s,battle,'assault',Math.max(0,sq._boundUntil-battle.time),'authorized fireteam bound');
+    e.assaultGoal=next;assault(s,battle);return true;
   }
 
   /* ---- per-soldier update ------------------------------------------------------------------ */
@@ -296,6 +318,7 @@
   function advance(s,battle){
     var e=state(s);
     s.state='advance';s.setUp=false;
+    if(orderedBound(s,battle))return;
     if(s.target){enter(s,battle,'orient',reactTime(s,battle),'contact');return orient(s,battle);}
     if(!holdStance(s,battle))commitStance(s,battle,'stand',1.0);
     followOrders(s,battle,false);
@@ -333,7 +356,6 @@
     }
     /* Nothing to hide behind. Closing the distance is only sane with an order to do it; otherwise
        go to ground and shoot from where he is. */
-    if(d<Math.min(45,role.engageRange*.4)&&s.squad&&s.squad._assaultAuthorized){enter(s,battle,'assault',3.0,why+': assault, no cover');return assault(s,battle);}
     enter(s,battle,'engage',0,why+': fight from the open');
     return engage(s,battle);
   }
@@ -366,16 +388,10 @@
   function engage(s,battle){
     var e=state(s),p=posOf(s);
     s.state='engage';
+    if(orderedBound(s,battle))return;
     if(!s.target){enter(s,battle,'alert',ALERT_HOLD,'target lost');return alert(s,battle);}
     var suppressed=s.suppressedUntil>battle.time,F=field(),here=F?F.coverPotentialAt(battle.obstacles,p.x,p.z):1;
     if(suppressed&&here>OPEN_COVER&&PRONE_ROLES[s.role]){enter(s,battle,'pinned',0,'pinned');return pinned(s,battle);}
-
-    /* An authorized bound is the only thing that moves a firing soldier forward. */
-    if(e.boundOrder&&battle.time<(s.squad&&s.squad._boundUntil||0)){
-      e.boundOrder=false;
-      var forwardCover=findCover(s,battle,{maxRange:COVER_RANGE_UNDER_FIRE,forward:squadForward(s)});
-      if(forwardCover){e.cover=forwardCover;enter(s,battle,'bound',Math.max(3,forwardCover.distance/Math.max(.6,s.speed*.6)+2),'bounding forward');return bound(s,battle);}
-    }
 
     var d=dist(p.x,p.z,posOf(s.target).x,posOf(s.target).z);
     holdPosition(s,battle);
@@ -417,9 +433,10 @@
     var p=posOf(s),hasTarget=!!(s.target&&!s.target.dead),t=hasTarget?posOf(s.target):null,d=t?dist(p.x,p.z,t.x,t.z):Infinity;
     commitStance(s,battle,'crouch',Math.max(1,e.until-battle.time));
     if(!e.assaultGoal){if(!t){enter(s,battle,'alert',ALERT_HOLD,'assault target unavailable');return alert(s,battle);}e.assaultGoal={x:p.x+(t.x-p.x)*.55,z:p.z+(t.z-p.z)*.55};}
-    move(s,battle,e.assaultGoal,'assault-rush');
-    var arrived=Math.hypot(p.x-e.assaultGoal.x,p.z-e.assaultGoal.z)<12;
+    var arrived=Math.hypot(p.x-e.assaultGoal.x,p.z-e.assaultGoal.z)<=BOUND_ARRIVED;
     if(arrived||d<12||battle.time>=e.until){enter(s,battle,'engage',0,'assault complete');return engage(s,battle);}
+    s._combatUrgentUntil=battle.time+.5;
+    move(s,battle,e.assaultGoal,'assault-rush');
     if(hasTarget)tryFire(s,battle);
   }
 
@@ -428,6 +445,7 @@
   function alert(s,battle){
     var e=state(s);
     s.state='alert';s.setUp=false;
+    if(orderedBound(s,battle))return;
     if(s.target){enter(s,battle,'orient',reactTime(s,battle)*.6,'re-acquired');return orient(s,battle);}
     holdPosition(s,battle);
     if(!holdStance(s,battle))commitStance(s,battle,'crouch',2.0);
@@ -511,7 +529,7 @@
      time. Without this the commander kept marching the whole squad through a firefight. */
   function updateSquad(sq,battle){
     if(!sq||!battle)return;
-    var members=sq.members||[],contact=0,effective=0,pinnedCount=0,i,s;
+    var members=sq.members||[],contact=0,effective=0,pinnedCount=0,fireSupport=[],i,s;
     /* Suppression is assigned off the shared contact, not off current visibility, so it keeps
        working in the gap where nobody can see anyone - which is exactly when a squad used to fall
        silent. Assigning before the counting below means a suppressor counts toward this tick's
@@ -526,9 +544,9 @@
       /* A man putting rounds on the known position IS the base of fire - that is the entire point
          of him doing it. Counting only men with a visible target meant a squad whose line of sight
          kept blinking could never satisfy the bound requirement and simply stopped advancing. */
-      else if(!root.BattleAmmunition||root.BattleAmmunition.available(s)){
+      else if(!s.reloading&&!s.clearingStoppage&&(!root.BattleAmmunition||root.BattleAmmunition.available(s))){
         var position=root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s);
-        if(e.state==='engage'||(e.state==='station'&&position&&position.occupiedAt!=null)||e.suppressOrder)effective++;
+        if(e.state==='engage'||(e.state==='station'&&position&&position.occupiedAt!=null)||e.suppressOrder){effective++;fireSupport.push(s);}
       }
     }
     sq.contactCount=contact;sq.pinnedCount=pinnedCount;sq.effectiveCount=effective;
@@ -552,17 +570,21 @@
     sq._assaultAuthorized=phase==='assault'||phase==='capture'||phase==='clear-town';
 
     /* A bound needs a base of fire: somebody has to be shooting while somebody else moves. */
-    if(battle.time>=(sq._nextBoundAt||0)&&battle.time>=(sq._boundUntil||0)&&effective>=2&&pinnedCount<effective){
-      var team=BOUND_TEAMS[(sq._boundTurn=(sq._boundTurn==null?0:sq._boundTurn+1))%BOUND_TEAMS.length];
-      sq._boundTeam=team;sq._boundUntil=battle.time+BOUND_DURATION;sq._nextBoundAt=battle.time+BOUND_CYCLE;
-      var ordered=0;
+    if(sq._assaultAuthorized&&battle.time>=(sq._nextBoundAt||0)&&battle.time>=(sq._boundUntil||0)&&effective>=2&&pinnedCount<effective){
+      var turn=sq._boundTurn==null?0:sq._boundTurn+1,team=BOUND_TEAMS[turn%BOUND_TEAMS.length],movers=[];
       for(i=0;i<members.length;i++){
-        s=members[i];if(s.dead||s.suppressedUntil>battle.time)continue;
+        s=members[i];if(s.dead||s.suppressedUntil>battle.time||s.reloading||s.clearingStoppage||s.outOfAmmo)continue;
         if(s.role==='gunner'||(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s)))continue; // positional tasks hold the base of fire
         if(s._fireteamKey&&s._fireteamKey!==team)continue;
-        state(s).boundOrder=true;ordered++;
+        movers.push(s);
       }
-      if(ordered)telemetry(battle,'decision-bound',{faction:sq.faction,squad:sq.id,team:team,movers:ordered,holding:effective-ordered});
+      var holding=fireSupport.filter(function(man){return movers.indexOf(man)<0;}).length;
+      sq._boundTurn=turn;
+      if(movers.length&&holding>=2){
+        sq._boundTeam=team;sq._boundUntil=battle.time+BOUND_DURATION;sq._nextBoundAt=battle.time+BOUND_CYCLE;
+        for(i=0;i<movers.length;i++){state(movers[i]).boundOrder=true;state(movers[i]).suppressOrder=false;}
+        telemetry(battle,'decision-bound',{faction:sq.faction,squad:sq.id,team:team,movers:movers.length,holding:holding});
+      }
     }
   }
 

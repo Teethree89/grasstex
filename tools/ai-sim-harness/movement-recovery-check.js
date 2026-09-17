@@ -229,6 +229,7 @@ test('brief target loss preserves a committed assault rush',()=>{
 test('sustained disengagement eventually returns authority to formation',()=>{
   const{b,q,s,M,E}=engageFixture();
   const e=E.stateOf(s);
+  M.proposeOrder(s,{x:0,z:50},b,false); // Squad Command publishes the standing order once; Engagement never republishes it
   s.target=null;q.contact=null;
   e.state='alert';e.since=b.time;e.until=b.time+2;e.threatSector=null;
   E.updateSoldier(s,b);M.resolve(s,b);
