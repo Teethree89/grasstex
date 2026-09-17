@@ -66,6 +66,16 @@ The desired runtime is conceptually:
 
 `General / Force Command -> Captain / Squad Command -> Engagement state -> Combat Mobility (when needed) -> Movement Resolver -> Movement Execution -> Physical Navigation`
 
+## Mission command contract (sweep 2026-09-17)
+
+The mission brief is the only contract between Macro and Meso.
+
+- **General (`commander-ai.js`)** owns `_macroMission` {intent, action, objectiveId, point, flank leg, requestKey, status} plus `targetObjective` / `commandRole`. It never writes `commandPhase`, `objective`, `route` legs or `routeIndex`.
+- **Lifecycle:** `issued` -> `executing` (Captain accepts) -> `completed` | `invalid` | `failed` (retreat/destroyed) | `superseded` (new brief). Doctrine is decided once, when a brief is issued, and the brief goes straight for its objective.
+- **General wakes only for:** initial brief, mission complete (capture) / invalid (objective gone), reserve due, a defense request that changes the task, objective vacated or control change on a defend brief, a strategic stall (120 s, keyed to the progress epoch) against a brief older than 120 s, or a Captain escalation (`doctrine-review` when a hold/support/regroup plan lease closes). Wakes, reasons and recent wakes are exported under `macroCommand`.
+- **Captain (`modules/16-squad-plan-stability.js`)** executes the brief in `executeMission`: flank leg, corner pauses, objective phase (assault/capture/defend), doctrine holds, reserve hold. Regroup is the Captain's own cohesion decision. Contact freezes legs and phase under the same brief version. Macro OFF: no brief; the Captain walks the assigned approach route.
+- Deleted duplicate writers: `advanceRoute`/`applyDoctrine`/`recoverTargetlessObjective`, `holdCommittedPlan`, `restoreForward`, `progressRecovery`, `protectActivePlans`, the vacant-objective tick writer, Engagement's per-tick order republish and the assault-bound-push producer.
+
 ## World / navigation foundation
 
 - [x] **One authoritative hedgerow definition.** Rendering, navigation, LOS, cover and ballistics derive from the same oriented 3D hedge record.
@@ -121,7 +131,7 @@ This separation is important: prepared defense has repeatedly exposed failures t
 
 ## Next architectural simplification after this pass
 
-- [ ] **Audit the remaining Commander -> Squad Command boundary.**
+- [x] **Audit the remaining Commander -> Squad Command boundary.** (mission command contract above)
   - Commander owns objective/mission/route intent.
   - Captain owns formation/fireteam/defensive-post execution of that mission.
   - Remove any remaining writer that can mutate the same strategic/squad field from both layers.
