@@ -29,7 +29,7 @@ const path = require('node:path');
     });
     await page.goto(`${url}${url.includes('?') ? '&' : '?'}seed=${encodeURIComponent(seed)}`, { waitUntil: 'domcontentloaded', timeout: 120000 });
     await page.waitForFunction(() => window.__battle__ && window.BattleDiagnosticsExport, null, { timeout: 120000 });
-    await page.evaluate(({ macro, TRACE }) => {
+    await page.evaluate(({ macro, TRACE, PROFILE_SRC }) => {
       const sim = window.__battle__;
       sim.scene.getEngine().stopRenderLoop(); sim.pause();
       if (window.BattleTelemetry) for (const k of ['record', 'start', 'ensure', 'end', 'checkpoint', 'flush']) BattleTelemetry[k] = () => {};
@@ -49,6 +49,11 @@ const path = require('node:path');
       BattleCommanderAI.setMacroEnabled(sim, macro);
       sim.paused = false; sim.timeScale = 1; sim.timeLimit = 600;
       sim.onCallout = sim.onUpdate = sim.onWinner = () => {};
+      if (PROFILE_SRC) {
+        // The profiler measures real wall time; the simulation keeps its deterministic clocks.
+        const realNow = window.__m3cRealClocks[0].bind(performance);
+        new Function('root', PROFILE_SRC.replace("var clock=(root.performance&&typeof root.performance.now==='function')?function(){return root.performance.now();}:function(){return Date.now();};", 'var clock=root.__m3cProfileClock;'))(Object.assign(window, { __m3cProfileClock: realNow }));
+      }
       const stats = window.__m3cReplay = { trace: TRACE ? [] : null, shots: 0, hits: 0, destinationChanges: 0, sameTickReversals: 0, movementSamples: 0, stationaryRetreatSamples: 0, samples: [], writes: {}, startedAt: performance.now(), commandAccum: 0 };
       sim.onFire = () => stats.shots++;
       sim.onShot = (s, t, hit) => { if (hit) stats.hits++; };
@@ -66,7 +71,7 @@ const path = require('node:path');
         }
         return result;
       };
-    }, { macro, TRACE: !!process.env.M3C_TRACE });
+    }, { macro, TRACE: !!process.env.M3C_TRACE, PROFILE_SRC: process.env.M3C_PROFILE ? fs.readFileSync(path.join(__dirname, 'battle-hotpath-profiler.cjs'), 'utf8') : null });
     let done = false;const wallStart = Date.now();
     while (!done) {
       const status = await page.evaluate((CHUNK) => {
@@ -86,7 +91,14 @@ const path = require('node:path');
             stationary.push({ id:s.id, state:s.state, position:{ x:s.root.position.x,z:s.root.position.z }, destination:s.destination, speed:s.moveSpeed, prone:s.prone, crawling:s.crawling, winner:s._movementResolver?.last, progress:s._movementProgress });
           }
         }
-        st.samples.push({ time:sim.time, us:sim.factions.us.alive, ge:sim.factions.ge.alive, captures:sim.objectiveStats?.captures, stationary });
+        const squadRows = [];
+        for (const f of ['us', 'ge']) for (const q of sim.factions[f].squads) {
+          const alive = q.members.filter(m => !m.dead); if (!alive.length) continue;
+          const cx = alive.reduce((a, m) => a + m.root.position.x, 0) / alive.length, cz = alive.reduce((a, m) => a + m.root.position.z, 0) / alive.length, m = q._macroMission;
+          const obj = q.targetObjective && window.BattleObjectiveSystem ? BattleObjectiveSystem.get(sim, q.targetObjective) : null;
+          squadRows.push([q.id, q.state, q.commandPhase, q.targetObjective, obj ? Math.round(Math.hypot(cx - obj.def.x, cz - obj.def.z)) : null, obj ? Math.round(+obj.def.radius || 0) : null, !!q.inContact, q._engagementPlan ? q._engagementPlan.status : null, q.routeIndex + '/' + (q.route || []).length, Math.round(Math.hypot(cx - (q.objective?.x || 0), cz - (q.objective?.z || 0))), m ? m.version + ':' + m.action : null, q._regroupHysteresis?.accepted ? 'RG' : '']);
+        }
+        st.samples.push({ squads: squadRows, time:sim.time, us:sim.factions.us.alive, ge:sim.factions.ge.alive, captures:sim.objectiveStats?.captures, stationary });
         return { time:sim.time,winner:sim.winner,shots:st.shots,changes:st.destinationChanges };
       }, Number(process.env.M3C_CHUNK || 5000));
       console.log(JSON.stringify(status));
@@ -117,7 +129,8 @@ const path = require('node:path');
         const scn = sim.scene.metadata.battleScenario, fps = sim.obstacles.__physicalFootprints || [];
         navWorld = { scenario: { buildings: scn.buildings, center: scn.center, radius: scn.radius, id: scn.id }, footprints: fps, physicalVersion: sim.obstacles.__physicalVersion || 0, soldiers: retreatProbe.map(p => ({ id: p.id, here: p.here, destination: p.destination })) };
       }
-      return { stats:{ ...__m3cReplay, retreatProbe, navWorld }, diagnostic:BattleDiagnosticsExport.build(__battle__) };
+      const profile = window.BattleHotpathProfiler ? BattleHotpathProfiler.snapshot(60) : null;
+      return { stats:{ ...__m3cReplay, retreatProbe, navWorld, profile }, diagnostic:BattleDiagnosticsExport.build(__battle__) };
     }, !!process.env.M3C_DUMP_NAV);
     result.stats.wallSeconds = (Date.now() - wallStart) / 1000;
     result.seed = seed; result.macro = macro; result.errors = errors;
@@ -126,5 +139,5 @@ const path = require('node:path');
     await page.screenshot({ path:output.replace(/\.json$/, '.png') });
     console.log('REPLAY_RESULT', JSON.stringify({ output, errors, stats:{ ...result.stats,samples:result.stats.samples.length,writes:undefined }, battle:result.diagnostic.battle }));
     if (errors.length) process.exitCode = 1;
-  } finally { await browser.close(); }
-})().catch(e => { console.error(e);process.exitCode=1; });
+  } finally { await Promise.race([browser.close(), new Promise(r => setTimeout(r, 5000))]); }
+})().catch(e => { console.error(e);process.exitCode=1; }).finally(() => process.exit());
