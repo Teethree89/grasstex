@@ -20,7 +20,7 @@
 
   var D=root.BattleCommanderDoctrine,R=root.BattleCommanderRoutes;
   var oldStart=root.BattleSim.start,oldUpdateSquad=root.SquadAI.updateSquad;
-  var COMMAND_TICK=.45,OBJECTIVE_HOLD_WIN=35;
+  var COMMAND_TICK=.45,OBJECTIVE_HOLD_WIN=35,STRATEGIC_STALL_REPLAN=120;
 
   var dist=D.dist,avgPos=D.avgPos,maxSpread=D.maxSpread,captain=D.captain,enemyFaction=D.enemyFaction;
   var policy=D.policyFor,doctrine=D.doctrineFor,genome=D.genomeFor;
@@ -35,6 +35,33 @@
     sim.macroCommandEnabled=next;
     if(prev!==next)telemetry(sim,'decision-macro-command',{enabled:next,time:+(+sim.time||0).toFixed(2)});
     return next;
+  }
+  function missionState(sim,faction){
+    var all=sim._macroMissionState||(sim._macroMissionState={});
+    return all[faction]||(all[faction]={lastStallProgressAt:null,replans:0,lastReason:null,lastAt:0});
+  }
+  function strategicStallDue(sim,faction){
+    var health=sim&&sim._coordinationHealth,side=health&&health.sides&&health.sides[faction];
+    if(!side||(+side.objectiveStallSeconds||0)<STRATEGIC_STALL_REPLAN)return false;
+    var state=missionState(sim,faction),progressAt=+health.lastObjectiveProgressAt||0;
+    if(state.lastStallProgressAt===progressAt)return false;
+    state.lastStallProgressAt=progressAt;
+    return true;
+  }
+  function sideWakeReason(sim,faction){return strategicStallDue(sim,faction)?'strategic-stall':null;}
+  function squadWakeReason(sim,sq,sideReason){
+    if(!sq||sq.state==='retreat')return null;
+    if(!sq.targetObjective)return'route-progress';
+    var assigned=root.BattleObjectiveSystem&&root.BattleObjectiveSystem.get(sim,sq.targetObjective);
+    if(!assigned)return'mission-invalid';
+    var status=D.objectiveStatus(sim,assigned)||{};
+    if(status.owner===sq.faction)return'mission-complete';
+    return sideReason;
+  }
+  function recordMacroWake(sim,sq,reason){
+    if(!reason||reason==='route-progress')return;
+    var state=missionState(sim,sq.faction);state.replans++;state.lastReason=reason;state.lastAt=+sim.time||0;
+    telemetry(sim,'decision-macro-replan',{faction:sq.faction,squad:sq.id,reason:reason,target:sq.targetObjective||null,time:+(+sim.time||0).toFixed(2)});
   }
 
   /* Capture Zone publishes this as a tactical constraint. Force Command is deliberately the only
@@ -179,16 +206,25 @@
 
   function updateCommander(sim,town,dt){
     dt=dt||COMMAND_TICK;
-    var macro=macroEnabled(sim);
+    var macro=macroEnabled(sim),macroWake=false,wakeReasons={us:null,ge:null};
     if(macro)R.ensureAssignments(sim,town);
     if(root.BattleObjectiveSystem)root.BattleObjectiveSystem.tick(sim,dt);
-    if(macro)['us','ge'].forEach(function(f){var squads=sim.factions[f].squads;for(var i=0;i<squads.length;i++)advanceRoute(sim,squads[i],town);});
-    if(root.BattleModules)root.BattleModules.runHook('onCommanderTick',sim,{town:town,dt:dt,macroCommandEnabled:macro});
+    if(macro)['us','ge'].forEach(function(f){
+      var squads=sim.factions[f].squads,sideReason=sideWakeReason(sim,f);wakeReasons[f]=sideReason;
+      for(var i=0;i<squads.length;i++){
+        var sq=squads[i],reason=squadWakeReason(sim,sq,sideReason);if(!reason)continue;
+        macroWake=true;
+        if(reason==='strategic-stall'||reason==='mission-invalid')sq.targetObjective=null;
+        recordMacroWake(sim,sq,reason);
+        advanceRoute(sim,sq,town);
+      }
+    });
+    if(root.BattleModules)root.BattleModules.runHook('onCommanderTick',sim,{town:town,dt:dt,macroCommandEnabled:macro,macroCommandWake:macroWake,macroWakeReasons:wakeReasons});
     var snapshotSeconds=policy(sim,'us').decisionSnapshotSeconds||5;
     if(!sim._nextDecisionSnapshot||sim.time>=sim._nextDecisionSnapshot){
       sim._nextDecisionSnapshot=sim.time+snapshotSeconds;
       var counts=sim.objectiveControl&&sim.objectiveControl.counts||{};
-      telemetry(sim,'decision-snapshot',{scenarioId:town&&town.id||null,seed:town&&town.seed||null,macroCommandEnabled:macro,usAlive:D.forceUnits(sim,'us').length,geAlive:D.forceUnits(sim,'ge').length,usObjectives:counts.us||0,geObjectives:counts.ge||0,
+      telemetry(sim,'decision-snapshot',{scenarioId:town&&town.id||null,seed:town&&town.seed||null,macroCommandEnabled:macro,macroCommandWake:macroWake,macroMissionState:sim._macroMissionState,usAlive:D.forceUnits(sim,'us').length,geAlive:D.forceUnits(sim,'ge').length,usObjectives:counts.us||0,geObjectives:counts.ge||0,
         squads:{us:sim.factions.us.squads.map(function(q){return q.commandPhase;}),ge:sim.factions.ge.squads.map(function(q){return q.commandPhase;})},
         contact:{us:sim.factions.us.squads.filter(function(q){return q.inContact;}).length,ge:sim.factions.ge.squads.filter(function(q){return q.inContact;}).length}});
     }
@@ -225,7 +261,7 @@
     if(root.BattleObjectiveSystem)root.BattleObjectiveSystem.attach(sim,root.BattleObjectiveSystem.definitionsFromTown(town),{town:town});
     R.initForce(sim,'us',town);R.initForce(sim,'ge',town);
     sim.macroCommandEnabled=!(opts&&opts.macroCommandEnabled===false);
-    sim.objectives=sim._objectives||[];sim._commandAccum=0;sim._nextDecisionSnapshot=0;sim._objectiveRecovery={us:{count:0,last:null},ge:{count:0,last:null}};
+    sim.objectives=sim._objectives||[];sim._commandAccum=0;sim._nextDecisionSnapshot=0;sim._objectiveRecovery={us:{count:0,last:null},ge:{count:0,last:null}};sim._macroMissionState={us:{lastStallProgressAt:null,replans:0,lastReason:null,lastAt:0},ge:{lastStallProgressAt:null,replans:0,lastReason:null,lastAt:0}};
     var adapted={};
     if(root.BattleAIPolicy){['us','ge'].forEach(function(f){adapted[f]=root.BattleAIPolicy.adaptedForScenario(town);});telemetry(sim,'decision-scenario-recall',{scenarioId:town.id,seed:town.seed,sources:adapted.us.sources,fingerprint:town.fingerprint});}
     if(root.BattleModules)root.BattleModules.runHook('onBattleStart',sim,{town:town});
@@ -239,7 +275,7 @@
       if(root.BattleObjectiveSystem)root.BattleObjectiveSystem.reset(sim,root.BattleObjectiveSystem.definitionsFromTown(town),{town:town});
       R.initForce(sim,'us',town);R.initForce(sim,'ge',town);
       sim.macroCommandEnabled=macroCommandEnabled;
-      sim._commandAccum=0;sim._nextDecisionSnapshot=0;sim._objectiveRecovery={us:{count:0,last:null},ge:{count:0,last:null}};
+      sim._commandAccum=0;sim._nextDecisionSnapshot=0;sim._objectiveRecovery={us:{count:0,last:null},ge:{count:0,last:null}};sim._macroMissionState={us:{lastStallProgressAt:null,replans:0,lastReason:null,lastAt:0},ge:{lastStallProgressAt:null,replans:0,lastReason:null,lastAt:0}};
       if(root.BattleModules)root.BattleModules.runHook('onBattleRestart',sim,{town:town});
     };
     scene.onBeforeRenderObservable.add(function(){
@@ -258,7 +294,7 @@
     acceptPreparedDefenseRequest:acceptPreparedDefenseRequest,
     recoverTargetlessObjective:recoverTargetlessObjective,
     isMacroEnabled:macroEnabled,setMacroEnabled:setMacroEnabled,
-    commandTick:COMMAND_TICK,objectiveHoldWin:OBJECTIVE_HOLD_WIN,
+    commandTick:COMMAND_TICK,objectiveHoldWin:OBJECTIVE_HOLD_WIN,strategicStallReplan:STRATEGIC_STALL_REPLAN,
     policyFor:policy,genomeFor:genome,doctrineFor:doctrine,
     chooseObjective:D.chooseObjective,buildContext:D.buildContext
   };
