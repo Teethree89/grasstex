@@ -148,7 +148,11 @@ function heapPush(h,x){h.push(x);var i=h.length-1;while(i>0){var p=(i-1)>>1;if(h
 function heapPop(h){var top=h[0],last=h.pop();if(h.length){h[0]=last;for(var i=0;;){var l=i*2+1,r=l+1,s=i;if(l<h.length&&h[l].f<h[s].f)s=l;if(r<h.length&&h[r].f<h[s].f)s=r;if(s===i)break;var t=h[i];h[i]=h[s];h[s]=t;i=s;}}return top;}
 function localGoal(start,goal){var d=dist(start,goal);if(d<=ROUTE_HORIZON)return{x:goal.x,z:goal.z,kind:goal.kind||null,meta:goal.meta||null};var u=ROUTE_HORIZON/d;return{x:start.x+(goal.x-start.x)*u,z:start.z+(goal.z-start.z)*u,kind:'lookahead'};}
 function planLocal(sim,soldier,start,goal,expanded){
-  var end=localGoal(start,goal),shapes=routeFootprints(sim,start,end,soldier,expanded?MAX_ROUTE_SHAPES*3:MAX_ROUTE_SHAPES);
+  /* A lookahead is a synthetic point on the straight line, not a command. It obeys the same legal-stand
+     invariant as a real destination: no route can end inside a body buffer, so an illegal horizon point
+     turned a reachable long-range goal into a permanently blocked plan. */
+  var end=localGoal(start,goal);if(end.kind==='lookahead')end=standGoal(sim,soldier,start,end);
+  var shapes=routeFootprints(sim,start,end,soldier,expanded?MAX_ROUTE_SHAPES*3:MAX_ROUTE_SHAPES);
   if(edgeClear(sim,start,end,shapes,ROUTE_MARGIN))return{points:[end],segmentGoal:end,finalGoal:goal,shapes:shapes};
   var nodes=[start,end],i,j;
   for(i=0;i<shapes.length;i++){

@@ -340,6 +340,16 @@ section('physical wayfinding respects body clearance through hedgerows');
     }
     return{man,illegal};
   }
+  /* Live v153 retreat freeze (real geometry, trimmed): the rolling planner's synthetic lookahead point
+     landed inside a rock's route buffer. No path reaches an illegal intermediate goal, so a legal soldier
+     with a legal, reachable destination held a blocked plan (moveSpeed 0, stuck=false) for 300 s. */
+  {
+    const fx=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures','retreat-lookahead-freeze.json'),'utf8'));
+    const frozenWorld=world(fx.footprints),probe={id:'freeze',root:{position:{...fx.start}}},wp=N.nextWaypoint(frozenWorld,probe,fx.destination);
+    check('an illegal lookahead point never blocks a reachable long-range destination',!probe._physicalPath.blocked&&Math.hypot(wp.x-fx.start.x,wp.z-fx.start.z)>.5,'blocked='+probe._physicalPath.blocked);
+    const retreat=walkPhysical(world(fx.footprints),fx.start,fx.destination,60),moved=Math.hypot(retreat.man.root.position.x-fx.start.x,retreat.man.root.position.z-fx.start.z);
+    check('the frozen retreater physically leaves along a legal route',moved>60&&retreat.illegal===0,'moved='+moved.toFixed(1)+' illegal='+retreat.illegal);
+  }
   const rockWorld=world([{id:'slot-rock',type:'rock',shape:'circle',x:0,z:0,radius:1}]);
   rockWorld.obstacles.push({type:'rock',x:0,z:0,radius:1});
   const slotWalk=walkPhysical(rockWorld,{x:-20,z:0},{x:0,z:0},35);
