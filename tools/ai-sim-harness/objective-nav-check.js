@@ -350,6 +350,17 @@ section('physical wayfinding respects body clearance through hedgerows');
     const retreat=walkPhysical(world(fx.footprints),fx.start,fx.destination,60),moved=Math.hypot(retreat.man.root.position.x-fx.start.x,retreat.man.root.position.z-fx.start.z);
     check('the frozen retreater physically leaves along a legal route',moved>60&&retreat.illegal===0,'moved='+moved.toFixed(1)+' illegal='+retreat.illegal);
   }
+  /* Live retreat freeze #2 (sweep-seed-03, six men of one squad): the building router only searched
+     nodes within 360 m of each endpoint. A map-edge retreat goal had none, so it answered with a
+     straight line through a building 25 m away and the rolling plan stayed blocked. */
+  {
+    const fx=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures','retreat-building-far-goal.json'),'utf8'));
+    function builtWorld(){const sim=world(fx.footprints);sim.scene.metadata.battleScenario.buildings=fx.buildings;N.installScenario(sim.scene.metadata.battleScenario);r.BattleModules.getSystem('navigation-physicality-debug').onBattleStart(sim);return sim;}
+    const probe={id:'far-building',root:{position:{...fx.start}}};N.nextWaypoint(builtWorld(),probe,fx.destination);
+    check('a far goal with no nearby building nodes still routes around buildings',!probe._physicalPath.blocked,'blocked='+probe._physicalPath.blocked);
+    const walk=walkPhysical(builtWorld(),fx.start,fx.destination,90),moved=Math.hypot(walk.man.root.position.x-fx.start.x,walk.man.root.position.z-fx.start.z);
+    check('the squad frozen behind a building physically leaves on a legal route',moved>80&&walk.illegal===0,'moved='+moved.toFixed(1)+' illegal='+walk.illegal);
+  }
   const rockWorld=world([{id:'slot-rock',type:'rock',shape:'circle',x:0,z:0,radius:1}]);
   rockWorld.obstacles.push({type:'rock',x:0,z:0,radius:1});
   const slotWalk=walkPhysical(rockWorld,{x:-20,z:0},{x:0,z:0},35);
