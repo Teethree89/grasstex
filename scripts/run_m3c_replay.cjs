@@ -21,7 +21,7 @@ const path = require('node:path');
     });
     await page.route('**/*', async route => {
       const req = route.request();
-      if (req.url().includes('/babylonjs@8.26.0/') && process.env.M3C_BABYLON) return route.fulfill({ path: process.env.M3C_BABYLON, contentType: 'text/javascript' });
+      if (req.url().includes('/babylonjs@9.27.1/') && process.env.M3C_BABYLON) return route.fulfill({ path: process.env.M3C_BABYLON, contentType: 'text/javascript' });
       if (['media', 'font'].includes(req.resourceType())) return route.abort();
       // Replays never upload telemetry or use evolving server-side training policy.
       if (req.method() === 'POST' || /battle_(policy|learning|log|metrics).*\.php/.test(req.url())) return route.fulfill({ json: {} });
