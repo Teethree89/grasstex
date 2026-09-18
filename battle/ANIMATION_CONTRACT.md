@@ -40,8 +40,15 @@ as the FBX Motion Lab (`fbx-animation-lab.html`).
   have the linear horizontal `Hips` drift removed (in place, sway kept); that drift is kept as the
   clip's natural ground speed. Non-looping clips (deaths, stance changes) keep their travel.
 - **Scale and facing.** The model is scaled to `BODY.heightM` from its bind-pose bounds and hangs
-  under `poseRoot`, so role and body-shape scaling still apply. The exporter's emissive copy of the
-  albedo is removed at import.
+  under `poseRoot`, so role and body-shape scaling still apply.
+- **Repaired source models.** `tools/fix-soldier-model.py` (Blender) rewinds inside-out faces,
+  embeds each albedo under a unique name (identical embedded names collide in Babylon's texture
+  cache), drops the stray emissive/normal-map wiring and, for the German model, moves the skin
+  ~8 cm forward onto its skeleton. It never changes the armature: bone rest transforms match the
+  originals to 0.02 degrees, so the clips keep binding. Re-run it on any new export.
+- **Shading.** Normals are smoothed at load within a 60 degree crease (`?smooth=0` shows the flat
+  export), and the material is two-sided: the auto-rig's weights fold the thin smock over itself
+  at the shoulders when posed, which back-face culling would show as holes.
 
 ### Who owns what
 
