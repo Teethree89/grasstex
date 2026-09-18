@@ -94,30 +94,77 @@ function prepareModel(container){
     if(m.specularColor)m.specularColor.set(.06,.06,.06);
     /* The atlas is hundreds of small islands; keep it crisp at glancing angles. */
     if(m.diffuseTexture)m.diffuseTexture.anisotropicFilteringLevel=8;
+    /* Some small patches (smock, sleeves) are exported inside-out as a whole, with no neighbour
+       to correct them from; culled, they read as holes onto the body underneath. Draw both sides. */
+    m.backFaceCulling=false;if('twoSidedLighting' in m)m.twoSidedLighting=true;
   });
-  meshes.forEach(smoothNormals);
-  return{container:container,top:top,nodes:nodes,height:hi-lo,scale:(M.BODY&&M.BODY.heightM||1.7)/(hi-lo),
+  var reversed=0;
+  meshes.forEach(function(mesh){
+    var pos=mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);if(!pos)return;
+    var group=weldGroups(pos);reversed+=fixWinding(mesh,group);smoothNormals(mesh,group);
+  });
+  return{container:container,top:top,nodes:nodes,height:hi-lo,reversedTriangles:reversed,scale:(M.BODY&&M.BODY.heightM||1.7)/(hi-lo),
     bones:skeleton.bones.map(function(b){return b.name;}).filter(function(name){return!!nodes[name];}),grips:null};
 }
 
+/* The exports have ~1-2% of triangles wound backwards (48 on the German, 107 on the US model),
+   which also cancels neighbouring face normals when smoothing. Walk each connected piece across shared edges (positions welded over UV seams), make every
+   neighbour traverse the shared edge in the opposite direction, and keep whichever orientation
+   most of the piece already has. Returns the welded position group of each vertex. */
+function weldGroups(pos){
+  var n=pos.length/3,key={},group=new Int32Array(n),count=0;
+  for(var i=0;i<n;i++){var k=pos[i*3].toFixed(4)+','+pos[i*3+1].toFixed(4)+','+pos[i*3+2].toFixed(4);if(key[k]==null)key[k]=count++;group[i]=key[k];}
+  return group;
+}
+function fixWinding(mesh,group){
+  var idx=mesh.getIndices();if(!idx)return 0;idx=Array.prototype.slice.call(idx);
+  var tris=idx.length/3,edges={},t,e;
+  function ek(a,b){return a<b?a+'_'+b:b+'_'+a;}
+  for(t=0;t<tris;t++)for(e=0;e<3;e++){var k=ek(group[idx[t*3+e]],group[idx[t*3+(e+1)%3]]);(edges[k]||(edges[k]=[])).push(t);}
+  /* +1 when triangle t runs a->b along its own winding. */
+  function dir(t,a,b){for(var j=0;j<3;j++){if(group[idx[t*3+j]]===a&&group[idx[t*3+(j+1)%3]]===b)return 1;}return -1;}
+  var flip=new Int8Array(tris),seen=new Uint8Array(tris),flipped=0;
+  for(var start=0;start<tris;start++){
+    if(seen[start])continue;
+    var queue=[start],piece=[];seen[start]=1;flip[start]=0;
+    while(queue.length){
+      t=queue.pop();piece.push(t);
+      for(e=0;e<3;e++){
+        var a=group[idx[t*3+e]],b=group[idx[t*3+(e+1)%3]],list=edges[ek(a,b)];
+        if(!list||list.length!==2)continue; /* seams between pieces and non-manifold edges stay put */
+        var u=list[0]===t?list[1]:list[0];if(seen[u])continue;
+        /* Consistent neighbours run the shared edge in opposite directions. */
+        var mine=dir(t,a,b)*(flip[t]?-1:1),theirs=dir(u,a,b);
+        flip[u]=theirs===mine?1:0;seen[u]=1;queue.push(u);
+      }
+    }
+    var ones=0;for(var p=0;p<piece.length;p++)ones+=flip[piece[p]];
+    var keepFlipped=ones>piece.length/2;
+    for(p=0;p<piece.length;p++){
+      t=piece[p];if(!!flip[t]!==keepFlipped){var tmp=idx[t*3+1];idx[t*3+1]=idx[t*3+2];idx[t*3+2]=tmp;flipped++;}
+    }
+  }
+  if(flipped)mesh.setIndices(idx);
+  return flipped;
+}
 /* The exported normals are per-face, so the low-poly body shades as visible facets. Average the
    face normals of every corner that shares a position (welding across UV seams) instead. */
-function smoothNormals(mesh){
+function smoothNormals(mesh,group){
   var pos=mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind),idx=mesh.getIndices();if(!pos||!idx)return;
-  var n=pos.length/3,key={},group=new Int32Array(n),acc=[],i;
-  for(i=0;i<n;i++){var k=pos[i*3].toFixed(4)+','+pos[i*3+1].toFixed(4)+','+pos[i*3+2].toFixed(4);if(key[k]==null){key[k]=acc.length/3;acc.push(0,0,0);}group[i]=key[k];}
+  var n=pos.length/3,acc=new Float64Array((Math.max.apply(null,group)+1)*3),i;
   for(i=0;i<idx.length;i+=3){
     var a=idx[i]*3,b=idx[i+1]*3,c=idx[i+2]*3,ux=pos[b]-pos[a],uy=pos[b+1]-pos[a+1],uz=pos[b+2]-pos[a+2],vx=pos[c]-pos[a],vy=pos[c+1]-pos[a+1],vz=pos[c+2]-pos[a+2];
     var nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
     for(var j=0;j<3;j++){var g=group[idx[i+j]]*3;acc[g]+=nx;acc[g+1]+=ny;acc[g+2]+=nz;}
   }
-  var old=mesh.getVerticesData(BABYLON.VertexBuffer.NormalKind),out=new Float32Array(n*3);
+  /* Keep the outward sense the file's own normals have overall (the loader mirrors handedness). */
+  var old=mesh.getVerticesData(BABYLON.VertexBuffer.NormalKind),out=new Float32Array(n*3),agree=0;
   for(i=0;i<n;i++){
-    var g2=group[i]*3,x=acc[g2],y=acc[g2+1],z=acc[g2+2],l=Math.sqrt(x*x+y*y+z*z)||1;x/=l;y/=l;z/=l;
-    /* Keep the winding the file's normals imply. */
-    if(old&&x*old[i*3]+y*old[i*3+1]+z*old[i*3+2]<0){x=-x;y=-y;z=-z;}
-    out[i*3]=x;out[i*3+1]=y;out[i*3+2]=z;
+    var g2=group[i]*3,x=acc[g2],y=acc[g2+1],z=acc[g2+2],l=Math.sqrt(x*x+y*y+z*z)||1;
+    out[i*3]=x/l;out[i*3+1]=y/l;out[i*3+2]=z/l;
+    if(old)agree+=(out[i*3]*old[i*3]+out[i*3+1]*old[i*3+1]+out[i*3+2]*old[i*3+2])>0?1:-1;
   }
+  if(agree<0)for(i=0;i<out.length;i++)out[i]=-out[i];
   mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind,out,false);
 }
 function convertClip(container,key,spec,bones,scale){
@@ -216,7 +263,7 @@ function loadLibrary(scene){
     });
     Object.keys(st.libs).forEach(function(f){solveGrips(st.libs[f],st.clips.aim,st.bones);});
     hookRender(scene,st);st.ready=true;
-    console.log('[ANIM] FBX soldiers ready: '+Object.keys(st.libs).join('/')+' models, '+list.length+' clips, '+st.animated.length+' animated bones, '+(Date.now()-started)+' ms; support hand '+JSON.stringify(st.libs.us&&st.libs.us.supportHand));
+    console.log('[ANIM] FBX soldiers ready: '+Object.keys(st.libs).join('/')+' models, '+list.length+' clips, '+st.animated.length+' animated bones, '+(Date.now()-started)+' ms; rewound triangles '+Object.keys(st.libs).map(function(f){return f+'='+st.libs[f].reversedTriangles;}).join(' '));
     return true;
   }).catch(function(error){
     st.error=error;console.warn('[ANIM] FBX soldiers unavailable; procedural rig stays active',error);return false;
