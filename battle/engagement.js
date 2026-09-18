@@ -131,7 +131,7 @@
   function coverRegistry(battle){
     var obs=battle.obstacles||[],N=root.BattleNavigation,c=coverClaims.get(battle),version=(obs.__physicalVersion||0)+'|'+obs.length+'|'+(N&&N.version||0);
     if(!c||c.source!==obs||c.version!==version||c.roster!==battle._roster||battle.time<c.lastTime){
-      c={source:obs,version:version,roster:battle._roster,lastTime:battle.time,shapes:new Map(),shapeIds:new Map(),slots:new Map(),bySoldier:new Map(),claims:new Map(),bodies:new Map(),bodyTime:null};
+      c={battle:battle,source:obs,version:version,roster:battle._roster,lastTime:battle.time,shapes:new Map(),shapeIds:new Map(),slots:null,bySoldier:new Map(),claims:new Map(),bodies:new Map(),bodyTime:null};
       var physical=obs.__physicalFootprints||[];for(var i=0;i<physical.length;i++)if(physical[i].id!=null)c.shapes.set(String(physical[i].id),physical[i]);
       for(i=0;i<obs.length;i++){var fp=c.shapes.get(String(obs[i].physicalId))||obs[i];if(!c.shapeIds.has(fp))c.shapeIds.set(fp,'cover:'+i);}
       coverClaims.set(battle,c);
@@ -152,10 +152,9 @@
   }
   function currentCover(s,battle){var c=coverRegistry(battle),e=c.bySoldier.get(s);if(e&&!coverLive(e,battle)){dropCover(c,e);return null;}return e||null;}
   function releaseCover(s,battle,kind){var c=coverRegistry(battle),e=c.bySoldier.get(s);if(e&&(!kind||e.kind===kind))dropCover(c,e);}
-  function coverSlots(c,ob){
-    var fp=c.shapes.get(String(ob.physicalId))||ob,slots=c.slots.get(fp);if(slots)return slots;
-    slots=[];c.slots.set(fp,slots);
-    var P=root.BattleNavigationPhysicality,pad=Math.max(.9,(P&&P.routeMargin||1.15)+.05),id=c.shapeIds.get(fp);
+  function coverEligible(F,ob){return F.obstacleHeight(ob)>=.5&&(ob.cover==null?1:+ob.cover)<=USEFUL_COVER;}
+  function rawCoverSlots(c,ob,fp){
+    var slots=[],P=root.BattleNavigationPhysicality,pad=Math.max(.9,(P&&P.routeMargin||1.15)+.05),id=c.shapeIds.get(fp);
     function add(x,z,nx,nz){var slot={id:id+':'+slots.length,x:x,z:z,normalX:nx,normalZ:nz,obstacle:ob,shape:fp,type:ob.type||'cover'};slots.push(slot);}
     if(fp.shape==='obb'){
       var ux=isFinite(+fp.ux)?+fp.ux:1,uz=+fp.uz||0,l=Math.hypot(ux,uz)||1;ux/=l;uz/=l;
@@ -168,6 +167,44 @@
       for(var i=0;i<count;i++){var a=i*Math.PI*2/count;add(fp.x+Math.cos(a)*radius,fp.z+Math.sin(a)*radius,Math.cos(a),Math.sin(a));}
     }
     return slots;
+  }
+  /* Every obstacle rings itself with slots, so neighbouring pieces of cover produce slots that
+     sit on top of each other. Build them all once per map version in obstacle order, drop the
+     unusable ones, then walk from the newest back and delete any older slot within claim spacing
+     of one already kept: no two surviving slots overlap, so every slot shown can be taken. */
+  function buildCoverSlots(c){
+    var F=field(),N=root.BattleNavigation,P=root.BattleNavigationPhysicality,all=[],seen=new Set();c.slots=new Map();
+    /* A slot must be somewhere a body can stand: the planner's stand envelope (route margin
+       around every shape, not just this one) must accept it unchanged, or the planner would
+       quietly move the soldier off it. */
+    function standable(slot){
+      if(N&&!N.movementClear(slot,slot))return false;
+      if(!P||!P.resolveStandGoal)return true;
+      var stand=P.resolveStandGoal(c.battle,null,slot);return!!stand&&dist(stand.x,stand.z,slot.x,slot.z)<.01;
+    }
+    for(var i=0;i<c.source.length;i++){
+      var ob=c.source[i],fp=c.shapes.get(String(ob.physicalId))||ob;if(seen.has(fp))continue;seen.add(fp);
+      c.slots.set(fp,[]);if(!F||!coverEligible(F,ob))continue;
+      var raw=rawCoverSlots(c,ob,fp);
+      for(var j=0;j<raw.length;j++){var slot=raw[j];
+        if(!standable(slot))continue;
+        if(F.coverPotentialAt(c.source,slot.x,slot.z)>USEFUL_COVER)continue;
+        all.push(slot);
+      }
+    }
+    var grid=new Map(),kept=[];
+    function cell(x,z){return Math.floor(x/COVER_SPACING)+','+Math.floor(z/COVER_SPACING);}
+    for(i=all.length-1;i>=0;i--){
+      var slot=all[i],cx=Math.floor(slot.x/COVER_SPACING),cz=Math.floor(slot.z/COVER_SPACING),clash=false;
+      for(var x=-1;x<=1&&!clash;x++)for(var z=-1;z<=1&&!clash;z++){var list=grid.get((cx+x)+','+(cz+z));if(list)for(var k=0;k<list.length;k++)if(dist(list[k].x,list[k].z,slot.x,slot.z)<COVER_SPACING-.001){clash=true;break;}}
+      if(clash)continue;var key=cell(slot.x,slot.z),bucket=grid.get(key);if(!bucket)grid.set(key,bucket=[]);bucket.push(slot);kept.push(slot);
+    }
+    for(i=kept.length-1;i>=0;i--)c.slots.get(kept[i].shape).push(kept[i]);
+    c.slotCount=kept.length;c.slotsPruned=all.length-kept.length;
+  }
+  function coverSlots(c,ob){
+    if(!c.slots)buildCoverSlots(c);
+    return c.slots.get(c.shapes.get(String(ob.physicalId))||ob)||[];
   }
   function coverBodies(c,battle){
     if(c.bodyTime===battle.time)return;c.bodyTime=battle.time;c.bodies.clear();
@@ -193,8 +230,7 @@
     var F=field();if(!F||!threat)return[];var c=coverRegistry(battle),p=posOf(s),t=threat.root?posOf(threat):threat;
     var obs=F.nearby(battle.obstacles,p.x,p.z,maxRange),out=[],seen=new Set(),P=root.BattleNavigationPhysicality;
     for(var i=0;i<obs.length;i++){
-      var ob=obs[i];if(F.obstacleHeight(ob)<.5||(ob.cover==null?1:+ob.cover)>USEFUL_COVER)continue;
-      var slots=coverSlots(c,ob);if(seen.has(slots))continue;seen.add(slots);
+      var slots=coverSlots(c,obs[i]);if(!slots.length||seen.has(slots))continue;seen.add(slots);
       for(var j=0;j<slots.length;j++){
         var slot=slots[j],dx=t.x-slot.x,dz=t.z-slot.z;
         if(dx*slot.normalX+dz*slot.normalZ>=0||dist(p.x,p.z,slot.x,slot.z)>maxRange)continue;
@@ -209,8 +245,8 @@
   }
   function coverSnapshot(battle){
     var c=coverRegistry(battle),F=field(),out=[],seen=new Set();
-    for(var i=0;i<c.source.length;i++){var ob=c.source[i];if(F.obstacleHeight(ob)<.5||(ob.cover==null?1:+ob.cover)>USEFUL_COVER)continue;var slots=coverSlots(c,ob);if(seen.has(slots))continue;seen.add(slots);
-      for(var j=0;j<slots.length;j++){var slot=slots[j],N=root.BattleNavigation;if((N&&!N.movementClear(slot,slot))||F.coverPotentialAt(c.source,slot.x,slot.z)>USEFUL_COVER)continue;
+    for(var i=0;i<c.source.length;i++){var slots=coverSlots(c,c.source[i]);if(!slots.length||seen.has(slots))continue;seen.add(slots);
+      for(var j=0;j<slots.length;j++){var slot=slots[j];
         var e=null,list=c.claims.get(coverKey(slot))||[];for(var k=0;k<list.length;k++)if(list[k].slot===slot&&coverLive(list[k],battle)){e=list[k];break;}
         var occupied=e&&dist(posOf(e.soldier).x,posOf(e.soldier).z,slot.x,slot.z)<=.45;
         out.push({id:slot.id,x:slot.x,z:slot.z,normalX:slot.normalX,normalZ:slot.normalZ,type:slot.type,status:e?(occupied?'occupied':'reserved'):'free',soldierId:e?e.soldier.id:null,faction:e?e.soldier.faction:null});
@@ -664,7 +700,7 @@
     sq._boundTeam=null;sq._boundTurn=null;sq._assaultAuthorized=false;
   }
 
-  root.BattleCoverPositions={candidates:coverCandidates,reserve:reserveCover,release:releaseCover,current:currentCover,snapshot:coverSnapshot,spacing:COVER_SPACING};
+  root.BattleCoverPositions={warm:function(battle){var c=coverRegistry(battle);if(!c.slots)buildCoverSlots(c);return c.slotCount;},candidates:coverCandidates,reserve:reserveCover,release:releaseCover,current:currentCover,snapshot:coverSnapshot,spacing:COVER_SPACING};
 
   root.BattleEngagement={
     updateSoldier:updateSoldier,updateSquad:updateSquad,decide:decide,

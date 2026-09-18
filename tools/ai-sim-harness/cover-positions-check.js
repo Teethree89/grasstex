@@ -31,4 +31,19 @@ test('an end-on hedge threat cannot produce a point inside the hedgerow',()=>{
   const f=fixture([hedge()]);f.s.root.position.x=-18;f.s.root.position.z=0;f.s.target.root.position={x:60,y:0,z:0};
   const p=f.E.findCover(f.s,f.b);assert.ok(p);assert.ok(f.r.BattleNavigation.movementClear(p,p),'cover point is inside the hedge');assert.ok(p.x<-14);
 });
+function crate(id,x,z){return{id,physicalId:id,type:'crate',x,z,y:0,radius:.8,height:1,cover:.55};}
+test('clustered cover yields no overlapping slots, keeping the newest obstacle\'s slots',()=>{
+  const obs=[crate('a',0,0),crate('b',1.6,.4),crate('c',.6,1.8),crate('d',-1.4,1.1)],f=fixture(obs),slots=f.C.snapshot(f.b);
+  assert.ok(slots.length>0,'cluster should still offer cover');
+  for(let i=0;i<slots.length;i++)for(let j=i+1;j<slots.length;j++)
+    assert.ok(Math.hypot(slots[i].x-slots[j].x,slots[i].z-slots[j].z)>=f.C.spacing-.001,'overlap '+slots[i].id+' / '+slots[j].id);
+  const newest=obs.length-1,raw=slots.filter(s=>s.id.startsWith('cover:'+newest+':')).length;
+  assert.ok(raw>0,'the newest obstacle keeps its slots');
+});
+test('every cover slot is a spot the planner accepts as a standing position',()=>{
+  const obs=[crate('a',0,0),crate('b',3.6,0),Object.assign(hedge(),{z:-3.4,hx:6}),crate('e',0,3.8)];
+  const g=fixture(obs),P=g.r.BattleNavigationPhysicality,slots=g.C.snapshot(g.b);
+  assert.ok(slots.length>0);
+  for(const s of slots){const st=P.resolveStandGoal(g.b,null,s);assert.ok(st&&Math.hypot(st.x-s.x,st.z-s.z)<.01,'slot '+s.id+' is inside a body margin');}
+});
 console.log(checks+' cover checks passed; '+failures+' failed.');if(failures)process.exitCode=1;
