@@ -22,110 +22,80 @@ The battle lab deliberately separates gameplay/AI state from the rendered soldie
 
 `BattleSoldierModel.TAGS` is the runtime source of truth.
 
-## Current procedural rig
+## Imported FBX soldier (active backend)
 
-The procedural test soldier uses a parented humanoid hierarchy instead of independent limb pieces:
+`battle/modules/53-fbx-soldier-backend.js` renders every soldier as the rigged FBX character and
+animates it with the shared Mixamo rifle clips, using Babylon's FBX loader: the same import path
+as the FBX Motion Lab (`fbx-animation-lab.html`).
 
-- `hips -> spine -> chest -> neck -> head`
-- `chest -> shoulder -> upperArm -> forearm -> hand`
-- `hips -> thigh -> shin -> foot -> toe`
-- `weapon` socket on the chest
+- **Sources.** Characters: `Assets/soldiers/{us,ge}-rifleman-rigged.fbx`. Clips:
+  `Assets/animations/*.fbx` (animation-only, same rig). The deploy plan uploads both folders.
+- **Engine.** The FBX loader ships in Babylon 9, so the page pins `babylonjs@9.27.1`; the backend
+  loads the matching `babylonjs-loaders` bundle on demand.
+- **No retargeting.** Model and clips share one rig (`Hips`, `Spine02/01/Spine`, `neck`, `Head`,
+  `Left/RightShoulder/Arm/ForeArm/Hand`, `Left/RightUpLeg/Leg/Foot/ToeBase`), so channels bind by
+  bone name. The loader's `*__fbx_inheritScale` helper nodes only duplicate their parent's
+  channel and are dropped.
+- **Conversion, once per page load.** Each clip is resampled to 30 fps typed arrays. Looping clips
+  have the linear horizontal `Hips` drift removed (in place, sway kept); that drift is kept as the
+  clip's natural ground speed. Non-looping clips (deaths, stance changes) keep their travel.
+- **Scale and facing.** The model is scaled to `BODY.heightM` from its bind-pose bounds and hangs
+  under `poseRoot`, so role and body-shape scaling still apply. The exporter's emissive copy of the
+  albedo is removed at import.
 
-Runtime names are exposed through `soldier.rig`, including compatibility aliases for the earlier `hip/knee/elbow` names. The body is normalized around the ~1.7 m on-foot body scale used by ww2fps.
+### Who owns what
 
-This hierarchy is only a rendering backend. AI must not branch on these nodes.
+Navigation owns world position. The backend reads ground speed and direction from the root's
+displacement each simulation step, then:
 
-## Human Soldier Animations FREE reference pack
+- **Lower layer (whole body):** idle / crouch idle / prone idle, or directional locomotion. Standing
+  movement picks walk, run or sprint by the family whose natural speed is closest (with
+  hysteresis), one of eight directions relative to facing, and a playback rate of
+  `ground speed / clip speed` so feet do not skate. Crouch uses `walk crouching *`; prone uses
+  `Prone Forward` / `Moving Backward In Prone Position`.
+- **Upper overlay (spine, arms, head):** aim (`idle aiming`, `idle crouching aiming`), fire
+  (single shot per `combat.fire`; LMG uses the automatic loop), reload (rate stretched to the
+  weapon's reload time). The overlay's torso is re-expressed under the lower layer's hips, so
+  walking legs do not twist the aim.
+- **Stance changes:** kneel-to-prone and prone-to-kneel clips carry the body through the ground
+  change; stand/crouch is a cross-fade.
+- **Deaths:** `death.front` (forward collapse) plays the pack's "death from the back",
+  `death.back` plays "death from the front", `death.side` plays "death from right"; crouched and
+  prone soldiers use the crouching/prone deaths.
+- **Weapon:** the rifle rides the right hand with an offset solved once from the aiming clip (barrel
+  level along the model's forward, grip in the right palm). While aiming, a capped spine rotation
+  (<= ~40 degrees) turns the barrel onto the target, which corrects the crouched and prone clips.
+  The weapon stays at world scale 1 regardless of body-shape scaling.
 
-The supplied **Human Soldier Animations 2.0 FREE** package is a useful replacement/reference rig. Its male model exposes the same major semantic chain:
+Clip clocks advance on simulation time in `update()` (called from `animateWalk`), so animation
+follows the sim's time scale and pauses with it. Poses are written once per rendered frame; a
+paused or headless sim pays nothing for them. Measured with 100 soldiers: ~1 µs per `animateWalk`
+call and ~0.7 ms per rendered frame for all poses, weapons and aim.
 
-- `B-hips`, `B-spine`, `B-chest`, `B-neck`, `B-head`
-- `B-shoulder.L/R`, `B-upperArm.L/R`, `B-forearm.L/R`, `B-hand.L/R`
-- `B-thigh.L/R`, `B-shin.L/R`, `B-foot.L/R`, `B-toe.L/R`
+### Fallback: the procedural rig
 
-Useful clips in the free pack include military idle, eight-direction walk/run, rifle aim/fire/reload, damage, grenade throw and three death animations. The free pack **does not include crouch or prone/crawl locomotion**, so those states remain procedural until we add suitable clips or author them.
+`battle/soldier.js` keeps the articulated primitive soldier (`hips -> spine -> chest -> neck ->
+head`, `chest -> shoulder -> upperArm -> forearm -> hand`, `hips -> thigh -> shin -> foot -> toe`,
+a `weapon` socket, two-bone arm IK, hand-authored stance transitions). It is used:
 
-For the AI lab, prefer the **in-place** walk/run clips, not the `[RM]` root-motion variants. Navigation/pathfinding owns soldier world position; animation should depict that motion rather than independently moving the actor.
+- while the FBX assets load, or if they fail (the page waits at most 25 s, then starts anyway);
+- whenever `BattleSoldierModel.setImportedEnabled(scene, false)` is in effect, which the trainer
+  and the headless benchmark set so matches spend nothing on imported meshes.
 
-The package PDF identifies the license as the Standard Asset Store EULA: royalty-free/commercial use allowed, resale not allowed, attribution not required. Keep the source package out of the repository unless we intentionally add converted runtime assets.
+An FBX-bound soldier has `rig === null` and its primitive body is disposed; code that poses the
+procedural rig (for example `45-stance-transition-crawl.js`) must skip it.
 
-## Active baked procedural backend
+The in-page **Motion Lab** loads the same FBX library into its own scene and previews every state:
+standing, directional and crouched/prone locomotion, aim/fire/reload overlays, stance transitions
+and deaths, labelled with the clip files that are playing.
 
-`battle/soldier.js` contains rig-local joint-rotation tracks made from the user-supplied Human
-Soldier Animations FREE package. It drives the existing low-poly procedural body, rather than
-replacing that body with a skinned model. The baked tracks (format `version: 2`) contain:
+### Adding clips
 
-- `idle`, `walk`, `aim`, `fire`, `reload`
-- `death.front`, `death.back`, `death.side`
-
-Each frame stores one parent-relative quaternion per procedural joint plus the pelvis offset.
-The runtime applies them directly; it does not layer them over procedural poses.
-
-Regenerate the embedded tracks with `tools/build-procedural-soldier-animations.py` and the
-extracted package (`--inline-soldier battle/soldier.js`). The package FBX files do **not** share
-one rest pose (the idle/walk files and the rifle files differ), so the converter never exports
-`matrix_basis` deltas. It reads each bone's posed world orientation, converts it to soldier space
-(X right, Y up, Z forward), rebuilds the matching procedural joint frame (limbs hang along -Y,
-torso bones point along +Y, +Z faces forward) and stores the local rotation. It never exports a
-mesh, skeleton, or inverse-bind matrix.
-
-Runtime rules:
-
-- **Layering.** Legs and pelvis play `walk` while moving; the torso, neck and head play the combat
-  clip (`aim`, `fire`, `reload`). Standing still, both halves play the same clip.
-- **Cross-fades.** When the lower or upper clip changes, that half of the pose is snapshotted and
-  eased into the new clip over 0.3 s, so a single shot never interrupts the walking legs.
-- **Deaths.** The clip's pelvis travel lowers the body to the ground. The pose root is not also
-  tipped over, which is what previously over-rotated deaths.
-- **Weapon hold (all living states, baked or procedural).** The weapon pose is chosen in body space,
-  with the butt anchored to the right shoulder: port-arms carry for idle/walk/crouch,
-  shouldered for aim/fire and prone, and tilted for reload. Two-bone IK then puts the right hand on
-  the grip and the left hand on the fore-end, or on the magazine well during reload. Package arm
-  tracks are used only for deaths, and there the rifle follows the right forearm.
-- Crouch and prone/crawl stay hand-authored because the free package has no such clips. A crouched
-  soldier with a target blades the torso so the support hand can reach the fore-end.
-
-Babylon zeroes a node's Euler `rotation` whenever `rotationQuaternion` is assigned. Returning from
-package clips to the Euler-driven crouch/prone poses therefore converts each joint's quaternion
-back to Euler first.
-
-The trainer can deliberately disable baked tracks so a 24-match generation spends no time
-interpolating cosmetic pose data. The weapon-hold IK still runs in that mode.
-
-The in-page **Motion Lab** exposes every package track, the layered walk + aim state, and the
-procedural crouch/crouch-aim/prone states. One-shot clips replay automatically. Use it to review a
-pose independently of live combat before enabling a new retarget mapping.
-
-## Replacing the soldier with another skeletal GLTF
-
-Keep the soldier runtime record (`root`, `weaponSocket`, faction/role metadata) and bind a backend with:
-
-```js
-BattleSoldierModel.bindAnimationBackend(soldier, {
-  backend: 'gltf-skeleton',
-  play(tag, data, soldier) {
-    // map semantic one-shot tags such as combat.fire/death.side
-    // to AnimationGroups or skeletal actions
-  },
-  update(soldier, state, dt, tags) {
-    // `state.tag` is the current semantic locomotion/stance/combat state.
-    // Blend the matching AnimationGroup and aim/look IK here.
-  }
-});
-```
-
-A future importer can map the free pack approximately as follows:
-
-| Semantic tag | Candidate pack clip |
-| --- | --- |
-| `locomotion.idle` | `HumanM@MilitaryIdle01` |
-| `locomotion.walk` | `HumanM@Walk01_Forward` (in-place) |
-| `combat.aim` | `HumanM@Rifle_Aim01` / `HumanM@WeaponHold_Rifle01` |
-| `combat.fire` | `HumanM@Rifle_Aim01_Shoot01` |
-| `combat.reload` | `HumanM@Rifle_Reload01` |
-| death tags | `HumanM@Death01/02/03` |
-
-The imported model should expose a `weaponSocket` attached to the appropriate hand/bone so `BattleWeapons.attachWeapon()` remains unchanged. Hand IK or a second support-hand target can then keep the left hand on the fore-end.
+Drop the animation-only FBX (exported on the same rig, "without skin") into `Assets/animations/`
+and add a key to `CLIPS` in the backend. `BattleFbxSoldier.status(scene)` and
+`BattleFbxSoldier.clip(scene, key)` report what loaded and each clip's duration and natural speed.
+The pack also ships turns, jumps, prone rolls, moving fire and moving reloads that are loaded by
+nobody yet.
 
 ## Gameplay ownership
 
