@@ -31,7 +31,6 @@
   var STANCE_HOLD=4.0,PRONE_HOLD=5.5;
   var COVER_RANGE=26,COVER_RANGE_UNDER_FIRE=42,COVER_ARRIVED=1.2;
   var GUNNER_SETUP=1.4;
-  var CLAIM_SECONDS=14;
   /* A position is "in the open" when the best stance available there still leaves the soldier
      nearly fully exposed. */
   var OPEN_COVER=.92,USEFUL_COVER=.88;
@@ -124,78 +123,127 @@
 
   /* ---- cover ------------------------------------------------------------------------------- */
 
-  /* Cover claims belong to the battle, not to one squad, so two squads converging on the same
-     defended ground cannot both take the same obstacle. Arbitration is within a faction: two
-     enemies contesting one rock is a fight, not a coordination failure. Indexed by obstacle so
-     the lookup stays O(1) per candidate on this hot path. */
-  var coverClaims=new WeakMap();
-  function registry(battle){
-    var c=coverClaims.get(battle);
-    if(!c){c={byObstacle:new Map(),bySoldier:new Map(),lastTime:battle.time};coverClaims.set(battle,c);}
-    /* spawnAll resets time to 0 and builds new squads; drop claims held against the old clock. */
-    if(battle.time<c.lastTime){c.byObstacle.clear();c.bySoldier.clear();}
-    c.lastTime=battle.time;
-    return c;
+  /* Cover is a set of physical stand slots, shared by engagement and survival routes. Claims
+     last for the actual bound/occupancy, never a clock lease. This owner chooses/reserves cover;
+     Movement Resolver remains the only writer of physical destinations. */
+  var coverClaims=new WeakMap(),COVER_SPACING=1.8,COVER_CELL=2;
+  function coverKey(p){return Math.floor(p.x/COVER_CELL)+','+Math.floor(p.z/COVER_CELL);}
+  function coverRegistry(battle){
+    var obs=battle.obstacles||[],N=root.BattleNavigation,c=coverClaims.get(battle),version=(obs.__physicalVersion||0)+'|'+obs.length+'|'+(N&&N.version||0);
+    if(!c||c.source!==obs||c.version!==version||c.roster!==battle._roster||battle.time<c.lastTime){
+      c={source:obs,version:version,roster:battle._roster,lastTime:battle.time,shapes:new Map(),shapeIds:new Map(),slots:new Map(),bySoldier:new Map(),claims:new Map(),bodies:new Map(),bodyTime:null};
+      var physical=obs.__physicalFootprints||[];for(var i=0;i<physical.length;i++)if(physical[i].id!=null)c.shapes.set(String(physical[i].id),physical[i]);
+      for(i=0;i<obs.length;i++){var fp=c.shapes.get(String(obs[i].physicalId))||obs[i];if(!c.shapeIds.has(fp))c.shapeIds.set(fp,'cover:'+i);}
+      coverClaims.set(battle,c);
+    }
+    c.lastTime=battle.time;return c;
   }
-  function drop(c,e){c.byObstacle.delete(e.ob);if(c.bySoldier.get(e.holder)===e)c.bySoldier.delete(e.holder);}
-  function claimedByOther(ob,s,battle){
-    var c=registry(battle),e=c.byObstacle.get(ob);
-    if(!e)return false;
-    if(e.until<battle.time||e.holder.dead){drop(c,e);return false;}
-    return e.holder!==s&&e.holder.faction===s.faction;
+  function dropCover(c,e){
+    if(!e)return;if(c.bySoldier.get(e.soldier)===e)c.bySoldier.delete(e.soldier);
+    var list=c.claims.get(coverKey(e.slot));if(list){var i=list.indexOf(e);if(i>=0)list.splice(i,1);}
   }
-  function claim(ob,s,battle){
-    var c=registry(battle),prev=c.bySoldier.get(s);
-    if(prev)drop(c,prev);
-    var e={ob:ob,holder:s,until:battle.time+CLAIM_SECONDS};
-    c.byObstacle.set(ob,e);c.bySoldier.set(s,e);
+  function coverLive(e,battle){
+    var s=e.soldier,q=s.squad||{},eng=s.eng,p=s.root&&s.root.position;
+    if(s.dead||s.incapacitated||battle.winner||!p||q.state==='retreat'||q.commandPhase==='retreat'||q.commandPhase==='regroup'||(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s)))return false;
+    if(e.createdAt===battle.time)return true; // selection is committed by its caller in this tick
+    var near=dist(p.x,p.z,e.slot.x,e.slot.z)<=COVER_SPACING;
+    if(e.kind==='route')return!!(s._tacticalRoute&&s._tacticalRoute.coverSlotId===e.slot.id)||near;
+    return!!(eng&&eng.cover&&eng.cover.slotId===e.slot.id&&(eng.state==='bound'||(near&&['engage','pinned','orient','alert'].indexOf(eng.state)>=0)));
   }
-  function coverPointBehind(ob,threat){
-    var t=posOf(threat),dx=ob.x-t.x,dz=ob.z-t.z,len=Math.hypot(dx,dz)||1,pad=(+ob.radius||1)+.9;
-    return{x:ob.x+dx/len*pad,z:ob.z+dz/len*pad};
+  function currentCover(s,battle){var c=coverRegistry(battle),e=c.bySoldier.get(s);if(e&&!coverLive(e,battle)){dropCover(c,e);return null;}return e||null;}
+  function releaseCover(s,battle,kind){var c=coverRegistry(battle),e=c.bySoldier.get(s);if(e&&(!kind||e.kind===kind))dropCover(c,e);}
+  function coverSlots(c,ob){
+    var fp=c.shapes.get(String(ob.physicalId))||ob,slots=c.slots.get(fp);if(slots)return slots;
+    slots=[];c.slots.set(fp,slots);
+    var P=root.BattleNavigationPhysicality,pad=Math.max(.9,(P&&P.routeMargin||1.15)+.05),id=c.shapeIds.get(fp);
+    function add(x,z,nx,nz){var slot={id:id+':'+slots.length,x:x,z:z,normalX:nx,normalZ:nz,obstacle:ob,shape:fp,type:ob.type||'cover'};slots.push(slot);}
+    if(fp.shape==='obb'){
+      var ux=isFinite(+fp.ux)?+fp.ux:1,uz=+fp.uz||0,l=Math.hypot(ux,uz)||1;ux/=l;uz/=l;
+      var vx=isFinite(+fp.vx)?+fp.vx:-uz,vz=isFinite(+fp.vz)?+fp.vz:ux,vl=Math.hypot(vx,vz)||1;vx/=vl;vz/=vl;
+      var hx=+fp.hx||.5,hz=+fp.hz||.5;
+      function face(half,nx,nz,tx,tz,depth){var n=Math.max(1,Math.floor(half*2/COVER_SPACING));for(var i=0;i<n;i++){var along=(i+.5)*half*2/n-half;add(fp.x+nx*(depth+pad)+tx*along,fp.z+nz*(depth+pad)+tz*along,nx,nz);}}
+      face(hx,vx,vz,ux,uz,hz);face(hx,-vx,-vz,ux,uz,hz);face(hz,ux,uz,vx,vz,hx);face(hz,-ux,-uz,vx,vz,hx);
+    }else{
+      var radius=(+fp.radius||1)+pad,count=Math.max(4,Math.floor(Math.PI*2*radius/COVER_SPACING));
+      for(var i=0;i<count;i++){var a=i*Math.PI*2/count;add(fp.x+Math.cos(a)*radius,fp.z+Math.sin(a)*radius,Math.cos(a),Math.sin(a));}
+    }
+    return slots;
+  }
+  function coverBodies(c,battle){
+    if(c.bodyTime===battle.time)return;c.bodyTime=battle.time;c.bodies.clear();
+    var roster=battle._roster||{};
+    ['us','ge'].forEach(function(f){(roster[f]||[]).forEach(function(s){if(s.dead||!s.root)return;[s.root.position,s.destination].forEach(function(p){if(!p)return;var k=coverKey(p),list=c.bodies.get(k);if(!list)c.bodies.set(k,list=[]);list.push({soldier:s,point:{x:p.x,z:p.z}});});});});
+  }
+  function coverAvailable(c,slot,s,battle){
+    coverBodies(c,battle);var cx=Math.floor(slot.x/COVER_CELL),cz=Math.floor(slot.z/COVER_CELL);
+    for(var x=-1;x<=1;x++)for(var z=-1;z<=1;z++){
+      var key=(cx+x)+','+(cz+z),list=c.claims.get(key)||[];
+      for(var i=list.length-1;i>=0;i--){var e=list[i];if(!coverLive(e,battle)){dropCover(c,e);continue;}if(e.soldier!==s&&dist(e.slot.x,e.slot.z,slot.x,slot.z)<COVER_SPACING-.001)return false;}
+      var bodies=c.bodies.get(key)||[];for(i=0;i<bodies.length;i++){var body=bodies[i];if(body.soldier!==s&&!body.soldier.dead&&dist(body.point.x,body.point.z,slot.x,slot.z)<.9)return false;}
+    }
+    var N=root.BattleNavigation;return!N||N.movementClear(slot,slot);
+  }
+  function reserveCover(s,battle,slot,kind){
+    var c=coverRegistry(battle);if(!slot||!coverAvailable(c,slot,s,battle))return null;
+    var prev=c.bySoldier.get(s);if(prev&&prev.slot===slot&&prev.kind===kind)return prev;
+    dropCover(c,prev);var e={slot:slot,soldier:s,kind:kind||'engagement',createdAt:battle.time};c.bySoldier.set(s,e);
+    var k=coverKey(slot),list=c.claims.get(k);if(!list)c.claims.set(k,list=[]);list.push(e);return e;
+  }
+  function coverCandidates(s,battle,threat,maxRange){
+    var F=field();if(!F||!threat)return[];var c=coverRegistry(battle),p=posOf(s),t=threat.root?posOf(threat):threat;
+    var obs=F.nearby(battle.obstacles,p.x,p.z,maxRange),out=[],seen=new Set(),P=root.BattleNavigationPhysicality;
+    for(var i=0;i<obs.length;i++){
+      var ob=obs[i];if(F.obstacleHeight(ob)<.5||(ob.cover==null?1:+ob.cover)>USEFUL_COVER)continue;
+      var slots=coverSlots(c,ob);if(seen.has(slots))continue;seen.add(slots);
+      for(var j=0;j<slots.length;j++){
+        var slot=slots[j],dx=t.x-slot.x,dz=t.z-slot.z;
+        if(dx*slot.normalX+dz*slot.normalZ>=0||dist(p.x,p.z,slot.x,slot.z)>maxRange)continue;
+        // The sheltering physical volume must actually lie between this slot and the threat.
+        if(P&&P.shapeHit&&!P.shapeHit(slot,t,slot.shape,0))continue;
+        if(!coverAvailable(c,slot,s,battle))continue;
+        var quality=F.coverPotentialAt(battle.obstacles,slot.x,slot.z);if(quality>USEFUL_COVER)continue;
+        out.push({x:slot.x,z:slot.z,slotId:slot.id,slot:slot,quality:quality,distance:dist(p.x,p.z,slot.x,slot.z),obstacle:slot.obstacle,type:slot.type});
+      }
+    }
+    return out;
+  }
+  function coverSnapshot(battle){
+    var c=coverRegistry(battle),F=field(),out=[],seen=new Set();
+    for(var i=0;i<c.source.length;i++){var ob=c.source[i];if(F.obstacleHeight(ob)<.5||(ob.cover==null?1:+ob.cover)>USEFUL_COVER)continue;var slots=coverSlots(c,ob);if(seen.has(slots))continue;seen.add(slots);
+      for(var j=0;j<slots.length;j++){var slot=slots[j],N=root.BattleNavigation;if((N&&!N.movementClear(slot,slot))||F.coverPotentialAt(c.source,slot.x,slot.z)>USEFUL_COVER)continue;
+        var e=null,list=c.claims.get(coverKey(slot))||[];for(var k=0;k<list.length;k++)if(list[k].slot===slot&&coverLive(list[k],battle)){e=list[k];break;}
+        var occupied=e&&dist(posOf(e.soldier).x,posOf(e.soldier).z,slot.x,slot.z)<=.45;
+        out.push({id:slot.id,x:slot.x,z:slot.z,normalX:slot.normalX,normalZ:slot.normalZ,type:slot.type,status:e?(occupied?'occupied':'reserved'):'free',soldierId:e?e.soldier.id:null,faction:e?e.soldier.faction:null});
+      }
+    }
+    return out;
   }
   function reachable(from,to){
-    if(!root.BattleNavigation)return true;
-    if(root.BattleNavigation.movementClear(from,to))return true;
-    var path=root.BattleNavigation.findPath(from,to);
-    return!!(path&&path.length);
+    var N=root.BattleNavigation;if(!N)return true;if(!N.movementClear(to,to))return false;
+    if(N.movementClear(from,to))return true;var path=N.findPath(from,to);
+    return!!(path&&path.length&&dist(path[path.length-1].x,path[path.length-1].z,to.x,to.z)<=.35);
   }
-  /* Picks the cover an actual soldier would pick: close, genuinely protective against THIS threat
-     direction, not already claimed by another man in the force, and - during a bound - forward
-     of where he is. */
   function findCover(s,battle,opts){
-    opts=opts||{};
-    var F=field();if(!F)return null;
-    var target=opts.threat||s.target;if(!target)return null;
-    var p=posOf(s),maxRange=opts.maxRange||COVER_RANGE,forward=opts.forward||null;
-    var candidates=F.nearby(battle.obstacles,p.x,p.z,maxRange),best=null,bestScore=-Infinity;
+    opts=opts||{};var target=opts.threat||s.target;if(!target)return null;
+    var p=posOf(s),forward=opts.forward||null,candidates=coverCandidates(s,battle,target,opts.maxRange||COVER_RANGE),best=null,bestScore=-Infinity;
     for(var i=0;i<candidates.length;i++){
-      var ob=candidates[i],height=F.obstacleHeight(ob);
-      if(height<.5||(ob.cover==null?1:+ob.cover)>USEFUL_COVER)continue;
-      if(claimedByOther(ob,s,battle))continue;
-      var pt=coverPointBehind(ob,target),moveD=dist(p.x,p.z,pt.x,pt.z);
-      if(moveD>maxRange)continue;
+      var pt=candidates[i],moveD=pt.distance;
       if(root.BattleAssaultForwardGuard&&!root.BattleAssaultForwardGuard.allowCover(s,battle,pt))continue;
       if(root.BattleMovementProgress&&!root.BattleMovementProgress.candidateAllowed(s,battle,pt))continue;
       var anchor=s.orderDestination||s.squad&&s.squad.orderAnchor;
       if(s.role==='captain'&&anchor&&dist(pt.x,pt.z,anchor.x,anchor.z)>18)continue;
-      var quality=F.coverPotentialAt(battle.obstacles,pt.x,pt.z);
-      if(quality>USEFUL_COVER)continue;
-      var enemyD=dist(pt.x,pt.z,posOf(target).x,posOf(target).z);
-      if(enemyD<(opts.minEnemyDistance||12))continue;   /* never 'take cover' by running into his lap */
-      var score=(1-quality)*40-moveD*1.0;
+      if(dist(pt.x,pt.z,posOf(target).x,posOf(target).z)<(opts.minEnemyDistance||12))continue;
+      var score=(1-pt.quality)*40-moveD;
       if(forward)score+=((pt.x-p.x)*forward.x+(pt.z-p.z)*forward.z)*.9;
-      if(score<=bestScore)continue;
-      if(!reachable({x:p.x,z:p.z},pt))continue;
-      bestScore=score;best={x:pt.x,z:pt.z,quality:quality,distance:moveD,obstacle:ob,type:ob.type||'cover'};
+      if(score<=bestScore||!reachable(p,pt))continue;bestScore=score;best=pt;
     }
-    var incumbent=state(s).state==='bound'&&state(s).cover;
-    if(best&&incumbent&&!opts.forward&&incumbent.quality<=USEFUL_COVER&&
+    var incumbent=state(s).state==='bound'&&state(s).cover,claim=currentCover(s,battle);
+    if(best&&incumbent&&claim&&!opts.forward&&incumbent.quality<=USEFUL_COVER&&
        (!root.BattleMovementProgress||root.BattleMovementProgress.candidateAllowed(s,battle,incumbent))){
       var incumbentScore=(1-incumbent.quality)*40-dist(p.x,p.z,incumbent.x,incumbent.z);
       if(bestScore<incumbentScore+4)return incumbent;
     }
-    if(best)claim(best.obstacle,s,battle);
+    if(best&&!reserveCover(s,battle,best.slot,'engagement'))return null;
     return best;
   }
 
@@ -297,6 +345,7 @@
 
   function updateSoldier(s,battle){
     var e=state(s),role=roleOf(s),now=battle.time;
+    currentCover(s,battle);
 
     if(s.target){
       e.contactAt=e.state==='advance'||e.state==='alert'?now:e.contactAt;
@@ -386,7 +435,7 @@
     }
     if(cover&&root.BattleMovementProgress&&!root.BattleMovementProgress.candidateAllowed(s,battle,cover)){decide(s,battle,'cover suppressed');return;}
     var p=posOf(s),d=dist(p.x,p.z,cover.x,cover.z);
-    if(d<=COVER_ARRIVED){
+    if(d<=(cover.slotId ? .35 : COVER_ARRIVED)){
       if(root.BattleMovementProgress)root.BattleMovementProgress.clearFailuresNear(s,battle,cover);
       holdPosition(s,battle);
       enter(s,battle,'engage',0,'reached cover');
@@ -607,6 +656,8 @@
     sq.inContact=false;sq.contactSince=null;sq.contactCount=0;sq.contact=null;sq.suppressorCount=0;sq._boundUntil=0;sq._nextBoundAt=0;
     sq._boundTeam=null;sq._boundTurn=null;sq._assaultAuthorized=false;
   }
+
+  root.BattleCoverPositions={candidates:coverCandidates,reserve:reserveCover,release:releaseCover,current:currentCover,snapshot:coverSnapshot,spacing:COVER_SPACING};
 
   root.BattleEngagement={
     updateSoldier:updateSoldier,updateSquad:updateSquad,decide:decide,

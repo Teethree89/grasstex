@@ -91,6 +91,8 @@ section('a squad in contact stops marching (base of fire)');
   for(let x=-40;x<=40;x+=7)obstacles.push(cover(x,-46,'hedge'));
   for(let x=-40;x<=40;x+=7)obstacles.push(cover(x,46,'hedge'));
   const {root,battle,us}=duel({gap:130,obstacles});
+  /* Only an assault-authorized Captain phase may bound (engagement.js updateSquad). */
+  us.commandPhase='assault';
   H.run(root,battle,3);
   const anchorAtContact={x:us.orderAnchor.x,z:us.orderAnchor.z};
   let boundSeconds=0,contactSeconds=0,missedBounds=0;
@@ -102,7 +104,7 @@ section('a squad in contact stops marching (base of fire)');
        bound did: every precondition satisfied and still no bound is the regression that stopped
        squads advancing. updateSquad authorises on the same tick the conditions are met, so from
        out here this should never be observable. */
-    if(us.inContact&&(us.effectiveCount||0)>=2&&(us.pinnedCount||0)<(us.effectiveCount||0)&&
+    if(us.inContact&&us._assaultAuthorized&&(us.effectiveCount||0)>=2&&(us.pinnedCount||0)<(us.effectiveCount||0)&&
        battle.time>=(us._nextBoundAt||0)&&battle.time>=(us._boundUntil||0))missedBounds++;
   });
   const anchorMoved=Math.hypot(us.orderAnchor.x-anchorAtContact.x,us.orderAnchor.z-anchorAtContact.z);
@@ -116,6 +118,7 @@ section('a squad in contact stops marching (base of fire)');
 section('bound authorisation needs a base of fire');
 {
   const {root,battle,us}=duel({gap:60});
+  us.commandPhase='assault';
   H.run(root,battle,3);
   /* Everybody pinned: nobody is left shooting, so nobody is sent forward. */
   us.members.forEach(s=>{s.suppressedUntil=battle.time+30;});

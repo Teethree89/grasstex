@@ -12,9 +12,10 @@ if(!root.BattleModules||!root.BattleNavigation||root.BattleWorldDebug)return;
 var N=root.BattleNavigation,P=root.BattleNavigationPhysicality||null;
 var STORAGE='battleWorldDebugV1',COVER_PAD=1.5;
 var simRef=null,nextDynamicAt=0,nextStaticCheckAt=0;
-var settings={windows:false,buildings:false,obstacles:false,hedges:false,cover:false,paths:false,waypoints:false,destinations:false,detours:false};
+var settings={windows:false,buildings:false,obstacles:false,hedges:false,cover:false,coverSlots:false,paths:false,waypoints:false,destinations:false,detours:false};
 var ui={button:null,panel:null,status:null,filter:null,checks:{}};
 var layers=Object.create(null),staticSig='';
+var coverCounts={occupied:0,reserved:0,total:0};
 var COLORS={building:[.92,.95,.98],door:[.30,1,.48],window:[.20,.82,1],obstacle:[1,.27,.20],hedge:[.35,1,.38],cover:[.18,.66,1],us:[.18,.74,1],ge:[1,.49,.20],waypoint:[1,.88,.15],destination:[1,.20,.78],order:[.26,1,.90],fireteam:[.70,.38,1],detour:[1,.26,1]};
 
 function nowMs(){return typeof performance!=='undefined'&&performance.now?performance.now():Date.now();}
@@ -22,7 +23,7 @@ function currentSim(){var b=simRef||root.__battle__;return b&&b.scene?b:null;}
 function save(){try{localStorage.setItem(STORAGE,JSON.stringify(settings));}catch(_){} }
 function load(){try{var v=JSON.parse(localStorage.getItem(STORAGE)||'null');if(v)Object.keys(settings).forEach(function(k){if(typeof v[k]==='boolean')settings[k]=v[k];});}catch(_){}try{if(localStorage.getItem('battleWindowSlotsVisible')==='1')settings.windows=true;}catch(_){} }
 function anyStatic(){return settings.buildings||settings.obstacles||settings.hedges||settings.cover;}
-function anyDynamic(){return settings.paths||settings.waypoints||settings.destinations||settings.detours;}
+function anyDynamic(){return settings.coverSlots||settings.paths||settings.waypoints||settings.destinations||settings.detours;}
 function color3(c){return new BABYLON.Color3(c[0],c[1],c[2]);}
 function yAt(sim,x,z,lift){return sim.heightAt(x,z)+(lift==null?.10:lift);}
 function v3(sim,x,z,lift){return new BABYLON.Vector3(x,yAt(sim,x,z,lift),z);}
@@ -95,8 +96,23 @@ function remainingPath(s){
   var c=s._physicalPath;if(c&&Array.isArray(c.points)&&c.points.length){var si=Math.max(0,Math.min(c.points.length-1,+c.index||0)),p=[];for(var j=si;j<c.points.length;j++){var q=point(c.points[j]);if(q)p.push(q);}return p;}
   c=s._navCache;if(!c||!Array.isArray(c.path)||!c.path.length)return[];var start=Math.max(0,Math.min(c.path.length-1,+c.index||0)),out=[];for(var i=start;i<c.path.length;i++){var n=point(c.path[i]);if(n)out.push(n);}return out;
 }
+function rebuildCoverSlots(sim){
+  var api=root.BattleCoverPositions,slots=api&&api.snapshot?api.snapshot(sim):[],lines={free:[],reserved:[],occupied:[]},filter=ui.filter&&ui.filter.value||'all',radius=bodyRadius();
+  coverCounts={occupied:0,reserved:0,total:slots.length};
+  for(var i=0;i<slots.length;i++){
+    var slot=slots[i],status=slot.status;if(!lines[status])continue;
+    if(status!=='free'){coverCounts[status]++;if(filter!=='all'&&slot.faction!==filter)continue;}
+    var at=point(slot);if(!at)continue;ring(lines[status],sim,at,radius,.24);
+    var nx=+slot.normalX||0,nz=+slot.normalZ||0,length=Math.hypot(nx,nz);
+    if(length>.001){nx/=length;nz/=length;lines[status].push([v3(sim,at.x+nx*radius,at.z+nz*radius,.24),v3(sim,at.x+nx*(radius+.65),at.z+nz*(radius+.65),.24)]);}
+  }
+  makeLines('wd-dyn-cover-slots-free',lines.free,COLORS.window,.76);
+  makeLines('wd-dyn-cover-slots-reserved',lines.reserved,COLORS.waypoint,.98);
+  makeLines('wd-dyn-cover-slots-occupied',lines.occupied,COLORS.ge,.98);
+}
 function rebuildDynamic(){
   disposePrefix('wd-dyn-');var sim=currentSim();if(!sim||typeof BABYLON==='undefined'||!anyDynamic())return;
+  if(settings.coverSlots)rebuildCoverSlots(sim);
   var path={us:[],ge:[]},way=[],dest=[],order=[],fireteam=[],detour=[];
   ['us','ge'].forEach(function(f){(sim._roster[f]||[]).forEach(function(s){
     if(!includedSoldier(s)||!s.root)return;var here={x:+s.root.position.x,z:+s.root.position.z},nav=remainingPath(s),resolved=point(s.destination);
@@ -114,34 +130,51 @@ function rebuildDynamic(){
 
 function applyWindowSetting(){if(P&&P.setWindowDebug)P.setWindowDebug(!!settings.windows);}
 function syncChecks(){Object.keys(ui.checks).forEach(function(k){ui.checks[k].checked=!!settings[k];});}
-function setSetting(k,v){if(!(k in settings))return;settings[k]=!!v;save();if(k==='windows')applyWindowSetting();if(k==='buildings'||k==='obstacles'||k==='hedges'||k==='cover')rebuildStatic(true);else rebuildDynamic();syncChecks();updateStatus();}
+function setSettings(values){
+  var changed=false,staticChanged=false,dynamicChanged=false,windowsChanged=false;
+  Object.keys(settings).forEach(function(k){
+    if(!Object.prototype.hasOwnProperty.call(values,k)||settings[k]===!!values[k])return;
+    settings[k]=!!values[k];changed=true;
+    if(k==='windows')windowsChanged=true;
+    else if(k==='buildings'||k==='obstacles'||k==='hedges'||k==='cover')staticChanged=true;
+    else dynamicChanged=true;
+  });
+  if(!changed)return;save();if(windowsChanged)applyWindowSetting();
+  if(staticChanged)rebuildStatic(true);if(dynamicChanged)rebuildDynamic();syncChecks();updateStatus();
+}
+function setSetting(k,v){var values={};values[k]=v;setSettings(values);}
+function setAll(v){var values={};Object.keys(settings).forEach(function(k){values[k]=!!v;});setSettings(values);}
 function updateStatus(){
   if(!ui.status)return;var sim=currentSim(),phys=physicalFootprints(sim),hc=0,hh=0;
   for(var i=0;i<phys.length;i++){if(String(phys[i].type||'').toLowerCase()==='hedge')hh++;else hc++;}
   var slots=N.firingStations||[],occ=P&&P.occupiedStations&&sim?P.occupiedStations(sim).length:0,alive=0;
   if(sim)['us','ge'].forEach(function(f){(sim._roster[f]||[]).forEach(function(s){if(includedSoldier(s))alive++;});});
-  ui.status.textContent='physical '+hc+' · hedge '+hh+' · windows '+occ+'/'+slots.length+' · soldiers '+alive+' · body '+bodyRadius().toFixed(2)+'m · collision '+navMargin().toFixed(2)+'m · route '+routeMargin().toFixed(2)+'m';
+  ui.status.textContent='physical '+hc+' · hedge '+hh+' · windows '+occ+'/'+slots.length+(settings.coverSlots?' · cover '+coverCounts.occupied+' occupied / '+coverCounts.reserved+' reserved / '+coverCounts.total+' total':'')+' · soldiers '+alive+' · body '+bodyRadius().toFixed(2)+'m · collision '+navMargin().toFixed(2)+'m · route '+routeMargin().toFixed(2)+'m';
 }
 function checkboxRow(parent,key,label,title){var l=document.createElement('label');l.className='wd-row';l.title=title||label;var c=document.createElement('input');c.type='checkbox';c.checked=!!settings[key];c.onchange=function(){setSetting(key,c.checked);};var s=document.createElement('span');s.textContent=label;l.appendChild(c);l.appendChild(s);parent.appendChild(l);ui.checks[key]=c;}
 function installUi(){
   if(typeof document==='undefined'||ui.button)return;load();
-  var style=document.createElement('style');style.textContent='#windowSlotDebugToggle{display:none!important}#worldDebugToggle{position:fixed;right:12px;bottom:92px;z-index:18;padding:7px 10px;border:1px solid #59666b;border-radius:5px;background:#172126;color:#e6eef0;font:700 10px Arial;cursor:pointer;box-shadow:0 4px 14px #0006}#worldDebugToggle.on{border-color:#75c9dc;background:#203c45}.wd-panel{position:fixed;right:12px;bottom:128px;z-index:18;width:294px;padding:10px;background:#11191eea;border:1px solid #53636a;border-radius:7px;box-shadow:0 8px 28px #0009;color:#dce6e9;font:11px Arial;backdrop-filter:blur(5px)}.wd-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}.wd-head b{font:700 12px Arial;letter-spacing:.04em}.wd-close{border:0;background:transparent;color:#9dafb5;cursor:pointer;font-size:16px}.wd-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 8px}.wd-row{display:flex;gap:6px;align-items:center;min-height:21px;cursor:pointer}.wd-row input{accent-color:#62bfd2}.wd-sub{margin-top:8px;padding-top:7px;border-top:1px solid #ffffff18}.wd-filter{width:100%;background:#172126;color:#dce6e9;border:1px solid #45545b;padding:4px;border-radius:4px}.wd-status{margin-top:7px;color:#92a5ab;font:10px monospace}.wd-legend{margin-top:7px;color:#8fa1a7;font-size:9px;line-height:1.45}.wd-swatch{display:inline-block;width:9px;height:2px;margin:0 3px 2px 7px;vertical-align:middle}';document.head.appendChild(style);
+  var style=document.createElement('style');style.textContent='#windowSlotDebugToggle{display:none!important}#worldDebugToggle{position:fixed;right:12px;bottom:92px;z-index:18;padding:7px 10px;border:1px solid #59666b;border-radius:5px;background:#172126;color:#e6eef0;font:700 10px Arial;cursor:pointer;box-shadow:0 4px 14px #0006}#worldDebugToggle.on{border-color:#75c9dc;background:#203c45}.wd-panel{position:fixed;right:12px;bottom:128px;z-index:18;width:294px;padding:10px;background:#11191eea;border:1px solid #53636a;border-radius:7px;box-shadow:0 8px 28px #0009;color:#dce6e9;font:11px Arial;backdrop-filter:blur(5px)}.wd-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}.wd-head b{font:700 12px Arial;letter-spacing:.04em}.wd-close{border:0;background:transparent;color:#9dafb5;cursor:pointer;font-size:16px}.wd-actions{display:flex;gap:6px;margin-bottom:7px}.wd-actions button{flex:1;border:1px solid #45545b;border-radius:4px;background:#172126;color:#dce6e9;padding:4px 7px;font:11px Arial;cursor:pointer}.wd-actions button:hover{background:#203c45}.wd-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 8px}.wd-row{display:flex;gap:6px;align-items:center;min-height:21px;cursor:pointer}.wd-row input{accent-color:#62bfd2}.wd-sub{margin-top:8px;padding-top:7px;border-top:1px solid #ffffff18}.wd-filter{width:100%;background:#172126;color:#dce6e9;border:1px solid #45545b;padding:4px;border-radius:4px}.wd-status{margin-top:7px;color:#92a5ab;font:10px monospace}.wd-legend{margin-top:7px;color:#8fa1a7;font-size:9px;line-height:1.45}.wd-swatch{display:inline-block;width:9px;height:2px;margin:0 3px 2px 7px;vertical-align:middle}';document.head.appendChild(style);
   var b=document.createElement('button');b.id='worldDebugToggle';b.type='button';b.textContent='World Debug';b.onclick=function(){ui.panel.hidden=!ui.panel.hidden;b.classList.toggle('on',!ui.panel.hidden);if(!ui.panel.hidden){rebuildStatic(false);rebuildDynamic();updateStatus();}};document.body.appendChild(b);ui.button=b;
   var p=document.createElement('div');p.className='wd-panel';p.hidden=true;
-  p.innerHTML='<div class="wd-head"><b>WORLD / NAV DEBUG</b><button class="wd-close" title="Close">×</button></div><div class="wd-grid"></div><div class="wd-sub"><select class="wd-filter" title="Limit soldier navigation lines"><option value="all">Paths: all soldiers</option><option value="us">Paths: US only</option><option value="ge">Paths: GER only</option></select></div><div class="wd-status"></div><div class="wd-legend"><b>Collision:</b> green hedge rectangles · red hard obstacles · white building walls. Green door rails show an OPEN portal corridor; there is deliberately no line across the threshold.<br><b>Clearance:</b> collision outline is the hard soldier-body envelope; committed paths use a larger route envelope and should visibly stay outside it.<br><b>Tactical:</b> blue hedge/cover outlines come from the same authoritative volume used for LOS and bullets.<br><b>Wayfinding:</b><span class="wd-swatch" style="background:#2fbdff"></span>US rolling path<span class="wd-swatch" style="background:#ff7d33"></span>GER rolling path<span class="wd-swatch" style="background:#ffe026"></span>queued waypoint<span class="wd-swatch" style="background:#ff33c7"></span>final destination BODY ring. Cyan/purple crosses remain raw squad/fireteam intent.</div>';
+  p.innerHTML='<div class="wd-head"><b>WORLD / NAV DEBUG</b><button class="wd-close" title="Close">×</button></div><div class="wd-grid"></div><div class="wd-sub"><select class="wd-filter" title="Limit soldier navigation lines and claimed cover slots"><option value="all">Soldiers: all</option><option value="us">Soldiers: US only</option><option value="ge">Soldiers: GER only</option></select></div><div class="wd-status"></div><div class="wd-legend"><b>Collision:</b> green hedge rectangles · red hard obstacles · white building walls. Green door rails show an OPEN portal corridor; there is deliberately no line across the threshold.<br><b>Clearance:</b> collision outline is the hard soldier-body envelope; committed paths use a larger route envelope and should visibly stay outside it.<br><b>Tactical:</b> blue hedge/cover outlines come from the same authoritative volume used for LOS and bullets.<br><b>Cover slots:</b> cyan free · yellow reserved · orange occupied. Rings show body space; ticks point outward from cover.<br><b>Wayfinding:</b><span class="wd-swatch" style="background:#2fbdff"></span>US rolling path<span class="wd-swatch" style="background:#ff7d33"></span>GER rolling path<span class="wd-swatch" style="background:#ffe026"></span>queued waypoint<span class="wd-swatch" style="background:#ff33c7"></span>final destination BODY ring. Cyan/purple crosses remain raw squad/fireteam intent.</div>';
   document.body.appendChild(p);ui.panel=p;ui.status=p.querySelector('.wd-status');ui.filter=p.querySelector('.wd-filter');ui.filter.onchange=function(){rebuildDynamic();updateStatus();};p.querySelector('.wd-close').onclick=function(){p.hidden=true;b.classList.remove('on');};var grid=p.querySelector('.wd-grid');
   checkboxRow(grid,'windows','Window slots','Reservable interior firing positions; cyan free, orange occupied');
   checkboxRow(grid,'buildings','Buildings','White walls, cyan windows, and green OPEN door portal rails');
   checkboxRow(grid,'obstacles','Hard obstacles','Hard physical footprint plus soldier body clearance');
   checkboxRow(grid,'hedges','Hedgerows','Authoritative terrain-following hedge prism projected to navigation plus body clearance');
   checkboxRow(grid,'cover','Cover / LOS volume','Tactical cover/LOS footprint; hedge geometry is shared with collision');
+  checkboxRow(grid,'coverSlots','Cover slots','Reservable cover body positions and outward direction: cyan free, yellow reserved, orange occupied');
   checkboxRow(grid,'paths','Soldier paths','Rolling committed route queue the soldier is actually following');
   checkboxRow(grid,'waypoints','Waypoints','Future queued route points; active/current is larger');
   checkboxRow(grid,'destinations','Destinations','Final legalized soldier-body ring plus raw squad/fireteam intent crosses');
   checkboxRow(grid,'detours','Avoidance leg','Highlight immediate physical route leg when it differs from the final goal');
-  syncChecks();applyWindowSetting();updateStatus();
+  var actions=document.createElement('div');actions.className='wd-actions';
+  var all=document.createElement('button');all.type='button';all.className='wd-select-all';all.textContent='Select all';all.onclick=function(){setAll(true);};actions.appendChild(all);
+  var none=document.createElement('button');none.type='button';none.className='wd-select-none';none.textContent='Select none';none.onclick=function(){setAll(false);};actions.appendChild(none);
+  p.insertBefore(actions,grid);syncChecks();applyWindowSetting();updateStatus();
 }
-function clearAll(){disposePrefix('wd-static-');disposePrefix('wd-dyn-');staticSig='';}
+function clearAll(){disposePrefix('wd-static-');disposePrefix('wd-dyn-');staticSig='';coverCounts={occupied:0,reserved:0,total:0};}
 function attach(sim){simRef=sim;staticSig='';nextDynamicAt=0;nextStaticCheckAt=0;applyWindowSetting();if(anyStatic())rebuildStatic(true);if(anyDynamic())rebuildDynamic();updateStatus();}
 
 root.BattleModules.registerSystem('world-debug-overlay',{
@@ -152,6 +185,6 @@ root.BattleModules.registerSystem('world-debug-overlay',{
   onSimulationStep:function(sim){simRef=sim;var t=nowMs();if(anyStatic()&&t>=nextStaticCheckAt){nextStaticCheckAt=t+650;rebuildStatic(false);}if(anyDynamic()&&t>=nextDynamicAt){nextDynamicAt=t+180;rebuildDynamic();}else if(ui.panel&&!ui.panel.hidden&&t>=nextStaticCheckAt-300)updateStatus();}
 });
 if(typeof document!=='undefined'){if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installUi,{once:true});else installUi();}
-root.BattleWorldDebug={version:'50-m3c-authoritative-volumes',settings:settings,set:setSetting,refresh:function(){rebuildStatic(true);rebuildDynamic();},dispose:clearAll};
+root.BattleWorldDebug={version:'50-m3c-authoritative-volumes',settings:settings,set:setSetting,setAll:setAll,refresh:function(){rebuildStatic(true);rebuildDynamic();},dispose:clearAll};
 console.log('[WORLD-DEBUG] M3C authoritative volumes + body-sized destination rings loaded');
 })(typeof window!=='undefined'?window:globalThis);
