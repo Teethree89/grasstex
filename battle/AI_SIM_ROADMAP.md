@@ -66,6 +66,34 @@ The desired runtime is conceptually:
 
 `General / Force Command -> Captain / Squad Command -> Engagement state -> Combat Mobility (when needed) -> Movement Resolver -> Movement Execution -> Physical Navigation`
 
+## Mission command contract (sweep 2026-09-17)
+
+The mission brief is the only contract between Macro and Meso.
+
+- **General (`commander-ai.js`)** owns `_macroMission` {intent, action, objectiveId, point, flank leg, requestKey, status} plus `targetObjective` / `commandRole`. It never writes `commandPhase`, `objective`, `route` legs or `routeIndex`.
+- **Lifecycle:** `issued` -> `executing` (Captain accepts) -> `completed` | `invalid` | `failed` (retreat/destroyed) | `superseded` (new brief). Doctrine is decided once, when a brief is issued, and the brief goes straight for its objective.
+- **General wakes only for:** initial brief, mission complete (capture) / invalid (objective gone), reserve due, a defense request that changes the task, objective vacated or control change on a defend brief, a strategic stall (120 s, keyed to the progress epoch) against a brief older than 120 s, or a Captain escalation (`doctrine-review` when a hold/support/regroup plan lease closes). Wakes, reasons and recent wakes are exported under `macroCommand`.
+- **Captain (`modules/16-squad-plan-stability.js`)** executes the brief in `executeMission`: flank leg, corner pauses, objective phase (assault/capture/defend), doctrine holds, reserve hold. Regroup is the Captain's own cohesion decision. Contact freezes legs and phase under the same brief version. Macro OFF: no brief; the Captain walks the assigned approach route.
+- Deleted duplicate writers: `advanceRoute`/`applyDoctrine`/`recoverTargetlessObjective`, `holdCommittedPlan`, `restoreForward`, `progressRecovery`, `protectActivePlans`, the vacant-objective tick writer, Engagement's per-tick order republish and the assault-bound-push producer.
+
+## Open issues after the 2026-09-17 ownership sweep
+
+Evidence: paired deterministic replays (`scripts/run_m3c_replay.cjs`). Superseded by a 300-run paired sample (100 each: main `5c0e0f3`, branch `42a30cf`, branch `0eafc66`) split 40 meeting / 30 US-defend / 30 GE-defend. Distilled per-run data is on `evidence/m3c-sweep-20260917`; findings in `M3C_STRUCTURAL_SWEEP_TESTING_SUMMARY.md`.
+
+- [x] **Win split: no measurable change.** The large sample closed this. Per scenario, US wins on main vs branch `0eafc66`: meeting 19/40 vs 18/40 (p=1.000), US-defend 28/30 vs 29/30 (p=1.000), GE-defend 3/30 vs 1/30 (p=0.612). Pooled defender advantage 55/60 vs 58/60 (p=0.439). Nothing is distinguishable from noise. The 10/12 vs 5/12 that opened this item was a 12-seed artifact, and an intermediate reading of GE-defend as 3/30 -> 0/30 "never succeeds" was likewise an over-read of a four-run swing. These scenarios need ~216 runs/arm to call a 10% vs 3.3% difference; do not spend that unless the answer changes a decision.
+- [ ] **Personal-space corrections rose slightly** (15.7k -> 17.4k pair corrections/battle, exact overlaps 0, blocked 0). Not root-caused. Determine whether a remaining producer (formation slot, tactical position ingress, Captain regroup anchor) converges bodies before touching personal space.
+- [ ] **Window / ingress crowding not root-caused.** Claim collisions fell (133 -> 73) as a side effect of fewer command writes, but reservation vs physical occupancy was not investigated separately.
+- [ ] **Regroup churn is the sweep's one robust behavioural change.** It does have a baseline: the `regroup` object is present on all 300 baseline squads, and position releases attributed to regroup give a clean comparison. Main vs branch: GE-defend 17 -> 154, US-defend 30 -> 182, meeting 146 -> 207. Six- to nine-fold in the defend scenarios and consistent across both branch builds, so far too large to be sampling noise. Yet only 2 squads sit in regroup at the final snapshot against 13 on main: the sweep enters regroup constantly and leaves quickly where main enters rarely and stays. Root-cause the entry condition. No outcome consequence has been shown, so treat this as behaviour to understand, not a regression to revert.
+- [ ] **Strategic stall wakes are usually no-ops.** Most `strategic-stall` wakes re-select the same objective (`decisionsUnchanged`). That is an objective-selection/doctrine limitation, not an ownership fault: the General has no alternative plan to offer.
+- [ ] **Broad axes are no longer part of the brief.** Walking the approach route before the objective cut captures (3.2 vs 3.8). If axes should be a strategic concept again they need a design that does not delay objective commitment.
+- [ ] **Hot path is now navigation and LOS.** Profile (live seed): physical replans ~3.3 s and `sightBlocked` ~3.5 s of ~13.7 s simulated-battle wall time. Profile further before optimizing; no ownership fault found there.
+- [ ] **Movement Progress still ignores retreat.** Both stationary-retreat causes were navigation bugs (fixed); retreat remains unobserved by stuck detection by design. The new `movementStopReason` export is the observable if it recurs.
+
+### Validation order for this sweep
+1. [x] Visual check on the branch preview (`/grasstex/preview/m3c-ownership-sweep-20260917/battle_sim.php`, plus `?defender=us` / `?defender=ge`): coherent missions, no General twitching, cover without strategic backtracking, window/ingress stacking, retreaters leaving, sensible orders after captures.
+2. [ ] Standard 60 meeting / 20 US-defend / 20 GE-defend benchmark on the branch.
+3. [x] Large paired seed sample (main vs branch) by scenario type. Done at 300 runs; see above.
+
 ## World / navigation foundation
 
 - [x] **One authoritative hedgerow definition.** Rendering, navigation, LOS, cover and ballistics derive from the same oriented 3D hedge record.
@@ -121,7 +149,7 @@ This separation is important: prepared defense has repeatedly exposed failures t
 
 ## Next architectural simplification after this pass
 
-- [ ] **Audit the remaining Commander -> Squad Command boundary.**
+- [x] **Audit the remaining Commander -> Squad Command boundary.** (mission command contract above)
   - Commander owns objective/mission/route intent.
   - Captain owns formation/fireteam/defensive-post execution of that mission.
   - Remove any remaining writer that can mutate the same strategic/squad field from both layers.

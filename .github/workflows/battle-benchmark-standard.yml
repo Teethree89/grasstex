@@ -24,32 +24,39 @@ permissions:
 
 jobs:
   validate-source:
-    name: Verify benchmark source is on main
+    name: Resolve benchmark source
     runs-on: ubuntu-latest
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
+      is_main: ${{ steps.source.outputs.is_main }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Validate source commit
+      - name: Classify source commit
         id: source
         env:
           SOURCE_REF: ${{ github.ref }}
           SOURCE_EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          if [ "$SOURCE_EVENT" = workflow_dispatch ] && [ "$SOURCE_REF" != refs/heads/main ]; then
-            echo 'Manual benchmarks must be dispatched from main.' >&2
-            exit 1
-          fi
           git fetch origin main
           source_sha="$(git rev-parse HEAD)"
-          if ! git merge-base --is-ancestor "$source_sha" origin/main; then
+          # A tagged benchmark stands as the record for a released build, so it must be on main.
+          # A manual dispatch may benchmark any branch: the publish step below keeps a branch run
+          # out of the published record, so an in-progress branch cannot overwrite main's status.
+          if [ "$SOURCE_EVENT" = push ] && ! git merge-base --is-ancestor "$source_sha" origin/main; then
             echo 'Benchmark tags must point to a commit already merged into main.' >&2
             exit 1
           fi
+          if git merge-base --is-ancestor "$source_sha" origin/main; then
+            is_main=true
+          else
+            is_main=false
+            echo "::notice title=Branch benchmark::${SOURCE_REF} at ${source_sha:0:7} is not on main. The report is uploaded as an artifact and written to the run summary; the published benchmark record is left untouched."
+          fi
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "is_main=$is_main" >> "$GITHUB_OUTPUT"
 
   benchmark:
     name: ${{ matrix.battle_type }} · worker ${{ matrix.shard }}/${{ matrix.shard_total }}
@@ -291,8 +298,13 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Note that a branch run does not publish
+        if: success() && needs.validate-source.outputs.is_main != 'true'
+        run: |
+          echo "Source is not on main; leaving the published benchmark record untouched." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Publish persistent standard benchmark result
-        if: success()
+        if: success() && needs.validate-source.outputs.is_main == 'true'
         env:
           RESULTS_BRANCH: benchmark-results
         run: |
@@ -388,6 +400,8 @@ jobs:
           BENCHMARK_RESULT: ${{ needs.benchmark.result }}
           MERGE_RESULT: ${{ needs.merge.result }}
           SOURCE_SHA: ${{ needs.validate-source.outputs.source_sha }}
+          SOURCE_REF: ${{ github.ref_name }}
+          IS_MAIN: ${{ needs.validate-source.outputs.is_main }}
           BATTLES_PER_WORKER: ${{ github.event.inputs.battles_per_worker || '10' }}
           WORKER_MINUTES_CUTOFF: ${{ github.event.inputs.worker_minutes_cutoff || '10' }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -416,6 +430,7 @@ jobs:
           fi
           short_sha="${SOURCE_SHA:-${GITHUB_SHA}}"
           short_sha="${short_sha:0:7}"
+          if [ "$IS_MAIN" = true ]; then origin=''; else origin=' (branch, unpublished)'; fi
           total="$((BATTLES_PER_WORKER * 10))"
           meeting="$((BATTLES_PER_WORKER * 6))"
           defend="$((BATTLES_PER_WORKER * 2))"
@@ -424,5 +439,5 @@ jobs:
             -H "Priority: ${priority}" \
             -H "Tags: ${tags}" \
             -H "Click: ${RUN_URL}" \
-            -d "${status} · requested ${total}: ${meeting} meeting / ${defend} US-defend / ${defend} GE-defend · ${WORKER_MINUTES_CUTOFF}m cap · ${short_sha}" \
+            -d "${status} · requested ${total}: ${meeting} meeting / ${defend} US-defend / ${defend} GE-defend · ${WORKER_MINUTES_CUTOFF}m cap · ${short_sha} · ${SOURCE_REF}${origin}" \
             https://ntfy.sh/ww2battlesim

@@ -113,7 +113,10 @@
   function visibleCandidates(p,maxD){var out=[];for(var i=0;i<nodes.length;i++){var n=nodes[i],d=Math.hypot(n.x-p.x,n.z-p.z);if(d<=maxD&&movementClear(p,n))out.push({node:n,cost:d});}out.sort(function(a,b){return a.cost-b.cost;});return out.slice(0,18);}
   function findPath(start,end){
     if(!scenario||movementClear(start,end))return[{x:end.x,z:end.z}];
+    /* The range is a search budget, not a topology rule. A retreat or map-edge goal can be far from every
+       building node; answering "straight line" there sent soldiers into a wall and parked them forever. */
     var starts=visibleCandidates(start,360),ends=visibleCandidates(end,360);
+    if(!starts.length)starts=visibleCandidates(start,Infinity);if(!ends.length)ends=visibleCandidates(end,Infinity);
     if(!starts.length||!ends.length)return[{x:end.x,z:end.z}];
     var endCost=Object.create(null);ends.forEach(function(e){endCost[e.node.id]=e.cost;});
     var open=[],g=Object.create(null),prev=Object.create(null),closed=Object.create(null),goal=-1;

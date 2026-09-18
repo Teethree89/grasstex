@@ -158,7 +158,7 @@
         if(!sq||sq.state==='retreat'){releaseDefense(sim,sq,'retreat');return;}
         var obj=objectiveForSquad(sim,sq);if(!obj){releaseDefense(sim,sq,'left objective');return;}
         var st=root.BattleObjectiveSystem&&root.BattleObjectiveSystem.status(sim,obj.id)||obj.state||{},p=squadAverage(sq),point=objectivePoint(obj),r=+obj.def.radius||20,d=distance(p,point),enemy=enemyFaction(faction),friendlyWeight=+(st[faction]||0),enemyWeight=+(st[enemy]||0);
-        var request=sq._captureZoneDefenseRequest,inside=d<=r*DEFENSE_ENTER_RATIO,already=!!(request&&request.objectiveId===obj.id),enemyPresent=enemyWeight>0,ours=st.owner===faction,taking=!ours&&inside&&(friendlyWeight>0||st.active===faction),contested=inside&&friendlyWeight>0&&enemyPresent;
+        var request=sq._captureZoneDefenseRequest,already=!!(request&&request.objectiveId===obj.id),inside=d<=r*(already?DEFENSE_RELEASE_RATIO:DEFENSE_ENTER_RATIO),enemyPresent=enemyWeight>0,ours=st.owner===faction,taking=!ours&&inside&&(friendlyWeight>0||st.active===faction),contested=inside&&friendlyWeight>0&&enemyPresent;
         if(taking||contested){
           sq._captureZoneSecureUntil=Math.max(sq._captureZoneSecureUntil||0,(sim.time||0)+POST_CAPTURE_HOLD);requestDefense(sim,sq,obj,p,contested?'contested objective':'capturing objective');return;
         }
@@ -166,7 +166,6 @@
           if(!sq._captureZoneSecureUntil)sq._captureZoneSecureUntil=(sim.time||0)+POST_CAPTURE_HOLD;
           if(enemyPresent||already&&(sim.time||0)<sq._captureZoneSecureUntil){requestDefense(sim,sq,obj,p,enemyPresent?'defending pressure':'securing captured objective');return;}
         }
-        if(already&&ours&&d<=r*DEFENSE_RELEASE_RATIO&&(sim.time||0)<(sq._captureZoneSecureUntil||0)){requestDefense(sim,sq,obj,p,'securing perimeter');return;}
         releaseDefense(sim,sq,ours?'objective secure':'objective lost');
       });
     });

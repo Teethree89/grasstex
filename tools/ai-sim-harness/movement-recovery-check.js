@@ -88,7 +88,7 @@ test('waypoint advancement excuses low Euclidean net progress',()=>{
   const{b,s,M}=bareFixture();
   M.proposeOrder(s,{x:0,z:0},b,true);tickCombat(M,s,b,{x:30,z:0});
   const steps=[];for(let i=0;i<60;i++)steps.push({x:i,z:0});
-  s._tacticalRoute={kind:'cover-bound',owner:'engagement',steps:steps,index:0,createdAt:0};
+  s._tacticalRoute={kind:'cover-bound',owner:'engagement',intent:{x:30,z:0},steps:steps,index:0,createdAt:0};
   for(let i=0;i<40;i++){
     b.time+=.5;
     holdStill(s,Math.sin(i)*0.1,Math.cos(i*0.7)*0.1); // shuffles in place: net and odometer tiny
@@ -229,6 +229,7 @@ test('brief target loss preserves a committed assault rush',()=>{
 test('sustained disengagement eventually returns authority to formation',()=>{
   const{b,q,s,M,E}=engageFixture();
   const e=E.stateOf(s);
+  M.proposeOrder(s,{x:0,z:50},b,false); // Squad Command publishes the standing order once; Engagement never republishes it
   s.target=null;q.contact=null;
   e.state='alert';e.since=b.time;e.until=b.time+2;e.threatSector=null;
   E.updateSoldier(s,b);M.resolve(s,b);
@@ -318,7 +319,7 @@ test('identical fireteam slots are proposed once, not every squad tick',()=>{
   const beforeChange=req();
   q.objective={x:60,z:120}; // genuine intent change proposes again
   r.SquadAI.updateSquad(q,b);
-  assert.ok(req()-beforeChange>=4);
+  assert.ok(req()-beforeChange>=q.members.length); // every member receives the new slot once
   // And the slots are still correct destinations.
   for(const m of q.members)assert.deepEqual(m.orderDestination,m._fireteamDestination);
 });

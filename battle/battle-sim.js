@@ -47,7 +47,9 @@
     return len>1e-4?{x:nx/len,z:nz/len}:null;
   }
   function stepMovement(self,soldier,dt){
-    if(soldier.dead){BattleSoldierModel.animateWalk(soldier,dt,0);return;}soldier.fireCooldown=Math.max(0,soldier.fireCooldown-dt);var desired=soldier.destination;if(root.BattleNavigation)desired=root.BattleNavigation.nextWaypoint(self,soldier,desired)||desired;
+    if(soldier.dead){soldier._movementStopReason='dead';BattleSoldierModel.animateWalk(soldier,dt,0);return;}soldier.fireCooldown=Math.max(0,soldier.fireCooldown-dt);var desired=soldier.destination;if(root.BattleNavigation)desired=root.BattleNavigation.nextWaypoint(self,soldier,desired)||desired;
+    // Record the actual integration gate, not an inference from the last command or stuck detector.
+    var observedWaypoint=soldier._movementWaypoint||(soldier._movementWaypoint={x:0,z:0});observedWaypoint.x=desired.x;observedWaypoint.z=desired.z;soldier._movementStopReason=null;
     var dx=desired.x-soldier.root.position.x,dz=desired.z-soldier.root.position.z,d=Math.hypot(dx,dz),crawl=!!(soldier.prone&&soldier.crawling),wantCrouch=!soldier.prone&&(soldier.tacticalCrouch||(soldier.suppressedUntil>self.time)||(!!soldier.target&&d<=.6));
     var desiredSpeed=d>.35?soldier.speed*(crawl?.23:(wantCrouch?.58:1)):0,cur=soldier.moveSpeed||0,rate=desiredSpeed>cur?(crawl?1.2:4.2):(crawl?2.0:6.5);soldier.moveSpeed=Math.max(0,cur+Math.max(-rate*dt,Math.min(rate*dt,desiredSpeed-cur)));
     // Ease the remaining angle over time, keeping the existing stance-dependent turn limit.
@@ -67,12 +69,12 @@
           if(slid){nx=slid.x;nz=slid.z;dirx=(nx-here.x)/step;dirz=(nz-here.z)/step;}
           else{
             if(!(self.time<(soldier._navReplanHold||0))){soldier._navCache=null;soldier._navReplanHold=self.time+NAV_REPLAN_HOLD;}
-            soldier.moveSpeed=0;soldier.moving=false;BattleSoldierModel.animateWalk(soldier,dt,0);return;
+            soldier.moveSpeed=0;soldier.moving=false;soldier._movementStopReason='step-blocked';BattleSoldierModel.animateWalk(soldier,dt,0);return;
           }
         }
       }
       soldier.root.position.x=nx;soldier.root.position.z=nz;soldier.root.position.y=self.heightAt(nx,nz);turnToward(Math.atan2(dirx,dirz));soldier.moving=true;
-    }else{soldier.moving=false;var face=soldier.target?soldier.target.root.position:soldier._faceHint;if(face){var tx=face.x-soldier.root.position.x,tz=face.z-soldier.root.position.z;if(Math.abs(tx)+Math.abs(tz)>1e-4)turnToward(Math.atan2(tx,tz));}}
+    }else{soldier.moving=false;soldier._movementStopReason=d<=.35?(soldier._physicalPath&&soldier._physicalPath.blocked?'path-blocked':'arrived'):(soldier.prone&&!crawl?'prone-hold':'speed-settling');var face=soldier.target?soldier.target.root.position:soldier._faceHint;if(face){var tx=face.x-soldier.root.position.x,tz=face.z-soldier.root.position.z;if(Math.abs(tx)+Math.abs(tz)>1e-4)turnToward(Math.atan2(tx,tz));}}
     if(wantCrouch!==soldier.crouching)BattleSoldierModel.setCrouch(soldier,wantCrouch);if(BattleSoldierModel.setProne)BattleSoldierModel.setProne(soldier,!!soldier.prone);BattleSoldierModel.animateWalk(soldier,dt,soldier.speed>0?soldier.moveSpeed/soldier.speed:0);
   }
   BattleSim.prototype._frame=function(forcedDt){if(this.paused||this.winner)return;var dt=forcedDt==null?this.scene.getEngine().getDeltaTime()/1000*this.timeScale:+forcedDt;if(!(dt>0))return;dt=Math.min(dt,.25);this.time+=dt;var us=this._roster.us,ge=this._roster.ge,i;for(i=0;i<us.length;i++)stepMovement(this,us[i],dt);for(i=0;i<ge.length;i++)stepMovement(this,ge[i],dt);this._aiAccum+=dt;while(this._aiAccum>=AI_TICK&&!this.winner){this._aiAccum-=AI_TICK;var f=this.factions,squadsUs=f.us.squads,squadsGe=f.ge.squads;for(i=0;i<squadsUs.length;i++)SquadAI.updateSquad(squadsUs[i],this);for(i=0;i<squadsGe.length;i++)SquadAI.updateSquad(squadsGe[i],this);for(i=0;i<us.length;i++)SquadAI.updateSoldier(us[i],this);for(i=0;i<ge.length;i++)SquadAI.updateSoldier(ge[i],this);this._checkWinner();if(this.onUpdate)this.onUpdate(this);}if(root.BattleModules)root.BattleModules.runHook('onSimulationStep',this,{dt:dt});};

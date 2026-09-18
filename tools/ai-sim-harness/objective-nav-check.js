@@ -159,26 +159,23 @@ function commandFixture(){
   r.BattleObjectiveSystem.attach(sim,[{id:'outer',type:'capture-zone',x:120,z:0,radius:30,value:1}],{});
   return{r,sq,sim,town:{center:{x:0,z:0},radius:250}};
 }
-section('assigned objective intent survives approach-route and lease boundaries');
+/* General issues the brief; the Captain hook executes it in the same command tick. */
+function commandTick(r,sim,town){sim.time+=.45;r.BattleCommanderAI.update(sim,town,.45);r.BattleModules.getSystem('squad-command').onCommanderTick(sim,{town});}
+section('an assigned objective mission survives approach-route and lease boundaries');
 {
   const {r,sq,sim,town}=commandFixture();
-  r.BattleCommanderAI.advanceRoute(sim,sq,town);
-  check('an assigned outer objective stays the movement goal outside the terminal radius',sq.objective.x===120&&sq.commandPhase==='assault',JSON.stringify(sq.objective)+' '+sq.commandPhase);
-  sq.routeIndex=0;sim.time++;
-  r.BattleCommanderAI.advanceRoute(sim,sq,town);
-  check('urban mid-route recovery is not overwritten by an old waypoint',sq.objective.x===120&&sq.commandPhase==='assault');
   load(r,'battle/modules/16-squad-plan-stability.js');
-  const hook=r.BattleModules.getSystem('squad-command').onCommanderTick;
-  sq.commandPhase='assault';sq.objective={x:120,z:0};hook(sim);
+  commandTick(r,sim,town);
+  const mission=sq._macroMission;
+  check('an assigned outer objective stays the movement goal outside the terminal radius',sq.objective.x===120&&sq.commandPhase==='assault',JSON.stringify(sq.objective)+' '+sq.commandPhase);
+  sq.routeIndex=0;commandTick(r,sim,town);
+  check('a stale route index cannot resurrect an old approach waypoint',sq.objective.x===120&&sq.commandPhase==='assault');
   const lease=sq._stablePlan;
-  check('an unchanged tactical lease gates commander reconsideration',r.BattleSquadStability.holdCommittedPlan(sim,sq)&&sq._stablePlan===lease);
-  // A Force Command extension transitions into capture before the old assault lease expires.
-  sq.commandPhase='capture';hook(sim);
-  check('Squad Stability accepts a Force Command capture transition without writing assault back',sq.commandPhase==='capture'&&sq._stablePlan.phase==='capture');
-  sq.objective={x:90,z:0};hook(sim);
-  check('Squad Stability never restores an obsolete strategic point',sq.objective.x===90&&sq._stablePlan.objective.x===90);
-  sim.time=sq._stablePlan.until;
-  check('lease expiry still gives Force Command an evaluation pass',!r.BattleSquadStability.holdCommittedPlan(sim,sq)&&!sq._stablePlan);
+  check('the Captain stages one plan for the brief it is executing',!!lease&&lease.missionVersion===mission.version);
+  sim.time=lease.until+.1;commandTick(r,sim,town);commandTick(r,sim,town);
+  check('lease expiry does not make Force Command reissue an unchanged assault',sq._macroMission===mission&&sq.objective.x===120&&r.BattleCommanderAI.missionState(sim).wakeCount===1);
+  for(const m of sq.members)m.root.position.x=120;commandTick(r,sim,town);
+  check('the Captain transitions assault to capture inside the zone without a new mission',sq.commandPhase==='capture'&&sq._macroMission===mission);
 }
 section('a single assigned squad can reach and capture an outer objective');
 {
@@ -206,36 +203,20 @@ section('a single assigned squad can reach and capture an outer objective');
   check('the formation supplies at least the two required capture weights',peakPresence>=2,'peak='+peakPresence);
   console.log('  probe: first capture '+(first===null?'none':first.toFixed(1)+'s')+', peak presence '+peakPresence+', obsolete-goal frames '+wrongGoal);
 }
-section('progress recovery respects an objective that replaced the approach route');
-{
-  const {r,sq,sim,town}=commandFixture();
-  load(r,'battle/modules/16-squad-plan-stability.js');
-  const tick=r.BattleModules.getSystem('squad-command').onCommanderTick;
-  sq.route=[{x:65,z:0},{x:0,z:0}];sq.routeIndex=0;
-  tick(sim,{town});
-  check('urban route advancement cannot overwrite assigned intent',sq.objective.x===120&&sq.routeIndex===0);
-  sq.commandPhase='regroup';sq.objective={x:65,z:0};sq._regroupRecovery={startedAt:70,serial:1};
-  tick(sim,{town});
-  check('bounded regroup resumes the assigned objective, not the old route',sq.objective.x===120);
-}
-section('a stranded soldier cannot override the regroup timeout');
+section('a stranded soldier cannot override the Captain regroup timeout');
 {
   const {r,sq,sim,town}=commandFixture();
   r.BattleTelemetry={record(){}};
   load(r,'battle/modules/16-squad-plan-stability.js');
+  commandTick(r,sim,town);
   sq.members[3].root.position.x=-100;
   sq.commandPhase='regroup';sq.objective={x:20,z:0};
-  sq._regroupRecovery={startedAt:sim.time-19,serial:1};
-  sq._regroupHysteresis={overSince:sim.time-20,accepted:true,enteredAt:sim.time-19,cooldownUntil:0,lastForward:null,entries:[],flaps:0,suppressed:0};
-  function tick(){
-    r.BattleCommanderAI.advanceRoute(sim,sq,town);
-    r.BattleModules.getSystem('squad-command').onCommanderTick(sim,{town});
-  }
-  tick();
-  check('hysteresis releases an accepted regroup when Force Command times it out',sq.commandPhase!=='regroup'&&sq.objective.x===120);
+  sq._regroupHysteresis={overSince:sim.time-20,accepted:true,enteredAt:sim.time-19,cooldownUntil:0,anchor:{x:20,z:0},entries:1,exits:0,suppressed:0,stragglerSuppressions:0,regroupRequests:1};
+  commandTick(r,sim,town);
+  check('the Captain releases a timed-out regroup straight back into its mission',sq.commandPhase!=='regroup'&&sq.objective.x===120);
   let held=0;
-  for(let i=0;i<25;i++){sim.time+=.45;tick();if(sq.commandPhase==='regroup'||sq.objective.x!==120)held++;}
-  check('the entire bypass survives subsequent commander and stability ticks',held===0,'held ticks='+held);
+  for(let i=0;i<25;i++){commandTick(r,sim,town);if(sq.commandPhase==='regroup'||sq.objective.x!==120)held++;}
+  check('the entire bypass survives subsequent commander and Captain ticks',held===0,'held ticks='+held);
 }
 section('benchmark alerts distinguish approach intent from absent orders');
 {
@@ -358,6 +339,27 @@ section('physical wayfinding respects body clearance through hedgerows');
       if(Math.hypot(p.x-man.root.position.x,p.z-man.root.position.z)>1e-8&&!N.movementClear(p,man.root.position))illegal++;
     }
     return{man,illegal};
+  }
+  /* Live v153 retreat freeze (real geometry, trimmed): the rolling planner's synthetic lookahead point
+     landed inside a rock's route buffer. No path reaches an illegal intermediate goal, so a legal soldier
+     with a legal, reachable destination held a blocked plan (moveSpeed 0, stuck=false) for 300 s. */
+  {
+    const fx=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures','retreat-lookahead-freeze.json'),'utf8'));
+    const frozenWorld=world(fx.footprints),probe={id:'freeze',root:{position:{...fx.start}}},wp=N.nextWaypoint(frozenWorld,probe,fx.destination);
+    check('an illegal lookahead point never blocks a reachable long-range destination',!probe._physicalPath.blocked&&Math.hypot(wp.x-fx.start.x,wp.z-fx.start.z)>.5,'blocked='+probe._physicalPath.blocked);
+    const retreat=walkPhysical(world(fx.footprints),fx.start,fx.destination,60),moved=Math.hypot(retreat.man.root.position.x-fx.start.x,retreat.man.root.position.z-fx.start.z);
+    check('the frozen retreater physically leaves along a legal route',moved>60&&retreat.illegal===0,'moved='+moved.toFixed(1)+' illegal='+retreat.illegal);
+  }
+  /* Live retreat freeze #2 (sweep-seed-03, six men of one squad): the building router only searched
+     nodes within 360 m of each endpoint. A map-edge retreat goal had none, so it answered with a
+     straight line through a building 25 m away and the rolling plan stayed blocked. */
+  {
+    const fx=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures','retreat-building-far-goal.json'),'utf8'));
+    function builtWorld(){const sim=world(fx.footprints);sim.scene.metadata.battleScenario.buildings=fx.buildings;N.installScenario(sim.scene.metadata.battleScenario);r.BattleModules.getSystem('navigation-physicality-debug').onBattleStart(sim);return sim;}
+    const probe={id:'far-building',root:{position:{...fx.start}}};N.nextWaypoint(builtWorld(),probe,fx.destination);
+    check('a far goal with no nearby building nodes still routes around buildings',!probe._physicalPath.blocked,'blocked='+probe._physicalPath.blocked);
+    const walk=walkPhysical(builtWorld(),fx.start,fx.destination,90),moved=Math.hypot(walk.man.root.position.x-fx.start.x,walk.man.root.position.z-fx.start.z);
+    check('the squad frozen behind a building physically leaves on a legal route',moved>80&&walk.illegal===0,'moved='+moved.toFixed(1)+' illegal='+walk.illegal);
   }
   const rockWorld=world([{id:'slot-rock',type:'rock',shape:'circle',x:0,z:0,radius:1}]);
   rockWorld.obstacles.push({type:'rock',x:0,z:0,radius:1});
