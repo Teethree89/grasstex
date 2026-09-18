@@ -632,14 +632,21 @@
 
     /* A bound needs a base of fire: somebody has to be shooting while somebody else moves. */
     if(sq._assaultAuthorized&&battle.time>=(sq._nextBoundAt||0)&&battle.time>=(sq._boundUntil||0)&&effective>=2&&pinnedCount<effective){
-      var turn=sq._boundTurn==null?0:sq._boundTurn+1,team=BOUND_TEAMS[turn%BOUND_TEAMS.length],movers=[];
-      for(i=0;i<members.length;i++){
-        s=members[i];if(s.dead||s.suppressedUntil>battle.time||s.reloading||s.clearingStoppage||s.outOfAmmo)continue;
-        if(s.role==='gunner'||(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s)))continue; // positional tasks hold the base of fire
-        if(s._fireteamKey&&s._fireteamKey!==team)continue;
-        movers.push(s);
+      /* Rotate teams, but skip a team whose departure would strip the base of fire: waiting a
+         tick for the rotation to reach a team that can go is a missed bound. */
+      var first=sq._boundTurn==null?0:sq._boundTurn+1,turn,team,movers,holding;
+      for(var k=0;k<BOUND_TEAMS.length;k++){
+        turn=first+k;team=BOUND_TEAMS[turn%BOUND_TEAMS.length];movers=[];
+        for(i=0;i<members.length;i++){
+          s=members[i];if(s.dead||s.suppressedUntil>battle.time||s.reloading||s.clearingStoppage||s.outOfAmmo)continue;
+          if(s.role==='gunner'||(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s)))continue; // positional tasks hold the base of fire
+          if(s._fireteamKey&&s._fireteamKey!==team)continue;
+          movers.push(s);
+        }
+        holding=fireSupport.filter(function(man){return movers.indexOf(man)<0;}).length;
+        if(movers.length&&holding>=2)break;
       }
-      var holding=fireSupport.filter(function(man){return movers.indexOf(man)<0;}).length;
+      if(!(movers.length&&holding>=2))turn=first;
       sq._boundTurn=turn;
       if(movers.length&&holding>=2){
         sq._boundTeam=team;sq._boundUntil=battle.time+BOUND_DURATION;sq._nextBoundAt=battle.time+BOUND_CYCLE;
