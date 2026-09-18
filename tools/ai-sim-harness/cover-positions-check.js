@@ -4,12 +4,12 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 let checks=0,failures=0;
 function test(name,fn){try{fn();checks++;console.log('PASS '+name);}catch(e){failures++;console.error('FAIL '+name+'\n'+e.stack);}}
 function load(r,file){new Function('window','globalThis','console',fs.readFileSync(path.join(H.REPO,file),'utf8'))(r,r,{log(){},warn(){}});}
-function fixture(obstacles){
+function fixture(obstacles,physical){
   H.resetIds();const r=H.bootstrap({modules:false}),systems={};
   r.BattleModules={registerSystem(id,h){systems[id]=h;},unitsFor:b=>b._roster.us.concat(b._roster.ge)};
   load(r,'battle/battle-navigation.js');load(r,'battle/movement-resolver.js');
   load(r,'battle/modules/39-navigation-physicality-debug.js');load(r,'battle/modules/52-survival-tactical-route.js');
-  const b=H.makeBattle(r);b.obstacles=obstacles;b.obstacles.__physicalFootprints=obstacles;b.obstacles.__physicalVersion=1;
+  const b=H.makeBattle(r);b.obstacles=obstacles;b.obstacles.__physicalFootprints=physical||obstacles;b.obstacles.__physicalVersion=1;
   const scenario={buildings:[]};b.scene={metadata:{battleScenario:scenario}};r.__battle__=b;r.BattleNavigation.installScenario(scenario);
   const q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:-8,objective:{x:0,z:50},composition:['rifleman','rifleman','rifleman']});
   q.commandPhase='support-hold';q.state='engaged';q.inContact=true;
@@ -45,5 +45,15 @@ test('every cover slot is a spot the planner accepts as a standing position',()=
   const g=fixture(obs),P=g.r.BattleNavigationPhysicality,slots=g.C.snapshot(g.b);
   assert.ok(slots.length>0);
   for(const s of slots){const st=P.resolveStandGoal(g.b,null,s);assert.ok(st&&Math.hypot(st.x-s.x,st.z-s.z)<.01,'slot '+s.id+' is inside a body margin');}
+});
+function works(x0,z0,yaw,len){const out=[],steps=Math.max(2,Math.round(len/2.4));for(let i=0;i<=steps;i++){const t=(i/steps-.5)*len;out.push({x:x0+Math.sin(yaw)*t,z:z0+Math.cos(yaw)*t,y:0,radius:1.35,cover:.35,height:1,type:'work-sandbags'});}return out;}
+test('no slot sits inside the stand-off margin of a defence line that is not a physical footprint',()=>{
+  const line=works(0,10,Math.PI/2,14).concat(works(4,6,0,10)),f=fixture(line,[]),slots=f.C.snapshot(f.b);
+  assert.ok(slots.length>0,'defence lines should still offer cover');
+  for(const s of slots)for(const o of line)assert.ok(Math.hypot(s.x-o.x,s.z-o.z)-o.radius>=1.19,'slot '+s.id+' is inside the margin of the defence piece at '+o.x.toFixed(1)+','+o.z.toFixed(1));
+});
+test('a terrain hedge\'s approximating circles do not erase the hedge\'s own slots',()=>{
+  const h=hedge(),circles=[-10,-5,0,5,10].map(x=>({x,z:0,y:0,radius:3.4,cover:.62,height:1.5,type:'hedge',physicalId:'hedge'})),f=fixture([h].concat(circles),[h]);
+  assert.ok(f.C.snapshot(f.b).length>=20,'hedge lost its slots');
 });
 console.log(checks+' cover checks passed; '+failures+' failed.');if(failures)process.exitCode=1;

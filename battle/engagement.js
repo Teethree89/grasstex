@@ -152,9 +152,10 @@
   }
   function currentCover(s,battle){var c=coverRegistry(battle),e=c.bySoldier.get(s);if(e&&!coverLive(e,battle)){dropCover(c,e);return null;}return e||null;}
   function releaseCover(s,battle,kind){var c=coverRegistry(battle),e=c.bySoldier.get(s);if(e&&(!kind||e.kind===kind))dropCover(c,e);}
+  function slotPad(){var P=root.BattleNavigationPhysicality;return Math.max(.9,(P&&P.routeMargin||1.15)+.05);}
   function coverEligible(F,ob){return F.obstacleHeight(ob)>=.5&&(ob.cover==null?1:+ob.cover)<=USEFUL_COVER;}
   function rawCoverSlots(c,ob,fp){
-    var slots=[],P=root.BattleNavigationPhysicality,pad=Math.max(.9,(P&&P.routeMargin||1.15)+.05),id=c.shapeIds.get(fp);
+    var slots=[],pad=slotPad(),id=c.shapeIds.get(fp);
     function add(x,z,nx,nz){var slot={id:id+':'+slots.length,x:x,z:z,normalX:nx,normalZ:nz,obstacle:ob,shape:fp,type:ob.type||'cover'};slots.push(slot);}
     if(fp.shape==='obb'){
       var ux=isFinite(+fp.ux)?+fp.ux:1,uz=+fp.uz||0,l=Math.hypot(ux,uz)||1;ux/=l;uz/=l;
@@ -172,8 +173,33 @@
      sit on top of each other. Build them all once per map version in obstacle order, drop the
      unusable ones, then walk from the newest back and delete any older slot within claim spacing
      of one already kept: no two surviving slots overlap, so every slot shown can be taken. */
+  /* Distance from a point to an obstacle's ground footprint (0 inside). */
+  function footprintGap(fp,x,z){
+    if(fp.shape==='obb'){
+      var ux=isFinite(+fp.ux)?+fp.ux:1,uz=+fp.uz||0,l=Math.hypot(ux,uz)||1;ux/=l;uz/=l;
+      var vx=isFinite(+fp.vx)?+fp.vx:-uz,vz=isFinite(+fp.vz)?+fp.vz:ux,vl=Math.hypot(vx,vz)||1;vx/=vl;vz/=vl;
+      var dx=x-fp.x,dz=z-fp.z,a=Math.abs(dx*ux+dz*uz)-(+fp.hx||.5),b=Math.abs(dx*vx+dz*vz)-(+fp.hz||.5);
+      return Math.hypot(Math.max(a,0),Math.max(b,0));
+    }
+    return Math.max(0,dist(x,z,fp.x,fp.z)-(+fp.radius||1));
+  }
+  /* Every standing obstacle keeps a stand-off margin that no slot may enter. Defence works
+     (sandbags, log walls, trenches) are chains of cover circles that are not physical footprints,
+     so neither the collision line nor the planner's stand check sees them; without this, one
+     circle's ring of slots landed on top of its neighbours. */
+  function marginIndex(F,c,pad){
+    var cell=4,grid=new Map(),seen=new Set();
+    for(var i=0;i<c.source.length;i++){
+      var ob=c.source[i];if(F.obstacleHeight(ob)<.5)continue;
+      var fp=c.shapes.get(String(ob.physicalId))||ob,ext=(fp.shape==='obb'?Math.hypot(+fp.hx||.5,+fp.hz||.5):(+fp.radius||1))+pad;
+      if(seen.has(fp))continue;seen.add(fp);
+      for(var cx=Math.floor((fp.x-ext)/cell);cx<=Math.floor((fp.x+ext)/cell);cx++)for(var cz=Math.floor((fp.z-ext)/cell);cz<=Math.floor((fp.z+ext)/cell);cz++){var k=cx+','+cz,list=grid.get(k);if(!list)grid.set(k,list=[]);list.push(fp);}
+    }
+    return function(x,z){var list=grid.get(Math.floor(x/cell)+','+Math.floor(z/cell));if(list)for(var j=0;j<list.length;j++)if(footprintGap(list[j],x,z)<pad-.01)return false;return true;};
+  }
   function buildCoverSlots(c){
     var F=field(),N=root.BattleNavigation,P=root.BattleNavigationPhysicality,all=[],seen=new Set();c.slots=new Map();
+    var outsideMargins=F?marginIndex(F,c,slotPad()):function(){return true;};
     /* A slot must be somewhere a body can stand: the planner's stand envelope (route margin
        around every shape, not just this one) must accept it unchanged, or the planner would
        quietly move the soldier off it. */
@@ -187,7 +213,7 @@
       c.slots.set(fp,[]);if(!F||!coverEligible(F,ob))continue;
       var raw=rawCoverSlots(c,ob,fp);
       for(var j=0;j<raw.length;j++){var slot=raw[j];
-        if(!standable(slot))continue;
+        if(!outsideMargins(slot.x,slot.z)||!standable(slot))continue;
         if(F.coverPotentialAt(c.source,slot.x,slot.z)>USEFUL_COVER)continue;
         all.push(slot);
       }
