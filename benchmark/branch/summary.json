@@ -1,0 +1,315 @@
+{
+ "summary": {
+  "generatedAt": "2026-09-18T10:57:11.904Z",
+  "commit": "b3c4a05bd1b616521b692d7e32174112d475361a",
+  "build": "v29-dev",
+  "policySource": "live-policy-endpoint",
+  "policyRevision": 14,
+  "shardCount": 10,
+  "requestedBattles": 100,
+  "completedBattles": 100,
+  "battleTypes": {
+   "meeting": {
+    "completedBattles": 60,
+    "winners": {
+     "us": 27,
+     "ge": 33,
+     "draw": 0,
+     "none": 0
+    },
+    "usWinRate": "45.0%",
+    "geWinRate": "55.0%",
+    "avgCaptures": 3.73,
+    "noCaptureBattles": 0,
+    "objectivesNeverOwned": 72,
+    "objectivesNeverContested": 71,
+    "avgNoObjectiveProgressSeconds": 218.5,
+    "maxNoObjectiveProgressSeconds": 465.1,
+    "avgSquadObjectiveSpread": {
+     "us": 2.73,
+     "ge": 2.73
+    },
+    "issueCounts": {
+     "vacantObjectiveStalls": 107,
+     "movementStalls": 51,
+     "routeStalls": 0,
+     "targetlessStalls": 0,
+     "longRegroups": 0,
+     "writerConflicts": 0,
+     "strategicWriterConflicts": 0,
+     "loopAlerts": 1006,
+     "losBlockedFireAttempts": 9
+    },
+    "health": {
+     "overall": 80.2,
+     "strategic": 75,
+     "movement": 97.9,
+     "cohesion": 69.9,
+     "combat": 98.3,
+     "objective": 60.1
+    },
+    "idleUnderOrdersRate": 0.0139,
+    "overCohesionRate": 0.5519,
+    "movementResolverChanges": 282395
+   },
+   "us-defend": {
+    "completedBattles": 20,
+    "winners": {
+     "us": 18,
+     "ge": 2,
+     "draw": 0,
+     "none": 0
+    },
+    "usWinRate": "90.0%",
+    "geWinRate": "10.0%",
+    "avgCaptures": 0.65,
+    "noCaptureBattles": 13,
+    "objectivesNeverOwned": 23,
+    "objectivesNeverContested": 23,
+    "avgNoObjectiveProgressSeconds": 430.4,
+    "maxNoObjectiveProgressSeconds": 597.6,
+    "avgSquadObjectiveSpread": {
+     "us": 2.87,
+     "ge": 2.93
+    },
+    "issueCounts": {
+     "vacantObjectiveStalls": 1,
+     "movementStalls": 37,
+     "routeStalls": 0,
+     "targetlessStalls": 0,
+     "longRegroups": 0,
+     "writerConflicts": 0,
+     "strategicWriterConflicts": 0,
+     "loopAlerts": 148,
+     "losBlockedFireAttempts": 1
+    },
+    "health": {
+     "overall": 79.5,
+     "strategic": 80.6,
+     "movement": 96.5,
+     "cohesion": 76.8,
+     "combat": 97.2,
+     "objective": 46.5
+    },
+    "idleUnderOrdersRate": 0.0359,
+    "overCohesionRate": 0.4626,
+    "movementResolverChanges": 81490
+   },
+   "ge-defend": {
+    "completedBattles": 20,
+    "winners": {
+     "us": 0,
+     "ge": 20,
+     "draw": 0,
+     "none": 0
+    },
+    "usWinRate": "0.0%",
+    "geWinRate": "100.0%",
+    "avgCaptures": 0.6,
+    "noCaptureBattles": 11,
+    "objectivesNeverOwned": 30,
+    "objectivesNeverContested": 29,
+    "avgNoObjectiveProgressSeconds": 465,
+    "maxNoObjectiveProgressSeconds": 597.6,
+    "avgSquadObjectiveSpread": {
+     "us": 3.09,
+     "ge": 2.95
+    },
+    "issueCounts": {
+     "vacantObjectiveStalls": 0,
+     "movementStalls": 3,
+     "routeStalls": 0,
+     "targetlessStalls": 0,
+     "longRegroups": 0,
+     "writerConflicts": 0,
+     "strategicWriterConflicts": 0,
+     "loopAlerts": 212,
+     "losBlockedFireAttempts": 1
+    },
+    "health": {
+     "overall": 78.4,
+     "strategic": 76.5,
+     "movement": 98.8,
+     "cohesion": 72.4,
+     "combat": 96.2,
+     "objective": 47.9
+    },
+    "idleUnderOrdersRate": 0.023,
+    "overCohesionRate": 0.5017,
+    "movementResolverChanges": 93928
+   }
+  },
+  "parallelWallSeconds": 379.77,
+  "cpuWallSeconds": 3300.19,
+  "simulatedSeconds": 57937.05,
+  "realtimeMultiplier": 152.6,
+  "battlesPerMinute": 15.8,
+  "winners": {
+   "us": 45,
+   "ge": 55,
+   "draw": 0,
+   "none": 0
+  },
+  "usWinRate": "45.0%",
+  "geWinRate": "55.0%",
+  "drawRate": "0.0%",
+  "avgBattleSeconds": 579.37,
+  "p50BattleSeconds": 600.15,
+  "p95BattleSeconds": 600.15,
+  "timeoutBattles": 90,
+  "avgCaptures": 2.49,
+  "noCaptureBattles": 24,
+  "avgFirstContactSeconds": 52.3,
+  "avgFirstFireSeconds": 91.3,
+  "avgFirstObjectiveProgressSeconds": 73.8,
+  "avgFirstCaptureSeconds": 147.9,
+  "maxNoObjectiveProgressSeconds": 597.6,
+  "avgNoObjectiveProgressSeconds": 310.2,
+  "avgObjectivesPerBattle": 4.69,
+  "objectivesNeverOwned": 125,
+  "objectivesNeverOwnedRate": "26.7%",
+  "objectivesNeverContested": 123,
+  "avgSquadObjectiveSpread": {
+   "us": 2.83,
+   "ge": 2.82
+  },
+  "issueCounts": {
+   "vacantObjectiveStalls": 108,
+   "movementStalls": 91,
+   "routeStalls": 0,
+   "targetlessStalls": 0,
+   "longRegroups": 0,
+   "writerConflicts": 0,
+   "strategicWriterConflicts": 0,
+   "loopAlerts": 1366,
+   "losBlockedFireAttempts": 11
+  },
+  "health": {
+   "overall": 79.7,
+   "strategic": 76.4,
+   "movement": 97.8,
+   "cohesion": 71.8,
+   "combat": 97.6,
+   "objective": 54.9
+  },
+  "phaseSamples": {
+   "approach": 800,
+   "defend": 47832,
+   "assault": 178724,
+   "regroup": 3891,
+   "flank": 1247,
+   "hold": 146
+  },
+  "engagementStateSamples": {
+   "advance": 769885,
+   "orient": 26100,
+   "alert": 256168,
+   "engage": 217818,
+   "bound": 326516,
+   "station": 117666,
+   "assault": 9186,
+   "pinned": 2902,
+   "withdraw": 107302
+  },
+  "idleUnderOrdersRate": 0.0168,
+  "overCohesionRate": 0.5247,
+  "targetlessSquadRate": 0,
+  "shots": 157828,
+  "directShots": 108948,
+  "hits": 16167,
+  "suppressiveShots": 48880,
+  "hitRate": 0.1484,
+  "movementResolverChanges": 457813,
+  "browserErrors": 300,
+  "runtimeErrors": 0,
+  "assetLoadNoise": 300,
+  "browserWarnings": 500,
+  "benchmarkProfile": "standard-6-2-2",
+  "expectedShards": 10,
+  "expectedBattles": 100,
+  "battlesPerWorker": 10,
+  "workerMinutesCutoff": 45,
+  "scenarioMix": {
+   "meeting": 60,
+   "us-defend": 20,
+   "ge-defend": 20
+  },
+  "missingBattles": 0
+ },
+ "policy": {
+  "source": "live-policy-endpoint",
+  "revision": 14,
+  "genome": {
+   "version": 2,
+   "parameters": {
+    "cohesionRadius": 32.438,
+    "captainlessCohesion": 26.651,
+    "regroupHold": 0.3985,
+    "cornerHold": 0.7866,
+    "cornerNoCaptainExtra": 0.35,
+    "supportDelay": 28.927,
+    "sectorNeutralNeed": 93.016,
+    "sectorEnemyNeed": 95.209,
+    "sectorActiveBonus": 17.522,
+    "sectorDistanceWeight": 0.8831,
+    "routeArrivalRadius": 8.71,
+    "finalRouteRadius": 14.232,
+    "captureCommitRatio": 0.8734,
+    "contactDistance": 23.324,
+    "townBoundary": 58,
+    "engagedRallyAdvance": 0.1145,
+    "pressObjectiveMinDistance": 7,
+    "pressEnemyClearance": 48.941,
+    "scoutLead": 2.858,
+    "gunnerTrail": 2.056,
+    "objectiveHoldWin": 35,
+    "decisionSnapshotSeconds": 5
+   },
+   "doctrine": {
+    "reserveFraction": 0.078,
+    "localSuperiority": 1.279,
+    "flankPreference": 0.578,
+    "defenseCommitment": 0.421,
+    "riskTolerance": 0.342,
+    "objectiveStrategy": "balanced"
+   },
+   "rules": [
+    {
+     "id": "press-neutral",
+     "when": [
+      "objectiveNeutral",
+      "notOutnumbered"
+     ],
+     "action": "assault",
+     "weight": 0.78
+    },
+    {
+     "id": "flank-strongpoint",
+     "when": [
+      "objectiveEnemy",
+      "outnumbered"
+     ],
+     "action": "flank",
+     "weight": 0.668
+    },
+    {
+     "id": "regroup-leaderless",
+     "when": [
+      "outnumbered",
+      "captainDead"
+     ],
+     "action": "regroup",
+     "weight": 0.385
+    },
+    {
+     "id": "r-mtzofl89-1875",
+     "when": [
+      "objectiveNeutral"
+     ],
+     "action": "hold",
+     "weight": 0.64
+    }
+   ]
+  }
+ }
+}
