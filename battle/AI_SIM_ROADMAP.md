@@ -78,21 +78,21 @@ The mission brief is the only contract between Macro and Meso.
 
 ## Open issues after the 2026-09-17 ownership sweep
 
-Evidence: paired deterministic replays (`scripts/run_m3c_replay.cjs`), 12 random seeds, main `5c0e0f3` vs `work/m3c-ownership-sweep-20260917`.
+Evidence: paired deterministic replays (`scripts/run_m3c_replay.cjs`). Superseded by a 300-run paired sample (100 each: main `5c0e0f3`, branch `42a30cf`, branch `0eafc66`) split 40 meeting / 30 US-defend / 30 GE-defend. Distilled per-run data is on `evidence/m3c-sweep-20260917`; findings in `M3C_STRUCTURAL_SWEEP_TESTING_SUMMARY.md`.
 
-- [ ] **Win split shifted, cause unknown.** US wins 10/12 on main vs 5/12 on the sweep while casualties are flat (US alive 29.8 -> 29.2, GE 27.2 -> 28.1) and captures are flat (3.9 -> 3.8/battle; US 2.3 -> 2.0, GE 1.6 -> 1.8). Main's strong US bias in symmetric battles may itself be the defect. Needs the large seed sample split by scenario type before concluding either way.
+- [x] **Win split: no measurable change.** The large sample closed this. Per scenario, US wins on main vs branch `0eafc66`: meeting 19/40 vs 18/40 (p=1.000), US-defend 28/30 vs 29/30 (p=1.000), GE-defend 3/30 vs 1/30 (p=0.612). Pooled defender advantage 55/60 vs 58/60 (p=0.439). Nothing is distinguishable from noise. The 10/12 vs 5/12 that opened this item was a 12-seed artifact, and an intermediate reading of GE-defend as 3/30 -> 0/30 "never succeeds" was likewise an over-read of a four-run swing. These scenarios need ~216 runs/arm to call a 10% vs 3.3% difference; do not spend that unless the answer changes a decision.
 - [ ] **Personal-space corrections rose slightly** (15.7k -> 17.4k pair corrections/battle, exact overlaps 0, blocked 0). Not root-caused. Determine whether a remaining producer (formation slot, tactical position ingress, Captain regroup anchor) converges bodies before touching personal space.
 - [ ] **Window / ingress crowding not root-caused.** Claim collisions fell (133 -> 73) as a side effect of fewer command writes, but reservation vs physical occupancy was not investigated separately.
-- [ ] **Captain regroup frequency has no baseline.** The sweep records 7-13 regroup entries/battle; main's export read regroup fields that did not exist, so there is nothing to compare against. Confirm visually that these are real dispersal recoveries and not a new A -> B -> A.
+- [ ] **Regroup churn is the sweep's one robust behavioural change.** It does have a baseline: the `regroup` object is present on all 300 baseline squads, and position releases attributed to regroup give a clean comparison. Main vs branch: GE-defend 17 -> 154, US-defend 30 -> 182, meeting 146 -> 207. Six- to nine-fold in the defend scenarios and consistent across both branch builds, so far too large to be sampling noise. Yet only 2 squads sit in regroup at the final snapshot against 13 on main: the sweep enters regroup constantly and leaves quickly where main enters rarely and stays. Root-cause the entry condition. No outcome consequence has been shown, so treat this as behaviour to understand, not a regression to revert.
 - [ ] **Strategic stall wakes are usually no-ops.** Most `strategic-stall` wakes re-select the same objective (`decisionsUnchanged`). That is an objective-selection/doctrine limitation, not an ownership fault: the General has no alternative plan to offer.
 - [ ] **Broad axes are no longer part of the brief.** Walking the approach route before the objective cut captures (3.2 vs 3.8). If axes should be a strategic concept again they need a design that does not delay objective commitment.
 - [ ] **Hot path is now navigation and LOS.** Profile (live seed): physical replans ~3.3 s and `sightBlocked` ~3.5 s of ~13.7 s simulated-battle wall time. Profile further before optimizing; no ownership fault found there.
 - [ ] **Movement Progress still ignores retreat.** Both stationary-retreat causes were navigation bugs (fixed); retreat remains unobserved by stuck detection by design. The new `movementStopReason` export is the observable if it recurs.
 
 ### Validation order for this sweep
-1. [ ] Visual check on the branch preview (`/grasstex/preview/m3c-ownership-sweep-20260917/battle_sim.php`, plus `?defender=us` / `?defender=ge`): coherent missions, no General twitching, cover without strategic backtracking, window/ingress stacking, retreaters leaving, sensible orders after captures.
+1. [x] Visual check on the branch preview (`/grasstex/preview/m3c-ownership-sweep-20260917/battle_sim.php`, plus `?defender=us` / `?defender=ge`): coherent missions, no General twitching, cover without strategic backtracking, window/ingress stacking, retreaters leaving, sensible orders after captures.
 2. [ ] Standard 60 meeting / 20 US-defend / 20 GE-defend benchmark on the branch.
-3. [ ] Large paired seed sample (main vs branch) by scenario type, alongside or after the benchmark.
+3. [x] Large paired seed sample (main vs branch) by scenario type. Done at 300 runs; see above.
 
 ## World / navigation foundation
 

@@ -55,19 +55,30 @@ Claim collisions prevented swings by two orders of magnitude across three runs o
 
 ---
 
-## 2. Paired seed sample (200 runs)
+## 2. Paired seed sample (300 runs)
 
-100 baseline (`B`, main @ `5c0e0f3`) and 100 sweep (`A`, branch @ `42a30cf`) runs over matched seeds, headless at `timeScale` 1. Win/loss is taken from the recorded `battle.winner` field.
+Three arms over matched seeds, headless at `timeScale` 1, 100 runs each. Win/loss is taken from the recorded `battle.winner` field.
+
+| Arm | Build | What it is |
+|---|---|---|
+| `B` | main @ `5c0e0f3` | baseline |
+| `A` | branch @ `42a30cf` | the sweep |
+| `A2` | branch @ `0eafc66` | the sweep plus cross-squad cover |
 
 ### Win split
 
-| Scenario | n per arm | Baseline US wins | Sweep US wins | Change |
-|---|---|---|---|---|
-| Meeting | 40 | 19 (47.5%) | 18 (45.0%) | −1 run |
-| US defending | 30 | 28 (93.3%) | 29 (96.7%) | +1 run |
-| GE defending | 30 | 3 (10.0%) | **0 (0.0%)** | **−3 runs** |
+| Scenario | n per arm | B | A | A2 | Fisher, A2 vs B |
+|---|---|---|---|---|---|
+| Meeting | 40 | 19 (47.5%) | 18 (45.0%) | 18 (45.0%) | p = 1.000 |
+| US defending | 30 | 28 (93.3%) | 29 (96.7%) | 29 (96.7%) | p = 1.000 |
+| GE defending | 30 | 3 (10.0%) | 0 (0.0%) | 1 (3.3%) | p = 0.612 |
+| Pooled, defender wins | 60 | 55 (91.7%) | 59 (98.3%) | 58 (96.7%) | p = 0.439 |
 
-The GE-defend result is the one that matters. Baseline let the US take a German-held position in 3 of 30 seeds; the sweep takes that to 0 of 30. Attacking into a prepared defence now never succeeds in this sample. Meeting and US-defend shifts are single runs and are within noise at these sample sizes.
+**No win-split difference here is distinguishable from noise.** Every comparison against baseline is non-significant, including the one this document previously led with: GE-defend 3/30 against 0/30 is Fisher p = 0.237, and against A2's 1/30 it is p = 0.612. The 95% intervals overlap heavily in every scenario — GE-defend baseline is [3.5%, 25.6%] against A2's [0.6%, 16.7%].
+
+An earlier revision of this file called the 3/30 to 0/30 shift "the finding" and described it as "a coherent directional effect, not scattered noise". That was wrong. It was a four-run swing across 100 paired battles, read as a mechanism it cannot support.
+
+These scenarios are simply underpowered for the effect sizes involved. Calling a 10% against 3.3% difference at 80% power and alpha 0.05 needs about **216 runs per arm**; the pooled defender advantage, 91.7% against 96.7%, needs about **342 per arm**. We have 30 and 60. A defender-favouring drift may well be real — this sample cannot say either way, and no larger sample should be run just to settle it unless the answer changes a decision.
 
 ### Per-scenario metrics (mean, with median in brackets)
 
@@ -113,21 +124,23 @@ Wall seconds is runner cost, not in-game time; every run plays the full 600 s ma
 
 ## 3. Reading of the results
 
-**Consistent across both bodies of evidence:** zero ownership conflicts, zero telemetry loss, no console errors, all 22 modules loading.
+**Stable across all three arms:** zero ownership conflicts, zero telemetry loss, no console errors, all 22 modules loading, and zero runtime errors across the 100 A2 runs.
 
-**The attacker is weaker.** In every scenario the sweep moves outcomes toward the defender:
+**Outcomes are unchanged within measurement precision.** That is the main result. The sweep is outcome-neutral at this sample size, and the cross-squad cover change did not move the win split either (GE-defend 0/30 to 1/30 is one run).
 
-- GE-defend: US wins 3 → 0; US objectives held −60%; US kills −26.9%.
-- US-defend: GE objectives held −31.3%.
-- Meeting is near-flat, which fits — neither side is attacking a prepared position.
+**The one robust behavioural difference is regroup churn.** Position assignments released because the squad entered regroup:
 
-This is a coherent directional effect, not scattered noise, and it is consistent with the "win split shift" and "dropped approach axes" items already open in the roadmap. Whether it is a fix (defence should be strong) or a regression (assault has stopped working) is **not** answerable from this data and needs the visual check.
+| Scenario | B | A | A2 |
+|---|---|---|---|
+| Meeting | 146 | 198 | 207 |
+| US defending | 30 | 176 | 182 |
+| GE defending | 17 | 167 | 154 |
 
-**Runner cost moves in both directions.** Meeting −18.3% and US-defend −33.7%, but GE-defend +14.3%. The means are also skewed by outliers in the baseline arm — baseline meeting max is 195.5 s against a 33.5 s median, and baseline US-defend max is 261.8 s against a 37.7 s median. The medians are much closer together than the means, so the headline speedups are largely the sweep not producing those long-tail runs, rather than every run getting faster.
+Six- to nine-fold in the defend scenarios, and consistent across both sweep builds rather than varying between them. Unlike the win split, this is far too large to be sampling noise. Yet at the final snapshot only 2 squads sit in regroup on the sweep against 13 on baseline — so the sweep enters regroup constantly and leaves quickly, where baseline enters rarely and stays. This is worth understanding on its own merits. It is **not** evidence of a win-split regression, because there is no measured win-split regression.
 
-**Not established:** anything about on-screen behaviour, whether reduced US captures come from better defensive play or from assault squads failing to path in, and whether the claim-collision swing seen in the preview captures affects outcomes.
+**Wall seconds are not usable as a speed claim.** A2 reads far lower than A (meeting 32.0 s to 17.8 s), but A2 ran with nothing else competing for the machine while the earlier arms ran alongside a second server. Runner cost here is confounded with machine load, and the medians in section 2 are the more honest figure.
 
----
+**Not established:** anything about on-screen behaviour beyond the visual check already done, whether the regroup churn has any outcome consequence, and what drives the claim-collision swing in the preview captures.
 
 ## 4. Status
 
