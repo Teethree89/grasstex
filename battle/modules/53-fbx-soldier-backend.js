@@ -92,11 +92,34 @@ function prepareModel(container){
   container.materials.forEach(function(m){
     if('emissiveTexture' in m)m.emissiveTexture=null;
     if(m.specularColor)m.specularColor.set(.06,.06,.06);
+    /* The atlas is hundreds of small islands; keep it crisp at glancing angles. */
+    if(m.diffuseTexture)m.diffuseTexture.anisotropicFilteringLevel=8;
   });
+  meshes.forEach(smoothNormals);
   return{container:container,top:top,nodes:nodes,height:hi-lo,scale:(M.BODY&&M.BODY.heightM||1.7)/(hi-lo),
     bones:skeleton.bones.map(function(b){return b.name;}).filter(function(name){return!!nodes[name];}),grips:null};
 }
 
+/* The exported normals are per-face, so the low-poly body shades as visible facets. Average the
+   face normals of every corner that shares a position (welding across UV seams) instead. */
+function smoothNormals(mesh){
+  var pos=mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind),idx=mesh.getIndices();if(!pos||!idx)return;
+  var n=pos.length/3,key={},group=new Int32Array(n),acc=[],i;
+  for(i=0;i<n;i++){var k=pos[i*3].toFixed(4)+','+pos[i*3+1].toFixed(4)+','+pos[i*3+2].toFixed(4);if(key[k]==null){key[k]=acc.length/3;acc.push(0,0,0);}group[i]=key[k];}
+  for(i=0;i<idx.length;i+=3){
+    var a=idx[i]*3,b=idx[i+1]*3,c=idx[i+2]*3,ux=pos[b]-pos[a],uy=pos[b+1]-pos[a+1],uz=pos[b+2]-pos[a+2],vx=pos[c]-pos[a],vy=pos[c+1]-pos[a+1],vz=pos[c+2]-pos[a+2];
+    var nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
+    for(var j=0;j<3;j++){var g=group[idx[i+j]]*3;acc[g]+=nx;acc[g+1]+=ny;acc[g+2]+=nz;}
+  }
+  var old=mesh.getVerticesData(BABYLON.VertexBuffer.NormalKind),out=new Float32Array(n*3);
+  for(i=0;i<n;i++){
+    var g2=group[i]*3,x=acc[g2],y=acc[g2+1],z=acc[g2+2],l=Math.sqrt(x*x+y*y+z*z)||1;x/=l;y/=l;z/=l;
+    /* Keep the winding the file's normals imply. */
+    if(old&&x*old[i*3]+y*old[i*3+1]+z*old[i*3+2]<0){x=-x;y=-y;z=-z;}
+    out[i*3]=x;out[i*3+1]=y;out[i*3+2]=z;
+  }
+  mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind,out,false);
+}
 function convertClip(container,key,spec,bones,scale){
   var group=container.animationGroups[0];if(!group)throw new Error('no animation in '+spec[0]);
   var index={};bones.forEach(function(name,i){index[name]=i;});
@@ -166,9 +189,17 @@ function loadLibrary(scene){
   var st=sceneState(scene);if(st.loading)return st.loading;
   var base=assetBase(),started=Date.now();
   st.loading=ensureLoader().then(function(){
-    return Promise.all(Object.keys(MODELS).map(function(faction){
-      return loadContainer(scene,base+'soldiers/'+MODELS[faction]).then(function(c){st.libs[faction]=prepareModel(c);});
-    }));
+    /* One model at a time: both exports embed their albedo as "texture_0.png", and Babylon's
+       texture cache is keyed by that URL, so a second concurrent load would reuse the first
+       model's atlas. Each model's textures are renamed after it loads, before the next starts. */
+    return Object.keys(MODELS).reduce(function(chain,faction){
+      return chain.then(function(){
+        return loadContainer(scene,base+'soldiers/'+MODELS[faction]).then(function(c){
+          c.textures.forEach(function(t){var it=t.getInternalTexture&&t.getInternalTexture();if(it&&it.url&&it.url.indexOf('#')<0)it.url+='#'+faction;});
+          st.libs[faction]=prepareModel(c);
+        });
+      });
+    },Promise.resolve());
   }).then(function(){
     var ref=st.libs.us||st.libs.ge;st.bones=ref.bones;
     return Promise.all(Object.keys(CLIPS).map(function(key){
