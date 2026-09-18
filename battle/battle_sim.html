@@ -42,7 +42,7 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   <details id="debugPanel"><summary>Console</summary><div id="debugConsole"></div></details>
 </div>
 <button id="hudToggle" type="button">&#9776; AI LAB</button>
-<aside id="animationLab" hidden><h2>Motion Lab <button id="animationLabClose" type="button" title="Close motion lab">&#10005;</button></h2><canvas id="animationLabCanvas"></canvas><select id="animationLabPose" aria-label="Preview soldier pose"><optgroup label="Baked from supplied package"><option value="idle">Idle</option><option value="walk">Walk</option><option value="aim">Rifle aim</option><option value="fire">Rifle fire</option><option value="reload">Rifle reload</option><option value="walk-aim">Walk + aim (layered)</option><option value="death.front">Death — front</option><option value="death.back">Death — back</option><option value="death.side">Death — side</option></optgroup><optgroup label="Hand-authored procedural"><option value="crouch">Crouch</option><option value="crouch-walk">Crouch walk</option><option value="crouch-aim">Crouch aim</option><option value="prone">Prone</option><option value="prone-crawl">Prone crawl</option></optgroup></select><small id="animationLabSource">Baked from Human Soldier Animations FREE.</small></aside>
+<aside id="animationLab" hidden><h2>Motion Lab <button id="animationLabClose" type="button" title="Close motion lab">&#10005;</button></h2><canvas id="animationLabCanvas"></canvas><select id="animationLabPose" aria-label="Preview soldier pose"><optgroup label="Standing"><option value="idle">Idle</option><option value="aim">Rifle aim</option><option value="fire">Rifle fire</option><option value="reload">Rifle reload</option><option value="walk">Walk</option><option value="walk-aim">Walk + aim (layered)</option><option value="strafe">Walk — strafe right</option><option value="run">Run</option><option value="sprint">Sprint</option></optgroup><optgroup label="Crouched / prone"><option value="crouch">Crouch</option><option value="crouch-aim">Crouch aim</option><option value="crouch-walk">Crouch walk</option><option value="prone">Prone</option><option value="prone-aim">Prone aim</option><option value="prone-crawl">Prone crawl</option></optgroup><optgroup label="Transitions"><option value="stand>prone">Stand → prone</option><option value="prone>stand">Prone → stand</option><option value="stand>crouch">Stand → crouch</option></optgroup><optgroup label="Deaths"><option value="death.front">Death — front</option><option value="death.back">Death — back</option><option value="death.side">Death — side</option></optgroup></select><small id="animationLabSource">Loading imported FBX soldier…</small></aside>
 <button id="animationLabToggle" type="button">Motion Lab</button>
 <div id="banner"><div class="card"><div id="bannerText">—</div><small id="bannerSub"></small><div><button id="bannerRestart" type="button">Run it again</button></div></div></div>
 <script src="https://cdn.jsdelivr.net/npm/babylonjs@9.27.1/babylon.js"></script>
@@ -102,37 +102,56 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#0f141c;font
   var speedButtons=document.querySelectorAll('#controls button');speedButtons.forEach(function(btn){btn.addEventListener('click',function(){battle.setTimeScale(+btn.dataset.speed);speedButtons.forEach(function(b){b.classList.toggle('active',b===btn);});console.log('speed='+btn.dataset.speed+'x');});});window.__battleRenderLoop__=function(){scene.render();};engine.runRenderLoop(window.__battleRenderLoop__);window.addEventListener('resize',function(){engine.resize();});
 
   /* A separate, one-soldier scene makes pose inspection deterministic and does not disturb
-     the live battle or trainer. It is created only when the user opens Motion Lab. */
+     the live battle or trainer. It is created only when the user opens Motion Lab, and loads the
+     same imported FBX soldier + clip library as the battle. Moving poses really move the soldier
+     (and wrap it back), because the skeletal backend reads ground speed from displacement. */
   (function setupMotionLab(){
     var panel=document.getElementById('animationLab'),toggle=document.getElementById('animationLabToggle'),close=document.getElementById('animationLabClose'),canvas=document.getElementById('animationLabCanvas'),select=document.getElementById('animationLabPose'),source=document.getElementById('animationLabSource');
-    var labEngine=null,labScene=null,labSoldier=null,labPose=select.value,last=0,labClock=0;
-    var sourceText={idle:'Baked from Human Soldier Animations FREE.',walk:'Baked from Human Soldier Animations FREE.',aim:'Baked from Human Soldier Animations FREE.',fire:'Baked from Human Soldier Animations FREE.',reload:'Baked from Human Soldier Animations FREE.','death.front':'Baked from Human Soldier Animations FREE.','death.back':'Baked from Human Soldier Animations FREE.','death.side':'Baked from Human Soldier Animations FREE.','walk-aim':'Package walk legs + rifle-aim torso; hands on weapon by IK.','crouch-aim':'Procedural crouch with bladed torso; hands on weapon by IK.',crouch:'Procedural — this pack has no crouch clip.','crouch-walk':'Procedural — this pack has no crouch-walk clip.',prone:'Procedural — this pack has no prone clip.','prone-crawl':'Procedural — this pack has no crawl clip.'};
+    var labEngine=null,labScene=null,labSoldier=null,labPose=select.value,last=0,labClock=0,labellingAt=0;
+    /* pose -> [speed m/s, heading of travel relative to facing (rad)] */
+    var MOTION={walk:[1.5,0],'walk-aim':[1.5,0],strafe:[1.4,Math.PI/2],run:[3.9,0],sprint:[5.3,0],'crouch-walk':[1.4,0],'prone-crawl':[.45,0]};
     function makePreview(){
       if(labSoldier&&labSoldier.root)labSoldier.root.dispose();
+      var pose=labPose,from=pose.indexOf('>')>0?pose.split('>')[0]:pose;
       labSoldier=BattleSoldierModel.createSoldier(labScene,'us','rifleman',null);labSoldier.root.position.set(0,0,0);labSoldier.root.rotation.y=Math.PI;
       labSoldier.weapon=BattleWeapons.attachWeapon(labScene,labSoldier.weaponSocket,'rifle');labSoldier.speed=1;labSoldier.moveSpeed=0;labSoldier.target=null;labSoldier.crouching=false;labSoldier.prone=false;labSoldier.crawling=false;labSoldier.reloading=false;labSoldier.dead=false;
-      if(labPose==='aim'||labPose==='fire'||labPose==='reload'||labPose==='walk-aim'||labPose==='crouch-aim')labSoldier.target={root:{position:new BABYLON.Vector3(0,0,1)}};
-      if(labPose==='crouch'||labPose==='crouch-walk'||labPose==='crouch-aim')labSoldier.crouching=true;
-      if(labPose==='prone'||labPose==='prone-crawl'){labSoldier.prone=true;labSoldier.crawling=labPose==='prone-crawl';}
-      if(labPose==='reload'){labSoldier.reloading=true;BattleSoldierModel.triggerAnimation(labSoldier,BattleSoldierModel.TAGS.reload,{duration:2.6});}
-      if(labPose==='fire')BattleSoldierModel.triggerAnimation(labSoldier,BattleSoldierModel.TAGS.fire,{});
-      if(labPose.indexOf('death.')===0){labSoldier.dead=true;labSoldier.deathVariant=labPose.slice(6);labSoldier.deathSide=1;labSoldier.deathTag=labPose;BattleSoldierModel.triggerAnimation(labSoldier,labPose,{});}
+      if(/aim|fire/.test(pose))labSoldier.target={root:{position:new BABYLON.Vector3(0,0,-20)}};
+      if(/^crouch/.test(from))labSoldier.crouching=true;
+      if(/^prone/.test(from)){labSoldier.prone=true;labSoldier.crawling=pose==='prone-crawl';}
+      if(pose==='reload'){labSoldier.reloading=true;BattleSoldierModel.triggerAnimation(labSoldier,BattleSoldierModel.TAGS.reload,{duration:2.6});}
+      if(pose==='fire')BattleSoldierModel.triggerAnimation(labSoldier,BattleSoldierModel.TAGS.fire,{});
+      if(pose.indexOf('death.')===0){labSoldier.dead=true;labSoldier.deathVariant=pose.slice(6);labSoldier.deathSide=1;labSoldier.deathTag=pose;BattleSoldierModel.triggerAnimation(labSoldier,pose,{});}
       last=performance.now();labClock=0;
+    }
+    function describe(){
+      var fx=labSoldier&&labSoldier._fbx;if(!fx){source.textContent=window.BattleFbxSoldier?'Procedural fallback rig (FBX soldier unavailable).':'Procedural rig.';return;}
+      var lower=fx.lower.entries[fx.lower.entries.length-1],upper=fx.overlay>.5&&fx.upper.entries[fx.upper.entries.length-1];
+      source.textContent='FBX clip: '+(lower?lower.clip.file:'—')+(upper?' + '+upper.clip.file+' (upper body)':'')+(lower&&lower.rate!==1?' · '+lower.rate.toFixed(2)+'×':'');
+    }
+    function step(dt){
+      var pose=labPose,motion=MOTION[pose],root=labSoldier.root;
+      if(pose==='fire'&&labClock>1.1){labClock=0;BattleSoldierModel.triggerAnimation(labSoldier,BattleSoldierModel.TAGS.fire,{});}
+      else if((pose==='reload'&&labClock>3.4)||((pose.indexOf('death.')===0||pose.indexOf('>')>0)&&labClock>4.6)){makePreview();return;}
+      if(pose.indexOf('>')>0&&labClock>.7&&!labSoldier._labSwitched){labSoldier._labSwitched=true;var to=pose.split('>')[1];BattleSoldierModel.setProne(labSoldier,to==='prone');BattleSoldierModel.setCrouch(labSoldier,to==='crouch');}
+      if(motion){
+        var heading=root.rotation.y+motion[1];root.position.x+=Math.sin(heading)*motion[0]*dt;root.position.z+=Math.cos(heading)*motion[0]*dt;
+        if(Math.abs(root.position.x)>2.2||Math.abs(root.position.z)>2.2)root.position.set(-Math.sin(heading)*2.2,0,-Math.cos(heading)*2.2);
+      }
+      BattleSoldierModel.animateWalk(labSoldier,dt,motion?Math.min(1,motion[0]/5.3):0);
     }
     function init(){
       if(labEngine)return;labEngine=new BABYLON.Engine(canvas,true,{stencil:false,preserveDrawingBuffer:false,audioEngine:false});labScene=new BABYLON.Scene(labEngine);labScene.clearColor=new BABYLON.Color4(.12,.15,.11,1);
-      var camera=new BABYLON.ArcRotateCamera('motionLabCamera',-Math.PI/2,1.08,3.25,new BABYLON.Vector3(0,.82,0),labScene);camera.lowerRadiusLimit=2.2;camera.upperRadiusLimit=5;camera.wheelPrecision=20;camera.attachControl(canvas,true);
+      var camera=new BABYLON.ArcRotateCamera('motionLabCamera',-Math.PI/2,1.08,3.6,new BABYLON.Vector3(0,.82,0),labScene);camera.lowerRadiusLimit=1.6;camera.upperRadiusLimit=7;camera.wheelPrecision=20;camera.attachControl(canvas,true);
       var hemi=new BABYLON.HemisphericLight('motionLabHemi',new BABYLON.Vector3(.25,1,.1),labScene);hemi.intensity=.95;var sun=new BABYLON.DirectionalLight('motionLabSun',new BABYLON.Vector3(-.4,-1,.25),labScene);sun.intensity=.55;
-      var floor=BABYLON.MeshBuilder.CreateGround('motionLabFloor',{width:4,height:4},labScene),mat=new BABYLON.StandardMaterial('motionLabFloorMat',labScene);mat.diffuseColor=new BABYLON.Color3(.21,.25,.17);mat.specularColor=BABYLON.Color3.Black();floor.material=mat;floor.isPickable=false;makePreview();
+      var floor=BABYLON.MeshBuilder.CreateGround('motionLabFloor',{width:5,height:5},labScene),mat=new BABYLON.StandardMaterial('motionLabFloorMat',labScene);mat.diffuseColor=new BABYLON.Color3(.21,.25,.17);mat.specularColor=BABYLON.Color3.Black();floor.material=mat;floor.isPickable=false;
+      Promise.resolve(BattleSoldierModel.preload?BattleSoldierModel.preload(labScene):null).then(makePreview,makePreview);
       labEngine.runRenderLoop(function(){if(!labScene)return;var now=performance.now(),dt=Math.min(.05,Math.max(.001,(now-last)/1000));last=now;labClock+=dt;
-        /* One-shot clips replay so recoil, reload and each death can be reviewed without reselecting. */
-        if(labPose==='fire'&&labClock>1){labClock=0;BattleSoldierModel.triggerAnimation(labSoldier,BattleSoldierModel.TAGS.fire,{});}
-        else if((labPose==='reload'&&labClock>3.4)||(labPose.indexOf('death.')===0&&labClock>3.2)){makePreview();last=now;}
-        var moving=labPose==='walk'||labPose==='walk-aim'||labPose==='crouch-walk'||labPose==='prone-crawl';BattleSoldierModel.animateWalk(labSoldier,dt,moving?.65:0);labScene.render();});
+        if(labSoldier){step(dt);if(now-labellingAt>400){labellingAt=now;describe();}}
+        labScene.render();});
       window.addEventListener('resize',function(){if(labEngine)labEngine.resize();});
     }
     function open(value){panel.hidden=!value;toggle.hidden=!!value;if(value){init();labEngine.resize();}}
-    toggle.addEventListener('click',function(){open(true);});close.addEventListener('click',function(){open(false);});select.addEventListener('change',function(){labPose=select.value;source.textContent=sourceText[labPose]||'';if(labScene)makePreview();});
+    toggle.addEventListener('click',function(){open(true);});close.addEventListener('click',function(){open(false);});select.addEventListener('change',function(){labPose=select.value;if(labScene&&labSoldier)makePreview();});
   })();
   var startBtn=document.getElementById('startBtn');async function unlockAudio(){var ae=BABYLON.Engine.audioEngine;if(!ae){console.error('audioEngine missing');return false;}try{ae.unlock();var ctx=ae.audioContext;if(ctx&&ctx.state==='suspended'&&ctx.resume)await ctx.resume();console.log('audioContext='+(ctx&&ctx.state||'unknown'));return !ctx||ctx.state==='running';}catch(e){console.error('audio unlock failed',e&&e.message||e);return false;}}async function startBattle(){await unlockAudio();battle.resume();startBtn.hidden=true;document.removeEventListener('pointerdown',unlockAudio);document.removeEventListener('touchend',unlockAudio);console.log('battle started');}startBtn.addEventListener('click',startBattle);document.addEventListener('pointerdown',unlockAudio,{once:true});document.addEventListener('touchend',unlockAudio,{once:true});
 

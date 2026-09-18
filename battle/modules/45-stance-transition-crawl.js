@@ -137,7 +137,8 @@ M.setProne=function(s,v){
   return out;
 };
 M.animateWalk=function(s,dt,speed){
-  if(!s)return oldAnimate.apply(this,arguments);
+  /* Only the procedural rig is posed here; an imported skeletal backend owns its own transitions. */
+  if(!s||!s.rig)return oldAnimate.apply(this,arguments);
   detectTransition(s);
   var out=oldAnimate.apply(this,arguments);
   if(s.dead){s._stanceVisualTransition=null;return out;}
