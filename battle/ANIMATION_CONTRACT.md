@@ -94,8 +94,8 @@ and deaths, labelled with the clip files that are playing.
 Drop the animation-only FBX (exported on the same rig, "without skin") into `Assets/animations/`
 and add a key to `CLIPS` in the backend. `BattleFbxSoldier.status(scene)` and
 `BattleFbxSoldier.clip(scene, key)` report what loaded and each clip's duration and natural speed.
-The pack also ships turns, jumps, prone rolls, moving fire and moving reloads that are loaded by
-nobody yet.
+`ANIMATION_CATALOG.md` lists the 31 clips not used yet (turns, prone rolls, kneel set, extra deaths,
+moving fire and reloads, jumps) with lengths, travel and the gameplay signal each would need.
 
 ## Gameplay ownership
 
