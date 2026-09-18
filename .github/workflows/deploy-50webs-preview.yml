@@ -72,6 +72,10 @@ jobs:
           cp battle_sim_local.php .preview/battle_sim.php
           cp battle/battle_sim.html battle/*.js .preview/battle/
           cp battle/modules/*.js .preview/battle/modules/
+          # The branch's own soldier models and clips; the loader points the FBX backend here.
+          for d in soldiers animations; do
+            if [ -d "Assets/$d" ]; then mkdir -p ".preview/Assets/$d" && cp "Assets/$d"/*.fbx ".preview/Assets/$d/"; fi
+          done
           python3 - <<'PY'
           import json, os, datetime
           json.dump({"ref": os.environ["PREVIEW_REF"], "sha": os.environ["PREVIEW_SHA"],

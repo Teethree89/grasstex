@@ -55,7 +55,8 @@ function sceneState(scene){
   if(!st){st={enabled:true,libs:{},clips:null,bones:null,loading:null,ready:false,active:[],error:null};if(scenes)scenes.set(scene,st);else scene._battleFbxSoldier=st;}
   return st;
 }
-function assetBase(){return String(root.BATTLE_ASSET_BASE||'../Assets/').replace(/\/?$/,'/');}
+/* Soldier assets can live beside a branch preview's runtime; everything else is shared. */
+function assetBase(){return String(root.BATTLE_SOLDIER_ASSET_BASE||root.BATTLE_ASSET_BASE||'../Assets/').replace(/\/?$/,'/');}
 
 var loaderPromise=null;
 function ensureLoader(){
