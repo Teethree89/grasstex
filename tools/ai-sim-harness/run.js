@@ -91,10 +91,16 @@ section('a squad in contact stops marching (base of fire)');
   for(let x=-40;x<=40;x+=7)obstacles.push(cover(x,-46,'hedge'));
   for(let x=-40;x<=40;x+=7)obstacles.push(cover(x,46,'hedge'));
   const {root,battle,us}=duel({gap:130,obstacles});
+  /* Only an assault-authorized Captain phase may bound (engagement.js updateSquad). */
+  us.commandPhase='assault';
   H.run(root,battle,3);
-  const anchorAtContact={x:us.orderAnchor.x,z:us.orderAnchor.z};
-  let boundSeconds=0,contactSeconds=0,missedBounds=0;
+  const bounding=()=>battle.time<(us._boundUntil||0);
+  let boundSeconds=0,contactSeconds=0,missedBounds=0,creepInContact=0,last={x:us.orderAnchor.x,z:us.orderAnchor.z,contact:us.inContact,bound:bounding()};
   H.run(root,battle,40,()=>{
+    /* In contact the anchor advances only during an authorised bound (squad-ai.js issueOrders);
+       once contact breaks it may march. Total distance is the dice, creeping outside a bound is not. */
+    if(last.contact&&us.inContact&&!last.bound&&!bounding()&&us.state!=='retreat')creepInContact+=Math.hypot(us.orderAnchor.x-last.x,us.orderAnchor.z-last.z);
+    last={x:us.orderAnchor.x,z:us.orderAnchor.z,contact:us.inContact,bound:bounding()};
     if(us.inContact)contactSeconds+=H.AI_TICK;
     if(battle.time<(us._boundUntil||0))boundSeconds+=H.AI_TICK;
     /* Whether a bound actually happens in any given 40 seconds depends on whether the squad spent
@@ -102,20 +108,20 @@ section('a squad in contact stops marching (base of fire)');
        bound did: every precondition satisfied and still no bound is the regression that stopped
        squads advancing. updateSquad authorises on the same tick the conditions are met, so from
        out here this should never be observable. */
-    if(us.inContact&&(us.effectiveCount||0)>=2&&(us.pinnedCount||0)<(us.effectiveCount||0)&&
+    if(us.inContact&&us._assaultAuthorized&&(us.effectiveCount||0)>=2&&(us.pinnedCount||0)<(us.effectiveCount||0)&&
        battle.time>=(us._nextBoundAt||0)&&battle.time>=(us._boundUntil||0))missedBounds++;
   });
-  const anchorMoved=Math.hypot(us.orderAnchor.x-anchorAtContact.x,us.orderAnchor.z-anchorAtContact.z);
   check('the squad spends the fight in contact',contactSeconds>10,'contact seconds='+contactSeconds.toFixed(1));
   check('a squad that could bound, did',missedBounds===0,missedBounds+' ticks with a base of fire and no bound');
   check('bounds are a fraction of the fight, not the default',boundSeconds<contactSeconds*.6,
     'bound '+boundSeconds.toFixed(1)+'s of '+contactSeconds.toFixed(1)+'s in contact');
-  check('the order anchor advances only in steps',anchorMoved<=70,'moved '+anchorMoved.toFixed(1)+'m in '+contactSeconds.toFixed(0)+'s of contact');
+  check('the order anchor advances in contact only during a bound',creepInContact<=.01,'crept '+creepInContact.toFixed(1)+'m outside a bound during '+contactSeconds.toFixed(0)+'s of contact');
 }
 
 section('bound authorisation needs a base of fire');
 {
   const {root,battle,us}=duel({gap:60});
+  us.commandPhase='assault';
   H.run(root,battle,3);
   /* Everybody pinned: nobody is left shooting, so nobody is sent forward. */
   us.members.forEach(s=>{s.suppressedUntil=battle.time+30;});

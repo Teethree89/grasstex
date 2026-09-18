@@ -1,13 +1,13 @@
 {
   "active_task": null,
-  "last_delivery": null,
+  "last_delivery": {
+    "action": "compact",
+    "completed": true,
+    "delivered_at": "2026-09-18T11:22:37+00:00",
+    "message": "Auto-submitted '/compact' to the focused Claude Code composer. No previous app to restore.",
+    "reason": "context is long",
+    "source": "hook"
+  },
   "pending_clear": null,
-  "queue": [
-    {
-      "action": "compact",
-      "queued_at": "2026-09-14T21:03:14+00:00",
-      "reason": "context is long",
-      "thread_id": "01a0a1b2-13e8-7421-8d7f-9c9ffb0caff7"
-    }
-  ]
+  "queue": []
 }

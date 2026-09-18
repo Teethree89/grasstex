@@ -200,7 +200,10 @@
       routed.point={x:physical.x,z:physical.z};
     }
 
-    var epsilon=(routed||!previous||previous.kind!==pick.kind)?.1:tolerance(pick.kind);
+    var space=root.BattleSoldierPersonalSpace;
+    if(space&&space.resolveDestination)physical=space.resolveDestination(battle,soldier,physical,pick.kind,!!routed);
+
+    var epsilon=(routed||soldier._personalSpaceDestination||!previous||previous.kind!==pick.kind)?.1:tolerance(pick.kind);
     var current=point(soldier.destination),atCurrent=current&&distance({x:+soldier.root.position.x,z:+soldier.root.position.z},current)<ARRIVAL,changed=!current||distance(current,physical)>epsilon,canChange=pick.urgent||!!routed||atCurrent||now(battle)>=(soldier._destinationCommitUntil||0);
     if(changed&&canChange){
       count(battle,'actualChanges',pick.owner);
@@ -211,11 +214,12 @@
     }
     if(routed)st.tacticalWins++;
     var intent=point(pick.intentPoint)||pick.point;
-    st.last={owner:pick.owner,kind:pick.kind,reason:pick.reason||pick.kind,oldGoalValid:!!oldValid,issuedAt:pick.issuedAt,until:pick.until,point:{x:physical.x,z:physical.z},intentPoint:{x:intent.x,z:intent.z},tacticalReason:routed&&routed.reason||null,tacticalStep:routed?{index:routed.step,total:routed.total}:null};
+    var actual=point(soldier.destination)||physical;
+    st.last={owner:pick.owner,kind:pick.kind,reason:pick.reason||pick.kind,oldGoalValid:!!oldValid,issuedAt:pick.issuedAt,until:pick.until,point:{x:actual.x,z:actual.z},intentPoint:{x:intent.x,z:intent.z},tacticalReason:routed&&routed.reason||null,tacticalStep:routed?{index:routed.step,total:routed.total}:null};
     if(pick.owner==='engagement'||pick.owner==='tactical-positions')st.combatWins++;else st.orderWins++;
     return st.last;
   }
-  function resetSoldier(soldier){if(soldier){delete soldier._movementResolver;delete soldier._movementTacticalReason;delete soldier._tacticalRoute;delete soldier._movementLegalGoalCache;delete soldier._movementEndpointResolution;}}
+  function resetSoldier(soldier){if(soldier){delete soldier._movementResolver;delete soldier._movementTacticalReason;delete soldier._tacticalRoute;delete soldier._movementLegalGoalCache;delete soldier._movementEndpointResolution;delete soldier._personalSpaceDestination;}}
   function summary(sim){
     var out=Object.assign({orders:0,combat:0,byKind:{},changed:0,stickyCombatWins:0,tacticalWins:0,bySoldier:[],highestChurnSoldier:null},metrics(sim)),roster=sim&&sim._roster||{},active=0;
     ['us','ge'].forEach(function(f){(roster[f]||[]).forEach(function(s){var st=s._movementResolver;if(!st)return;out.changed+=st.changes||0;

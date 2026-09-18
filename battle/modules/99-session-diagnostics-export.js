@@ -105,6 +105,7 @@ function buildPayload(sim){
     objectiveControl:safePlain(sim.objectiveControl,6),objectiveHold:safePlain(sim.objectiveHold,4),
     ammunition:ammo,
     tacticalPositions:root.BattleTacticalPositions?root.BattleTacticalPositions.summary(sim):null,
+    coverPositions:root.BattleCoverPositions?root.BattleCoverPositions.snapshot(sim):null,
     macroCommand:{enabled:sim.macroCommandEnabled!==false,mode:sim._macroMissionState&&sim._macroMissionState.mode||'event-driven',state:safePlain(sim._macroMissionState,5)},
     ownership:sim._orderProvenance?{events:(sim._orderProvenance.seq||0),conflicts:(sim._orderProvenance.conflicts||[]).length,recentConflicts:safePlain((sim._orderProvenance.conflicts||[]).slice(0,20).map(function(c){return{kind:c.kind,time:c.time,field:c.field,squad:c.squad,soldier:c.soldier,owners:c.owners};}),4)}:null,
     factions:{
