@@ -124,20 +124,31 @@
 
   /* ---- cover ------------------------------------------------------------------------------- */
 
-  function claimedByOther(squad,ob,s,battle){
-    var claims=squad&&squad._coverClaims;if(!claims)return false;
-    for(var i=claims.length-1;i>=0;i--){
-      var c=claims[i];
-      if(c.until<battle.time){claims.splice(i,1);continue;}
-      if(c.ob===ob&&c.id!==s.id)return true;
-    }
-    return false;
+  /* Cover claims belong to the battle, not to one squad, so two squads converging on the same
+     defended ground cannot both take the same obstacle. Arbitration is within a faction: two
+     enemies contesting one rock is a fight, not a coordination failure. Indexed by obstacle so
+     the lookup stays O(1) per candidate on this hot path. */
+  var coverClaims=new WeakMap();
+  function registry(battle){
+    var c=coverClaims.get(battle);
+    if(!c){c={byObstacle:new Map(),bySoldier:new Map(),lastTime:battle.time};coverClaims.set(battle,c);}
+    /* spawnAll resets time to 0 and builds new squads; drop claims held against the old clock. */
+    if(battle.time<c.lastTime){c.byObstacle.clear();c.bySoldier.clear();}
+    c.lastTime=battle.time;
+    return c;
   }
-  function claim(squad,ob,s,battle){
-    if(!squad)return;
-    var claims=squad._coverClaims||(squad._coverClaims=[]);
-    for(var i=claims.length-1;i>=0;i--)if(claims[i].id===s.id)claims.splice(i,1);
-    claims.push({ob:ob,id:s.id,until:battle.time+CLAIM_SECONDS});
+  function drop(c,e){c.byObstacle.delete(e.ob);if(c.bySoldier.get(e.holder)===e)c.bySoldier.delete(e.holder);}
+  function claimedByOther(ob,s,battle){
+    var c=registry(battle),e=c.byObstacle.get(ob);
+    if(!e)return false;
+    if(e.until<battle.time||e.holder.dead){drop(c,e);return false;}
+    return e.holder!==s&&e.holder.faction===s.faction;
+  }
+  function claim(ob,s,battle){
+    var c=registry(battle),prev=c.bySoldier.get(s);
+    if(prev)drop(c,prev);
+    var e={ob:ob,holder:s,until:battle.time+CLAIM_SECONDS};
+    c.byObstacle.set(ob,e);c.bySoldier.set(s,e);
   }
   function coverPointBehind(ob,threat){
     var t=posOf(threat),dx=ob.x-t.x,dz=ob.z-t.z,len=Math.hypot(dx,dz)||1,pad=(+ob.radius||1)+.9;
@@ -150,7 +161,8 @@
     return!!(path&&path.length);
   }
   /* Picks the cover an actual soldier would pick: close, genuinely protective against THIS threat
-     direction, not already taken by a squadmate, and - during a bound - forward of where he is. */
+     direction, not already claimed by another man in the force, and - during a bound - forward
+     of where he is. */
   function findCover(s,battle,opts){
     opts=opts||{};
     var F=field();if(!F)return null;
@@ -160,7 +172,7 @@
     for(var i=0;i<candidates.length;i++){
       var ob=candidates[i],height=F.obstacleHeight(ob);
       if(height<.5||(ob.cover==null?1:+ob.cover)>USEFUL_COVER)continue;
-      if(claimedByOther(s.squad,ob,s,battle))continue;
+      if(claimedByOther(ob,s,battle))continue;
       var pt=coverPointBehind(ob,target),moveD=dist(p.x,p.z,pt.x,pt.z);
       if(moveD>maxRange)continue;
       if(root.BattleAssaultForwardGuard&&!root.BattleAssaultForwardGuard.allowCover(s,battle,pt))continue;
@@ -183,7 +195,7 @@
       var incumbentScore=(1-incumbent.quality)*40-dist(p.x,p.z,incumbent.x,incumbent.z);
       if(bestScore<incumbentScore+4)return incumbent;
     }
-    if(best)claim(s.squad,best.obstacle,s,battle);
+    if(best)claim(best.obstacle,s,battle);
     return best;
   }
 
@@ -593,7 +605,7 @@
   }
   function resetSquad(sq){
     sq.inContact=false;sq.contactSince=null;sq.contactCount=0;sq.contact=null;sq.suppressorCount=0;sq._boundUntil=0;sq._nextBoundAt=0;
-    sq._boundTeam=null;sq._boundTurn=null;sq._coverClaims=null;sq._assaultAuthorized=false;
+    sq._boundTeam=null;sq._boundTurn=null;sq._assaultAuthorized=false;
   }
 
   root.BattleEngagement={
