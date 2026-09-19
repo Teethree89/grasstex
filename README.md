@@ -382,3 +382,44 @@ The streamer consumes the complete deterministic RNG sequence for each candidate
 ## Current integration boundary
 
 The placement/terrain API is reusable, while the visual renderer still relies on demo globals such as `scene`, `camera`, `nearTypes`, `medTypes`, `farTypes`, `density`, and `CHUNK`. A future package cleanup can wrap those globals behind a `GrassSystem` class without changing the placement or terrain-sampling interface documented above.
+
+## CI and workflows
+
+`.github/workflows/ci.yml` is the gate for pull requests. Four jobs, a couple of minutes end
+to end:
+
+| Job | What it proves |
+| --- | --- |
+| **Syntax** | `node --check` over every JS file, `php -l`, `py_compile`, `bash -n`, and a JSON parse |
+| **Audio library** | the manifest resolves both ways, recipes are collision-free, every declared category has a mastering target, and the mastering pass changes nothing |
+| **Sim regressions** | every check in `tools/ai-sim-harness` plus the engagement harness across 8 seeds |
+| **Deploy plan** | runtime coverage, and a real upload plan built against a bare remote |
+
+The remaining workflows publish or profile rather than check, so they stay separate: the
+50webs production and branch-preview deploys, the tag-triggered battle benchmarks
+(`benchmark-*`, `standard-benchmark-*`), and the hot-path profiler.
+
+Three workflows were removed once CI covered their ground:
+
+- `validate-simplify.yml` ran the sim regression suite only on a branch named
+  `simplify-v134`, which does not exist. The suite now runs on every pull request, including
+  four checks that workflow never referenced.
+- `normalize-audio.yml` re-mastered audio and committed the result to `main`. That is how
+  284 pointlessly re-encoded MP3s landed there, and because its push trigger had no branch
+  filter while the job ended in `git push origin HEAD:main`, any branch touching
+  `scripts/normalize_audio.sh` published itself to `main` — which deploys live. CI asserts
+  the mastering standard on the pull request instead, so a change has to arrive correct
+  rather than be rewritten behind you. Remaster locally with
+  `bash scripts/normalize_audio.sh Assets/audio`.
+- `deploy.yml` did nothing but echo that it was disabled.
+
+## Battle sim audio
+
+Sound assets, how to add more, and the licence terms attached to the current ones:
+
+- `Assets/audio/PIPELINE.md` — fetch, slice, master, register, and what CI enforces at each
+  step. Audio work goes on the `audio-import` branch.
+- `Assets/audio/MASTERING.md` — the loudness standard. One-shots are levelled on the loudest
+  100 ms rather than EBU R128 integrated loudness, which gates out a 0.3 s rifle crack.
+- `Assets/audio/ACOUSTICS.md` — runtime propagation, distance attenuation and culling.
+- `Assets/audio/WW2_SOURCES.md` — per-weapon provenance and licensing.
