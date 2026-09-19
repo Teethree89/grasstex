@@ -39,6 +39,9 @@ var WEAPON_MODELS={
   us:{rifle:'m1-garand.fbx',carbine:'m1-garand.fbx',lmg:'m1919a6.fbx'},
   ge:{rifle:'kar98k.fbx',carbine:'kar98k.fbx',lmg:'mg42.fbx'}
 },WEAPON_BUTT=.40;
+/* Machine guns also come with the bipod deployed; that copy replaces the folded one while the gunner
+   is settled prone. Same layout (grip, fore-end, muzzle), only the legs differ. */
+var WEAPON_BIPOD={'m1919a6.fbx':'m1919a6-bipod.fbx','mg42.fbx':'mg42-bipod.fbx'};
 
 /* key -> [clip file (Assets/animations/<name>.fbx), loops]. Directional locomotion is generated
    below as <family><sector>, sector 0..7 clockwise from forward. */
@@ -50,12 +53,31 @@ var CLIPS={
   fire:['Fire Rifle Single Shot',0],fireCrouch:['Fire Rifle Single Shot Crouched Kneel',0],fireProne:['Fire Rifle Single Shot Prone',0],
   fireAuto:['Fire Rifle Automatic Standing',1],fireAutoProne:['Fire Rifle Automatic Prone',1],
   reload:['Rifle Reload Standing',0],reloadCrouch:['Rifle Reload Crouched',0],reloadProne:['Rifle Reload Prone',0],
-  toProne:['Rifle Kneel To Prone',0],fromProne:['Rifle Prone To Kneel',0],
-  /* death.front is a forward collapse, i.e. the pack's "shot from the back". */
+  /* Stance changes. Stand<->crouch clips play only when the soldier is standing still. */
+  standToCrouch:['stand to crouch',0],crouchToStand:['crouch to stand',0],crouchToProne:['crouch to prone',0],proneToCrouch:['prone to crouch',0],
+  /* Non-lethal hits (combat.hit). */
+  hit:['hit reaction',0],hitCrouch:['hit reaction crouched',0],hitProne:['hit reaction prone',0],hitRun:['hit reaction running',0],
+  /* Captains carry the pistol: its own aimed idle, kneel and locomotion. */
+  pistolIdle:['pistol idle aiming',1],pistolKneel:['pistol kneel idle',1],pistolHit:['pistol hit reaction',0],
+  /* Deaths, grouped into pools below. death.front is a forward collapse (shot from behind). */
   deathFront:['death from the back',0],deathBack:['death from the front',0],deathSide:['death from right',0],
-  deathCrouch:['death crouching headshot front',0],deathProne:['Prone Death',0]
+  deathBackHeadKnees:['death back of head two knees',0],deathBackOneKnee:['death from back one knee',0],deathHitGround:['death hit to ground',0],
+  deathChestKnees:['death chest two knees',0],deathHeadKnees:['death head two knees',0],deathFrontHeadKnees:['death front head two knees',0],
+  deathCrouch:['death crouching headshot front',0],deathCrouched:['death crouched',0],deathProne:['Prone Death',0],deathRunning:['death running',0]
 };
 Object.keys(FAMILIES).forEach(function(f){DIRS.forEach(function(d,i){CLIPS[f+i]=[FAMILIES[f]+d,1];});});
+/* Four-way in-place families (forward, right, backward, left); diagonals use forward or backward. */
+var FOUR_WAY={
+  crouchRun:['crouch run forward','crouch run right','crouch run backward','crouch run left'],
+  pistolWalk:['pistol walk forward','pistol strafe right','pistol walk backward','pistol strafe left'],
+  pistolRun:['pistol run forward','pistol strafe right','pistol run backward','pistol strafe left']
+};
+Object.keys(FOUR_WAY).forEach(function(f){var c=FOUR_WAY[f],pick=[0,0,1,2,2,2,3,0];for(var i=0;i<8;i++)CLIPS[f+i]=[c[pick[i]],1];});
+var DEATH_POOLS={
+  front:['deathFront','deathBackHeadKnees','deathBackOneKnee','deathChestKnees'],
+  back:['deathBack','deathHitGround','deathHeadKnees','deathFrontHeadKnees'],
+  side:['deathSide','deathChestKnees'],crouch:['deathCrouch','deathCrouched'],prone:['deathProne'],running:['deathRunning']
+};
 
 /* Bones the aim/fire/reload overlay owns. Everything else follows the lower layer. */
 var UPPER={Spine02:1,Spine01:1,Spine:1,neck:1,Head:1,LeftShoulder:1,LeftArm:1,LeftForeArm:1,LeftHand:1,RightShoulder:1,RightArm:1,RightForeArm:1,RightHand:1};
@@ -291,14 +313,53 @@ function retargetClips(lib,src,clips,bones){
     }
     copy.channels=chans;
   });
+  /* In-place loops have no travel: use the stride speed. Root-motion loops keep their measured
+     travel (the stride estimate is kept alongside for diagnostics). */
+  Object.keys(out).forEach(function(key){
+    var c=out[key];if(!c.loop)return;c.stride=strideSpeed(lib,c,bones);
+    if(c.speed<.05&&c.stride>0)c.speed=c.stride;
+  });
   lib.clips=out;lib.retargeted=!(worst<1e-4&&Math.abs(k-1)<1e-3);
   return out;
+}
+
+/* Natural ground speed of an in-place clip, read from its feet: while a foot is planted it slides
+   backwards under the hips at the speed the body would travel. Forward kinematics runs from the
+   hips to each foot on the model's own rest offsets; for every frame the lower foot (by at least a
+   few centimetres) is the planted one, and the median of its horizontal speed relative to the hips
+   is the stride speed, in metres per second. */
+var skA=new MX(),skB=new MX(),skQ=new Q(),skP=new V3(),skOne=new V3(1,1,1);
+function strideSpeed(lib,clip,bones){
+  var hipsNode=lib.nodes.Hips;if(!hipsNode)return 0;
+  var index={};bones.forEach(function(b,i){index[b]=i;});
+  var unit=lib.hipsHeight/Math.max(1e-6,Math.abs(hipsNode.position.z)||hipsNode.position.length());
+  var feet=['LeftFoot','RightFoot'].map(function(name){var chain=[],node=lib.nodes[name];while(node&&node!==hipsNode){chain.unshift(node);node=node.parent;}return node?chain:null;});
+  if(!feet[0]||!feet[1])return 0;
+  function localOf(node,frame,out){
+    var i=index[node.name],ch=i!=null?clip.channels[i]:null,r=ch&&ch.rot,a=frame*4;
+    if(r)skQ.set(r[a],r[a+1],r[a+2],r[a+3]);else skQ.copyFrom(node.rotationQuaternion||Q.FromEulerVector(node.rotation));
+    MX.ComposeToRef(skOne,skQ,node.position,out);return out;
+  }
+  function footAt(chain,frame){
+    /* Hips rotation only (its horizontal travel is what the stride is measured against). */
+    localOf(hipsNode,frame,skB);skB.setTranslationFromFloats(0,0,0);
+    for(var c=0;c<chain.length;c++){localOf(chain[c],frame,skA);skA.multiplyToRef(skB,skB);}
+    return skB.getTranslation();
+  }
+  var speeds=[],prev=null,fps=FPS,gap=.03/unit;
+  for(var f=0;f<clip.frames;f++){
+    var l=footAt(feet[0],f),r=footAt(feet[1],f),planted=l.z<r.z-gap?0:(r.z<l.z-gap?1:-1),pos=planted===0?l:r;
+    if(prev&&planted>=0&&planted===prev.planted)speeds.push(Math.sqrt((pos.x-prev.pos.x)*(pos.x-prev.pos.x)+(pos.y-prev.pos.y)*(pos.y-prev.pos.y))*fps*unit);
+    prev={planted:planted,pos:pos};
+  }
+  if(!speeds.length)return 0;speeds.sort(function(a,b){return a-b;});
+  return speeds[Math.floor(speeds.length/2)];
 }
 
 /* The rifle rides the right hand rigidly. Its offset is solved once from the aiming clip: in that
    pose the barrel points straight at the target (model +Z, level), with the weapon's grip in the
    right palm. The result is stored in the hand's local space, so every clip then carries it. */
-function solveGrips(lib,aim,bones){
+function solveGrips(lib,aim,bones,kinds){
   var nodes=lib.nodes,saved=[];
   bones.forEach(function(name,i){
     var n=nodes[name],ch=aim.channels[i];if(!n||!ch)return;
@@ -312,14 +373,14 @@ function solveGrips(lib,aim,bones){
   var rightPalm=V3.TransformCoordinates(lib.palms.RightHand,hand),leftPalm=V3.TransformCoordinates(lib.palms.LeftHand,left);
   var z=new V3(0,0,1),x=V3.Cross(V3.Up(),z).normalize(),y=V3.Cross(z,x).normalize(),hands=leftPalm.subtract(rightPalm);
   var rotation=Q.RotationQuaternionFromAxis(x,y,z),basis=new MX(),inv=hand.clone().invert(),grips={};rotation.toRotationMatrix(basis);
-  Object.keys(WEAPON_POINTS).forEach(function(kind){
+  kinds.forEach(function(kind){
     var g=WEAPON_POINTS[kind].grip,offset=V3.TransformNormal(new V3(g[0],g[1],g[2]).scale(1/lib.scale),basis);
     var origin=rightPalm.subtract(offset),s=1/lib.scale;
     grips[kind]=MX.Compose(new V3(s,s,s),rotation,origin).multiply(inv);
   });
   saved.forEach(function(e){e[0].position.copyFrom(e[1]);if(e[2])e[0].rotationQuaternion.copyFrom(e[2]);});
   lib.top.getDescendants(false).forEach(function(n){if(n.computeWorldMatrix)n.computeWorldMatrix(true);});
-  lib.grips=grips;
+  Object.keys(grips).forEach(function(k){lib.grips[k]=grips[k];});
   /* Diagnostic: how far the support hand sits from the barrel line in the calibration pose. */
   lib.supportHand={along:+(V3.Dot(hands,z)*lib.scale).toFixed(3),off:+(hands.subtract(z.scale(V3.Dot(hands,z))).length()*lib.scale).toFixed(3)};
 }
@@ -342,7 +403,7 @@ function prepareWeapon(container,name){
 }
 function loadWeapons(scene,st,base){
   st.weapons={};var files={};
-  Object.keys(WEAPON_MODELS).forEach(function(f){Object.keys(WEAPON_MODELS[f]).forEach(function(kind){files[WEAPON_MODELS[f][kind]]=1;});});
+  Object.keys(WEAPON_MODELS).forEach(function(f){Object.keys(WEAPON_MODELS[f]).forEach(function(kind){var file=WEAPON_MODELS[f][kind];files[file]=1;if(WEAPON_BIPOD[file])files[WEAPON_BIPOD[file]]=1;});});
   return Promise.all(Object.keys(files).map(function(file){
     return loadContainer(scene,base+'weapons/'+file).then(function(c){st.weapons[file]=prepareWeapon(c,file);})
       .catch(function(e){console.warn('[ANIM] weapon model '+file+' unavailable; box weapon stays',e);});
@@ -356,11 +417,13 @@ function loadLibrary(scene){
       return loadContainer(scene,base+'soldiers/'+MODELS[faction]).then(function(c){st.libs[faction]=prepareModel(c);st.libs[faction].faction=faction;});
     }).concat([loadWeapons(scene,st,base)]));
   }).then(function(){
-    return Promise.all(Object.keys(CLIPS).map(function(key){
-      return loadContainer(scene,base+'animations/'+encodeURIComponent(CLIPS[key][0])+'.fbx').then(function(c){
-        try{if(!st.src){st.src=sourceRig(c);st.bones=st.src.bones;}return convertClip(c,key,CLIPS[key],st.bones);}finally{c.dispose();}
+    /* Each file loads once, however many keys use it. */
+    var byFile={};Object.keys(CLIPS).forEach(function(key){(byFile[CLIPS[key][0]]||(byFile[CLIPS[key][0]]=[])).push(key);});
+    return Promise.all(Object.keys(byFile).map(function(file){
+      return loadContainer(scene,base+'animations/'+encodeURIComponent(file)+'.fbx').then(function(c){
+        try{if(!st.src){st.src=sourceRig(c);st.bones=st.src.bones;}return byFile[file].map(function(key){return convertClip(c,key,CLIPS[key],st.bones);});}finally{c.dispose();}
       });
-    }));
+    })).then(function(groups){return[].concat.apply([],groups);});
   }).then(function(list){
     st.clips={};list.forEach(function(clip){st.clips[clip.key]=clip;});
     Object.keys(st.libs).forEach(function(f){retargetClips(st.libs[f],st.src,st.clips,st.bones);});
@@ -369,7 +432,11 @@ function loadLibrary(scene){
       if(list.some(function(c){return!!c.channels[i];}))st.animated.push(i);
       st.upper[i]=!!UPPER[name];
     });
-    Object.keys(st.libs).forEach(function(f){solveGrips(st.libs[f],st.libs[f].clips.aim,st.bones);});
+    Object.keys(st.libs).forEach(function(f){
+      var lib=st.libs[f];lib.grips={};
+      solveGrips(lib,lib.clips.aim,st.bones,Object.keys(WEAPON_POINTS).filter(function(k){return k!=='pistol';}));
+      solveGrips(lib,lib.clips.pistolIdle,st.bones,['pistol']);
+    });
     hookRender(scene,st);st.ready=true;
     console.log('[ANIM] FBX soldiers ready: '+MODEL_SET+' '+Object.keys(st.libs).map(function(f){return f+(st.libs[f].retargeted?' (retargeted)':'');}).join('/')+', weapons '+Object.keys(st.weapons||{}).join(' ')+', '+list.length+' clips, '+st.animated.length+' animated bones, '+(Date.now()-started)+' ms'+(SMOOTH_NORMALS?', smoothed normals':''));
     return true;
@@ -440,6 +507,7 @@ function topEntry(layer){return layer.entries[layer.entries.length-1]||null;}
 function play(tag,data,soldier){
   var fx=soldier&&soldier._fbx;if(!fx)return;
   if(tag===TAGS.fire)fx.fireShot++;
+  else if(tag===TAGS.hit)fx.hitShot=(fx.hitShot||0)+1;
   else if(tag===TAGS.reload){fx.reloadShot++;fx.reloadDuration=+(data&&data.duration)||(soldier.weapon&&soldier.weapon.stats&&soldier.weapon.stats.reloadTime)||2.5;}
 }
 function clamp(v,a,b){return v<a?a:(v>b?b:v);}
@@ -449,9 +517,9 @@ function sectorOf(fx,angle){
   if(Math.abs(diff)<step*.5+.14)return current;
   return((Math.round(angle/step)%8)+8)%8;
 }
-function familyOf(fx,clips,speed){
+function familyOf(fx,clips,speed,families){
   var best=null,bestCost=Infinity;
-  ['walk','run','sprint'].forEach(function(f){
+  families.forEach(function(f){
     var natural=clips[f+'0'].speed||1,cost=Math.abs(Math.log(Math.max(.05,speed)/natural));
     if(f===fx.family)cost-=.18;
     if(cost<bestCost){bestCost=cost;best=f;}
@@ -461,7 +529,7 @@ function familyOf(fx,clips,speed){
 function update(soldier,state,dt){
   var fx=soldier._fbx;if(!fx)return false;
   var clips=fx.lib.clips;dt=Math.max(0,+dt||0);
-  if(soldier.weapon&&soldier.weapon.kind){fx.weaponKind=soldier.weapon.kind;fx.weaponModel=soldier.weapon.model||null;}
+  if(soldier.weapon&&soldier.weapon.kind){fx.weaponKind=soldier.weapon.kind;fx.weaponModel=soldier.weapon.model||null;fx.weapon=soldier.weapon;}
 
   /* Ground velocity from what navigation actually did this step, in the soldier's own frame. */
   var p=soldier.root.position;
@@ -471,9 +539,11 @@ function update(soldier,state,dt){
   var k=1-Math.exp(-dt*9);fx.vx+=(vx-fx.vx)*k;fx.vz+=(vz-fx.vz)*k;fx.speed=Math.sqrt(fx.vx*fx.vx+fx.vz*fx.vz);
 
   if(soldier.dead){
+    fx.bipod=false;
     if(!fx.death){
-      var v=soldier.deathVariant==='front'?'deathFront':(soldier.deathVariant==='back'?'deathBack':'deathSide');
-      if(fx.stance==='prone')v='deathProne';else if(fx.stance==='crouch'&&v==='deathFront')v='deathCrouch';
+      /* Pick from the pool for how he fell; a soldier cut down at a run carries his momentum. */
+      var pool=fx.stance==='prone'?'prone':(fx.stance==='crouch'?'crouch':(fx.speed>2.4&&fx.moving&&Math.abs(fx.heading||0)<.8?'running':(soldier.deathVariant==='front'||soldier.deathVariant==='back'?soldier.deathVariant:'side')));
+      var keys=DEATH_POOLS[pool].filter(function(k){return!!clips[k];}),v=keys[Math.floor(Math.random()*keys.length)]||'deathSide';
       fx.death=v;setClip(fx.lower,clips[v],1,.18,true,false);
     }
     fx.overlayTarget=0;fx.aimWanted=false;advance(fx,dt);return true;
@@ -483,40 +553,53 @@ function update(soldier,state,dt){
   var stance=soldier.prone?'prone':(soldier.crouching?'crouch':'stand');
   if(fx.stance==null)fx.stance=stance;
   if(stance!==fx.stance){
-    /* Kneel<->prone clips carry the body through the ground change; stand<->crouch is a blend. */
-    fx.transition=stance==='prone'?'toProne':(fx.stance==='prone'?'fromProne':null);
-    if(fx.transition)setClip(fx.lower,clips[fx.transition],1.5,.22,true,false);
+    /* Crouch<->prone clips carry the body through the ground change (from standing too). The
+       stand<->crouch clips only play from a standstill; on the move the change is a blend, so the
+       legs keep walking. */
+    var still=!fx.moving,from=fx.stance;
+    fx.transition=stance==='prone'?'crouchToProne':(from==='prone'?'proneToCrouch':(still&&from==='stand'?'standToCrouch':(still&&stance==='stand'?'crouchToStand':null)));
+    var TR_RATE={crouchToProne:1.35,proneToCrouch:1.35,standToCrouch:1.8,crouchToStand:1.5};
+    if(fx.transition&&clips[fx.transition])setClip(fx.lower,clips[fx.transition],TR_RATE[fx.transition],.2,true,false);else fx.transition=null;
     fx.stance=stance;
   }
   if(fx.transition){
-    var tr=topEntry(fx.lower);
-    if(tr&&tr.clip.key===fx.transition&&tr.t<tr.clip.duration-.3*tr.rate){fx.overlayTarget=0;fx.aimWanted=false;advance(fx,dt);return true;}
+    var tr=topEntry(fx.lower),quick=fx.transition==='standToCrouch'||fx.transition==='crouchToStand';
+    /* A soldier who sets off mid stand/crouch change drops the clip and walks. */
+    if(tr&&tr.clip.key===fx.transition&&tr.t<tr.clip.duration-.3*tr.rate&&!(quick&&fx.speed>.5)){fx.overlayTarget=0;fx.aimWanted=false;fx.bipod=false;advance(fx,dt);return true;}
     fx.transition=null;
   }
 
+  fx.bipod=stance==='prone';
   var speed=fx.speed,moving=stance==='prone'?(fx.moving?speed>.1:speed>.22):(fx.moving?speed>.18:speed>.35);fx.moving=moving;
   var yaw=soldier.root.rotation.y||0,sin=Math.sin(yaw),cos=Math.cos(yaw);
   var forward=fx.vx*sin+fx.vz*cos,right=fx.vx*cos-fx.vz*sin,angle=Math.atan2(right,forward);
-  var clip,rate=1;
-  if(!moving){clip=clips[stance==='prone'?'proneIdle':(stance==='crouch'?'crouchIdle':'idle')];fx.family=null;}
+  fx.heading=angle;
+  var pistol=fx.weaponKind==='pistol',clip,rate=1;
+  if(!moving){clip=clips[stance==='prone'?'proneIdle':(stance==='crouch'?(pistol?'pistolKneel':'crouchIdle'):(pistol?'pistolIdle':'idle'))];fx.family=null;}
   else if(stance==='prone'){clip=clips[Math.abs(angle)<1.9?'proneForward':'proneBackward'];rate=clamp(speed/(clip.speed||.3),.6,2.2);}
   else{
-    var family=stance==='crouch'?'crouch':familyOf(fx,clips,speed);fx.family=family;
+    var families=stance==='crouch'?['crouch','crouchRun']:(pistol?['pistolWalk','pistolRun']:['walk','run','sprint']);
+    var family=familyOf(fx,clips,speed,families);fx.family=family;
     fx.sector=sectorOf(fx,angle);clip=clips[family+fx.sector];rate=clamp(speed/(clip.speed||1.5),.55,1.8);
   }
   setClip(fx.lower,clip,rate,.25,false,true);
 
   var over=null,orate=1,restart=false;
-  fx.fireHold=Math.max(0,fx.fireHold-dt);
-  if(fx.fireShot!==fx.fireSeen){fx.fireSeen=fx.fireShot;fx.fireHold=.9;restart=fx.weaponKind!=='lmg';}
+  fx.fireHold=Math.max(0,fx.fireHold-dt);fx.hitHold=Math.max(0,(fx.hitHold||0)-dt);
+  if(fx.fireShot!==fx.fireSeen){fx.fireSeen=fx.fireShot;fx.fireHold=.9;restart=fx.weaponKind!=='lmg'&&!pistol;}
   if(fx.reloadShot!==fx.reloadSeen){fx.reloadSeen=fx.reloadShot;restart=true;}
-  if(soldier.reloading){
+  var hitKey=stance==='prone'?'hitProne':(stance==='crouch'?'hitCrouch':(pistol?'pistolHit':(fx.speed>2.4?'hitRun':'hit')));
+  var HIT_RATE={hit:1,hitCrouch:1.6,hitProne:1.2,hitRun:1,pistolHit:2.2};
+  if((fx.hitShot||0)!==(fx.hitSeen||0)){fx.hitSeen=fx.hitShot;fx.hitKey=hitKey;fx.hitHold=clips[hitKey].duration/HIT_RATE[hitKey];restart=true;}
+  if(fx.hitHold>0){over=fx.hitKey;orate=HIT_RATE[over];}
+  else if(soldier.reloading){
     over=stance==='prone'?'reloadProne':(stance==='crouch'?'reloadCrouch':'reload');
     orate=clips[over].duration/Math.max(.5,fx.reloadDuration);
   }else if(fx.fireHold>0){
     var auto=fx.weaponKind==='lmg';
-    over=stance==='prone'?(auto?'fireAutoProne':'fireProne'):(auto?'fireAuto':(stance==='crouch'?'fireCrouch':'fire'));orate=auto?1:1.3;
-  }else if(soldier.target&&stance!=='prone'){over=stance==='crouch'?'crouchAim':'aim';restart=false;}
+    if(pistol&&stance!=='prone'){over=stance==='crouch'?'pistolKneel':'pistolIdle';restart=false;}
+    else{over=stance==='prone'?(auto?'fireAutoProne':'fireProne'):(auto?'fireAuto':(stance==='crouch'?'fireCrouch':'fire'));orate=auto?1:1.3;}
+  }else if(soldier.target&&stance!=='prone'){over=pistol?(stance==='crouch'?'pistolKneel':'pistolIdle'):(stance==='crouch'?'crouchAim':'aim');restart=false;}
   else restart=false;
   if(over){setClip(fx.upper,clips[over],orate,.16,restart,false);fx.overlayTarget=1;}else fx.overlayTarget=0;
   var t=soldier.target&&soldier.target.root&&soldier.target.root.position;
@@ -550,7 +633,12 @@ function sampleLayer(layer,bone,q,pos){
   q.normalize();if(hasPos)pos.scaleInPlace(1/total);
   return hasPos?2:1;
 }
+function showBipod(fx){
+  var w=fx.weapon;if(!w||!w.bipodMesh||w.bipodMesh.isDisposed())return;
+  if(w.bipodMesh.isEnabled()!==!!fx.bipod){w.bipodMesh.setEnabled(!!fx.bipod);w.mesh.setEnabled(!fx.bipod);}
+}
 function applyPose(fx){
+  showBipod(fx);
   var st=fx.st,nodes=fx.nodes,animated=st.animated,overlay=fx.overlay>.001&&fx.upper.entries.length;
   for(var n=0;n<animated.length;n++){
     var i=animated[n],node=nodes[i];if(!node)continue;
@@ -667,6 +755,8 @@ if(oldAttach)Weapons.attachWeapon=function(scene,socket,kind){
   if(model){
     var mesh=model.mesh.clone('weapon.'+faction,socket);mesh.position.set(0,0,0);mesh.isPickable=false;
     weapon.mesh.dispose();weapon.mesh=mesh;weapon.muzzleLocal=model.muzzle.slice();weapon.model=model.name;
+    var bipod=WEAPON_BIPOD[file]&&st.weapons[WEAPON_BIPOD[file]];
+    if(bipod){weapon.bipodMesh=bipod.mesh.clone('weapon.'+faction+'.bipod',socket);weapon.bipodMesh.position.set(0,0,0);weapon.bipodMesh.isPickable=false;weapon.bipodMesh.setEnabled(false);}
   }
   return weapon;
 };
@@ -691,7 +781,10 @@ root.BattleFbxSoldier={
   version:'1.1',backend:BACKEND,clips:CLIPS,models:MODELS,modelSet:MODEL_SET,
   load:loadLibrary,
   status:function(scene){var st=sceneState(scene);return{ready:st.ready,enabled:st.enabled,error:st.error?String(st.error.message||st.error):null,active:st.active.length,clips:st.clips?Object.keys(st.clips).length:0,bones:st.bones?st.bones.length:0};},
-  clip:function(scene,key){var st=sceneState(scene);return st.clips&&st.clips[key]||null;}
+  clip:function(scene,key){var st=sceneState(scene);return st.clips&&st.clips[key]||null;},
+  /* Per-model clip timing: natural speed (m/s), stride estimate, duration, loop. */
+  speeds:function(scene,faction){var st=sceneState(scene),lib=st.libs[faction||'us'],out={};if(!lib||!lib.clips)return out;
+    Object.keys(lib.clips).forEach(function(k){var c=lib.clips[k];out[k]={speed:+(c.speed||0).toFixed(2),stride:c.stride!=null?+c.stride.toFixed(2):null,travel:+((c.travel||0)*lib.speedScale).toFixed(2),duration:+c.duration.toFixed(2),loop:c.loop};});return out;}
 };
 console.log('[ANIM] FBX soldier backend installed (models + clips load with the battle)');
 })(typeof window!=='undefined'?window:globalThis);

@@ -84,8 +84,11 @@
     /* The muzzle flash itself is drawn by the core onFire through BattleMuzzleFlash.show. */
     sim.onShot=function(shooter,target,hit,d,shot){
       var from=muzzleWorld(shooter);
+      /* Ballistic shots get their tracer here; the shot is marked so the core's legacy tracer
+         skips it, but the event still travels down the chain (hit reactions listen there). */
       if(shot&&shot.mode==='raycast'&&shot.impact&&from){
-        var impact=vec3(shot.impact);if(hit)hitTracer(sim.scene,from,impact);else missTracer(sim.scene,from,impact);return;
+        var impact=vec3(shot.impact);if(hit)hitTracer(sim.scene,from,impact);else missTracer(sim.scene,from,impact);
+        shot.tracerDrawn=true;if(oldShot)oldShot.apply(sim,arguments);return;
       }
       if(oldShot)oldShot.apply(sim,arguments);
       if(hit||!shooter||!target||!target.root||!from)return;

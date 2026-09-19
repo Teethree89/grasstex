@@ -13,6 +13,7 @@ The battle lab deliberately separates gameplay/AI state from the rendered soldie
 | `combat.aim` | shouldered weapon / target tracking |
 | `combat.fire` | one firing impulse / recoil event |
 | `combat.reload` | weapon reload cycle |
+| `combat.hit` | a hit the soldier survives (hit reaction) |
 | `stance.stand` | standing stance |
 | `stance.crouch` | crouched stance |
 | `stance.prone` | prone stance |
@@ -44,6 +45,9 @@ as the FBX Motion Lab (`fbx-animation-lab.html`).
   `Left/RightShoulder/Arm/ForeArm/Hand`, `Left/RightUpLeg/Leg/Foot/ToeBase`), so channels bind by
   bone name. The loader's `*__fbx_inheritScale` helper nodes only duplicate their parent's
   channel and are dropped.
+- **In-place clips.** A clip with no hips travel gets its natural speed from its feet instead: the
+  median backward speed of the planted foot relative to the hips (within ~7% of the measured
+  travel for walks, ~10-20% for runs; it under-reads sprints).
 - **Conversion, once per page load.** Each clip is resampled to 30 fps typed arrays. Looping clips
   have the linear horizontal `Hips` drift removed (in place, sway kept); that drift is kept as the
   clip's natural ground speed. Non-looping clips (deaths, stance changes) keep their travel.
@@ -78,11 +82,16 @@ displacement each simulation step, then:
   (single shot per `combat.fire`; LMG uses the automatic loop), reload (rate stretched to the
   weapon's reload time). The overlay's torso is re-expressed under the lower layer's hips, so
   walking legs do not twist the aim.
-- **Stance changes:** kneel-to-prone and prone-to-kneel clips carry the body through the ground
-  change; stand/crouch is a cross-fade.
-- **Deaths:** `death.front` (forward collapse) plays the pack's "death from the back",
-  `death.back` plays "death from the front", `death.side` plays "death from right"; crouched and
-  prone soldiers use the crouching/prone deaths.
+- **Stance changes:** crouch-to-prone (also used from standing) and prone-to-crouch carry the body
+  through the ground change; stand-to-crouch and crouch-to-stand play only from a standstill (on
+  the move they are a cross-fade, so the legs keep walking).
+- **Crouched movement** picks crouch walk or crouch run (4-way, in place) by speed.
+- **Captains (pistol)** use the aimed-pistol idle, kneel, walk, run and strafes.
+- **Hit reactions:** `combat.hit` (raised by the animation bridge for any hit the soldier survives,
+  using the ballistic shot's actual victim) plays a short upper-body reaction for the stance.
+- **Deaths:** each variant draws at random from a pool (`DEATH_POOLS`): forward collapses, backward
+  collapses and falls to the knees; crouched and prone soldiers have their own; a soldier cut down
+  at a run keeps his momentum.
 - **Weapon:** each hand gets a palm-centre anchor at load (the centroid of the vertices skinned to
   it, stored in the hand bone's space, like an added socket bone). The weapon's grip point sits on
   the right palm; the barrel swings so the fore-end line (`WEAPON_POINTS` in the backend) passes
