@@ -56,14 +56,11 @@ python3 scripts/fetch_sonniss_ww2.py fetch 2016 --parts 2 4 --out .runtime/sonni
 python3 scripts/fetch_sonniss_ww2.py fetch 2019 --parts 1 --pattern howitzer --out .runtime/sonniss-ww2
 
 python3 scripts/slice_weapon_shots.py scripts/recipes/ww2-sonniss.json
-bash scripts/normalize_audio.sh Assets/audio/weapons
-bash scripts/normalize_audio.sh Assets/audio/vehicles
-bash scripts/normalize_audio.sh Assets/audio/ambience
+bash scripts/normalize_audio.sh Assets/audio
 ```
 
 The raw pulls stay in `.runtime/sonniss-ww2/` and are gitignored; only the sliced, mastered
-MP3s are committed. Run `normalize_audio.sh` against the individual directories rather than
-`Assets/audio`, or it re-encodes all ~190 committed voice callouts for no benefit.
+MP3s are committed.
 
 ## Slicing
 
@@ -77,8 +74,10 @@ recipe entries name explicit `segments` time ranges picked off the level profile
 
 ## Mastering
 
-Mastering is `scripts/normalize_audio.sh` against the targets in `MASTERING.md`, unchanged
-apart from two additions this work needed: a `-20 LUFS` row for weapon handling foley, and
-a true-peak limiter after `loudnorm`. The limiter matters here because a rifle crack has a
-30 dB crest factor, which puts it in the short/transient class where `loudnorm` falls back
-to a single pass and can overshoot the ceiling.
+Mastering is `scripts/normalize_audio.sh` against the targets in `MASTERING.md`. Levelling
+these packs is what prompted the one-shot standard documented there: mastered to integrated
+loudness they spanned 17 dB of perceived level, and on the loudest-100 ms measure they sit
+inside about 4 dB.
+
+Run the script against the whole tree (`bash scripts/normalize_audio.sh Assets/audio`); it
+skips anything whose recorded hash still matches, so only new or changed clips are touched.
