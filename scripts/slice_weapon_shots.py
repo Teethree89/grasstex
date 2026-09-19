@@ -48,7 +48,10 @@ def find_shots(samples, min_gap_s, tail_drop_db, max_len_s):
         return []
 
     floor = max(np.median(env), env.max() * 1e-4)  # room tone between shots
-    onset = max(floor * 12, env.max() * 0.12)      # a shot is far above room tone
+    # A shot is far above room tone - but on a file that is one shot and a long decaying
+    # tail, the "room tone" median is the tail itself, and a purely floor-derived threshold
+    # climbs above the peak and finds nothing. Cap it against the peak so that can't happen.
+    onset = max(min(floor * 12, env.max() * 0.5), env.max() * 0.12)
     tail = max(floor * 2.5, env.max() * (10 ** (-tail_drop_db / 20.0)))
 
     min_gap = int(min_gap_s * 200)
@@ -94,12 +97,12 @@ def write_mp3(samples, dest):
         raise RuntimeError(proc.stderr.decode()[:400])
 
 
-def cut_segments(source, dest_stem, segments):
+def cut_segments(source, dest_stem, segments, start_index=1):
     """Continuous material (engines, servos) has no transient to find, so take the
     windows an ear picked out of the level profile instead."""
     samples = decode(source)
     written = []
-    for n, (start_s, end_s) in enumerate(segments, start=1):
+    for n, (start_s, end_s) in enumerate(segments, start=start_index):
         start, end = int(start_s * SAMPLE_RATE), int(end_s * SAMPLE_RATE)
         chunk = samples[start:min(end, len(samples))].copy()
         if not len(chunk):
@@ -111,7 +114,8 @@ def cut_segments(source, dest_stem, segments):
     return written
 
 
-def process(source, dest_stem, count, min_gap_s, tail_drop_db, max_len_s, min_len_s):
+def process(source, dest_stem, count, min_gap_s, tail_drop_db, max_len_s, min_len_s,
+            start_index=1):
     samples = decode(source)
     shots = find_shots(samples, min_gap_s, tail_drop_db, max_len_s)
     shots = [s for s in shots if (s[1] - s[0]) / SAMPLE_RATE >= min_len_s]
@@ -123,7 +127,7 @@ def process(source, dest_stem, count, min_gap_s, tail_drop_db, max_len_s, min_le
     # and the quiet ones are usually a neighbouring bay or a distant echo.
     shots.sort(key=lambda s: -s[2])
     written = []
-    for n, (start, end, _) in enumerate(shots[:count], start=1):
+    for n, (start, end, _) in enumerate(shots[:count], start=start_index):
         dest = f'{dest_stem}-{n:02d}.mp3'
         write_mp3(samples[start:end].copy(), dest)
         written.append((dest, (end - start) / SAMPLE_RATE))
@@ -140,6 +144,22 @@ def main():
     args = ap.parse_args()
 
     recipe = json.load(open(args.recipe))
+
+    # Two entries writing the same file silently overwrite each other, and which one
+    # survives depends on recipe order - a real bug this recipe already had once. Sharing a
+    # stem is fine and intended (the Garand's two takes come from different recordists);
+    # overlapping the numbering under one is not, so compare the index ranges.
+    claimed = {}
+    for item in recipe:
+        first = item.get('startIndex', 1)
+        span = len(item['segments']) if item.get('segments') else item.get('count', 3)
+        for n in range(first, first + span):
+            key = f'{item["dest"]}-{n:02d}.mp3'
+            if key in claimed:
+                raise SystemExit(f'{args.recipe}: {key} is written by both '
+                                 f'{claimed[key]} and {item["source"]}')
+            claimed[key] = item['source']
+
     total = []
     for item in recipe:
         source = os.path.join(args.src_dir, item['source'])
@@ -150,7 +170,8 @@ def main():
         if item.get('segments'):
             total += cut_segments(source,
                                   os.path.join(args.out_dir, item['dest']),
-                                  item['segments'])
+                                  item['segments'],
+                                  item.get('startIndex', 1))
             continue
         total += process(
             source,
@@ -160,6 +181,9 @@ def main():
             item.get('tailDropDb', 34.0),
             item.get('maxLengthSeconds', 2.0),
             item.get('minLengthSeconds', 0.12),
+            # Lets a second source continue one weapon's numbering rather than
+            # colliding on -01: the Garand's two takes come from different people.
+            item.get('startIndex', 1),
         )
     print(f'\n{len(total)} clips written')
 

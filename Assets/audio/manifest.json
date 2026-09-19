@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "base": "Assets/audio/",
   "format": "mp3",
   "runtime": {
@@ -13,6 +13,8 @@
   "categories": {
     "weapons": {
       "rifle": [
+        "weapons/rifle-m1-garand-01.mp3",
+        "weapons/rifle-m1-garand-02.mp3",
         "weapons/rifle-k98k-01.mp3",
         "weapons/rifle-k98k-02.mp3",
         "weapons/rifle-k98k-03.mp3",
@@ -209,6 +211,19 @@
       "lmgReload": [
         "weapons/foley/mg42-top-cover-01.mp3",
         "weapons/foley/mg42-top-cover-02.mp3"
+      ],
+      "clipLoad": [
+        "weapons/foley/m1-garand-clip-load-01.mp3",
+        "weapons/foley/m1-garand-clip-load-02.mp3",
+        "weapons/foley/m1-garand-clip-load-03.mp3"
+      ],
+      "reload": [
+        "weapons/foley/m1-garand-reload-01.mp3",
+        "weapons/foley/m1-garand-reload-02.mp3"
+      ],
+      "safety": [
+        "weapons/foley/m1-garand-safety-01.mp3",
+        "weapons/foley/m1-garand-safety-02.mp3"
       ]
     }
   },
@@ -1680,7 +1695,8 @@
     }
   },
   "notes": [
-    "WW2 weapon, vehicle and artillery clips are cut from the Sonniss GDC Game Audio Bundles (Pole Position Production, Super Thump, FLYSOUND, Fascinated Sound, Airborne Sound), pulled with scripts/fetch_sonniss_ww2.py and sliced with scripts/slice_weapon_shots.py against scripts/recipes/ww2-sonniss.json. Royalty-free for commercial use, no attribution required; the bundle licence forbids using the audio to train AI models."
+    "WW2 weapon, vehicle and artillery clips are cut from the Sonniss GDC Game Audio Bundles (Pole Position Production, Super Thump, FLYSOUND, Fascinated Sound, Airborne Sound), pulled with scripts/fetch_sonniss_ww2.py and sliced with scripts/slice_weapon_shots.py against scripts/recipes/ww2-sonniss.json. Royalty-free for commercial use, no attribution required; the bundle licence forbids using the audio to train AI models.",
+    "The M1 Garand does not appear in any of the nine Sonniss GDC bundles. Its shots and handling foley come from Freesound instead, all dedicated to the public domain under CC0 1.0, pulled with scripts/fetch_freesound_cc0.py against scripts/recipes/ww2-freesound.json."
   ],
   "voiceSequences": {
     "idleStory": {
