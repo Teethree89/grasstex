@@ -15,6 +15,7 @@ Run with Blender:
     --input M1Garand.fbx --output Assets/weapons/m1-garand.fbx --name m1-garand --length 1.107
 """
 import argparse
+import math
 import os
 import sys
 import tempfile
@@ -33,12 +34,37 @@ def args():
     parser.add_argument("--texture-size", type=int, default=512)
     parser.add_argument("--butt", type=float, default=0.40, help="butt plate distance behind the grip origin")
     parser.add_argument("--bore", type=float, default=0.03, help="height of the barrel top at the muzzle")
+    parser.add_argument("--fold-bipod", action="store_true",
+                        help="fold deployed bipod legs up along the barrel (for carrying and hip fire)")
     return parser.parse_args(values)
 
 
 def section_height(verts, axis, lo, hi):
     zs = [v.z for v in verts if lo <= v[axis] <= hi]
     return (max(zs) - min(zs)) if zs else 0.0
+
+
+def fold_bipod(mesh, bore):
+    """Fold deployed bipod legs forward along the barrel.
+
+    In the prepared layout (muzzle toward -Y, up +Z, grip origin at 0, barrel top at `bore`) the
+    legs are the geometry more than ~13 cm below the bore line and at least 20 cm ahead of the grip
+    (the pistol grip, trigger and stock are behind that). They are rotated -90 degrees about X
+    around their hinge (the top of the legs) so they point at the muzzle instead of the ground.
+    """
+    legs = [v for v in mesh.data.vertices if v.co.y < -0.20 and v.co.z < bore - 0.13]
+    if len(legs) < 8:
+        print("FOLD no bipod legs found")
+        return
+    top = max(v.co.z for v in legs)
+    upper = [v for v in legs if v.co.z > top - 0.03]
+    hinge = Vector((0.0, sum(v.co.y for v in upper) / len(upper), top))
+    fold = Matrix.Translation(hinge) @ Matrix.Rotation(-math.pi / 2, 4, "X") @ Matrix.Translation(-hinge)
+    for v in legs:
+        v.co = fold @ v.co
+        # Deployed legs splay sideways; folded, they lie together under the barrel.
+        v.co.x *= 0.25
+    print("FOLD %d leg vertices about hinge y=%.3f z=%.3f" % (len(legs), hinge.y, hinge.z))
 
 
 def main():
@@ -75,6 +101,9 @@ def main():
     muzzle_top = max(v.z for v in verts if v.y <= ymin + o.length * 0.12)
     # Butt (largest Y) at +butt (Babylon z = -butt); barrel top at the bore height.
     mesh.data.transform(Matrix.Translation((-xmid, o.butt - ymax, o.bore - muzzle_top)))
+
+    if o.fold_bipod:
+        fold_bipod(mesh, o.bore)
 
     # Albedo only, downscaled and re-embedded under a unique name.
     for slot in mesh.material_slots:

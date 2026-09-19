@@ -49,12 +49,14 @@ Keep the untouched source pack (e.g. the Meshy `.zip`) next to it; only `.fbx` f
    ```
 
    Layout: barrel along Babylon +Z, butt 0.40 m behind the grip origin, barrel top 0.03 m above it.
-   Real lengths: M1 Garand 1.107, Kar98k 1.11.
+   Real lengths: M1 Garand 1.107, Kar98k 1.11, MG42 1.224, M1919A6 1.346.
+   Machine guns exported with the bipod deployed: add `--fold-bipod` (legs folded forward and
+   tucked under the barrel, for carrying and hip fire).
 2. Check the printed muzzle/butt positions and render a side view: sights up, trigger down.
 3. Measure where the hands go (weapon-local metres: right-hand `grip` on the wrist of the stock or
    pistol grip, left-hand fore-end line `[x, y, zFrom, zTo]`) and add them to `WEAPON_POINTS`.
-   Register the file in `WEAPON_MODELS` (per faction) in the backend; `WEAPON_KINDS` lists which roles
-   carry it (LMG and pistol are still procedural).
+   Register the file in `WEAPON_MODELS` under the faction and role kind (`rifle`, `carbine`, `lmg`,
+   `pistol`) in the backend; unregistered kinds keep the procedural box weapon (pistol for now).
 5. Verify in the lineup: stock at the shoulder, right hand on the wrist, left hand on the fore-end,
    every weapon at world scale 1 and on the hand.
 

@@ -31,10 +31,14 @@ var MODEL_SETS={
 };
 var MODEL_SET=(typeof location!=='undefined'&&/[?&]soldiers=rifleman\b/.test(location.search||''))?'rifleman':'paratrooper';
 var MODELS=MODEL_SETS[MODEL_SET];
-/* Faction rifles (Assets/weapons, prepared by tools/prepare-weapon-model.py) replace the box rifle
-   for rifle and carbine carriers; LMG and pistol stay procedural. The prepared layout puts the butt
+/* Faction weapons (Assets/weapons, prepared by tools/prepare-weapon-model.py) replace the box
+   weapons per role: rifle and carbine carriers get the faction rifle, gunners the faction machine
+   gun (M1919A6 / MG42, bipods folded for carrying); the pistol stays procedural. The prepared layout puts the butt
    plate WEAPON_BUTT metres behind the grip origin, barrel along +Z, so the hand calibration holds. */
-var WEAPON_MODELS={us:'m1-garand.fbx',ge:'kar98k.fbx'},WEAPON_BUTT=.40,WEAPON_KINDS={rifle:1,carbine:1};
+var WEAPON_MODELS={
+  us:{rifle:'m1-garand.fbx',carbine:'m1-garand.fbx',lmg:'m1919a6.fbx'},
+  ge:{rifle:'kar98k.fbx',carbine:'kar98k.fbx',lmg:'mg42.fbx'}
+},WEAPON_BUTT=.40;
 
 /* key -> [clip file (Assets/animations/<name>.fbx), loops]. Directional locomotion is generated
    below as <family><sector>, sector 0..7 clockwise from forward. */
@@ -64,6 +68,8 @@ var GRIP={rifle:[0,-.055,-.12],carbine:[0,-.055,-.09],lmg:[0,-.07,-.02],pistol:[
 var WEAPON_POINTS={
   'm1-garand.fbx':{grip:[0,-.065,-.12],fore:[0,-.025,.06,.42]},
   'kar98k.fbx':{grip:[0,-.05,-.12],fore:[0,-.01,.06,.45]},
+  'mg42.fbx':{grip:[0,-.10,-.09],fore:[0,-.01,.15,.45]},
+  'm1919a6.fbx':{grip:[0,-.14,.05],fore:[0,-.05,.20,.60]},
   rifle:{grip:GRIP.rifle,fore:[0,-.05,.05,.35]},carbine:{grip:GRIP.carbine,fore:[0,-.05,.04,.28]},
   lmg:{grip:GRIP.lmg,fore:[0,-.075,.15,.45]},pistol:{grip:GRIP.pistol,fore:null}
 };
@@ -325,18 +331,21 @@ function prepareWeapon(container,name){
   mesh.bakeCurrentTransformIntoVertices();mesh.parent=null;
   var pos=mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind),zmin=Infinity,zmax=-Infinity,i;
   for(i=2;i<pos.length;i+=3){zmin=Math.min(zmin,pos[i]);zmax=Math.max(zmax,pos[i]);}
-  var k=-WEAPON_BUTT/zmin;if(isFinite(k)&&Math.abs(k-1)>1e-3){mesh.bakeTransformIntoVertices(MX.Scaling(k,k,k));zmax*=k;}
-  pos=mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);var ys=0,n=0;
-  for(i=0;i<pos.length;i+=3)if(pos[i+2]>zmax-.03){ys+=pos[i+1];n++;}
+  var k=-WEAPON_BUTT/zmin;if(isFinite(k)&&Math.abs(k-1)>1e-3)mesh.bakeTransformIntoVertices(MX.Scaling(k,k,k));
+  /* Muzzle: the foremost geometry at barrel height (folded bipod legs can reach further forward). */
+  pos=mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);zmax=-Infinity;
+  for(i=0;i<pos.length;i+=3)if(pos[i+1]>-.04)zmax=Math.max(zmax,pos[i+2]);
+  var ys=0,n=0;for(i=0;i<pos.length;i+=3)if(pos[i+1]>-.04&&pos[i+2]>zmax-.03){ys+=pos[i+1];n++;}
   var mat=mesh.material;if(mat){if(mat.specularColor)mat.specularColor.set(.08,.08,.08);if(mat.diffuseTexture)mat.diffuseTexture.anisotropicFilteringLevel=4;}
   mesh.isPickable=false;mesh.refreshBoundingInfo();
   return{name:name,mesh:mesh,muzzle:[0,n?ys/n:0,zmax]};
 }
 function loadWeapons(scene,st,base){
-  st.weapons={};
-  return Promise.all(Object.keys(WEAPON_MODELS).map(function(faction){
-    return loadContainer(scene,base+'weapons/'+WEAPON_MODELS[faction]).then(function(c){st.weapons[faction]=prepareWeapon(c,WEAPON_MODELS[faction]);})
-      .catch(function(e){console.warn('[ANIM] weapon model unavailable for '+faction+'; box rifle stays',e);});
+  st.weapons={};var files={};
+  Object.keys(WEAPON_MODELS).forEach(function(f){Object.keys(WEAPON_MODELS[f]).forEach(function(kind){files[WEAPON_MODELS[f][kind]]=1;});});
+  return Promise.all(Object.keys(files).map(function(file){
+    return loadContainer(scene,base+'weapons/'+file).then(function(c){st.weapons[file]=prepareWeapon(c,file);})
+      .catch(function(e){console.warn('[ANIM] weapon model '+file+' unavailable; box weapon stays',e);});
   }));
 }
 function loadLibrary(scene){
@@ -362,7 +371,7 @@ function loadLibrary(scene){
     });
     Object.keys(st.libs).forEach(function(f){solveGrips(st.libs[f],st.libs[f].clips.aim,st.bones);});
     hookRender(scene,st);st.ready=true;
-    console.log('[ANIM] FBX soldiers ready: '+MODEL_SET+' '+Object.keys(st.libs).map(function(f){return f+(st.libs[f].retargeted?' (retargeted)':'');}).join('/')+', rifles '+Object.keys(st.weapons||{}).map(function(f){return f+'='+st.weapons[f].name;}).join(' ')+', '+list.length+' clips, '+st.animated.length+' animated bones, '+(Date.now()-started)+' ms'+(SMOOTH_NORMALS?', smoothed normals':''));
+    console.log('[ANIM] FBX soldiers ready: '+MODEL_SET+' '+Object.keys(st.libs).map(function(f){return f+(st.libs[f].retargeted?' (retargeted)':'');}).join('/')+', weapons '+Object.keys(st.weapons||{}).join(' ')+', '+list.length+' clips, '+st.animated.length+' animated bones, '+(Date.now()-started)+' ms'+(SMOOTH_NORMALS?', smoothed normals':''));
     return true;
   }).catch(function(error){
     st.error=error;console.warn('[ANIM] FBX soldiers unavailable; procedural rig stays active',error);return false;
@@ -653,8 +662,9 @@ function hookRender(scene,st){
 
 var Weapons=root.BattleWeapons,oldAttach=Weapons&&Weapons.attachWeapon;
 if(oldAttach)Weapons.attachWeapon=function(scene,socket,kind){
-  var weapon=oldAttach.apply(this,arguments),faction=socket&&socket._fbxFaction,st=faction&&sceneState(scene),model=st&&st.weapons&&st.weapons[faction];
-  if(model&&WEAPON_KINDS[kind]){
+  var weapon=oldAttach.apply(this,arguments),faction=socket&&socket._fbxFaction,st=faction&&sceneState(scene);
+  var file=faction&&WEAPON_MODELS[faction]&&WEAPON_MODELS[faction][kind],model=file&&st.weapons&&st.weapons[file];
+  if(model){
     var mesh=model.mesh.clone('weapon.'+faction,socket);mesh.position.set(0,0,0);mesh.isPickable=false;
     weapon.mesh.dispose();weapon.mesh=mesh;weapon.muzzleLocal=model.muzzle.slice();weapon.model=model.name;
   }

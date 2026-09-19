@@ -51,9 +51,10 @@ as the FBX Motion Lab (`fbx-animation-lab.html`).
   under `poseRoot`, so role and body-shape scaling still apply.
 - **Weapons.** `tools/prepare-weapon-model.py` (Blender) turns a generated rifle into the battle's
   weapon layout (barrel along +Z, butt 0.40 m behind the grip origin, barrel top at 0.03 m, real
-  length) and keeps only a 512 px albedo: the Meshy packs were ~19 MB each for ~2k triangles, the
-  prepared rifles are ~170 KB. Rifle and carbine carriers get their faction's rifle; LMG and pistol
-  stay procedural. No normal maps: Babylon's FBX loader shades them as blotches.
+  length, bipods folded with `--fold-bipod`) and keeps only a 512 px albedo: the Meshy packs were
+  ~19-23 MB each for ~2k triangles, the prepared weapons are ~170-180 KB. Rifle and carbine carriers
+  get the faction rifle (M1 Garand / Kar98k), gunners the faction machine gun (M1919A6 / MG42);
+  the pistol stays procedural. Weapon stats (`battle/weapons.js`) are still per role, not per model. No normal maps: Babylon's FBX loader shades them as blotches.
 - **Repaired source models.** `tools/fix-soldier-model.py` (Blender) rewinds inside-out faces, drops normal maps,
   embeds each albedo under a unique name (identical embedded names collide in Babylon's texture
   cache), drops the stray emissive/normal-map wiring and, for the German model, moves the skin
