@@ -86,6 +86,12 @@ displacement each simulation step, then:
   through the ground change; stand-to-crouch and crouch-to-stand play only from a standstill (on
   the move they are a cross-fade, so the legs keep walking).
 - **Crouched movement** picks crouch walk or crouch run (4-way, in place) by speed.
+- **Turning on the spot:** a stationary soldier whose root is turning plays the stance's turn clip
+  (standing, crouched, prone) at a rate matched to the turn; the clips' own hips yaw is removed at
+  load, so the body turns once, with the root.
+- **Idle variety:** a standing rifleman at rest picks one of four idles when he stops.
+- **Flinches:** a fresh extension of `suppressedUntil` (fire landing close) sometimes plays a
+  shield-face (standing) or duck-and-look (crouched) overlay, at most every ~10 s.
 - **Captains (pistol)** use the aimed-pistol idle, kneel, walk, run and strafes.
 - **Hit reactions:** `combat.hit` (raised by the animation bridge for any hit the soldier survives,
   using the ballistic shot's actual victim) plays a short upper-body reaction for the stance.

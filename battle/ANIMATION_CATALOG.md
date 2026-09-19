@@ -17,6 +17,9 @@ and travel below were measured through the FBX loader.
 | Fire | `Fire Rifle Single Shot` (+ crouched kneel, prone), `Fire Rifle Automatic Standing` / `Prone` (LMG) |
 | Reload | `Rifle Reload Standing`, `Crouched`, `Prone` |
 | Stance changes | `stand to crouch`, `crouch to stand`, `crouch to prone`, `prone to crouch` |
+| Turning on the spot | `turn 90 left/right`, `crouching turn 90 left/right`, `Prone Left/Right Turn` (hips yaw removed at load; rate matched to the root's turn) |
+| Idle variety | `idle`, `idle looking around`, `idle two hand`, `idle shaking legs` (picked when a rifleman comes to rest) |
+| Flinches | `shielding face`, `duck and look around` (fresh suppression, occasional) |
 | Hit reactions | `hit reaction`, `hit reaction crouched`, `hit reaction prone`, `hit reaction running` |
 | Deaths (pools) | `death from the back/front/right`, `death back of head two knees`, `death from back one knee`, `death hit to ground`, `death chest two knees`, `death head two knees`, `death front head two knees`, `death crouching headshot front`, `death crouched`, `Prone Death`, `death running` |
 
@@ -24,7 +27,7 @@ and travel below were measured through the FBX loader.
 
 | Group | Examples | What it needs |
 | --- | --- | --- |
-| Turn in place | 45/90/135/180 degree left/right, standing and crouched; prone turns; turning while aiming | Hips yaw stripped at load (the sim already turns the root), triggered when a stationary soldier pivots. Highest value next step. |
+| More turns | 45/135/180 degree left/right, standing and crouched; turning while aiming | Pick by turn size (the 90 degree clips cover all turns now, rate-matched) |
 | Rolls | `Rolling Left While Aiming Rifle`, `Rifle Prone Rolling Right`, dive rolls | A lateral prone displacement from Combat Mobility (left and right now both exist) |
 | Starts and stops | start walking/running, walk/run/crouch to stop, strafe starts and stops | Blending into and out of locomotion on speed changes |
 | Aimed locomotion | `Walking While Aiming Rifle`, `Running With Rifle Aimed`, crouched aimed walks (in place) | Could replace the layered walk + aim overlay |
@@ -32,7 +35,7 @@ and travel below were measured through the FBX loader.
 | Grenades | throwing while walking, crouched, prone | A grenade weapon in gameplay |
 | Melee | bayonet stab and slash, pistol whip, kicks, block | A melee rule in gameplay |
 | Wounded / dazed | sitting against a wall dazed, knocked unconscious, getting up from back | A wounded state |
-| Reactions | shielding face, rubbing eyes (debris), duck and look around | Explosions / suppression reactions |
-| Misc | jumps (several), kick in door, rifle pull out / put away, looking-around idles | Navigation vault edges, building entry, idle variety |
+| Reactions | rubbing eyes (debris), jumping away from explosions | Explosions |
+| Misc | jumps (several), kick in door, rifle pull out / put away | Navigation vault edges, building entry |
 
 Missing from both libraries: sideways prone crawl, climbing, window-lean poses, carrying a wounded man.

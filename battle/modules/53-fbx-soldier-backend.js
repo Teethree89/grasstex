@@ -63,8 +63,17 @@ var CLIPS={
   deathFront:['death from the back',0],deathBack:['death from the front',0],deathSide:['death from right',0],
   deathBackHeadKnees:['death back of head two knees',0],deathBackOneKnee:['death from back one knee',0],deathHitGround:['death hit to ground',0],
   deathChestKnees:['death chest two knees',0],deathHeadKnees:['death head two knees',0],deathFrontHeadKnees:['death front head two knees',0],
-  deathCrouch:['death crouching headshot front',0],deathCrouched:['death crouched',0],deathProne:['Prone Death',0],deathRunning:['death running',0]
+  deathCrouch:['death crouching headshot front',0],deathCrouched:['death crouched',0],deathProne:['Prone Death',0],deathRunning:['death running',0],
+  /* Turning on the spot ('turn': the hips' own yaw is removed at load; the sim turns the root). */
+  turnLeft:['turn 90 left',1,'turn'],turnRight:['turn 90 right',1,'turn'],
+  crouchTurnLeft:['crouching turn 90 left',1,'turn'],crouchTurnRight:['crouching turn 90 right',1,'turn'],
+  proneTurnLeft:['Prone Left Turn',1,'turn'],proneTurnRight:['Prone Right Turn',1,'turn'],
+  /* Idle variety for a standing rifleman with nothing to shoot at. */
+  idleLook:['idle looking around',1],idleTwoHand:['idle two hand',1],idleFidget:['idle shaking legs',1],
+  /* Flinches when suppressive fire lands close. */
+  flinch:['shielding face',0],flinchCrouch:['duck and look around',0]
 };
+var IDLE_VARIANTS=['idle','idleLook','idleTwoHand','idleFidget'],FLINCH_RATE=1.6;
 Object.keys(FAMILIES).forEach(function(f){DIRS.forEach(function(d,i){CLIPS[f+i]=[FAMILIES[f]+d,1];});});
 /* Four-way in-place families (forward, right, backward, left); diagonals use forward or backward. */
 var FOUR_WAY={
@@ -250,7 +259,24 @@ function convertClip(container,key,spec,bones){
     travel=Math.sqrt(dx*dx+dy*dy)/Math.max(1e-3,duration);
     if(loop)for(var f=0;f<frames;f++){var u=f/(frames-1);p[f*3]-=dx*u;p[f*3+1]-=dy*u;}
   }
-  return{key:key,file:spec[0],loop:loop,frames:frames,duration:duration,travel:travel,speed:0,channels:channels};
+  /* Turn clips rotate the hips about the vertical by ~90 degrees; the soldier's root already turns
+     in the sim, so that yaw is removed (linearly, like travel) and kept as the clip's turn rate. */
+  var turnRate=0;
+  if(spec[2]==='turn'&&hips&&hips.rot){
+    /* Heading = where the hips faced at frame 0 (armature -Y, forward), carried through each frame. */
+    var r=hips.rot,last4=(frames-1)*4,q=new Q(),R=new Q(),out=new Q(),face=new V3(),vf=new V3();
+    q.set(r[0],r[1],r[2],r[3]);Q.InverseToRef(q,R);new V3(0,-1,0).rotateByQuaternionToRef(R,vf);
+    var yawOf=function(quat){vf.rotateByQuaternionToRef(quat,face);return Math.atan2(face.x,-face.y);};
+    var at=function(o){q.set(r[o],r[o+1],r[o+2],r[o+3]);return q;};
+    var y0=yawOf(at(0)),dyaw=Math.atan2(Math.sin(yawOf(at(last4))-y0),Math.cos(yawOf(at(last4))-y0));turnRate=Math.abs(dyaw)/Math.max(1e-3,duration);
+    /* Remove the yaw about the armature's vertical (+Z). The multiplication order that actually
+       cancels it is picked on the last frame, so no quaternion convention is assumed. */
+    var undo=function(o,u,first){Q.RotationAxisToRef(Z_UP,-dyaw*u,R);at(o);if(first)R.multiplyToRef(q,out);else q.multiplyToRef(R,out);return out;};
+    var err=function(first){var y=yawOf(undo(last4,1,first));return Math.abs(Math.atan2(Math.sin(y-y0),Math.cos(y-y0)));};
+    var first=err(true)<=err(false);
+    for(var t4=0;t4<frames;t4++){var o=t4*4;undo(o,t4/(frames-1),first);r[o]=out.x;r[o+1]=out.y;r[o+2]=out.z;r[o+3]=out.w;}
+  }
+  return{key:key,file:spec[0],loop:loop,frames:frames,duration:duration,travel:travel,speed:0,turnRate:turnRate,channels:channels};
 }
 
 /* Clips are authored on one skeleton; a model may share its bone names and hierarchy but not its
@@ -260,7 +286,7 @@ function convertClip(container,key,spec,bones){
    rest pose, and turned back into a local rotation under the model's already-retargeted parent.
    The hips position is rescaled by the ratio of the two rest hip heights. Models whose rest pose
    already matches keep the clips as they are. */
-var rtA=new MX(),rtB=new MX(),rtC=new MX(),rtQ=new Q();
+var rtA=new MX(),rtB=new MX(),rtC=new MX(),rtQ=new Q(),Z_UP=new V3(0,0,1);
 function quatMatrix(x,y,z,w,out){rtQ.set(x,y,z,w);rtQ.toRotationMatrix(out);return out;}
 function retargetClips(lib,src,clips,bones){
   var n=bones.length,parent=new Int32Array(n),restS=[],restT=[],i;
@@ -471,7 +497,7 @@ function bind(soldier,scene,st,lib){
   var hand=byName.RightHand,path=[],pathL=[];for(var n=hand;n;n=n.parent)path.unshift(n);for(n=byName.LeftHand;n;n=n.parent)pathL.unshift(n);
   var nodes=st.bones.map(function(name){var node=byName[name]||null;if(node&&!node.rotationQuaternion)node.rotationQuaternion=new Q();return node;});
   var fx={lib:lib,st:st,nodes:nodes,holder:holder,meshes:meshes,root:soldier.root,socket:socket,hand:hand,path:path,chain:path.map(function(){return new MX();}),spineAt:path.indexOf(byName.Spine),
-    pathL:pathL,chainL:pathL.map(function(){return new MX();}),spineAtL:pathL.indexOf(byName.Spine),weaponModel:null,twoHand:0,weaponKind:'rifle',
+    pathL:pathL,chainL:pathL.map(function(){return new MX();}),spineAtL:pathL.indexOf(byName.Spine),weaponModel:null,twoHand:0,yawRate:0,lastYaw:null,turning:false,weaponKind:'rifle',
     lower:{entries:[]},upper:{entries:[]},overlay:0,overlayTarget:0,stance:null,transition:null,sector:0,family:null,moving:false,
     vx:0,vz:0,speed:0,lastX:null,lastZ:null,aim:0,aimWanted:false,aimAt:null,spine:byName.Spine||null,fireHold:0,fireShot:0,fireSeen:0,reloadShot:0,reloadSeen:0,reloadDuration:2.5,death:null};
   soldier._fbx=fx;
@@ -574,8 +600,28 @@ function update(soldier,state,dt){
   var yaw=soldier.root.rotation.y||0,sin=Math.sin(yaw),cos=Math.cos(yaw);
   var forward=fx.vx*sin+fx.vz*cos,right=fx.vx*cos-fx.vz*sin,angle=Math.atan2(right,forward);
   fx.heading=angle;
+  /* Turning on the spot: yaw rate of the root this step, smoothed, with hysteresis. */
+  if(fx.lastYaw==null)fx.lastYaw=yaw;
+  var dyaw=Math.atan2(Math.sin(yaw-fx.lastYaw),Math.cos(yaw-fx.lastYaw));fx.lastYaw=yaw;
+  fx.yawRate+=((dt>0?dyaw/dt:0)-fx.yawRate)*k;
+  var turning=!moving&&Math.abs(fx.yawRate)>(fx.turning?.35:.6);fx.turning=turning;
   var pistol=fx.weaponKind==='pistol',clip,rate=1;
-  if(!moving){clip=clips[stance==='prone'?'proneIdle':(stance==='crouch'?(pistol?'pistolKneel':'crouchIdle'):(pistol?'pistolIdle':'idle'))];fx.family=null;}
+  if(turning){
+    /* Positive yaw turns toward +X, i.e. to the soldier's right. */
+    var side=fx.yawRate>0?'Right':'Left',key=stance==='prone'?'proneTurn'+side:(stance==='crouch'?'crouchTurn'+side:'turn'+side);
+    clip=clips[key];rate=clamp(Math.abs(fx.yawRate)/Math.max(.2,clip.turnRate||1.5),.5,2);fx.family=null;
+  }
+  else if(!moving){
+    var idleKey=stance==='prone'?'proneIdle':(stance==='crouch'?(pistol?'pistolKneel':'crouchIdle'):(pistol?'pistolIdle':null));
+    if(!idleKey){
+      /* A standing rifleman at rest picks an idle variant when he stops, and keeps it. */
+      if(!fx.idleKey){var pool=IDLE_VARIANTS.filter(function(k2){return!!clips[k2];});fx.idleKey=pool[Math.floor(Math.random()*pool.length)];}
+      idleKey=fx.idleKey;
+    }
+    clip=clips[idleKey];fx.family=null;
+  }
+  if(moving)fx.idleKey=null;
+  if(turning||!moving){}
   else if(stance==='prone'){clip=clips[Math.abs(angle)<1.9?'proneForward':'proneBackward'];rate=clamp(speed/(clip.speed||.3),.6,2.2);}
   else{
     var families=stance==='crouch'?['crouch','crouchRun']:(pistol?['pistolWalk','pistolRun']:['walk','run','sprint']);
@@ -591,7 +637,17 @@ function update(soldier,state,dt){
   var hitKey=stance==='prone'?'hitProne':(stance==='crouch'?'hitCrouch':(pistol?'pistolHit':(fx.speed>2.4?'hitRun':'hit')));
   var HIT_RATE={hit:1,hitCrouch:1.6,hitProne:1.2,hitRun:1,pistolHit:2.2};
   if((fx.hitShot||0)!==(fx.hitSeen||0)){fx.hitSeen=fx.hitShot;fx.hitKey=hitKey;fx.hitHold=clips[hitKey].duration/HIT_RATE[hitKey];restart=true;}
+  /* Suppressive fire landing close extends suppressedUntil; a fresh extension may be a flinch (at
+     most one per soldier every ~10 s, not every time, never over firing or reloading). */
+  fx.flinchCool=Math.max(0,(fx.flinchCool||0)-dt);fx.flinchHold=Math.max(0,(fx.flinchHold||0)-dt);
+  var supp=+soldier.suppressedUntil||0;
+  if(supp>(fx.lastSupp||0)+.05&&fx.lastSupp!=null&&fx.flinchCool<=0&&stance!=='prone'&&!soldier.reloading&&fx.fireHold<=0){
+    fx.flinchCool=10;
+    if(Math.random()<.6){fx.flinchKey=stance==='crouch'?'flinchCrouch':'flinch';fx.flinchHold=clips[fx.flinchKey].duration/FLINCH_RATE;restart=true;}
+  }
+  fx.lastSupp=supp;
   if(fx.hitHold>0){over=fx.hitKey;orate=HIT_RATE[over];}
+  else if(fx.flinchHold>0&&fx.fireHold<=0&&!soldier.reloading){over=fx.flinchKey;orate=FLINCH_RATE;}
   else if(soldier.reloading){
     over=stance==='prone'?'reloadProne':(stance==='crouch'?'reloadCrouch':'reload');
     orate=clips[over].duration/Math.max(.5,fx.reloadDuration);
@@ -784,7 +840,7 @@ root.BattleFbxSoldier={
   clip:function(scene,key){var st=sceneState(scene);return st.clips&&st.clips[key]||null;},
   /* Per-model clip timing: natural speed (m/s), stride estimate, duration, loop. */
   speeds:function(scene,faction){var st=sceneState(scene),lib=st.libs[faction||'us'],out={};if(!lib||!lib.clips)return out;
-    Object.keys(lib.clips).forEach(function(k){var c=lib.clips[k];out[k]={speed:+(c.speed||0).toFixed(2),stride:c.stride!=null?+c.stride.toFixed(2):null,travel:+((c.travel||0)*lib.speedScale).toFixed(2),duration:+c.duration.toFixed(2),loop:c.loop};});return out;}
+    Object.keys(lib.clips).forEach(function(k){var c=lib.clips[k];out[k]={turnRate:+(c.turnRate||0).toFixed(2),speed:+(c.speed||0).toFixed(2),stride:c.stride!=null?+c.stride.toFixed(2):null,travel:+((c.travel||0)*lib.speedScale).toFixed(2),duration:+c.duration.toFixed(2),loop:c.loop};});return out;}
 };
 console.log('[ANIM] FBX soldier backend installed (models + clips load with the battle)');
 })(typeof window!=='undefined'?window:globalThis);
