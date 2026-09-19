@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="${1:-Assets/audio}"
 TP="-1.0"
+TP_LINEAR="0.891"   # 10^(-1.0/20), the same ceiling expressed for alimiter
 LRA="7.0"
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
@@ -20,7 +21,8 @@ target_for() {
   local f="$1"
   case "$f" in
     */voices/*) echo "-18.0" ;;
-    "$ROOT/rifle.mp3"|"$ROOT/carbine.mp3"|"$ROOT/lmg.mp3"|"$ROOT/pistol.mp3"|*/weapons/smg-*.mp3|*/weapons/hmg-*.mp3) echo "-19.0" ;;
+    */weapons/foley/*.mp3) echo "-20.0" ;;
+    "$ROOT/rifle.mp3"|"$ROOT/carbine.mp3"|"$ROOT/lmg.mp3"|"$ROOT/pistol.mp3"|*/weapons/rifle-*.mp3|*/weapons/smg-*.mp3|*/weapons/lmg-*.mp3|*/weapons/hmg-*.mp3|*/weapons/pistol-*.mp3) echo "-19.0" ;;
     */grenades/explosion-*.mp3|*/vehicles/tank-cannon-*.mp3|*/vehicles/tank-impact-*.mp3|*/vehicles/tank-destroyed-*.mp3|*/weapons/cannon-*.mp3|*/aircraft/bomb-explosion-*.mp3) echo "-21.0" ;;
     */vehicles/*.mp3|*/aircraft/*.mp3) echo "-22.0" ;;
     */ambience/*.mp3) echo "-26.0" ;;
@@ -71,8 +73,11 @@ PY
     filter="loudnorm=I=${target}:TP=${TP}:LRA=${LRA}:print_format=summary"
   fi
 
+  # loudnorm's one-pass fallback can let a very transient source (a rifle crack with a
+  # 30 dB crest factor) through above the ceiling, so hard-limit to it afterwards.
   ffmpeg -nostdin -y -hide_banner -loglevel error -i "$file" \
-    -map_metadata -1 -af "$filter" -ar 48000 -ac 1 -c:a libmp3lame -b:a 128k "$tmp"
+    -map_metadata -1 -af "${filter},alimiter=limit=${TP_LINEAR}:level=disabled" \
+    -ar 48000 -ac 1 -c:a libmp3lame -b:a 128k "$tmp"
   mv "$tmp" "$file"
 }
 

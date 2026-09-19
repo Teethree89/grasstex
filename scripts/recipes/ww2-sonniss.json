@@ -1,0 +1,305 @@
+[
+  {
+    "source": "2020-p7-Pole_Position_-_Mauser_Karabiner_98_kurz_K98k_bolt-action_rifle__K98k_Firing_t2_MKH416.wav",
+    "dest": "weapons/rifle-k98k",
+    "count": 4,
+    "maxLengthSeconds": 1.6
+  },
+  {
+    "source": "2020-p8-Pole_Position_-_Springfield_1903A3_bolt-action_rifle__M1903A3_Firing_t2_1m_Right_Above_MKH8060.wav",
+    "dest": "weapons/rifle-m1903a3",
+    "count": 4,
+    "maxLengthSeconds": 1.6
+  },
+  {
+    "source": "2020-p7-Pole_Position_-_Mosin-Nagant_M38_bolt-action_rifle__M38_Firing_t2_BP4027.wav",
+    "dest": "weapons/rifle-m38",
+    "count": 4,
+    "maxLengthSeconds": 1.6
+  },
+  {
+    "source": "2020-p4-FLYSOUND_-_Mosin_Nagant__MN0104_MOSIN-NAGANT_1m_close_front_right_shots.wav",
+    "dest": "weapons/rifle-mosin-nagant",
+    "count": 4,
+    "maxLengthSeconds": 1.6
+  },
+  {
+    "source": "2020-p8-Pole_Position_-_Thompson_1928A1_automatic_submachine_gun__1928A1_Firing_t2_Burst_1m_Right_Above_MKH8060.wav",
+    "dest": "weapons/smg-thompson",
+    "count": 4,
+    "maxLengthSeconds": 2.6,
+    "minGapSeconds": 0.6
+  },
+  {
+    "source": "2016-p4-Pole_Position_Production_-_M1928A1_Thompson_Submachine_Gun_.45cal__M1928A1_Thompson_Submachine_Gun_.45cal_0.3m_to_side_ORTF_Burst_of_four_x_1.wav",
+    "dest": "weapons/smg-thompson-close",
+    "count": 2,
+    "maxLengthSeconds": 2.6,
+    "minGapSeconds": 0.6
+  },
+  {
+    "source": "2020-p9-Pole_Position_-_Tokarev_PPSh-41_submachine_gun__PPSh41_Firing_t1_Burst_Long_MKH416.wav",
+    "dest": "weapons/smg-ppsh41",
+    "count": 3,
+    "maxLengthSeconds": 3.0,
+    "minGapSeconds": 0.6
+  },
+  {
+    "source": "2016-p4-Pole_Position_Production_-_M3_Submachine_Grease_Gun_.45cal__M3_Submachine_Grease_Gun_.45cal_0.3m_to_side_Triple_shots_x_1.wav",
+    "dest": "weapons/smg-m3-grease-gun",
+    "count": 3,
+    "maxLengthSeconds": 2.4,
+    "minGapSeconds": 0.5
+  },
+  {
+    "source": "2020-p13-Super_Thump_-_M3_Grease_Gun_Recorded_Source__STSRC_WoWW2_Wep_SMG_M3_GreaseGun_Submachine_Gun_Single_Shot_X10_Comp_Full.wav",
+    "dest": "weapons/smg-m3-single",
+    "count": 4,
+    "maxLengthSeconds": 1.6
+  },
+  {
+    "source": "2020-p7-Pole_Position_-_MP_40_submachine_gun__MP_40_Firing_t1_250m_Holophone.wav",
+    "dest": "weapons/smg-mp40-distant",
+    "count": 3,
+    "maxLengthSeconds": 3.0,
+    "minGapSeconds": 0.8
+  },
+  {
+    "source": "2016-p2-Fascinated_Sound_-_The_Gun_Locker_SFX_Pack__Submachine_Gun_-_MP_40_-_02_-_Burst.wav",
+    "dest": "weapons/smg-mp40",
+    "count": 3,
+    "maxLengthSeconds": 2.6,
+    "minGapSeconds": 0.5
+  },
+  {
+    "source": "2020-p7-Pole_Position_-_MG_42_machine_gun__MG_42_Firing_t1_Burst_Long_Mountain_Top_D100.wav",
+    "dest": "weapons/lmg-mg42",
+    "count": 4,
+    "maxLengthSeconds": 3.2,
+    "minGapSeconds": 0.8
+  },
+  {
+    "source": "2016-p4-Pole_Position_Production_-_M1918_Browning_Automatic_Rifle_.30cal__M1918_Browning_Automatic_Rifle_.30cal_0.1m_to_right_Double_shots_x_1.wav",
+    "dest": "weapons/lmg-bar-m1918",
+    "count": 3,
+    "maxLengthSeconds": 2.4,
+    "minGapSeconds": 0.5
+  },
+  {
+    "source": "2016-p4-Pole_Position_Production_-_M1919A4_Browning_Machine_Gun_.30cal__M1919A4_Browning_Machine_Gun_.30cal_5m_behind_ORTF_blanks_Triple_shots_x_1.wav",
+    "dest": "weapons/hmg-m1919a4",
+    "count": 3,
+    "maxLengthSeconds": 2.4,
+    "minGapSeconds": 0.5
+  },
+  {
+    "source": "2016-p4-Pole_Position_Production_-_M1919A4_Browning_Machine_Gun_.30cal_on_turret__M1919A4_Browning_Machine_Gun_.30cal_on_turret_1m_left_blanks_Triple_shots_x_2.wav",
+    "dest": "weapons/hmg-m1919a4-turret",
+    "count": 3,
+    "maxLengthSeconds": 2.4,
+    "minGapSeconds": 0.5
+  },
+  {
+    "source": "2020-p13-Super_Thump_-_Weapons_of_World_War_II_-_Designed__STDSGN_WoWW2_Wep_MG_M1919_Machinegun_Auto-Burst_Shot_X6.wav",
+    "dest": "weapons/hmg-m1919-burst",
+    "count": 3,
+    "maxLengthSeconds": 3.0,
+    "minGapSeconds": 0.6
+  },
+  {
+    "source": "2020-p9-Pole_Position_-_Walther_P38_semi_automatic_pistol__P38_Firing_t1_2m_Behind_LS5.wav",
+    "dest": "weapons/pistol-p38",
+    "count": 4,
+    "maxLengthSeconds": 1.4
+  },
+  {
+    "source": "2020-p9-Pole_Position_-_Tokarev_TT-33_semi-automatic_pistol__TT33_Firing_t1_Inside_Car_Omni_CMC6.wav",
+    "dest": "weapons/pistol-tt33",
+    "count": 4,
+    "maxLengthSeconds": 1.4
+  },
+  {
+    "source": "2020-p13-Super_Thump_-_Weapons_of_World_War_II_-_Designed__STDSGN_WoWW2_Wep_Pistol_Luger_Shot_X5.wav",
+    "dest": "weapons/pistol-luger",
+    "count": 4,
+    "maxLengthSeconds": 1.4
+  },
+  {
+    "source": "2020-p6-Pole_Position_-_Colt_M1911A1_semi-automatic_pistol__M1911A1_Firing_t2_200m_Front_Target_M10.wav",
+    "dest": "weapons/pistol-m1911a1-downrange",
+    "count": 3,
+    "maxLengthSeconds": 1.6
+  },
+  {
+    "source": "2019-p1-Sonniss.com_-_GDC_2019_-_Game_Audio_Bundle_Part_1of8__Airborne_Sound_-_Battlefield_Howitzers__Howitzer_M101_C1_105_mm_Distant_Right_Side_Shot_Pound_Thick.wav",
+    "dest": "weapons/cannon-howitzer-m101",
+    "count": 3,
+    "maxLengthSeconds": 5.0,
+    "minGapSeconds": 1.0,
+    "tailDropDb": 40
+  },
+  {
+    "source": "2019-p1-Sonniss.com_-_GDC_2019_-_Game_Audio_Bundle_Part_1of8__Airborne_Sound_-_Battlefield_Howitzers__Howitzer_M101_C3_105_mm_Medium_Distant_Right_Side_Shot_Firm_Heavy_EQ_Version_Soft_Attack.wav",
+    "dest": "ambience/artillery-distant",
+    "count": 3,
+    "maxLengthSeconds": 6.0,
+    "minGapSeconds": 1.0,
+    "tailDropDb": 40
+  },
+  {
+    "source": "2020-p7-Pole_Position_-_MP_40_submachine_gun__MP_40_Handling_Cocking_MKH416.wav",
+    "dest": "weapons/foley/mp40-cocking",
+    "count": 3,
+    "maxLengthSeconds": 1.2,
+    "minGapSeconds": 0.25,
+    "tailDropDb": 26
+  },
+  {
+    "source": "2020-p7-Pole_Position_-_Mauser_Karabiner_98_kurz_K98k_bolt-action_rifle__K98k_Handling_Various_t2_1m_Right_MKH8060.wav",
+    "dest": "weapons/foley/k98k-bolt",
+    "count": 3,
+    "maxLengthSeconds": 1.2,
+    "minGapSeconds": 0.25,
+    "tailDropDb": 26
+  },
+  {
+    "source": "2020-p8-Pole_Position_-_Springfield_1903A3_bolt-action_rifle__M1903A3_Handling_Cycling_Bolt_MKH416.wav",
+    "dest": "weapons/foley/m1903a3-bolt",
+    "count": 3,
+    "maxLengthSeconds": 1.2,
+    "minGapSeconds": 0.25,
+    "tailDropDb": 26
+  },
+  {
+    "source": "2020-p9-Pole_Position_-_Tokarev_PPSh-41_submachine_gun__PPSh41_Handling_Pulling_Back_Bolt_MKH416.wav",
+    "dest": "weapons/foley/ppsh41-bolt",
+    "count": 3,
+    "maxLengthSeconds": 1.2,
+    "minGapSeconds": 0.25,
+    "tailDropDb": 26
+  },
+  {
+    "source": "2020-p9-Pole_Position_-_Walther_P38_semi_automatic_pistol__P38_Handling_Removing_Magazine_1m_Right_MKH8060.wav",
+    "dest": "weapons/foley/p38-magazine",
+    "count": 3,
+    "maxLengthSeconds": 1.2,
+    "minGapSeconds": 0.25,
+    "tailDropDb": 26
+  },
+  {
+    "source": "2020-p8-Pole_Position_-_Thompson_1928A1_automatic_submachine_gun__1928A1_Handling_Dry_Fire_MKH416.wav",
+    "dest": "weapons/foley/thompson-dryfire",
+    "count": 3,
+    "maxLengthSeconds": 1.2,
+    "minGapSeconds": 0.25,
+    "tailDropDb": 26
+  },
+  {
+    "source": "2020-p6-Pole_Position_-_Colt_M1911A1_semi-automatic_pistol__M1911A1_Handling_Dry_Fire_MKH416.wav",
+    "dest": "weapons/foley/m1911a1-dryfire",
+    "count": 3,
+    "maxLengthSeconds": 1.2,
+    "minGapSeconds": 0.25,
+    "tailDropDb": 26
+  },
+  {
+    "source": "2020-p7-Pole_Position_-_MG_42_machine_gun__MG_42_Handling_Top_Cover_Up_1m_Right_MKH8060.wav",
+    "dest": "weapons/foley/mg42-top-cover",
+    "count": 3,
+    "maxLengthSeconds": 1.5,
+    "minGapSeconds": 0.25,
+    "tailDropDb": 26
+  },
+  {
+    "source": "2020-p9-Pole_Position_-_Tokarev_TT-33_semi-automatic_pistol__TT33_Handling_Clearing_MK012.wav",
+    "dest": "weapons/foley/tt33-clearing",
+    "count": 3,
+    "maxLengthSeconds": 1.2,
+    "minGapSeconds": 0.25,
+    "tailDropDb": 26
+  },
+  {
+    "source": "2020-p4-FLYSOUND_-_Mosin_Nagant__MN0208_MOSIN-NAGANT_movement_handling.wav",
+    "dest": "weapons/foley/mosin-handling",
+    "count": 3,
+    "maxLengthSeconds": 1.5,
+    "minGapSeconds": 0.25,
+    "tailDropDb": 26
+  },
+  {
+    "source": "2016-p4-Pole_Position_Production_-_T-34-85_Russian_World_War_II_Tank__T-34_foley_cannon_height_adjustment.wav",
+    "dest": "vehicles/tank-turret",
+    "count": 2,
+    "maxLengthSeconds": 4.0,
+    "minGapSeconds": 0.5,
+    "tailDropDb": 26
+  },
+  {
+    "source": "2016-p4-Pole_Position_Production_-_T-34-85_Russian_World_War_II_Tank__T-34_t2_onboard_startup_driving_idle_int.wav",
+    "dest": "vehicles/tank-engine-idle",
+    "segments": [
+      [
+        206.0,
+        216.0
+      ]
+    ]
+  },
+  {
+    "source": "2016-p4-Pole_Position_Production_-_T-34-85_Russian_World_War_II_Tank__T-34_t2_onboard_startup_driving_idle_int.wav",
+    "dest": "vehicles/tank-engine-move",
+    "segments": [
+      [
+        40.0,
+        52.0
+      ]
+    ]
+  },
+  {
+    "source": "2016-p4-Pole_Position_Production_-_T-34-85_Russian_World_War_II_Tank__T-34_t2_onboard_startup_driving_idle_int.wav",
+    "dest": "vehicles/tank-engine-start",
+    "segments": [
+      [
+        2.0,
+        14.0
+      ]
+    ]
+  },
+  {
+    "source": "2016-p4-Pole_Position_Production_-_T-34-85_Russian_World_War_II_Tank__T-34_t3_ext_low_speed_away_stopping_reversing_passby_approaching_stopping_main_2.wav",
+    "dest": "vehicles/tank-track",
+    "segments": [
+      [
+        430.0,
+        440.0
+      ],
+      [
+        470.0,
+        480.0
+      ]
+    ]
+  },
+  {
+    "source": "2016-p4-Pole_Position_Production_-_T-34-85_Russian_World_War_II_Tank__T-34_t3_ext_low_speed_away_stopping_reversing_passby_approaching_stopping_main_2.wav",
+    "dest": "vehicles/tank-pass-by",
+    "segments": [
+      [
+        395.0,
+        415.0
+      ]
+    ]
+  },
+  {
+    "source": "2016-p4-Pole_Position_Production_-_T-34-85_Russian_World_War_II_Tank__T-34_foley_cannon_height_adjustment.wav",
+    "dest": "vehicles/tank-turret",
+    "segments": [
+      [
+        0.5,
+        5.5
+      ],
+      [
+        14.0,
+        19.0
+      ]
+    ]
+  }
+]

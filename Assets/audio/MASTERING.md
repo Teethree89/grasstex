@@ -9,6 +9,7 @@ Runtime volume, distance attenuation, occlusion/air absorption, and mix decision
 | --- | ---: | ---: | ---: |
 | Soldier voices / callouts | -18 LUFS | -1.0 dBTP | 7 LU |
 | Small arms (rifle, carbine, LMG, pistol, SMG, HMG) | -19 LUFS | -1.0 dBTP | 7 LU |
+| Weapon handling foley (bolts, magazines, cocking, dry fire) | -20 LUFS | -1.0 dBTP | 7 LU |
 | Explosions / cannon / tank impacts / large weapon transients | -21 LUFS | -1.0 dBTP | 7 LU |
 | Vehicle and aircraft engines / passes / mechanical loops | -22 LUFS | -1.0 dBTP | 7 LU |
 | Battlefield ambience / wind / distant artillery beds | -26 LUFS | -1.0 dBTP | 7 LU |

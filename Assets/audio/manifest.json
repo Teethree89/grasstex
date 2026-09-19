@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "base": "Assets/audio/",
   "format": "mp3",
   "runtime": {
@@ -13,28 +13,80 @@
   "categories": {
     "weapons": {
       "rifle": [
-        "rifle.mp3"
+        "weapons/rifle-k98k-01.mp3",
+        "weapons/rifle-k98k-02.mp3",
+        "weapons/rifle-k98k-03.mp3",
+        "weapons/rifle-k98k-04.mp3",
+        "weapons/rifle-m1903a3-01.mp3",
+        "weapons/rifle-m1903a3-02.mp3",
+        "weapons/rifle-m1903a3-03.mp3",
+        "weapons/rifle-m1903a3-04.mp3",
+        "weapons/rifle-m38-01.mp3",
+        "weapons/rifle-m38-02.mp3",
+        "weapons/rifle-m38-03.mp3",
+        "weapons/rifle-m38-04.mp3",
+        "weapons/rifle-mosin-nagant-01.mp3",
+        "weapons/rifle-mosin-nagant-02.mp3",
+        "weapons/rifle-mosin-nagant-03.mp3",
+        "weapons/rifle-mosin-nagant-04.mp3"
       ],
       "carbine": [
-        "carbine.mp3"
+        "weapons/smg-m3-single-01.mp3",
+        "weapons/smg-m3-single-02.mp3",
+        "weapons/smg-m3-single-03.mp3",
+        "weapons/smg-m3-single-04.mp3"
       ],
       "lmg": [
-        "lmg.mp3"
+        "weapons/lmg-mg42-01.mp3",
+        "weapons/lmg-mg42-02.mp3",
+        "weapons/lmg-mg42-03.mp3",
+        "weapons/lmg-mg42-04.mp3",
+        "weapons/lmg-bar-m1918-01.mp3"
       ],
       "pistol": [
-        "pistol.mp3"
+        "weapons/pistol-p38-01.mp3",
+        "weapons/pistol-p38-02.mp3",
+        "weapons/pistol-p38-03.mp3",
+        "weapons/pistol-p38-04.mp3",
+        "weapons/pistol-tt33-01.mp3",
+        "weapons/pistol-tt33-02.mp3",
+        "weapons/pistol-tt33-03.mp3",
+        "weapons/pistol-tt33-04.mp3",
+        "weapons/pistol-luger-01.mp3",
+        "weapons/pistol-luger-02.mp3",
+        "weapons/pistol-luger-03.mp3",
+        "weapons/pistol-luger-04.mp3"
       ],
       "smg": [
-        "weapons/smg-01.mp3",
-        "weapons/smg-02.mp3"
+        "weapons/smg-mp40-01.mp3",
+        "weapons/smg-mp40-02.mp3",
+        "weapons/smg-thompson-01.mp3",
+        "weapons/smg-thompson-02.mp3",
+        "weapons/smg-thompson-03.mp3",
+        "weapons/smg-thompson-04.mp3",
+        "weapons/smg-thompson-close-01.mp3",
+        "weapons/smg-ppsh41-01.mp3",
+        "weapons/smg-ppsh41-02.mp3",
+        "weapons/smg-m3-grease-gun-01.mp3"
       ],
       "hmg": [
-        "weapons/hmg-01.mp3",
-        "weapons/hmg-02.mp3"
+        "weapons/hmg-m1919a4-01.mp3",
+        "weapons/hmg-m1919a4-turret-01.mp3",
+        "weapons/hmg-m1919a4-turret-02.mp3",
+        "weapons/hmg-m1919-burst-01.mp3",
+        "weapons/hmg-m1919-burst-02.mp3",
+        "weapons/hmg-m1919-burst-03.mp3"
       ],
       "cannon": [
-        "weapons/cannon-01.mp3",
-        "weapons/cannon-02.mp3"
+        "weapons/cannon-howitzer-m101-01.mp3"
+      ],
+      "distant": [
+        "weapons/smg-mp40-distant-01.mp3",
+        "weapons/smg-mp40-distant-02.mp3",
+        "weapons/smg-mp40-distant-03.mp3",
+        "weapons/pistol-m1911a1-downrange-01.mp3",
+        "weapons/pistol-m1911a1-downrange-02.mp3",
+        "weapons/pistol-m1911a1-downrange-03.mp3"
       ]
     },
     "grenades": {
@@ -56,17 +108,18 @@
     },
     "vehicles": {
       "tankEngineIdle": [
-        "vehicles/tank-engine-idle.mp3"
+        "vehicles/tank-engine-idle-01.mp3"
       ],
       "tankEngineMove": [
-        "vehicles/tank-engine-move.mp3"
+        "vehicles/tank-engine-move-01.mp3"
       ],
       "tankTrack": [
         "vehicles/tank-track-01.mp3",
         "vehicles/tank-track-02.mp3"
       ],
       "tankTurret": [
-        "vehicles/tank-turret.mp3"
+        "vehicles/tank-turret-01.mp3",
+        "vehicles/tank-turret-02.mp3"
       ],
       "tankCannon": [
         "vehicles/tank-cannon-01.mp3",
@@ -79,6 +132,12 @@
       "tankDestroyed": [
         "vehicles/tank-destroyed-01.mp3",
         "vehicles/tank-destroyed-02.mp3"
+      ],
+      "tankEngineStart": [
+        "vehicles/tank-engine-start-01.mp3"
+      ],
+      "tankPassBy": [
+        "vehicles/tank-pass-by-01.mp3"
       ]
     },
     "aircraft": {
@@ -114,8 +173,42 @@
         "ambience/wind-01.mp3"
       ],
       "artilleryDistant": [
-        "ambience/artillery-distant-01.mp3",
-        "ambience/artillery-distant-02.mp3"
+        "ambience/artillery-distant-01.mp3"
+      ]
+    },
+    "weaponFoley": {
+      "boltCycle": [
+        "weapons/foley/k98k-bolt-01.mp3",
+        "weapons/foley/k98k-bolt-02.mp3",
+        "weapons/foley/k98k-bolt-03.mp3",
+        "weapons/foley/m1903a3-bolt-01.mp3",
+        "weapons/foley/m1903a3-bolt-02.mp3",
+        "weapons/foley/mosin-handling-01.mp3",
+        "weapons/foley/mosin-handling-02.mp3",
+        "weapons/foley/mosin-handling-03.mp3"
+      ],
+      "cocking": [
+        "weapons/foley/mp40-cocking-01.mp3",
+        "weapons/foley/mp40-cocking-02.mp3",
+        "weapons/foley/ppsh41-bolt-01.mp3",
+        "weapons/foley/ppsh41-bolt-02.mp3"
+      ],
+      "magazine": [
+        "weapons/foley/p38-magazine-01.mp3",
+        "weapons/foley/p38-magazine-02.mp3",
+        "weapons/foley/p38-magazine-03.mp3"
+      ],
+      "dryFire": [
+        "weapons/foley/thompson-dryfire-01.mp3",
+        "weapons/foley/thompson-dryfire-02.mp3",
+        "weapons/foley/m1911a1-dryfire-01.mp3",
+        "weapons/foley/m1911a1-dryfire-02.mp3",
+        "weapons/foley/tt33-clearing-01.mp3",
+        "weapons/foley/tt33-clearing-02.mp3"
+      ],
+      "lmgReload": [
+        "weapons/foley/mg42-top-cover-01.mp3",
+        "weapons/foley/mg42-top-cover-02.mp3"
       ]
     }
   },
@@ -1586,13 +1679,9 @@
       "dopplerCandidate": true
     }
   },
-  "notes": {
-    "existing": "Current rifle/carbine/lmg/pistol files remain in Assets/audio/ until runtime paths migrate into weapons/.",
-    "voiceSourceOfTruth": "Every file in callouts.*.events is a required neutral/base voice asset. Generate or commit those base MP3s before merging this manifest.",
-    "pitchVariants": "Do not hand-generate pitch variants. CI derives .pitch-low.mp3 and .pitch-high.mp3 variants while preserving duration, then deploys them beside the neutral files.",
-    "plannedSfx": "Weapon expansion, grenades, vehicles, aircraft and ambience categories may still include planned filenames that are intentionally absent.",
-    "voices": "Generate faction-appropriate short callouts and keep each semantic event in its own file so runtime can spatialize, throttle and deterministically voice-match soldiers."
-  },
+  "notes": [
+    "WW2 weapon, vehicle and artillery clips are cut from the Sonniss GDC Game Audio Bundles (Pole Position Production, Super Thump, FLYSOUND, Fascinated Sound, Airborne Sound), pulled with scripts/fetch_sonniss_ww2.py and sliced with scripts/slice_weapon_shots.py against scripts/recipes/ww2-sonniss.json. Royalty-free for commercial use, no attribution required; the bundle licence forbids using the audio to train AI models."
+  ],
   "voiceSequences": {
     "idleStory": {
       "requiresSquadIdleSeconds": 20,

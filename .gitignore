@@ -7,3 +7,8 @@ battle/build-version.json
 # py_compile byte-cache, produced by the workflow's validation step.
 __pycache__/
 *.pyc
+
+# Raw Sonniss GDC bundle pulls (scripts/fetch_sonniss_ww2.py). Multi-hundred-megabyte
+# field recordings; the committed assets are the sliced/mastered MP3s under Assets/audio.
+.runtime/sonniss-ww2/
+.runtime/fetch*.log
