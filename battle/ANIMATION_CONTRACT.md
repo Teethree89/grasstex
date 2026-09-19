@@ -28,11 +28,19 @@ The battle lab deliberately separates gameplay/AI state from the rendered soldie
 animates it with the shared Mixamo rifle clips, using Babylon's FBX loader: the same import path
 as the FBX Motion Lab (`fbx-animation-lab.html`).
 
-- **Sources.** Characters: `Assets/soldiers/{us,ge}-rifleman-rigged.fbx`. Clips:
-  `Assets/animations/*.fbx` (animation-only, same rig). The deploy plan uploads both folders.
+- **Sources.** Characters: `Assets/soldiers/{us,ge}-paratrooper.fbx` (default) and
+  `{us,ge}-rifleman-rigged.fbx` (`?soldiers=rifleman`). Clips: `Assets/animations/*.fbx`
+  (animation-only). Rifles: `Assets/weapons/m1-garand.fbx` (US) and `kar98k.fbx` (German). The
+  deploy plan uploads all three folders' `.fbx` files; the source `.zip` packs stay out.
 - **Engine.** The FBX loader ships in Babylon 9, so the page pins `babylonjs@9.27.1`; the backend
   loads the matching `babylonjs-loaders` bundle on demand.
-- **No retargeting.** Model and clips share one rig (`Hips`, `Spine02/01/Spine`, `neck`, `Head`,
+- **Retargeting.** Clips are authored on the rifleman skeleton. A model with the same bone names
+  and hierarchy but different rest orientations or units (the paratroopers: up to ~180 degrees per
+  bone, metres instead of centimetres) gets its own copy of every clip at load: each bone's
+  rotation away from the clip's rest pose is taken in armature space, reapplied to the model's rest
+  pose and re-expressed locally; the hips track is rescaled by the rest hip-height ratio, as is
+  each clip's natural ground speed.
+- **Bone names.** Model and clips share one naming scheme (`Hips`, `Spine02/01/Spine`, `neck`, `Head`,
   `Left/RightShoulder/Arm/ForeArm/Hand`, `Left/RightUpLeg/Leg/Foot/ToeBase`), so channels bind by
   bone name. The loader's `*__fbx_inheritScale` helper nodes only duplicate their parent's
   channel and are dropped.
@@ -41,7 +49,12 @@ as the FBX Motion Lab (`fbx-animation-lab.html`).
   clip's natural ground speed. Non-looping clips (deaths, stance changes) keep their travel.
 - **Scale and facing.** The model is scaled to `BODY.heightM` from its bind-pose bounds and hangs
   under `poseRoot`, so role and body-shape scaling still apply.
-- **Repaired source models.** `tools/fix-soldier-model.py` (Blender) rewinds inside-out faces,
+- **Weapons.** `tools/prepare-weapon-model.py` (Blender) turns a generated rifle into the battle's
+  weapon layout (barrel along +Z, butt 0.40 m behind the grip origin, barrel top at 0.03 m, real
+  length) and keeps only a 512 px albedo: the Meshy packs were ~19 MB each for ~2k triangles, the
+  prepared rifles are ~170 KB. Rifle and carbine carriers get their faction's rifle; LMG and pistol
+  stay procedural. No normal maps: Babylon's FBX loader shades them as blotches.
+- **Repaired source models.** `tools/fix-soldier-model.py` (Blender) rewinds inside-out faces, drops normal maps,
   embeds each albedo under a unique name (identical embedded names collide in Babylon's texture
   cache), drops the stray emissive/normal-map wiring and, for the German model, moves the skin
   ~8 cm forward onto its skeleton. It never changes the armature: bone rest transforms match the
@@ -95,6 +108,10 @@ procedural rig (for example `45-stance-transition-crawl.js`) must skip it.
 The in-page **Motion Lab** loads the same FBX library into its own scene and previews every state:
 standing, directional and crouched/prone locomotion, aim/fire/reload overlays, stance transitions
 and deaths, labelled with the clip files that are playing.
+
+### Adding soldiers and weapons
+
+Follow `Assets/PIPELINE.md` (repair/prepare in Blender, register, verify in a posed lineup).
 
 ### Adding clips
 

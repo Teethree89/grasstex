@@ -24,7 +24,17 @@ if(typeof BABYLON==='undefined'||!root.BattleSoldierModel||root.BattleFbxSoldier
 
 var M=root.BattleSoldierModel,TAGS=M.TAGS,Q=BABYLON.Quaternion,V3=BABYLON.Vector3,MX=BABYLON.Matrix;
 var BACKEND='fbx-skeletal-v1',FPS=30;
-var MODELS={us:'us-rifleman-rigged.fbx',ge:'ge-rifleman-rigged.fbx'};
+/* Paratroopers are the default; `?soldiers=rifleman` shows the earlier riflemen for comparison. */
+var MODEL_SETS={
+  paratrooper:{us:'us-paratrooper.fbx',ge:'ge-paratrooper.fbx'},
+  rifleman:{us:'us-rifleman-rigged.fbx',ge:'ge-rifleman-rigged.fbx'}
+};
+var MODEL_SET=(typeof location!=='undefined'&&/[?&]soldiers=rifleman\b/.test(location.search||''))?'rifleman':'paratrooper';
+var MODELS=MODEL_SETS[MODEL_SET];
+/* Faction rifles (Assets/weapons, prepared by tools/prepare-weapon-model.py) replace the box rifle
+   for rifle and carbine carriers; LMG and pistol stay procedural. The prepared layout puts the butt
+   plate WEAPON_BUTT metres behind the grip origin, barrel along +Z, so the hand calibration holds. */
+var WEAPON_MODELS={us:'m1-garand.fbx',ge:'kar98k.fbx'},WEAPON_BUTT=.40,WEAPON_KINDS={rifle:1,carbine:1};
 
 /* key -> [clip file (Assets/animations/<name>.fbx), loops]. Directional locomotion is generated
    below as <family><sector>, sector 0..7 clockwise from forward. */
@@ -98,8 +108,10 @@ function prepareModel(container){
     m.backFaceCulling=false;if('twoSidedLighting' in m)m.twoSidedLighting=true;
   });
   if(SMOOTH_NORMALS)meshes.forEach(smoothNormals);
-  return{container:container,top:top,nodes:nodes,height:hi-lo,scale:(M.BODY&&M.BODY.heightM||1.7)/(hi-lo),
-    bones:skeleton.bones.map(function(b){return b.name;}).filter(function(name){return!!nodes[name];}),grips:null};
+  var scale=(M.BODY&&M.BODY.heightM||1.7)/(hi-lo);
+  if(!nodes.Hips)throw new Error('model FBX has no Hips bone');
+  return{container:container,top:top,nodes:nodes,height:hi-lo,scale:scale,
+    hipsHeight:(nodes.Hips.getAbsolutePosition().y-lo)*scale,grips:null,clips:null};
 }
 
 /* Optional look (on by default, `?smooth=0` turns it off): the models ship flat-shaded, so the
@@ -134,7 +146,18 @@ function smoothNormals(mesh){
   if(agree<0)for(i=0;i<out.length;i++)out[i]=-out[i];
   mesh.setVerticesData(BABYLON.VertexBuffer.NormalKind,out,false);
 }
-function convertClip(container,key,spec,bones,scale){
+/* The clips' own skeleton: bone names (helper nodes excluded) and their rest local transforms.
+   Every clip file carries the same one, so it is read once from the first clip loaded. */
+function sourceRig(container){
+  var bones=[],rest={};
+  container.transformNodes.forEach(function(n){
+    if(n.name==='__fbx_root__'||n.name.indexOf('__fbx')>=0)return;
+    bones.push(n.name);
+    rest[n.name]={q:(n.rotationQuaternion||Q.FromEulerVector(n.rotation)).clone(),p:n.position.clone()};
+  });
+  return{bones:bones,rest:rest};
+}
+function convertClip(container,key,spec,bones){
   var group=container.animationGroups[0];if(!group)throw new Error('no animation in '+spec[0]);
   var index={};bones.forEach(function(name,i){index[name]=i;});
   var channels=new Array(bones.length),frames=0,duration=0,loop=!!spec[1];
@@ -158,15 +181,80 @@ function convertClip(container,key,spec,bones,scale){
   });
   if(!frames)throw new Error('no usable channels in '+spec[0]);
   /* Hips travel is horizontal in the armature's Z-up space (forward is -Y). Its net displacement
-     is the clip's natural ground speed. Looping clips are made in place by removing the linear
-     drift, which keeps sway and bob but ends each cycle where it began. */
-  var hips=channels[index.Hips],speed=0;
+     is the clip's natural ground speed (kept in the clip's own units until a model scales it).
+     Looping clips are made in place by removing the linear drift, which keeps sway and bob but
+     ends each cycle where it began. */
+  var hips=channels[index.Hips],travel=0;
   if(hips&&hips.pos){
     var p=hips.pos,last=(frames-1)*3,dx=p[last]-p[0],dy=p[last+1]-p[1];
-    speed=Math.sqrt(dx*dx+dy*dy)/Math.max(1e-3,duration)*scale;
+    travel=Math.sqrt(dx*dx+dy*dy)/Math.max(1e-3,duration);
     if(loop)for(var f=0;f<frames;f++){var u=f/(frames-1);p[f*3]-=dx*u;p[f*3+1]-=dy*u;}
   }
-  return{key:key,file:spec[0],loop:loop,frames:frames,duration:duration,speed:speed,channels:channels};
+  return{key:key,file:spec[0],loop:loop,frames:frames,duration:duration,travel:travel,speed:0,channels:channels};
+}
+
+/* Clips are authored on one skeleton; a model may share its bone names and hierarchy but not its
+   rest orientations or units (the paratroopers differ by up to ~180 degrees per bone and use
+   metres, not centimetres). Retarget each clip onto the model once: for every bone, the clip's
+   rotation away from its own rest pose is taken in world (armature) space, reapplied to the model's
+   rest pose, and turned back into a local rotation under the model's already-retargeted parent.
+   The hips position is rescaled by the ratio of the two rest hip heights. Models whose rest pose
+   already matches keep the clips as they are. */
+var rtA=new MX(),rtB=new MX(),rtC=new MX(),rtQ=new Q();
+function quatMatrix(x,y,z,w,out){rtQ.set(x,y,z,w);rtQ.toRotationMatrix(out);return out;}
+function retargetClips(lib,src,clips,bones){
+  var n=bones.length,parent=new Int32Array(n),restS=[],restT=[],i;
+  var nodes=bones.map(function(name){return lib.nodes[name]||null;});
+  for(i=0;i<n;i++){
+    var node=nodes[i],pn=node&&node.parent?bones.indexOf(node.parent.name):-1;parent[i]=pn;
+    restS[i]=src.rest[bones[i]].q;restT[i]=node?(node.rotationQuaternion||Q.FromEulerVector(node.rotation)):restS[i];
+  }
+  /* Parents before children. */
+  var order=[],depth=function(k){var d=0;while(parent[k]>=0){k=parent[k];d++;}return d;};
+  for(i=0;i<n;i++)order.push(i);order.sort(function(a,b){return depth(a)-depth(b);});
+  var worst=0;for(i=0;i<n;i++)if(nodes[i])worst=Math.max(worst,1-Math.abs(Q.Dot(restS[i],restT[i])));
+  var hipsS=src.rest.Hips.p,hipsT=lib.nodes.Hips.position,k=hipsT.length()/Math.max(1e-6,hipsS.length());
+  lib.speedScale=lib.hipsHeight/Math.max(1e-6,hipsS.z);
+  var out={};
+  Object.keys(clips).forEach(function(key){
+    var clip=clips[key],copy={};for(var f in clip)copy[f]=clip[f];copy.speed=clip.travel*lib.speedScale;
+    out[key]=copy;
+    if(worst<1e-4&&Math.abs(k-1)<1e-3)return;
+    var frames=clip.frames,chans=new Array(n),S0=[],T0=[],Ws=[],Wt=[];
+    for(i=0;i<n;i++){S0[i]=new MX();T0[i]=new MX();Ws[i]=new MX();Wt[i]=new MX();}
+    for(var o=0;o<n;o++){
+      i=order[o];var ps=parent[i];
+      quatMatrix(restS[i].x,restS[i].y,restS[i].z,restS[i].w,rtA);if(ps>=0)rtA.multiplyToRef(S0[ps],S0[i]);else S0[i].copyFrom(rtA);
+      quatMatrix(restT[i].x,restT[i].y,restT[i].z,restT[i].w,rtA);if(ps>=0)rtA.multiplyToRef(T0[ps],T0[i]);else T0[i].copyFrom(rtA);
+      var ch=clip.channels[i];
+      if(ch&&nodes[i])chans[i]={rot:ch.rot?new Float32Array(frames*4):null,pos:null};
+      if(ch&&ch.pos&&nodes[i]){
+        var pos=new Float32Array(ch.pos.length),rs=src.rest[bones[i]].p,rt=nodes[i].position;
+        for(var j=0;j<frames;j++){var b=j*3;pos[b]=rt.x+(ch.pos[b]-rs.x)*k;pos[b+1]=rt.y+(ch.pos[b+1]-rs.y)*k;pos[b+2]=rt.z+(ch.pos[b+2]-rs.z)*k;}
+        chans[i].pos=pos;
+      }
+    }
+    for(var fr=0;fr<frames;fr++){
+      for(o=0;o<n;o++){
+        i=order[o];var p=parent[i],c=clip.channels[i],q=c&&c.rot?c.rot:null,a=fr*4;
+        if(q)quatMatrix(q[a],q[a+1],q[a+2],q[a+3],rtA);else quatMatrix(restS[i].x,restS[i].y,restS[i].z,restS[i].w,rtA);
+        if(p>=0)rtA.multiplyToRef(Ws[p],Ws[i]);else Ws[i].copyFrom(rtA);
+        if(!chans[i]||!chans[i].rot){
+          quatMatrix(restT[i].x,restT[i].y,restT[i].z,restT[i].w,rtA);if(p>=0)rtA.multiplyToRef(Wt[p],Wt[i]);else Wt[i].copyFrom(rtA);continue;
+        }
+        /* delta = S0^-1 * Ws (world-space change), Wt = T0 * delta, local = Wt * parentWt^-1 */
+        S0[i].transposeToRef(rtB);rtB.multiplyToRef(Ws[i],rtC);T0[i].multiplyToRef(rtC,Wt[i]);
+        if(p>=0){Wt[p].transposeToRef(rtB);Wt[i].multiplyToRef(rtB,rtC);}else rtC.copyFrom(Wt[i]);
+        Q.FromRotationMatrixToRef(rtC,rtQ);
+        var r=chans[i].rot;
+        if(fr&&rtQ.x*r[a-4]+rtQ.y*r[a-3]+rtQ.z*r[a-2]+rtQ.w*r[a-1]<0)rtQ.scaleInPlace(-1);
+        r[a]=rtQ.x;r[a+1]=rtQ.y;r[a+2]=rtQ.z;r[a+3]=rtQ.w;
+      }
+    }
+    copy.channels=chans;
+  });
+  lib.clips=out;lib.retargeted=!(worst<1e-4&&Math.abs(k-1)<1e-3);
+  return out;
 }
 
 /* The rifle rides the right hand rigidly. Its offset is solved once from the aiming clip: in that
@@ -199,30 +287,51 @@ function solveGrips(lib,aim,bones){
   lib.supportHand={along:+(V3.Dot(hands,z)*lib.scale).toFixed(3),off:+(hands.subtract(z.scale(V3.Dot(hands,z))).length()*lib.scale).toFixed(3)};
 }
 
+function prepareWeapon(container,name){
+  var mesh=container.meshes.filter(function(m){return m.getTotalVertices()>0;})[0];if(!mesh)throw new Error('weapon FBX has no mesh');
+  /* Bake the loader's root (handedness + units) into the vertices, then normalise units from the
+     known butt position; Babylon flips the winding when the baked transform mirrors. */
+  mesh.bakeCurrentTransformIntoVertices();mesh.parent=null;
+  var pos=mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind),zmin=Infinity,zmax=-Infinity,i;
+  for(i=2;i<pos.length;i+=3){zmin=Math.min(zmin,pos[i]);zmax=Math.max(zmax,pos[i]);}
+  var k=-WEAPON_BUTT/zmin;if(isFinite(k)&&Math.abs(k-1)>1e-3){mesh.bakeTransformIntoVertices(MX.Scaling(k,k,k));zmax*=k;}
+  pos=mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);var ys=0,n=0;
+  for(i=0;i<pos.length;i+=3)if(pos[i+2]>zmax-.03){ys+=pos[i+1];n++;}
+  var mat=mesh.material;if(mat){if(mat.specularColor)mat.specularColor.set(.08,.08,.08);if(mat.diffuseTexture)mat.diffuseTexture.anisotropicFilteringLevel=4;}
+  mesh.isPickable=false;mesh.refreshBoundingInfo();
+  return{name:name,mesh:mesh,muzzle:[0,n?ys/n:0,zmax]};
+}
+function loadWeapons(scene,st,base){
+  st.weapons={};
+  return Promise.all(Object.keys(WEAPON_MODELS).map(function(faction){
+    return loadContainer(scene,base+'weapons/'+WEAPON_MODELS[faction]).then(function(c){st.weapons[faction]=prepareWeapon(c,WEAPON_MODELS[faction]);})
+      .catch(function(e){console.warn('[ANIM] weapon model unavailable for '+faction+'; box rifle stays',e);});
+  }));
+}
 function loadLibrary(scene){
   var st=sceneState(scene);if(st.loading)return st.loading;
   var base=assetBase(),started=Date.now();
   st.loading=ensureLoader().then(function(){
     return Promise.all(Object.keys(MODELS).map(function(faction){
-      return loadContainer(scene,base+'soldiers/'+MODELS[faction]).then(function(c){st.libs[faction]=prepareModel(c);});
-    }));
+      return loadContainer(scene,base+'soldiers/'+MODELS[faction]).then(function(c){st.libs[faction]=prepareModel(c);st.libs[faction].faction=faction;});
+    }).concat([loadWeapons(scene,st,base)]));
   }).then(function(){
-    var ref=st.libs.us||st.libs.ge;st.bones=ref.bones;
     return Promise.all(Object.keys(CLIPS).map(function(key){
       return loadContainer(scene,base+'animations/'+encodeURIComponent(CLIPS[key][0])+'.fbx').then(function(c){
-        try{return convertClip(c,key,CLIPS[key],st.bones,ref.scale);}finally{c.dispose();}
+        try{if(!st.src){st.src=sourceRig(c);st.bones=st.src.bones;}return convertClip(c,key,CLIPS[key],st.bones);}finally{c.dispose();}
       });
     }));
   }).then(function(list){
     st.clips={};list.forEach(function(clip){st.clips[clip.key]=clip;});
+    Object.keys(st.libs).forEach(function(f){retargetClips(st.libs[f],st.src,st.clips,st.bones);});
     st.animated=[];st.upper=[];st.hips=st.bones.indexOf('Hips');st.spineRoot=st.bones.indexOf('Spine02');
     st.bones.forEach(function(name,i){
       if(list.some(function(c){return!!c.channels[i];}))st.animated.push(i);
       st.upper[i]=!!UPPER[name];
     });
-    Object.keys(st.libs).forEach(function(f){solveGrips(st.libs[f],st.clips.aim,st.bones);});
+    Object.keys(st.libs).forEach(function(f){solveGrips(st.libs[f],st.libs[f].clips.aim,st.bones);});
     hookRender(scene,st);st.ready=true;
-    console.log('[ANIM] FBX soldiers ready: '+Object.keys(st.libs).join('/')+' models, '+list.length+' clips, '+st.animated.length+' animated bones, '+(Date.now()-started)+' ms'+(SMOOTH_NORMALS?', smoothed normals':''));
+    console.log('[ANIM] FBX soldiers ready: '+MODEL_SET+' '+Object.keys(st.libs).map(function(f){return f+(st.libs[f].retargeted?' (retargeted)':'');}).join('/')+', rifles '+Object.keys(st.weapons||{}).map(function(f){return f+'='+st.weapons[f].name;}).join(' ')+', '+list.length+' clips, '+st.animated.length+' animated bones, '+(Date.now()-started)+' ms'+(SMOOTH_NORMALS?', smoothed normals':''));
     return true;
   }).catch(function(error){
     st.error=error;console.warn('[ANIM] FBX soldiers unavailable; procedural rig stays active',error);return false;
@@ -247,6 +356,7 @@ function bind(soldier,scene,st,lib){
   /* Retire the primitive body. The weapon socket leaves the chest first: it now follows the hand
      but stays parented to the soldier root, so it inherits neither model scale nor handedness. */
   var socket=soldier.weaponSocket;socket.parent=soldier.root;if(!socket.rotationQuaternion)socket.rotationQuaternion=new Q();
+  socket._fbxFaction=lib.faction;
   var hips=soldier.rig&&soldier.rig.hips;if(hips&&!hips.isDisposed())hips.dispose();
   soldier.rig=null;
 
@@ -309,7 +419,7 @@ function familyOf(fx,clips,speed){
 }
 function update(soldier,state,dt){
   var fx=soldier._fbx;if(!fx)return false;
-  var clips=fx.st.clips;dt=Math.max(0,+dt||0);
+  var clips=fx.lib.clips;dt=Math.max(0,+dt||0);
   if(soldier.weapon&&soldier.weapon.kind)fx.weaponKind=soldier.weapon.kind;
 
   /* Ground velocity from what navigation actually did this step, in the soldier's own frame. */
@@ -476,6 +586,15 @@ function hookRender(scene,st){
 
 /* ---- BattleSoldierModel integration ------------------------------------------------------- */
 
+var Weapons=root.BattleWeapons,oldAttach=Weapons&&Weapons.attachWeapon;
+if(oldAttach)Weapons.attachWeapon=function(scene,socket,kind){
+  var weapon=oldAttach.apply(this,arguments),faction=socket&&socket._fbxFaction,st=faction&&sceneState(scene),model=st&&st.weapons&&st.weapons[faction];
+  if(model&&WEAPON_KINDS[kind]){
+    var mesh=model.mesh.clone('weapon.'+faction,socket);mesh.position.set(0,0,0);mesh.isPickable=false;
+    weapon.mesh.dispose();weapon.mesh=mesh;weapon.muzzleLocal=model.muzzle.slice();weapon.model=model.name;
+  }
+  return weapon;
+};
 var oldCreate=M.createSoldier,oldPreload=M.preload,oldSetEnabled=M.setImportedEnabled;
 M.createSoldier=function(scene,faction){
   var soldier=oldCreate.apply(this,arguments),st=sceneState(scene),lib=st.ready&&st.enabled&&st.libs[faction==='ge'?'ge':'us'];
@@ -494,7 +613,7 @@ M.setImportedEnabled=function(scene,enabled){
 };
 
 root.BattleFbxSoldier={
-  version:'1.0',backend:BACKEND,clips:CLIPS,models:MODELS,
+  version:'1.1',backend:BACKEND,clips:CLIPS,models:MODELS,modelSet:MODEL_SET,
   load:loadLibrary,
   status:function(scene){var st=sceneState(scene);return{ready:st.ready,enabled:st.enabled,error:st.error?String(st.error.message||st.error):null,active:st.active.length,clips:st.clips?Object.keys(st.clips).length:0,bones:st.bones?st.bones.length:0};},
   clip:function(scene,key){var st=sceneState(scene);return st.clips&&st.clips[key]||null;}

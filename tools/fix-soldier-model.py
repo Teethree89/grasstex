@@ -42,6 +42,7 @@ def args():
     parser.add_argument("--output", required=True)
     parser.add_argument("--texture-name", required=True)
     parser.add_argument("--fit-skin", action="store_true", help="move the skin onto its skeleton")
+    parser.add_argument("--keep-normal", action="store_true", help="keep the normal map")
     return parser.parse_args(values)
 
 
@@ -110,29 +111,40 @@ def fix_winding(mesh):
     return flipped
 
 
-def clean_material(mesh, texture_name):
+def embed_unique(image, name):
+    """Re-embed an image under a unique file name (identical embedded names collide in Babylon's
+    texture cache). The packed image is written out first because packing reads a file."""
+    # JPEG keeps a 2048px albedo/normal around 1 MB instead of 4-5 MB as PNG.
+    path = os.path.join(tempfile.mkdtemp(), name + ".jpg")
+    image.filepath_raw = path
+    image.file_format = "JPEG"
+    image.save(filepath=path, quality=92)
+    if image.packed_file:
+        image.unpack(method="REMOVE")
+    image.name = name
+    image.filepath = path
+    image.reload()
+    image.pack()
+
+
+def clean_material(mesh, texture_name, keep_normal):
     for slot in mesh.material_slots:
         tree = slot.material.node_tree
         bsdf = next(n for n in tree.nodes if n.type == "BSDF_PRINCIPLED")
         base = bsdf.inputs["Base Color"].links[0].from_node.name
-        # Keep only albedo -> Base Color: drop the emissive copy, the alpha link and the unused
-        # normal-map node. (Node wrappers are recreated on access, so compare by name.)
+        keep = {base}
+        normal = bsdf.inputs["Normal"].links
+        if keep_normal and normal and normal[0].from_node.type == "NORMAL_MAP":
+            color = normal[0].from_node.inputs["Color"].links
+            if color:
+                keep |= {normal[0].from_node.name, color[0].from_node.name}
+                embed_unique(color[0].from_node.image, texture_name + "-normal")
+        # Keep albedo -> Base Color (plus the normal map when asked); drop the emissive copy, the
+        # alpha link and unused nodes. (Node wrappers are recreated on access, so compare by name.)
         for node in list(tree.nodes):
-            if node.type in ("TEX_IMAGE", "NORMAL_MAP") and node.name != base:
+            if node.type in ("TEX_IMAGE", "NORMAL_MAP") and node.name not in keep:
                 tree.nodes.remove(node)
-        # Re-embed the albedo under a unique file name so Babylon's texture cache cannot confuse
-        # the two soldiers. The packed image is written out first because packing reads a file.
-        image = tree.nodes[base].image
-        path = os.path.join(tempfile.mkdtemp(), texture_name + ".png")
-        image.filepath_raw = path
-        image.file_format = "PNG"
-        image.save()
-        if image.packed_file:
-            image.unpack(method="REMOVE")
-        image.name = texture_name
-        image.filepath = path
-        image.reload()
-        image.pack()
+        embed_unique(tree.nodes[base].image, texture_name)
 
 
 def main():
@@ -149,7 +161,7 @@ def main():
             v.co += shift
     after = skin_offset(mesh, rig, axis)
     flipped = fix_winding(mesh)
-    clean_material(mesh, options.texture_name)
+    clean_material(mesh, options.texture_name, options.keep_normal)
     bpy.ops.export_scene.fbx(
         filepath=options.output, use_selection=False, object_types={"ARMATURE", "MESH"},
         add_leaf_bones=False, primary_bone_axis="Y", secondary_bone_axis="X",

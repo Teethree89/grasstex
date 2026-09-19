@@ -1,0 +1,64 @@
+# Soldier and weapon asset pipeline
+
+This is the accepted workflow for bringing a new character or weapon into the Battle Sim. Raw
+generator exports (Meshy, auto-riggers) always need these steps; do not load them straight into
+the game. Runtime behaviour is described in `battle/ANIMATION_CONTRACT.md`.
+
+Blender: use the app bundle, `/Applications/Blender.app/Contents/MacOS/Blender`
+(the `blender` on PATH is a broken install).
+
+## Soldiers (`Assets/soldiers/<faction>-<name>.fbx`)
+
+Requirements for the source FBX: one skinned mesh, one armature using the shared bone names
+(`Hips`, `Spine02`, `Spine01`, `Spine`, `neck`, `Head`, `head_end`, `headfront`,
+`Left/RightShoulder/Arm/ForeArm/Hand`, `Left/RightUpLeg/Leg/Foot/ToeBase`), at most 4-8 influences
+per vertex. Extra end bones are fine. Rest orientations and units may differ: clips are retargeted
+at load.
+
+1. Repair and re-export (never changes the armature):
+
+   ```
+   Blender -b --factory-startup --python tools/fix-soldier-model.py -- \
+     --input <raw>.fbx --output Assets/soldiers/<faction>-<name>.fbx --texture-name <faction>-<name>-albedo
+   ```
+
+   - rewinds inside-out faces, drops normal maps (Babylon's FBX loader shades them as blotches),
+     removes stray emissive/alpha wiring, embeds the albedo as a unique JPEG name (identical embedded
+     names such as `texture_0.png` or `bpy.fbm` make Babylon hand one soldier the other's texture);
+   - add `--fit-skin` only if the skin sits off its skeleton: the script prints the mean forward
+     offset between limb joints and the skin they drive (a good fit is under ~1-2 cm).
+2. Use lowercase file names (the web host is case-sensitive; macOS is not: rename with `git mv`).
+3. Register the pair in `MODEL_SETS` in `battle/modules/53-fbx-soldier-backend.js`.
+4. Verify before committing:
+   - bone rest transforms unchanged against the raw file (0 cm, < 0.1 degree);
+   - the backend log says `FBX soldiers ready: <set> ...` and whether it retargeted;
+   - a posed lineup (idle, aim, walk + aim, run, crouch aim, crouch walk, prone, reload, deaths)
+     from front, side and behind, lit, with no holes or dark patches; rifle yaw/pitch within a few
+     degrees of the target while aiming;
+   - the two factions show different textures.
+
+## Weapons (`Assets/weapons/<name>.fbx`)
+
+Keep the untouched source pack (e.g. the Meshy `.zip`) next to it; only `.fbx` files deploy.
+
+1. Prepare (orients, scales to real length, lays out for the hand calibration, 512 px albedo only):
+
+   ```
+   Blender -b --factory-startup --python tools/prepare-weapon-model.py -- \
+     --input <raw>.fbx --output Assets/weapons/<name>.fbx --name <name> --length <metres>
+   ```
+
+   Layout: barrel along Babylon +Z, butt 0.40 m behind the grip origin, barrel top 0.03 m above it.
+   Real lengths: M1 Garand 1.107, Kar98k 1.11.
+2. Check the printed muzzle/butt positions and render a side view: sights up, trigger down.
+3. Register it in `WEAPON_MODELS` (per faction) in the backend; `WEAPON_KINDS` lists which roles
+   carry it (LMG and pistol are still procedural).
+4. Verify in the lineup: stock at the shoulder, right hand on the wrist, left hand on the fore-end,
+   every weapon at world scale 1 and on the hand.
+
+## Deploy and preview
+
+`scripts/prepare_incremental_deploy.py` uploads `Assets/soldiers`, `Assets/animations` and
+`Assets/weapons` `.fbx` files by content hash. Pushing a `work/**` branch publishes
+`https://test.ivandpopov.com/grasstex/preview/<slug>/battle_sim.php`, which carries its own copy of
+these folders, so new models can be checked before they reach production.
