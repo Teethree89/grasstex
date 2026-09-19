@@ -76,6 +76,7 @@ jobs:
           for d in soldiers animations weapons; do
             if [ -d "Assets/$d" ]; then mkdir -p ".preview/Assets/$d" && cp "Assets/$d"/*.fbx ".preview/Assets/$d/"; fi
           done
+          if [ -d Assets/effects/muzzle-flash ]; then mkdir -p .preview/Assets/effects/muzzle-flash && cp Assets/effects/muzzle-flash/*.png .preview/Assets/effects/muzzle-flash/; fi
           python3 - <<'PY'
           import json, os, datetime
           json.dump({"ref": os.environ["PREVIEW_REF"], "sha": os.environ["PREVIEW_SHA"],

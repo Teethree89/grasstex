@@ -60,9 +60,22 @@ Keep the untouched source pack (e.g. the Meshy `.zip`) next to it; only `.fbx` f
 5. Verify in the lineup: stock at the shoulder, right hand on the wrist, left hand on the fore-end,
    every weapon at world scale 1 and on the hand.
 
+## Muzzle flashes (`Assets/effects/muzzle-flash/NN.png`)
+
+End-on flash sprites (looking down the barrel), centred on the flash. Keep the source pack zip.
+
+```
+python3 tools/prepare-muzzle-flashes.py --input <pack>.zip --output Assets/effects/muzzle-flash
+```
+
+Resizes to 256 px (13 x 1254 px, ~13 MB -> ~750 KB). The runtime (`BattleMuzzleFlash` in
+`battle/modules/13-combat-fx-consistency.js`) picks one at random per shot, rolls it about the
+barrel, and sizes it per weapon (`FLASH_SIZE` by kind, `FLASH_MODEL_SIZE` per model file). If the
+number of images changes, update `FLASH_COUNT`.
+
 ## Deploy and preview
 
 `scripts/prepare_incremental_deploy.py` uploads `Assets/soldiers`, `Assets/animations` and
-`Assets/weapons` `.fbx` files by content hash. Pushing a `work/**` branch publishes
+`Assets/weapons` `.fbx` files and the muzzle-flash `.png` files by content hash. Pushing a `work/**` branch publishes
 `https://test.ivandpopov.com/grasstex/preview/<slug>/battle_sim.php`, which carries its own copy of
 these folders, so new models can be checked before they reach production.
