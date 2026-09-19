@@ -59,7 +59,7 @@ function rallyState(sq){
     exits:finite(+st.exits),suppressed:finite(+st.suppressed),stragglerSuppressions:finite(+st.stragglerSuppressions),
     rallyRequests:finite(+st.rallyRequests),releasableAtEntry:finite(+st.releasableAtEntry),
     entryReasons:safePlain(st.entryReasons,2),exitReasons:safePlain(st.exitReasons,2),
-    lastEntry:safePlain(st.lastEntry,3),lastExit:safePlain(st.lastExit,3),bypassUntil:finite(+sq._rallyBypassUntil)
+    missionVersion:finite(+st.missionVersion),lastEntry:safePlain(st.lastEntry,3),lastExit:safePlain(st.lastExit,3),bypassUntil:finite(+sq._rallyBypassUntil)
   };
 }
 function squad(sq){

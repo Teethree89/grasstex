@@ -203,20 +203,34 @@ section('a single assigned squad can reach and capture an outer objective');
   check('the formation supplies at least the two required capture weights',peakPresence>=2,'peak='+peakPresence);
   console.log('  probe: first capture '+(first===null?'none':first.toFixed(1)+'s')+', peak presence '+peakPresence+', obsolete-goal frames '+wrongGoal);
 }
-section('a stranded soldier cannot override the Captain regroup timeout');
+/* A rally has no expiry. It ends because the squad closed up, or because an outside factor took
+   the decision away. The old timeout released squads that were still scattered, straight back into
+   the condition that opened the rally, which re-requested it a cooldown later -- the loop. */
+section('a rally ends when the squad closes up, not when a clock runs out');
 {
   const {r,sq,sim,town}=commandFixture();
   r.BattleTelemetry={record(){}};
   load(r,'battle/modules/16-squad-plan-stability.js');
+  /* Cohesion only tolerates stragglers at real squad size (allowed=2 from nine men up). The bare
+     4-man fixture can trim nobody, so it cannot demonstrate a release at all. */
+  for(let i=sq.members.length;i<10;i++)sq.members.push({id:'m'+i,role:'rifleman',faction:'us',dead:false,root:{position:{x:65,z:i-1.5}}});
+  sq.aliveCount=sq.members.length;
   commandTick(r,sim,town);
   sq.members[3].root.position.x=-100;
   sq.commandPhase='rally';sq.objective={x:20,z:0};
-  sq._rallyState={overSince:sim.time-20,accepted:true,enteredAt:sim.time-19,cooldownUntil:0,anchor:{x:20,z:0},entries:1,exits:0,suppressed:0,stragglerSuppressions:0,rallyRequests:1};
+  /* `lastForward` is the axis the rally committed to. Without it the assessment would recompute
+     forward from sq.objective -- which an accepted rally has overwritten with its own anchor -- and
+     the straggler 165 m behind would score as having run AHEAD, where he can never be trimmed. */
+  sq._rallyState={overSince:sim.time-20,accepted:true,enteredAt:sim.time-19,cooldownUntil:0,anchor:{x:20,z:0},
+    missionVersion:sq._macroMission?sq._macroMission.version:0,lastForward:{x:1,z:0},
+    entries:1,exits:0,suppressed:0,stragglerSuppressions:0,rallyRequests:1,entryReasons:{},exitReasons:{}};
   commandTick(r,sim,town);
-  check('the Captain releases a timed-out regroup straight back into its mission',sq.commandPhase!=='rally'&&sq.objective.x===120);
+  check('the Captain releases a rally whose core has closed up',sq.commandPhase!=='rally'&&sq.objective.x===120);
+  const why=sq._rallyState.exitReasons||{};
+  check('the release is attributed to closing up, and nothing is attributed to a timer',why['closed-up']===1&&!why['max-age'],'exitReasons='+JSON.stringify(why));
   let held=0;
   for(let i=0;i<25;i++){commandTick(r,sim,town);if(sq.commandPhase==='rally'||sq.objective.x!==120)held++;}
-  check('the entire bypass survives subsequent commander and Captain ticks',held===0,'held ticks='+held);
+  check('one straggler does not re-open the rally in a loop',held===0,'held ticks='+held);
 }
 section('benchmark alerts distinguish approach intent from absent orders');
 {

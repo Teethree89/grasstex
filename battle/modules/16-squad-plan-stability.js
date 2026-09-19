@@ -5,7 +5,7 @@
 
      - mission execution: route legs, corner pauses, objective phase, doctrine holds,
      - one tactical command lease (`_engagementPlan`),
-     - one cohesion/rally state,
+     - one cohesion/rally commitment,
      - one set of committed fireteam slots.
 
    It never selects an objective. When a doctrine hold/support/regroup commitment ends it escalates to
@@ -19,7 +19,7 @@
 if(!root.BattleModules||!root.SquadAI||root.BattleSquadStability)return;
 
 var ASSAULT_LEASE=26,DEFENSE_LEASE=38,QUIET_CLOSE=9,TEAM_LEASE=12;
-var RALLY_ENTER=1.35,RALLY_RELEASE=.78,RALLY_MIN=2.4,RALLY_MAX=18,RALLY_BYPASS=14,REENTRY=4;
+var RALLY_ENTER=1.35,RALLY_RELEASE=.78,RALLY_MIN=2.4,REENTRY=4;
 var STRAGGLER_BYPASS=2.8,URBAN_ARRIVAL_COHESION=.5;
 var ORDER_STRIDE=13,ORDER_ARRIVAL_RADIUS=8,ORDER_COHESION=.55,ORDER_PUBLISH_EPS=.05;
 var TACTICAL={contact:1,assault:1,flank:1,capture:1,defend:1,hold:1,'support-hold':1,'clear-town':1};
@@ -79,9 +79,9 @@ function updatePlan(sim,sq){
    backwards to fetch one casualty-delayed rifleman. A man who ran AHEAD is never an ignorable
    straggler: he expands the core, forcing the Captain to restore cohesion instead of allowing two
    scouts to sprint into the next fight alone. Lateral outliers are also non-trimmable. */
-function cohesionAssessment(sq,limit){
+function cohesionAssessment(sq,limit,frame){
   var m=alive(sq),n=m.length;if(!n)return{center:copy(sq.rally)||{x:0,z:0},rawSpread:0,coreSpread:0,stragglers:[],outrunners:[],members:[],dispersed:false,allowed:0,laggards:0};
-  var xs=[],zs=[],i;for(i=0;i<n;i++){xs.push(+m[i].root.position.x||0);zs.push(+m[i].root.position.z||0);}var med={x:median(xs),z:median(zs)},allowed=n>=9?2:(n>=5?1:0),far=[],lagging=[],blocking=[],f=commandForward(sq);
+  var xs=[],zs=[],i;for(i=0;i<n;i++){xs.push(+m[i].root.position.x||0);zs.push(+m[i].root.position.z||0);}var med={x:median(xs),z:median(zs)},allowed=n>=9?2:(n>=5?1:0),far=[],lagging=[],blocking=[],f=frame&&isFinite(+frame.x)&&isFinite(+frame.z)?frame:commandForward(sq);
   for(i=0;i<n;i++){
     var p=m[i].root.position,d=dist(p,med);if(d<=limit)continue;
     var along=((+p.x||0)-med.x)*f.x+((+p.z||0)-med.z)*f.z,row={s:m[i],d:d,along:along};far.push(row);
@@ -98,7 +98,7 @@ function cohesionAssessment(sq,limit){
 function dispersedReasons(ca,limit){
   var r=[];if(ca.outrunners.length)r.push('outrunners');if(ca.laggards>ca.allowed)r.push('laggards-over-allowance');if(ca.coreSpread>limit)r.push('core-spread');return r;
 }
-function rallyState(sq){return sq._rallyState||(sq._rallyState={overSince:null,accepted:false,enteredAt:0,cooldownUntil:0,anchor:null,lastForward:null,entries:0,exits:0,suppressed:0,stragglerSuppressions:0,rallyRequests:0,entryReasons:{},exitReasons:{},lastEntry:null,lastExit:null,releasableAtEntry:0,ageTotal:0});}
+function rallyState(sq){return sq._rallyState||(sq._rallyState={overSince:null,accepted:false,enteredAt:0,cooldownUntil:0,anchor:null,lastForward:null,entries:0,exits:0,suppressed:0,stragglerSuppressions:0,rallyRequests:0,entryReasons:{},exitReasons:{},lastEntry:null,lastExit:null,releasableAtEntry:0,ageTotal:0,missionVersion:0});}
 /* Entry tests rawSpread against `limit`; release tests coreSpread against `limit * RALLY_RELEASE`.
    coreSpread is structurally the smaller quantity (laggards trimmed, centroid recomputed over the
    survivors) and is measured from the core mean where `far` membership is classified against the
@@ -121,16 +121,42 @@ function noteExit(st,why,ca,t){
   st.lastExit={at:t,why:why,age:+age.toFixed(3),coreSpread:ca?+ca.coreSpread.toFixed(3):null,rawSpread:ca?+ca.rawSpread.toFixed(3):null};
 }
 function markCatchup(ca,t){for(var i=0;i<ca.members.length;i++){var s=ca.members[i];s._cohesionCatchupUntil=t+4;s._destinationCommitUntil=0;}}
+/* A rally ends for a reason, never on a clock. Every exit below names an outside factor that took
+   the decision away from the Captain, or the squad actually closing up. A timeout was neither: it
+   released a squad that was still scattered, straight back into the condition that triggered the
+   rally, which re-requested it a cooldown later. That is the loop. */
+function endRally(st,why,ca,t){noteExit(st,why,ca,t);st.accepted=false;st.exits++;st.cooldownUntil=t+REENTRY;}
+/* Ending a rally back into the mission also clears the command hold and re-arms the request
+   bypass. An outside factor that takes the squad away (contact, retreat) does neither: it has its
+   own state to set, and the hold is not the Captain's to clear on its way out. */
+function releaseRally(sq,st,why,ca,t){endRally(st,why,ca,t);sq._rallyBypassUntil=Math.max(+sq._rallyBypassUntil||0,t+REENTRY);sq.commandHoldUntil=0;}
 function updateCohesion(sim,sq){
-  if(!sq||sq.state==='retreat')return;var c=cfg(sim,sq),limit=+(captainAlive(sq)?c.cohesionRadius:c.captainlessCohesion)||34,release=limit*RALLY_RELEASE,st=rallyState(sq),t=sim.time,ca=cohesionAssessment(sq,limit);sq._cohesionAssessment={rawSpread:+ca.rawSpread.toFixed(3),coreSpread:+ca.coreSpread.toFixed(3),stragglers:ca.stragglers.slice(),outrunners:ca.outrunners.slice(),allowed:ca.allowed,dispersed:ca.dispersed};
-  var p=sq._engagementPlan,combatPlan=p&&(p.status==='active'||p.status==='quiet');if(sq.inContact||combatPlan){st.overSince=null;if(st.accepted){noteExit(st,sq.inContact?'contact':'combat-plan',ca,t);st.accepted=false;st.exits++;st.cooldownUntil=t+REENTRY;}sq._rallyBypassUntil=Math.max(+sq._rallyBypassUntil||0,t+1.25);return;}
+  if(!sq)return;
+  var st=sq._rallyState,retreating=sq.state==='retreat';
+  /* Retreat is an outside factor, and it used to leave `accepted` set: the squad came out of the
+     retreat still holding a rally it had never been released from, with a stale entry time. */
+  if(retreating){if(st&&st.accepted)endRally(st,'retreat',null,sim.time);return;}
+  st=rallyState(sq);
+  /* The rally frame is committed with the rally. `commandForward` reads sq.objective, and an
+     accepted rally overwrites sq.objective with its own anchor -- so recomputing the axis mid-rally
+     points it at the squad's own centre, and a man beyond the anchor scores as having run AHEAD.
+     Outrunners are never trimmed, so one distant straggler pinned coreSpread above the release
+     threshold and the rally could never close. Judge the rally in the frame that opened it. */
+  var c=cfg(sim,sq),limit=+(captainAlive(sq)?c.cohesionRadius:c.captainlessCohesion)||34,release=limit*RALLY_RELEASE,t=sim.time,ca=cohesionAssessment(sq,limit,st.accepted?st.lastForward:null);sq._cohesionAssessment={rawSpread:+ca.rawSpread.toFixed(3),coreSpread:+ca.coreSpread.toFixed(3),stragglers:ca.stragglers.slice(),outrunners:ca.outrunners.slice(),allowed:ca.allowed,dispersed:ca.dispersed,frame:st.accepted&&st.lastForward?'committed':'live'};
+  var p=sq._engagementPlan,combatPlan=p&&(p.status==='active'||p.status==='quiet');if(sq.inContact||combatPlan){st.overSince=null;if(st.accepted)endRally(st,sq.inContact?'contact':'combat-plan',ca,t);sq._rallyBypassUntil=Math.max(+sq._rallyBypassUntil||0,t+1.25);return;}
   /* Release hands the squad straight back to mission execution in the same Captain tick. */
-  if(st.accepted){var age=t-st.enteredAt;if((age>=RALLY_MIN&&ca.coreSpread<=release)||age>=RALLY_MAX){noteExit(st,age>=RALLY_MAX?'max-age':'closed-up',ca,t);st.accepted=false;st.exits++;st.cooldownUntil=t+REENTRY;sq._rallyBypassUntil=Math.max(+sq._rallyBypassUntil||0,t+(age>=RALLY_MAX?RALLY_BYPASS:REENTRY));sq.commandHoldUntil=0;return;}sq.commandPhase='rally';sq.objective=copy(st.anchor||ca.center);return;}
+  if(st.accepted){
+    /* A rally blocks mission execution, so a new brief that arrived during one could never be
+       picked up. The General changing the mission is the outside factor that ends it. */
+    if(missionVersion(sq)!==st.missionVersion){releaseRally(sq,st,'mission-changed',ca,t);return;}
+    if(t-st.enteredAt>=RALLY_MIN&&ca.coreSpread<=release){releaseRally(sq,st,'closed-up',ca,t);return;}
+    sq.commandPhase='rally';sq.objective=copy(st.anchor||ca.center);return;
+  }
   /* The Captain, not the General, decides a squad is too scattered to keep executing. */
   var requested=!sq.inContact&&t>=(+sq._rallyBypassUntil||0)&&ca.rawSpread>limit;if(!requested){st.overSince=null;return;}st.rallyRequests++;
   if(!ca.dispersed&&ca.stragglers.length){markCatchup(ca,t);st.stragglerSuppressions++;st.suppressed++;sq._rallyBypassUntil=t+STRAGGLER_BYPASS;return;}
   if(!ca.dispersed){st.suppressed++;return;}if(st.overSince==null)st.overSince=t;if(t<st.cooldownUntil||t-st.overSince<RALLY_ENTER){st.suppressed++;return;}
-  noteEntry(st,ca,limit,release,t);st.accepted=true;st.enteredAt=t;st.anchor=copy(ca.center);st.entries++;sq._rallyRecovery={serial:(+sq._rallyRecoverySerial||0)+1,startedAt:t,anchor:copy(st.anchor)};sq._rallyRecoverySerial=sq._rallyRecovery.serial;sq.objective=copy(st.anchor);sq.commandPhase='rally';telemetry(sim,'decision-rally-commit',{faction:sq.faction,squad:sq.id,serial:sq._rallyRecovery.serial,anchor:copy(st.anchor)});
+  noteEntry(st,ca,limit,release,t);st.accepted=true;st.enteredAt=t;st.missionVersion=missionVersion(sq);st.lastForward=commandForward(sq);st.anchor=copy(ca.center);st.entries++;sq._rallyRecovery={serial:(+sq._rallyRecoverySerial||0)+1,startedAt:t,anchor:copy(st.anchor)};sq._rallyRecoverySerial=sq._rallyRecovery.serial;sq.objective=copy(st.anchor);sq.commandPhase='rally';telemetry(sim,'decision-rally-commit',{faction:sq.faction,squad:sq.id,serial:sq._rallyRecovery.serial,anchor:copy(st.anchor)});
 }
 
 function aliveTeam(sq,key){return(sq.members||[]).filter(function(s){return!s.dead&&teamKeyFor(s)===key;}).sort(function(a,b){return(+a.slotIndex||0)-(+b.slotIndex||0);});}
@@ -236,7 +262,7 @@ function executeMission(sim,sq,town){
 }
 
 function accumulate(into,from){for(var k in from)if(Object.prototype.hasOwnProperty.call(from,k))into[k]=(+into[k]||0)+(+from[k]||0);}
-function summary(sim){var out={plans:0,active:0,quiet:0,rallies:0,fireteams:0,orderPublishing:Object.assign({},sim._squadCommandPublishStats||{intentChecks:0,intentPublishes:0,intentCoalesced:0})},churn={entries:0,exits:0,suppressed:0,stragglerSuppressions:0,rallyRequests:0,releasableAtEntry:0,ageTotal:0,entryReasons:{},exitReasons:{}};['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i],p=q._engagementPlan;if(p){out.plans++;if(p.status==='active')out.active++;if(p.status==='quiet')out.quiet++;}var st=q._rallyState;if(st){if(st.accepted)out.rallies++;churn.entries+=+st.entries||0;churn.exits+=+st.exits||0;churn.suppressed+=+st.suppressed||0;churn.stragglerSuppressions+=+st.stragglerSuppressions||0;churn.rallyRequests+=+st.rallyRequests||0;churn.releasableAtEntry+=+st.releasableAtEntry||0;churn.ageTotal+=+st.ageTotal||0;accumulate(churn.entryReasons,st.entryReasons);accumulate(churn.exitReasons,st.exitReasons);}out.fireteams+=Object.keys(q._fireteamOrders||{}).length;}});churn.meanAge=churn.exits?+(churn.ageTotal/churn.exits).toFixed(3):0;churn.releasableAtEntryRatio=churn.entries?+(churn.releasableAtEntry/churn.entries).toFixed(3):0;out.rallyChurn=churn;sim._squadCommandSummary=out;sim._engagementPlanSummary={live:out.plans,active:out.active,quiet:out.quiet};sim._rallySummary={active:out.rallies,enterGrace:RALLY_ENTER,exitRatio:RALLY_RELEASE,minRegroup:RALLY_MIN,maxRegroup:RALLY_MAX,reentry:REENTRY,churn:churn};return out;}
+function summary(sim){var out={plans:0,active:0,quiet:0,rallies:0,fireteams:0,orderPublishing:Object.assign({},sim._squadCommandPublishStats||{intentChecks:0,intentPublishes:0,intentCoalesced:0})},churn={entries:0,exits:0,suppressed:0,stragglerSuppressions:0,rallyRequests:0,releasableAtEntry:0,ageTotal:0,entryReasons:{},exitReasons:{}};['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i],p=q._engagementPlan;if(p){out.plans++;if(p.status==='active')out.active++;if(p.status==='quiet')out.quiet++;}var st=q._rallyState;if(st){if(st.accepted)out.rallies++;churn.entries+=+st.entries||0;churn.exits+=+st.exits||0;churn.suppressed+=+st.suppressed||0;churn.stragglerSuppressions+=+st.stragglerSuppressions||0;churn.rallyRequests+=+st.rallyRequests||0;churn.releasableAtEntry+=+st.releasableAtEntry||0;churn.ageTotal+=+st.ageTotal||0;accumulate(churn.entryReasons,st.entryReasons);accumulate(churn.exitReasons,st.exitReasons);}out.fireteams+=Object.keys(q._fireteamOrders||{}).length;}});churn.meanAge=churn.exits?+(churn.ageTotal/churn.exits).toFixed(3):0;churn.releasableAtEntryRatio=churn.entries?+(churn.releasableAtEntry/churn.entries).toFixed(3):0;out.rallyChurn=churn;sim._squadCommandSummary=out;sim._engagementPlanSummary={live:out.plans,active:out.active,quiet:out.quiet};sim._rallySummary={active:out.rallies,enterGrace:RALLY_ENTER,exitRatio:RALLY_RELEASE,minRally:RALLY_MIN,reentry:REENTRY,churn:churn};return out;}
 function reset(sim){sim._squadCommandPublishStats={intentChecks:0,intentPublishes:0,intentCoalesced:0};['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i];q._engagementPlan=null;q._stablePlan=null;q._engagementPlanSerial=0;q._planDormantSignature=null;q._missionExecution=null;q._macroMissionRequest=null;q._rallyState=null;q._rallyRecovery=null;q._rallyRecoverySerial=0;q._rallyBypassUntil=0;q._fireteamOrders={};(q.members||[]).forEach(function(s){s._fireteamDestination=null;s._fireteamPublishKey=null;s._fireteamKey=null;s._defensePost=null;s._engagementTask=null;});}});summary(sim);}
 function commanderTick(sim,payload){var town=payload&&payload.town||null;['us','ge'].forEach(function(f){var a=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i];updateCohesion(sim,q);executeMission(sim,q,town);updatePlan(sim,q);}});summary(sim);}
 
