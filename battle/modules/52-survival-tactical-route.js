@@ -1,6 +1,6 @@
 /* Lean movement execution owner.
    Command/combat choose the goal; Movement Resolver chooses the winner; this module owns only the
-   committed micro-route and a conservative last-resort progress check. Retreat/regroup are never
+   committed micro-route and a conservative last-resort progress check. Retreat/rally are never
    declared unreachable here. */
 (function(root){
 'use strict';
@@ -47,11 +47,11 @@ function protectivePoint(s,b,pick,threat){
   }
   return best&&C.reserve(s,b,best.slot,'route')?best:null;
 }
-function survivalPlan(s,b,pick,threat){if(!threat||!dangerActive(s,b)||!currentlyExposed(s,b))return null;var kind=String(pick.kind||'');if(['hold','reload-hold','contact-reaction','cover-bound','assault-rush','firing-station','retreat','regroup'].indexOf(kind)>=0)return null;var pt=protectivePoint(s,b,pick,threat);if(!pt)return null;var plan=beginPlan(s,b,pick,'cover-detour',[pt]);plan.coverSlotId=pt.slotId;return plan;}
+function survivalPlan(s,b,pick,threat){if(!threat||!dangerActive(s,b)||!currentlyExposed(s,b))return null;var kind=String(pick.kind||'');if(['hold','reload-hold','contact-reaction','cover-bound','assault-rush','firing-station','retreat','rally'].indexOf(kind)>=0)return null;var pt=protectivePoint(s,b,pick,threat);if(!pt)return null;var plan=beginPlan(s,b,pick,'cover-detour',[pt]);plan.coverSlotId=pt.slotId;return plan;}
 function resolveRoute(s,b,pick){if(!s||!b||!pick||!pick.point||s.dead)return null;var plan=s._tacticalRoute;if(plan&&!planMatches(plan,pick)){clearPlan(s,b,true);plan=null;}plan=advancePlan(s,b,plan);if(plan){routeStats(b).routeReuses++;return{point:clone(plan.steps[plan.index]),reason:plan.reason,intent:clone(plan.intent),step:plan.index,total:plan.steps.length};}var threat=knownThreat(s,b);if((+s._tacticalRouteCooldownUntil||0)>b.time){routeStats(b).cooldownBlocks++;return null;}plan=survivalPlan(s,b,pick,threat);plan=advancePlan(s,b,plan);return plan?{point:clone(plan.steps[plan.index]),reason:plan.reason,intent:clone(plan.intent),step:plan.index,total:plan.steps.length}:null;}
 
 var SAMPLE_DT=.5,WINDOW=6,NET=1.5,FAR=3,CONFIRMS=2,OBSERVE=8,FAIL_TTL=12,GRID=1;
-var HOLD={hold:1,'reload-hold':1,'firing-station':1,'contact-reaction':1,retreat:1,regroup:1};
+var HOLD={hold:1,'reload-hold':1,'firing-station':1,'contact-reaction':1,retreat:1,rally:1};
 var GATED={'cover-bound':1,'assault-rush':1};
 function freshProgress(){return{stuckDetections:0,recoveryAttempts:0,routeRebuilds:0,alternateApproaches:0,unreachableFlags:0,candidatesSuppressed:0,candidateChecks:0,failuresRecorded:0,failuresClearedOnArrival:0};}
 function progressStats(b){return b._movementProgressStats||(b._movementProgressStats=freshProgress());}
@@ -63,7 +63,7 @@ function noteFailure(s,b,p,reason){p=point(p);if(!s||!b||!p)return false;var st=
 function clearFailuresNear(s,b,p,r){p=point(p);if(!s||!p)return 0;var st=prog(s),n=0;for(var k in st.failures){var a=k.split(','),fp={x:+a[0],z:+a[1]};if(dist(fp,p)<=(r==null?3:r)){delete st.failures[k];n++;}}if(n)progressStats(b).failuresClearedOnArrival+=n;return n;}
 function routeRemaining(s){var a=s._tacticalRoute;if(a&&a.steps)return a.steps.length-(+a.index||0);a=s._physicalPath;if(a&&a.points)return a.points.length-(+a.index||0);a=s._navCache;if(a&&a.path)return a.path.length-(+a.index||0);return null;}
 function routeIndex(s){if(s._tacticalRoute&&isFinite(+s._tacticalRoute.index))return+s._tacticalRoute.index;if(s._physicalPath&&isFinite(+s._physicalPath.index))return+s._physicalPath.index;if(s._navCache&&isFinite(+s._navCache.index))return+s._navCache.index;return 0;}
-function expected(s,pick,b){if(!s||s.dead||HOLD[pick&&pick.kind]||s.reloading||s.clearingStoppage||(+s.suppressedUntil||0)>b.time)return false;if(s.squad&&(s.squad.state==='retreat'||s.squad.commandPhase==='regroup'||s.squad.commandPhase==='retreat'))return false;if(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s))return false;if((s._movementYieldUntil||0)>b.time||(s._separatedAt||0)>b.time-1)return false;return true;}
+function expected(s,pick,b){if(!s||s.dead||HOLD[pick&&pick.kind]||s.reloading||s.clearingStoppage||(+s.suppressedUntil||0)>b.time)return false;if(s.squad&&(s.squad.state==='retreat'||s.squad.commandPhase==='rally'||s.squad.commandPhase==='retreat'))return false;if(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s))return false;if((s._movementYieldUntil||0)>b.time||(s._separatedAt||0)>b.time-1)return false;return true;}
 /* One physical failure episode belongs to one winning goal. Recovery never republishes an
    order: rebuild once, observe, request one local alternate, observe, then report unreachable.
    Actual movement/waypoint progress or a new winner starts a fresh episode. */

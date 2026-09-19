@@ -15,7 +15,7 @@
   function now(battle){return battle&&isFinite(+battle.time)?+battle.time:0;}
   function state(s){if(!s._movementResolver)s._movementResolver={order:null,combat:null,last:null,changes:0,combatWins:0,orderWins:0,stickyCombatWins:0,tacticalWins:0};return s._movementResolver;}
   function signature(s){var q=s.squad||{};return[q.commandPhase||'',q.targetObjective||'',q._engagementPlan&&q._engagementPlan.serial||0,q.state==='retreat'?'retreat':''].join('|');}
-  function priority(kind,s){return kind==='retreat'?100:kind==='regroup'?95:kind==='reload-hold'?90:kind==='firing-station'?80:kind==='assault-rush'?70:kind==='cover-bound'?60:kind==='contact-reaction'?55:kind==='hold'?(s.eng&&s.eng.state==='pinned'?85:50):20;}
+  function priority(kind,s){return kind==='retreat'?100:kind==='rally'?95:kind==='reload-hold'?90:kind==='firing-station'?80:kind==='assault-rush'?70:kind==='cover-bound'?60:kind==='contact-reaction'?55:kind==='hold'?(s.eng&&s.eng.state==='pinned'?85:50):20;}
   function tolerance(kind){return ['firing-station','hold','reload-hold','contact-reaction'].indexOf(kind)>=0?.1:ORDER_EPS;}
   function metrics(b){return b._movementGoalStats||(b._movementGoalStats={requests:0,actualChanges:0,equivalentRequestsIgnored:0,hysteresisRetains:0,lowerPriorityRejected:0,emergencyOverrides:0,formationShadowsIgnored:0,goalLegalizations:0,formationEndpointResolutions:0,tacticalWaypointBacktracks:0,blockedGoalFallbacks:0,illegalGoalsUnresolved:0,overridesByPriority:{},bySource:{}});}
   function count(b,key,source){var m=metrics(b);m[key]=(m[key]||0)+1;if(source){var row=m.bySource[source]||(m.bySource[source]={requests:0,changes:0});if(key==='requests')row.requests++;if(key==='actualChanges')row.changes++;}}
@@ -149,8 +149,8 @@
       st.combat=null;var escape=st.order&&st.order.signature===signature(soldier)?st.order.point:sq.home||soldier.orderDestination;
       return proposal('squad-command',escape,battle,'retreat',true,Infinity);
     }
-    if(sq.commandPhase==='regroup'){
-      st.combat=null;return proposal('squad-command',st.order&&st.order.point||soldier.orderDestination||sq.rally,battle,'regroup',true,Infinity);
+    if(sq.commandPhase==='rally'){
+      st.combat=null;return proposal('squad-command',st.order&&st.order.point||soldier.orderDestination||sq.rally,battle,'rally',true,Infinity);
     }
     if(task){
       if(soldier.reloading||soldier.clearingStoppage){

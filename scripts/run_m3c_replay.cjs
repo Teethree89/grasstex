@@ -96,7 +96,7 @@ const path = require('node:path');
           const alive = q.members.filter(m => !m.dead); if (!alive.length) continue;
           const cx = alive.reduce((a, m) => a + m.root.position.x, 0) / alive.length, cz = alive.reduce((a, m) => a + m.root.position.z, 0) / alive.length, m = q._macroMission;
           const obj = q.targetObjective && window.BattleObjectiveSystem ? BattleObjectiveSystem.get(sim, q.targetObjective) : null;
-          squadRows.push([q.id, q.state, q.commandPhase, q.targetObjective, obj ? Math.round(Math.hypot(cx - obj.def.x, cz - obj.def.z)) : null, obj ? Math.round(+obj.def.radius || 0) : null, !!q.inContact, q._engagementPlan ? q._engagementPlan.status : null, q.routeIndex + '/' + (q.route || []).length, Math.round(Math.hypot(cx - (q.objective?.x || 0), cz - (q.objective?.z || 0))), m ? m.version + ':' + m.action : null, q._regroupHysteresis?.accepted ? 'RG' : '']);
+          squadRows.push([q.id, q.state, q.commandPhase, q.targetObjective, obj ? Math.round(Math.hypot(cx - obj.def.x, cz - obj.def.z)) : null, obj ? Math.round(+obj.def.radius || 0) : null, !!q.inContact, q._engagementPlan ? q._engagementPlan.status : null, q.routeIndex + '/' + (q.route || []).length, Math.round(Math.hypot(cx - (q.objective?.x || 0), cz - (q.objective?.z || 0))), m ? m.version + ':' + m.action : null, q._rallyState?.accepted ? 'RG' : '']);
         }
         st.samples.push({ squads: squadRows, time:sim.time, us:sim.factions.us.alive, ge:sim.factions.ge.alive, captures:sim.objectiveStats?.captures, stationary });
         return { time:sim.time,winner:sim.winner,shots:st.shots,changes:st.destinationChanges };

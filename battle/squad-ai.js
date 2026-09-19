@@ -194,7 +194,7 @@
   }
   function formationFor(squad){
     var phase=squad.commandPhase||'';
-    if(squad.state==='retreat'||phase==='corner-check'||phase==='clear-town'||phase==='regroup')return 'column';
+    if(squad.state==='retreat'||phase==='corner-check'||phase==='clear-town'||phase==='rally')return 'column';
     if(squad.state==='engaged'||['contact','assault','capture','defend'].indexOf(phase)>=0)return 'line';
     var anchor=squad.orderAnchor||squad.rally,goal=squad.objective||squad.home;
     return dist2(anchor.x,anchor.z,goal.x,goal.z)<68?'line':'wedge';
@@ -246,7 +246,7 @@
   }
   function issueOrders(squad,battle,force){
     var anchor=squad.orderAnchor||(squad.orderAnchor={x:squad.rally.x,z:squad.rally.z}),goal=squad.state==='retreat'?squad.home:(squad.objective||squad.home),goalChanged=!squad._orderGoal||dist2(goal.x,goal.z,squad._orderGoal.x,squad._orderGoal.z)>3;
-    var form=formationFor(squad),formChanged=form!==squad.formation,phase=squad.commandPhase||'',hold=['regroup','support-hold','hold','reserve','defend','corner-check'].indexOf(phase)>=0;
+    var form=formationFor(squad),formChanged=form!==squad.formation,phase=squad.commandPhase||'',hold=['rally','support-hold','hold','reserve','defend','corner-check'].indexOf(phase)>=0;
     if(goalChanged){squad._orderGoal={x:goal.x,z:goal.z};force=true;}
     if(formChanged){squad.formation=form;force=true;}
     /* A squad in contact is a base of fire, not a marching column: the order anchor only creeps

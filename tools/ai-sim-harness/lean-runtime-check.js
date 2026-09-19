@@ -26,11 +26,11 @@ test('fireteam slots are produced by the squad-command owner',()=>{
   q.commandPhase='assault';r.SquadAI.updateSquad(q,b);
   assert.ok(q.members.every(s=>s._fireteamKey&&s._fireteamDestination));
 });
-test('committed combat plan suppresses transient cohesion regroup',()=>{
+test('committed combat plan suppresses transient cohesion rally',()=>{
   const {r,systems}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100}});
   q.commandPhase='assault';q.inContact=true;systems['squad-command'].onCommanderTick(b,{town:null});
   assert.ok(q._engagementPlan&&q._engagementPlan.status==='active');
-  // The Captain is the only regroup producer; a dispersed squad in a firefight is deployed, not scattered.
+  // The Captain is the only rally producer; a dispersed squad in a firefight is deployed, not scattered.
   q.members.forEach((s,i)=>{s.root.position.x=(i%2?-1:1)*60;});
   for(let i=0;i<10;i++){b.time+=.45;systems['squad-command'].onCommanderTick(b,{town:null});assert.equal(q.commandPhase,'assault');}
   assert.equal(systems['squad-command'].onSimulationStep,undefined,'no per-step phase revert should exist');
@@ -65,7 +65,7 @@ test('meso cohesion may forgive laggers but never forward outrunners',()=>{
   q.orderAnchor={x:0,z:0};q.rally={x:0,z:0};q.objective={x:100,z:0};
   for(let i=0;i<q.members.length;i++){q.members[i].root.position.x=(i-4)*.6;q.members[i].root.position.z=(i%2)*.5;}
   q.members[8].root.position.x=-75;q.members[9].root.position.x=75;
-  const a=r.BattleRegroupHysteresis.assessment(q,34);
+  const a=r.BattleRallyState.assessment(q,34);
   assert.ok(a.stragglers.includes(String(q.members[8].id)),'lagger should be catch-up eligible');
   assert.ok(!a.stragglers.includes(String(q.members[9].id)),'outrunner must remain in the core');
   assert.ok(a.outrunners.includes(String(q.members[9].id)));assert.equal(a.dispersed,true);

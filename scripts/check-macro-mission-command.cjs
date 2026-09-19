@@ -63,7 +63,7 @@ test('a persistent request is accepted once and its removal is explicit reassess
 test('vacant-objective extension never rewrites another squad on a global wake',()=>{
   const f=fixture();f.sim._objectives[0].state={owner:'ge',vacantOwner:true};f.tick();
   assert.deepEqual(Object.keys(f.systems).filter(id=>id!=='squad-command'),[],'a module besides the Captain still registers a squad-state hook');
-  f.sq.objective={x:71,z:0};f.sq.commandPhase='regroup';f.tick();
+  f.sq.objective={x:71,z:0};f.sq.commandPhase='rally';f.tick();
   assert.equal(f.sq.objective.x,100,'Captain did not restore the vacant objective mission');assert.equal(f.sq._macroMission.action,'assault');
 });
 test('a brief decides doctrine once and goes straight for its objective',()=>{
@@ -72,19 +72,19 @@ test('a brief decides doctrine once and goes straight for its objective',()=>{
   for(let i=0;i<20;i++){f.sq.inContact=!!(i%3);f.tick();}
   assert.strictEqual(f.sq._macroMission,mission);assert.equal(f.decisions,1,'doctrine re-evaluated during an unchanged mission');
 });
-test('Captain regroup is Meso-owned: no General wake, no restore writes, mission resumes',()=>{
+test('Captain rally is Meso-owned: no General wake, no restore writes, mission resumes',()=>{
   const f=fixture();const extra=[];
   for(let i=0;i<5;i++){const m={id:'r'+i,role:'rifleman',dead:false,faction:'us',root:{position:{x:0,z:0}}};extra.push(m);f.sq.members.push(m);f.sim._roster.us.push(m);}
   f.tick();const mission=f.sq._macroMission,wakes=f.r.BattleCommanderAI.missionState(f.sim).wakeCount,phase=f.sq.commandPhase;
   assert.equal(f.sq.objective.x,100);
   extra[0].root.position.x=-60;extra[1].root.position.x=60;extra[2].root.position.z=70; // genuinely dispersed, including outrunners
-  let regroupTicks=0,phaseWrites=0,lastPhase=f.sq.commandPhase;
-  for(let i=0;i<12;i++){f.tick();if(f.sq.commandPhase==='regroup')regroupTicks++;if(f.sq.commandPhase!==lastPhase){phaseWrites++;lastPhase=f.sq.commandPhase;}}
-  assert.ok(regroupTicks>0,'Captain never regrouped a dispersed squad');assert.equal(phaseWrites,1,'regroup entered more than once or flapped');
+  let rallyTicks=0,phaseWrites=0,lastPhase=f.sq.commandPhase;
+  for(let i=0;i<12;i++){f.tick();if(f.sq.commandPhase==='rally')rallyTicks++;if(f.sq.commandPhase!==lastPhase){phaseWrites++;lastPhase=f.sq.commandPhase;}}
+  assert.ok(rallyTicks>0,'Captain never rallied a dispersed squad');assert.equal(phaseWrites,1,'rally entered more than once or flapped');
   for(const m of extra)m.root.position={x:0,z:0};
   for(let i=0;i<12;i++)f.tick();
   assert.equal(f.sq.commandPhase,phase);assert.equal(f.sq.objective.x,100);assert.strictEqual(f.sq._macroMission,mission);
-  assert.equal(f.r.BattleCommanderAI.missionState(f.sim).wakeCount,wakes,'General woke for a Captain regroup');
+  assert.equal(f.r.BattleCommanderAI.missionState(f.sim).wakeCount,wakes,'General woke for a Captain rally');
 });
 test('a doctrine hold is reviewed once when its Captain lease ends, not every tick',()=>{
   const f=fixture();f.action='hold';f.tick();assert.equal(f.sq._macroMission.action,'hold');assert.equal(f.sq.commandPhase,'hold');

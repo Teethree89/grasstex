@@ -1,14 +1,14 @@
 /* Rolling squad forward-progress diagnostics.
    A squad can travel a long distance without making useful progress (circling, route churn,
-   regroup yo-yos, local avoidance loops). Strategic movement is measured toward the stable
-   objective. An accepted regroup is different: moving backward to a captain's safe rally is
-   intentional progress, so regroup windows are measured toward that fixed rally anchor instead. */
+   rally yo-yos, local avoidance loops). Strategic movement is measured toward the stable
+   objective. An accepted rally is different: moving backward to a captain's safe rally is
+   intentional progress, so rally windows are measured toward that fixed rally anchor instead. */
 (function(root){
 'use strict';
 if(!root.BattleModules||root.BattleSquadForwardProgress)return;
 
 var WINDOW=15,MIN_TRAVEL=12,MIN_NET=2.5,MIN_EFF=.15,ALERT_COOLDOWN=20,MAX_ALERTS=160;
-var ADVANCE={approach:1,assault:1,capture:1,'clear-town':1,flank:1,contact:1,'corner-check':1,regroup:1};
+var ADVANCE={approach:1,assault:1,capture:1,'clear-town':1,flank:1,contact:1,'corner-check':1,rally:1};
 
 function clonePoint(p){return p&&isFinite(+p.x)&&isFinite(+p.z)?{x:+p.x,z:+p.z}:null;}
 function dist(a,b){return !a||!b?Infinity:Math.hypot(a.x-b.x,a.z-b.z);}
@@ -16,10 +16,10 @@ function centroid(sq){var m=sq&&sq.members||[],x=0,z=0,n=0;for(var i=0;i<m.lengt
 function objectiveById(sim,id){var a=sim&&sim._objectives||[];for(var i=0;i<a.length;i++){var o=a[i];if(String(o&&o.id)===String(id)){var d=o.def||o;return clonePoint(d);}}return null;}
 function strategicGoal(sim,sq){return objectiveById(sim,sq&&sq.targetObjective)||clonePoint(sq&&sq._routeFinalObjective)||clonePoint(sq&&sq.objective);}
 function measuredGoal(sim,sq,ph){
-  if(ph==='regroup'){
-    var rh=sq&&sq._regroupHysteresis,a=rh&&rh.accepted&&clonePoint(rh.anchor);
-    /* The commander may briefly propose regroup before hysteresis accepts it. Do not diagnose that
-       transient against the strategic objective; there is no fixed regroup destination yet. */
+  if(ph==='rally'){
+    var rh=sq&&sq._rallyState,a=rh&&rh.accepted&&clonePoint(rh.anchor);
+    /* The commander may briefly propose a rally before the Captain accepts it. Do not diagnose that
+       transient against the strategic objective; there is no fixed rally destination yet. */
     return a?{point:a,kind:'rally'}:null;
   }
   var g=strategicGoal(sim,sq);return g?{point:g,kind:'objective'}:null;

@@ -63,8 +63,8 @@ function stablePlanState(sq,sim){
   var p=sq&&sq._stablePlan;if(!p)return null;var t=simNow(sim);
   return{phase:p.phase||null,targetObjective:p.targetObjective!=null?String(p.targetObjective):null,objective:point(p.objective),signature:p.signature||null,serial:isFinite(+p.serial)?+p.serial:null,until:isFinite(+p.until)?+p.until:null,remaining:isFinite(+p.until)?rounded(Math.max(0,+p.until-t)):null};
 }
-function regroupRecoveryState(sq,sim){
-  var r=sq&&sq._regroupRecovery;if(!r)return null;var t=simNow(sim);
+function rallyRecoveryState(sq,sim){
+  var r=sq&&sq._rallyRecovery;if(!r)return null;var t=simNow(sim);
   return{serial:isFinite(+r.serial)?+r.serial:null,startedAt:isFinite(+r.startedAt)?+r.startedAt:null,elapsed:isFinite(+r.startedAt)?rounded(Math.max(0,t-r.startedAt)):null,anchor:point(r.anchor),objective:point(r.objective)};
 }
 function teamKeyFor(s){
@@ -105,7 +105,7 @@ function factionSummary(sim,faction){
         spread:rounded(spread),cohesionLimit:rounded(limit),overCohesionLimit:spread!=null&&limit!=null?spread>limit:null,captainAlive:captainAlive(sq),
         commandHoldUntil:isFinite(+sq.commandHoldUntil)?+sq.commandHoldUntil:null,commandHoldRemaining:isFinite(+sq.commandHoldUntil)?rounded(Math.max(0,+sq.commandHoldUntil-simNow(sim))):null,
         inContact:!!sq.inContact,aliveCount:isFinite(+sq.aliveCount)?+sq.aliveCount:null,lastDoctrineRule:sq._lastDoctrineRule||null,
-        route:routeState(sq,pos),stablePlan:stablePlanState(sq,sim),regroupRecovery:regroupRecoveryState(sq,sim),fireteamOrders:fireteamOrdersState(sq,sim),movement:movementState(sq),
+        route:routeState(sq,pos),stablePlan:stablePlanState(sq,sim),rallyRecovery:rallyRecoveryState(sq,sim),fireteamOrders:fireteamOrdersState(sq,sim),movement:movementState(sq),
         objectiveRecovery:objectiveRecovery(sq),objectiveDefenseRequest:defenseRequest(sq),preparedDefenseRequest:preparedDefenseRequest(sq),
         strategicDefenseObjective:sq._strategicDefenseObjective!=null?String(sq._strategicDefenseObjective):null
       };
@@ -152,16 +152,16 @@ function conflictMetrics(conflicts){
   return{total:(conflicts||[]).length,strategic:strategic,byKind:byKind,byField:byField,bySquad:bySquad};
 }
 function tacticalMetrics(sim,conflicts){
-  var out={squads:0,regrouping:[],retreating:[],targetless:[],activeStablePlans:[],blockedFireteams:[],activeDefenseRequests:[],writerConflicts:conflictMetrics(conflicts)};
+  var out={squads:0,rallying:[],retreating:[],targetless:[],activeStablePlans:[],blockedFireteams:[],activeDefenseRequests:[],writerConflicts:conflictMetrics(conflicts)};
   ['us','ge'].forEach(function(f){var squads=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++){
     var sq=squads[i],id=f+'/'+sq.id;out.squads++;
-    if(sq.commandPhase==='regroup')out.regrouping.push(id);if(sq.state==='retreat')out.retreating.push(id);
+    if(sq.commandPhase==='rally')out.rallying.push(id);if(sq.state==='retreat')out.retreating.push(id);
     if(sq.targetObjective==null&&sq.commandRole!=='support'&&sq.commandRole!=='reserve'&&sq.commandRole!=='garrison')out.targetless.push(id);
     if(sq._stablePlan)out.activeStablePlans.push({squad:id,phase:sq._stablePlan.phase||null,targetObjective:sq._stablePlan.targetObjective||null,remaining:isFinite(+sq._stablePlan.until)?rounded(Math.max(0,+sq._stablePlan.until-simNow(sim))):null});
     var orders=sq._fireteamOrders||{};Object.keys(orders).forEach(function(key){if(orders[key]&&orders[key].blocked)out.blockedFireteams.push(id+'/'+key);});
     if(sq._captureZoneDefenseRequest||sq._preparedDefenseRequest)out.activeDefenseRequests.push({squad:id,objectiveSecurity:!!sq._captureZoneDefenseRequest,preparedDefense:!!sq._preparedDefenseRequest});
   }});
-  out.blockedFireteamCount=out.blockedFireteams.length;out.stablePlanCount=out.activeStablePlans.length;out.targetlessCount=out.targetless.length;out.regroupCount=out.regrouping.length;return out;
+  out.blockedFireteamCount=out.blockedFireteams.length;out.stablePlanCount=out.activeStablePlans.length;out.targetlessCount=out.targetless.length;out.rallyCount=out.rallying.length;return out;
 }
 function enrichLoops(alerts,events,conflicts){
   return alerts.map(function(alert){

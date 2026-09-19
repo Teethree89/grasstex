@@ -62,7 +62,7 @@ function bootstrap(opts){
   load(root,'battle/weapons.js');load(root,'battle/obstacle-field.js');load(root,'battle/squad-ai.js');load(root,'battle/engagement.js');
   if(opts.modules!==false){
     root.BattleModules={registerSystem(){},registerUnitType(){},registerObjectiveType(){},runHook(){},unitsFor(){return[];}};
-    /* One squad-command owner replaces the old stability/plan/command-lock/regroup stack. */
+    /* One squad-command owner replaces the old stability/plan/command-lock/rally stack. */
     load(root,'battle/modules/16-squad-plan-stability.js');
   }
   return root;

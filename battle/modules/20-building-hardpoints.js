@@ -21,7 +21,7 @@ function commandSignature(sq){
   var p=sq&&sq.objective||{},r=sq&&sq._preparedDefenseRequest;
   return[String(sq&&sq.commandPhase||''),String(sq&&sq.commandRole||''),String(sq&&sq.targetObjective||''),Math.round((+p.x||0)/4),Math.round((+p.z||0)/4),String(r&&r.objectiveId||'')].join('|');
 }
-function canAssign(s){var sq=s&&s.squad;return eligible(s)&&sq&&sq.state!=='retreat'&&phase(s)!=='retreat'&&phase(s)!=='regroup'&&POSITION_TASKS[job(s)]&&(sq.state==='engaged'||['capture','defend','hold','support-hold'].indexOf(phase(s))>=0);}
+function canAssign(s){var sq=s&&s.squad;return eligible(s)&&sq&&sq.state!=='retreat'&&phase(s)!=='retreat'&&phase(s)!=='rally'&&POSITION_TASKS[job(s)]&&(sq.state==='engaged'||['capture','defend','hold','support-hold'].indexOf(phase(s))>=0);}
 function emit(sim,type,t,extra){if(root.BattleTelemetry)root.BattleTelemetry.record('position-'+type,Object.assign({assignment:t.id,soldier:t.assignee,faction:t.faction,role:t.role,station:t.station,building:t.building,status:t.status},extra||{}),sim);}
 function snapshot(t){return JSON.parse(JSON.stringify(t));}
 function release(s,sim,reason){
@@ -41,7 +41,7 @@ function invalidReason(s,sim,t){
   var sq=s.squad;
   if(!sq)return'squad-removed';
   if(sq.state==='retreat'||phase(s)==='retreat')return'retreat';
-  if(phase(s)==='regroup')return'regroup';
+  if(phase(s)==='rally')return'rally';
   if(sim.winner||sim.manualEnded)return'engagement-ended';
   if(N.version!==t.geometryVersion)return'station-invalid';
   /* M3C boundary: target/contact state and engagement-plan serials are Micro state. A Captain-owned

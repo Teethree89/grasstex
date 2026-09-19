@@ -11,7 +11,7 @@ if(!root.BattleModules||root.BattleSoldierPersonalSpace)return;
 var MIN=0.90,CELL=1.0,MAX_PUSH=.18;
 /* Endpoints need room for the integrator's 0.35 m arrival tolerance on both sides.
    This is physical allocation of an already selected goal, never a new movement order. */
-var DEST_SPACE=MIN+.70,DEST_KINDS={formation:1,retreat:1,regroup:1,'assault-rush':1};
+var DEST_SPACE=MIN+.70,DEST_KINDS={formation:1,retreat:1,rally:1,'assault-rush':1};
 function point(s){return s&&s.root&&s.root.position?{x:+s.root.position.x||0,z:+s.root.position.z||0}:null;}
 function fixed(s){var t=root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s);return!!(t&&t.occupiedAt!=null);}
 function key(x,z){return Math.floor(x/CELL)+','+Math.floor(z/CELL);}

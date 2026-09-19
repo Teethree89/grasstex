@@ -6,7 +6,7 @@
      commander-doctrine.js  what is worth doing, with what force  (genome, objective scores)
      commander-routes.js    who goes where                        (roles, approach routes)
      commander-ai.js        which mission each squad holds        (event-driven wakes, victory)
-     modules/16-squad-...   how the Captain executes that mission (legs, phase, regroup)
+     modules/16-squad-...   how the Captain executes that mission (legs, phase, rally)
      engagement.js          how a soldier fights                  (contact drills)
 
    The General is event-driven: it issues a brief, then sleeps until the mission completes, becomes

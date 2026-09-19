@@ -210,12 +210,12 @@ section('a stranded soldier cannot override the Captain regroup timeout');
   load(r,'battle/modules/16-squad-plan-stability.js');
   commandTick(r,sim,town);
   sq.members[3].root.position.x=-100;
-  sq.commandPhase='regroup';sq.objective={x:20,z:0};
-  sq._regroupHysteresis={overSince:sim.time-20,accepted:true,enteredAt:sim.time-19,cooldownUntil:0,anchor:{x:20,z:0},entries:1,exits:0,suppressed:0,stragglerSuppressions:0,regroupRequests:1};
+  sq.commandPhase='rally';sq.objective={x:20,z:0};
+  sq._rallyState={overSince:sim.time-20,accepted:true,enteredAt:sim.time-19,cooldownUntil:0,anchor:{x:20,z:0},entries:1,exits:0,suppressed:0,stragglerSuppressions:0,rallyRequests:1};
   commandTick(r,sim,town);
-  check('the Captain releases a timed-out regroup straight back into its mission',sq.commandPhase!=='regroup'&&sq.objective.x===120);
+  check('the Captain releases a timed-out regroup straight back into its mission',sq.commandPhase!=='rally'&&sq.objective.x===120);
   let held=0;
-  for(let i=0;i<25;i++){commandTick(r,sim,town);if(sq.commandPhase==='regroup'||sq.objective.x!==120)held++;}
+  for(let i=0;i<25;i++){commandTick(r,sim,town);if(sq.commandPhase==='rally'||sq.objective.x!==120)held++;}
   check('the entire bypass survives subsequent commander and Captain ticks',held===0,'held ticks='+held);
 }
 section('benchmark alerts distinguish approach intent from absent orders');

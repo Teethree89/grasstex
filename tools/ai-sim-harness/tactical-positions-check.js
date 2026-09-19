@@ -59,7 +59,7 @@ test('death releases immediately through the shipping kill path and the station 
   const f=fixture();f.claim();f.r.killProbe.call(f.sim,f.s,null);assert.equal(f.P.current(f.s),null);assert.ok(f.claim(f.other));assert.equal(f.P.summary(f.sim).releaseReasons.death,1);
 });
 for(const [reason,change] of [
-  ['retreat',f=>{f.sq.state='retreat';}],['regroup',f=>{f.sq.commandPhase='regroup';}],
+  ['retreat',f=>{f.sq.state='retreat';}],['rally',f=>{f.sq.commandPhase='rally';}],
   ['incapacitated',f=>{f.s.incapacitated=true;}],['explicit-task-change',f=>{f.sq.commandPhase='assault';}],
   ['explicit-task-change',f=>{f.sq.targetObjective='different-house';}],
   ['engagement-ended',f=>{f.sim.winner='us';}],['station-invalid',f=>{f.N.installScenario({buildings:[]});}]

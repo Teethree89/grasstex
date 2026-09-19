@@ -5,7 +5,7 @@
 
      - mission execution: route legs, corner pauses, objective phase, doctrine holds,
      - one tactical command lease (`_engagementPlan`),
-     - one cohesion/regroup state,
+     - one cohesion/rally state,
      - one set of committed fireteam slots.
 
    It never selects an objective. When a doctrine hold/support/regroup commitment ends it escalates to
@@ -19,12 +19,12 @@
 if(!root.BattleModules||!root.SquadAI||root.BattleSquadStability)return;
 
 var ASSAULT_LEASE=26,DEFENSE_LEASE=38,QUIET_CLOSE=9,TEAM_LEASE=12;
-var REGROUP_ENTER=1.35,REGROUP_RELEASE=.78,REGROUP_MIN=2.4,REGROUP_MAX=18,REGROUP_BYPASS=14,REENTRY=4;
+var RALLY_ENTER=1.35,RALLY_RELEASE=.78,RALLY_MIN=2.4,RALLY_MAX=18,RALLY_BYPASS=14,REENTRY=4;
 var STRAGGLER_BYPASS=2.8,URBAN_ARRIVAL_COHESION=.5;
 var ORDER_STRIDE=13,ORDER_ARRIVAL_RADIUS=8,ORDER_COHESION=.55,ORDER_PUBLISH_EPS=.05;
 var TACTICAL={contact:1,assault:1,flank:1,capture:1,defend:1,hold:1,'support-hold':1,'clear-town':1};
 var DEFENSIVE={capture:1,defend:1,hold:1,'support-hold':1};
-var EMERGENCY={retreat:1,regroup:1};
+var EMERGENCY={retreat:1,rally:1};
 
 function point(p){return p&&isFinite(+p.x)&&isFinite(+p.z)?{x:+p.x,z:+p.z}:null;}
 function copy(p){return p?{x:+p.x||0,z:+p.z||0}:null;}
@@ -67,8 +67,8 @@ function updatePlan(sim,sq){
   var p=sq._engagementPlan,phase=String(sq.commandPhase||''),sig=signature(sq);if(sq.state==='retreat'||phase==='retreat'){closePlan(sim,sq,'retreat');sq._planDormantSignature=null;return;}
   if(sq._planDormantSignature&&sq._planDormantSignature!==sig)sq._planDormantSignature=null;
   if(p){
-    if(sq.inContact){sq._planDormantSignature=null;if(p.status!=='active'&&p.activatedAt==null)p.activatedAt=sim.time;p.status='active';p.lastContactAt=sim.time;p.quietSince=null;sq._regroupBypassUntil=Math.max(+sq._regroupBypassUntil||0,sim.time+1.25);}
-    else if(p.status==='active'||p.status==='quiet'){if(p.quietSince==null)p.quietSince=sim.time;p.status='quiet';if(sim.time-p.quietSince>=QUIET_CLOSE){sq._planDormantSignature=p.signature;closePlan(sim,sq,'contact clear');requestReview(sim,sq,'contact clear');p=null;}else sq._regroupBypassUntil=Math.max(+sq._regroupBypassUntil||0,sim.time+1.25);}
+    if(sq.inContact){sq._planDormantSignature=null;if(p.status!=='active'&&p.activatedAt==null)p.activatedAt=sim.time;p.status='active';p.lastContactAt=sim.time;p.quietSince=null;sq._rallyBypassUntil=Math.max(+sq._rallyBypassUntil||0,sim.time+1.25);}
+    else if(p.status==='active'||p.status==='quiet'){if(p.quietSince==null)p.quietSince=sim.time;p.status='quiet';if(sim.time-p.quietSince>=QUIET_CLOSE){sq._planDormantSignature=p.signature;closePlan(sim,sq,'contact clear');requestReview(sim,sq,'contact clear');p=null;}else sq._rallyBypassUntil=Math.max(+sq._rallyBypassUntil||0,sim.time+1.25);}
     if(p&&p.status==='staged'&&sig!==p.signature){closePlan(sim,sq,'intent replaced');p=null;}
     if(p&&p.status==='staged'&&sim.time>=p.until){closePlan(sim,sq,'lease expired');requestReview(sim,sq,'lease expired');p=null;}
   }
@@ -98,8 +98,8 @@ function cohesionAssessment(sq,limit){
 function dispersedReasons(ca,limit){
   var r=[];if(ca.outrunners.length)r.push('outrunners');if(ca.laggards>ca.allowed)r.push('laggards-over-allowance');if(ca.coreSpread>limit)r.push('core-spread');return r;
 }
-function cohesionState(sq){return sq._regroupHysteresis||(sq._regroupHysteresis={overSince:null,accepted:false,enteredAt:0,cooldownUntil:0,anchor:null,lastForward:null,entries:0,exits:0,suppressed:0,stragglerSuppressions:0,regroupRequests:0,entryReasons:{},exitReasons:{},lastEntry:null,lastExit:null,releasableAtEntry:0,ageTotal:0});}
-/* Entry tests rawSpread against `limit`; release tests coreSpread against `limit * REGROUP_RELEASE`.
+function rallyState(sq){return sq._rallyState||(sq._rallyState={overSince:null,accepted:false,enteredAt:0,cooldownUntil:0,anchor:null,lastForward:null,entries:0,exits:0,suppressed:0,stragglerSuppressions:0,rallyRequests:0,entryReasons:{},exitReasons:{},lastEntry:null,lastExit:null,releasableAtEntry:0,ageTotal:0});}
+/* Entry tests rawSpread against `limit`; release tests coreSpread against `limit * RALLY_RELEASE`.
    coreSpread is structurally the smaller quantity (laggards trimmed, centroid recomputed over the
    survivors) and is measured from the core mean where `far` membership is classified against the
    median, so a regroup could in principle commit already satisfying its own release test.
@@ -122,15 +122,15 @@ function noteExit(st,why,ca,t){
 }
 function markCatchup(ca,t){for(var i=0;i<ca.members.length;i++){var s=ca.members[i];s._cohesionCatchupUntil=t+4;s._destinationCommitUntil=0;}}
 function updateCohesion(sim,sq){
-  if(!sq||sq.state==='retreat')return;var c=cfg(sim,sq),limit=+(captainAlive(sq)?c.cohesionRadius:c.captainlessCohesion)||34,release=limit*REGROUP_RELEASE,st=cohesionState(sq),t=sim.time,ca=cohesionAssessment(sq,limit);sq._cohesionAssessment={rawSpread:+ca.rawSpread.toFixed(3),coreSpread:+ca.coreSpread.toFixed(3),stragglers:ca.stragglers.slice(),outrunners:ca.outrunners.slice(),allowed:ca.allowed,dispersed:ca.dispersed};
-  var p=sq._engagementPlan,combatPlan=p&&(p.status==='active'||p.status==='quiet');if(sq.inContact||combatPlan){st.overSince=null;if(st.accepted){noteExit(st,sq.inContact?'contact':'combat-plan',ca,t);st.accepted=false;st.exits++;st.cooldownUntil=t+REENTRY;}sq._regroupBypassUntil=Math.max(+sq._regroupBypassUntil||0,t+1.25);return;}
+  if(!sq||sq.state==='retreat')return;var c=cfg(sim,sq),limit=+(captainAlive(sq)?c.cohesionRadius:c.captainlessCohesion)||34,release=limit*RALLY_RELEASE,st=rallyState(sq),t=sim.time,ca=cohesionAssessment(sq,limit);sq._cohesionAssessment={rawSpread:+ca.rawSpread.toFixed(3),coreSpread:+ca.coreSpread.toFixed(3),stragglers:ca.stragglers.slice(),outrunners:ca.outrunners.slice(),allowed:ca.allowed,dispersed:ca.dispersed};
+  var p=sq._engagementPlan,combatPlan=p&&(p.status==='active'||p.status==='quiet');if(sq.inContact||combatPlan){st.overSince=null;if(st.accepted){noteExit(st,sq.inContact?'contact':'combat-plan',ca,t);st.accepted=false;st.exits++;st.cooldownUntil=t+REENTRY;}sq._rallyBypassUntil=Math.max(+sq._rallyBypassUntil||0,t+1.25);return;}
   /* Release hands the squad straight back to mission execution in the same Captain tick. */
-  if(st.accepted){var age=t-st.enteredAt;if((age>=REGROUP_MIN&&ca.coreSpread<=release)||age>=REGROUP_MAX){noteExit(st,age>=REGROUP_MAX?'max-age':'closed-up',ca,t);st.accepted=false;st.exits++;st.cooldownUntil=t+REENTRY;sq._regroupBypassUntil=Math.max(+sq._regroupBypassUntil||0,t+(age>=REGROUP_MAX?REGROUP_BYPASS:REENTRY));sq.commandHoldUntil=0;return;}sq.commandPhase='regroup';sq.objective=copy(st.anchor||ca.center);return;}
+  if(st.accepted){var age=t-st.enteredAt;if((age>=RALLY_MIN&&ca.coreSpread<=release)||age>=RALLY_MAX){noteExit(st,age>=RALLY_MAX?'max-age':'closed-up',ca,t);st.accepted=false;st.exits++;st.cooldownUntil=t+REENTRY;sq._rallyBypassUntil=Math.max(+sq._rallyBypassUntil||0,t+(age>=RALLY_MAX?RALLY_BYPASS:REENTRY));sq.commandHoldUntil=0;return;}sq.commandPhase='rally';sq.objective=copy(st.anchor||ca.center);return;}
   /* The Captain, not the General, decides a squad is too scattered to keep executing. */
-  var requested=!sq.inContact&&t>=(+sq._regroupBypassUntil||0)&&ca.rawSpread>limit;if(!requested){st.overSince=null;return;}st.regroupRequests++;
-  if(!ca.dispersed&&ca.stragglers.length){markCatchup(ca,t);st.stragglerSuppressions++;st.suppressed++;sq._regroupBypassUntil=t+STRAGGLER_BYPASS;return;}
-  if(!ca.dispersed){st.suppressed++;return;}if(st.overSince==null)st.overSince=t;if(t<st.cooldownUntil||t-st.overSince<REGROUP_ENTER){st.suppressed++;return;}
-  noteEntry(st,ca,limit,release,t);st.accepted=true;st.enteredAt=t;st.anchor=copy(ca.center);st.entries++;sq._regroupRecovery={serial:(+sq._regroupRecoverySerial||0)+1,startedAt:t,anchor:copy(st.anchor)};sq._regroupRecoverySerial=sq._regroupRecovery.serial;sq.objective=copy(st.anchor);sq.commandPhase='regroup';telemetry(sim,'decision-regroup-commit',{faction:sq.faction,squad:sq.id,serial:sq._regroupRecovery.serial,anchor:copy(st.anchor)});
+  var requested=!sq.inContact&&t>=(+sq._rallyBypassUntil||0)&&ca.rawSpread>limit;if(!requested){st.overSince=null;return;}st.rallyRequests++;
+  if(!ca.dispersed&&ca.stragglers.length){markCatchup(ca,t);st.stragglerSuppressions++;st.suppressed++;sq._rallyBypassUntil=t+STRAGGLER_BYPASS;return;}
+  if(!ca.dispersed){st.suppressed++;return;}if(st.overSince==null)st.overSince=t;if(t<st.cooldownUntil||t-st.overSince<RALLY_ENTER){st.suppressed++;return;}
+  noteEntry(st,ca,limit,release,t);st.accepted=true;st.enteredAt=t;st.anchor=copy(ca.center);st.entries++;sq._rallyRecovery={serial:(+sq._rallyRecoverySerial||0)+1,startedAt:t,anchor:copy(st.anchor)};sq._rallyRecoverySerial=sq._rallyRecovery.serial;sq.objective=copy(st.anchor);sq.commandPhase='rally';telemetry(sim,'decision-rally-commit',{faction:sq.faction,squad:sq.id,serial:sq._rallyRecovery.serial,anchor:copy(st.anchor)});
 }
 
 function aliveTeam(sq,key){return(sq.members||[]).filter(function(s){return!s.dead&&teamKeyFor(s)===key;}).sort(function(a,b){return(+a.slotIndex||0)-(+b.slotIndex||0);});}
@@ -146,7 +146,7 @@ function holdPost(s,key){var p=s._defensePost;if(p&&p.commandKey===key)return p;
 /* Fireteam commitment is a meso command signature. Its anchor AND formation frame are committed:
    live command-ray jitter must not rotate individual slots underneath a still-valid Captain order.
    Engagement-plan serials are micro/contact state and deliberately do not belong here. */
-function fireteamSignature(sq){var p=sq.objective||{};return[sq.commandPhase||'',sq.targetObjective||'',Math.round((+p.x||0)/4),Math.round((+p.z||0)/4),sq._regroupRecovery&&sq._regroupRecovery.serial||0].join('|');}
+function fireteamSignature(sq){var p=sq.objective||{};return[sq.commandPhase||'',sq.targetObjective||'',Math.round((+p.x||0)/4),Math.round((+p.z||0)/4),sq._rallyRecovery&&sq._rallyRecovery.serial||0].join('|');}
 function orderCanAdvance(sq){
   var living=alive(sq),arrived=0;if(!living.length)return true;
   for(var i=0;i<living.length;i++){var s=living[i];if(s.orderDestination&&dist(s.root.position,s.orderDestination)<=ORDER_ARRIVAL_RADIUS)arrived++;}
@@ -158,7 +158,7 @@ function orderCanAdvance(sq){
    locomotion. */
 function advanceSquadAnchor(sq,battle){
   var anchor=sq.orderAnchor||(sq.orderAnchor={x:sq.rally.x,z:sq.rally.z}),goal=sq.state==='retreat'?sq.home:(sq.objective||sq.home),goalChanged=!sq._orderGoal||dist(goal,sq._orderGoal)>3;
-  var form=root.SquadAI.formationFor(sq),formChanged=form!==sq.formation,phase=sq.commandPhase||'',hold=['regroup','support-hold','hold','reserve','defend','corner-check'].indexOf(phase)>=0,force=false;
+  var form=root.SquadAI.formationFor(sq),formChanged=form!==sq.formation,phase=sq.commandPhase||'',hold=['rally','support-hold','hold','reserve','defend','corner-check'].indexOf(phase)>=0,force=false;
   if(goalChanged){sq._orderGoal=copy(goal);force=true;}if(formChanged){sq.formation=form;force=true;}
   var bounding=battle.time<(sq._boundUntil||0),held=!!sq.inContact&&!bounding,dx=goal.x-anchor.x,dz=goal.z-anchor.z,len=Math.hypot(dx,dz),mayAdvance=!hold&&!held&&(sq.state==='advance'||sq.state==='engaged');
   if((force||orderCanAdvance(sq))&&mayAdvance&&len>2){var stride=bounding?ORDER_STRIDE*.5:(sq.state==='engaged'?ORDER_STRIDE*.62:ORDER_STRIDE);anchor.x+=dx/len*Math.min(stride,len);anchor.z+=dz/len*Math.min(stride,len);sq._orderVersion=(+sq._orderVersion||0)+1;}
@@ -166,10 +166,10 @@ function advanceSquadAnchor(sq,battle){
   sq.rally={x:anchor.x,z:anchor.z};
 }
 function updateFireteams(sq,battle){
-  sq._fireteamOrders=sq._fireteamOrders||{};var defensive=!!DEFENSIVE[sq.commandPhase],defenseKey=signature(sq),regroup=sq.commandPhase==='regroup'&&sq.state!=='retreat',stats=publishStats(battle);
+  sq._fireteamOrders=sq._fireteamOrders||{};var defensive=!!DEFENSIVE[sq.commandPhase],defenseKey=signature(sq),rallying=sq.commandPhase==='rally'&&sq.state!=='retreat',stats=publishStats(battle);
   ['command','alpha','bravo','charlie'].forEach(function(key){var m=aliveTeam(sq,key);if(!m.length)return;var desired=desiredAnchor(sq,m);if(!desired)return;var live=averageMembers(m),sig=fireteamSignature(sq),cur=sq._fireteamOrders[key],urgent=sq.state==='retreat';
     if(!cur||urgent||cur.signature!==sig)cur=sq._fireteamOrders[key]={anchor:copy(desired),origin:copy(live),forward:forward(sq),signature:sig,until:battle.time+(urgent?0:TEAM_LEASE),blocked:false};
-    else if(regroup)cur.until=battle.time+TEAM_LEASE;
+    else if(rallying)cur.until=battle.time+TEAM_LEASE;
     else if(battle.time>=cur.until||dist(cur.anchor,desired)>20){var arrived=live&&dist(live,cur.anchor)<=4.5;if(arrived)cur=sq._fireteamOrders[key]={anchor:copy(desired),origin:copy(live),forward:forward(sq),signature:sig,until:battle.time+TEAM_LEASE,blocked:false};else cur.until=battle.time+TEAM_LEASE;}
     for(var i=0;i<m.length;i++){
       var s=m[i],d=teamSlot(sq,key,s,i,m.length,cur.anchor,cur.forward),prepared=defensive&&s._preparedDefensePost,post=prepared?null:(defensive?holdPost(s,defenseKey):null),next=prepared?copy(prepared):(post?{x:post.x,z:post.z}:d),kind=prepared?'prepared':(post?'defense-post':'formation'),publishKey=sig+'|'+key+'|'+kind,previous=point(s._fireteamDestination);
@@ -199,7 +199,7 @@ function objectivePhase(sim,sq,m,c,pos){
    objective point. Without a brief (Macro OFF) the Captain walks the assigned approach route. */
 function executeMission(sim,sq,town){
   if(!sim||!sq||sq.state==='retreat'||!alive(sq).length)return;
-  var st=sq._regroupHysteresis;if(st&&st.accepted)return;
+  var st=sq._rallyState;if(st&&st.accepted)return;
   var m=sq._macroMission||null,ex=sq._missionExecution,t=sim.time,c=cfg(sim,sq),pos=average(sq);
   if(!ex||ex.mission!==m){
     ex=sq._missionExecution={mission:m,acceptedAt:t,holdPoint:copy(pos)};
@@ -223,7 +223,7 @@ function executeMission(sim,sq,town){
     if(urban){sq.commandHoldUntil=t+(+c.cornerHold||0)+(captainAlive(sq)?0:(+c.cornerNoCaptainExtra||0));setPhase(sim,sq,'corner-check','route '+from);sq.objective=copy(wp);return;}
   }
   if(m&&m.objectiveId&&idx===last){
-    if(m.action==='hold'||m.action==='regroup'){setPhase(sim,sq,'hold','doctrine '+m.action);sq.objective=copy(ex.holdPoint||pos);return;}
+    if(m.action==='hold'||m.action==='rally'){setPhase(sim,sq,'hold','doctrine '+m.action);sq.objective=copy(ex.holdPoint||pos);return;}
     if(m.action==='support'){setPhase(sim,sq,'support-hold','doctrine support');sq.objective=copy(ex.holdPoint||pos);return;}
     setPhase(sim,sq,objectivePhase(sim,sq,m,c,pos),'mission '+m.objectiveId);sq.objective=copy(wp);return;
   }
@@ -236,13 +236,13 @@ function executeMission(sim,sq,town){
 }
 
 function accumulate(into,from){for(var k in from)if(Object.prototype.hasOwnProperty.call(from,k))into[k]=(+into[k]||0)+(+from[k]||0);}
-function summary(sim){var out={plans:0,active:0,quiet:0,regroups:0,fireteams:0,orderPublishing:Object.assign({},sim._squadCommandPublishStats||{intentChecks:0,intentPublishes:0,intentCoalesced:0})},churn={entries:0,exits:0,suppressed:0,stragglerSuppressions:0,regroupRequests:0,releasableAtEntry:0,ageTotal:0,entryReasons:{},exitReasons:{}};['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i],p=q._engagementPlan;if(p){out.plans++;if(p.status==='active')out.active++;if(p.status==='quiet')out.quiet++;}var st=q._regroupHysteresis;if(st){if(st.accepted)out.regroups++;churn.entries+=+st.entries||0;churn.exits+=+st.exits||0;churn.suppressed+=+st.suppressed||0;churn.stragglerSuppressions+=+st.stragglerSuppressions||0;churn.regroupRequests+=+st.regroupRequests||0;churn.releasableAtEntry+=+st.releasableAtEntry||0;churn.ageTotal+=+st.ageTotal||0;accumulate(churn.entryReasons,st.entryReasons);accumulate(churn.exitReasons,st.exitReasons);}out.fireteams+=Object.keys(q._fireteamOrders||{}).length;}});churn.meanAge=churn.exits?+(churn.ageTotal/churn.exits).toFixed(3):0;churn.releasableAtEntryRatio=churn.entries?+(churn.releasableAtEntry/churn.entries).toFixed(3):0;out.regroupChurn=churn;sim._squadCommandSummary=out;sim._engagementPlanSummary={live:out.plans,active:out.active,quiet:out.quiet};sim._regroupHysteresisSummary={active:out.regroups,enterGrace:REGROUP_ENTER,exitRatio:REGROUP_RELEASE,minRegroup:REGROUP_MIN,maxRegroup:REGROUP_MAX,reentry:REENTRY,churn:churn};return out;}
-function reset(sim){sim._squadCommandPublishStats={intentChecks:0,intentPublishes:0,intentCoalesced:0};['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i];q._engagementPlan=null;q._stablePlan=null;q._engagementPlanSerial=0;q._planDormantSignature=null;q._missionExecution=null;q._macroMissionRequest=null;q._regroupHysteresis=null;q._regroupRecovery=null;q._regroupRecoverySerial=0;q._regroupBypassUntil=0;q._fireteamOrders={};(q.members||[]).forEach(function(s){s._fireteamDestination=null;s._fireteamPublishKey=null;s._fireteamKey=null;s._defensePost=null;s._engagementTask=null;});}});summary(sim);}
+function summary(sim){var out={plans:0,active:0,quiet:0,rallies:0,fireteams:0,orderPublishing:Object.assign({},sim._squadCommandPublishStats||{intentChecks:0,intentPublishes:0,intentCoalesced:0})},churn={entries:0,exits:0,suppressed:0,stragglerSuppressions:0,rallyRequests:0,releasableAtEntry:0,ageTotal:0,entryReasons:{},exitReasons:{}};['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i],p=q._engagementPlan;if(p){out.plans++;if(p.status==='active')out.active++;if(p.status==='quiet')out.quiet++;}var st=q._rallyState;if(st){if(st.accepted)out.rallies++;churn.entries+=+st.entries||0;churn.exits+=+st.exits||0;churn.suppressed+=+st.suppressed||0;churn.stragglerSuppressions+=+st.stragglerSuppressions||0;churn.rallyRequests+=+st.rallyRequests||0;churn.releasableAtEntry+=+st.releasableAtEntry||0;churn.ageTotal+=+st.ageTotal||0;accumulate(churn.entryReasons,st.entryReasons);accumulate(churn.exitReasons,st.exitReasons);}out.fireteams+=Object.keys(q._fireteamOrders||{}).length;}});churn.meanAge=churn.exits?+(churn.ageTotal/churn.exits).toFixed(3):0;churn.releasableAtEntryRatio=churn.entries?+(churn.releasableAtEntry/churn.entries).toFixed(3):0;out.rallyChurn=churn;sim._squadCommandSummary=out;sim._engagementPlanSummary={live:out.plans,active:out.active,quiet:out.quiet};sim._rallySummary={active:out.rallies,enterGrace:RALLY_ENTER,exitRatio:RALLY_RELEASE,minRegroup:RALLY_MIN,maxRegroup:RALLY_MAX,reentry:REENTRY,churn:churn};return out;}
+function reset(sim){sim._squadCommandPublishStats={intentChecks:0,intentPublishes:0,intentCoalesced:0};['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i];q._engagementPlan=null;q._stablePlan=null;q._engagementPlanSerial=0;q._planDormantSignature=null;q._missionExecution=null;q._macroMissionRequest=null;q._rallyState=null;q._rallyRecovery=null;q._rallyRecoverySerial=0;q._rallyBypassUntil=0;q._fireteamOrders={};(q.members||[]).forEach(function(s){s._fireteamDestination=null;s._fireteamPublishKey=null;s._fireteamKey=null;s._defensePost=null;s._engagementTask=null;});}});summary(sim);}
 function commanderTick(sim,payload){var town=payload&&payload.town||null;['us','ge'].forEach(function(f){var a=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i];updateCohesion(sim,q);executeMission(sim,q,town);updatePlan(sim,q);}});summary(sim);}
 
 root.BattleModules.registerSystem('squad-command',{version:'1.5-m3c-mission-execution',onBattleStart:reset,beforeBattleRestart:reset,onBattleRestart:reset,onCommanderTick:commanderTick});
 root.BattleSquadStability={version:'1.5-m3c-mission-execution',planSeconds:{assault:ASSAULT_LEASE,defense:DEFENSE_LEASE},teamOrderSeconds:TEAM_LEASE,teamKeyFor:teamKeyFor,executeMission:executeMission};
 root.BattleEngagementPlans={version:'1.5-m3c-mission-execution',current:function(sq){return planSnapshot(sq&&sq._engagementPlan);},summary:function(sim){return sim&&sim._engagementPlanSummary?JSON.parse(JSON.stringify(sim._engagementPlanSummary)):null;}};
-root.BattleRegroupHysteresis={version:'1.5-m3c-mission-execution',enterGrace:REGROUP_ENTER,exitRatio:REGROUP_RELEASE,minRegroup:REGROUP_MIN,reentryCooldown:REENTRY,assessment:cohesionAssessment,summary:function(sim){return sim&&sim._regroupHysteresisSummary?JSON.parse(JSON.stringify(sim._regroupHysteresisSummary)):null;}};
+root.BattleRallyState={version:'1.5-m3c-mission-execution',enterGrace:RALLY_ENTER,exitRatio:RALLY_RELEASE,minRegroup:RALLY_MIN,reentryCooldown:REENTRY,assessment:cohesionAssessment,summary:function(sim){return sim&&sim._rallySummary?JSON.parse(JSON.stringify(sim._rallySummary)):null;}};
 console.log('[M3C] meso squad-command owner: stable Captain plan + coalesced fireteam publishing');
 })(typeof window!=='undefined'?window:globalThis);

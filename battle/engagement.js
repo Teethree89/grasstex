@@ -144,7 +144,7 @@
   }
   function coverLive(e,battle){
     var s=e.soldier,q=s.squad||{},eng=s.eng,p=s.root&&s.root.position;
-    if(s.dead||s.incapacitated||battle.winner||!p||q.state==='retreat'||q.commandPhase==='retreat'||q.commandPhase==='regroup'||(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s)))return false;
+    if(s.dead||s.incapacitated||battle.winner||!p||q.state==='retreat'||q.commandPhase==='retreat'||q.commandPhase==='rally'||(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s)))return false;
     if(e.createdAt===battle.time)return true; // selection is committed by its caller in this tick
     var near=dist(p.x,p.z,e.slot.x,e.slot.z)<=COVER_SPACING;
     if(e.kind==='route')return!!(s._tacticalRoute&&s._tacticalRoute.coverSlotId===e.slot.id)||near;

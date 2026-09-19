@@ -57,7 +57,7 @@ function soldier(id, slotIndex, x) {
 const sq = {
   id: 'frame-regression-squad',
   faction: 'us',
-  commandPhase: 'regroup',
+  commandPhase: 'rally',
   targetObjective: 'objective-a',
   objective: { x: 1.9, z: 10 },
   home: { x: 0, z: 0 },

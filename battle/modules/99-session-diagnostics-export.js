@@ -51,15 +51,15 @@ function soldier(s){
     positionalTask:root.BattleTacticalPositions?safePlain(root.BattleTacticalPositions.current(s),7):null
   };
 }
-function regroupState(sq){
-  var st=sq&&sq._regroupHysteresis;
-  if(!st)return{accepted:false,anchor:null,enteredAt:0,entries:0,exits:0,suppressed:0,stragglerSuppressions:0,regroupRequests:0,releasableAtEntry:0,entryReasons:null,exitReasons:null,lastEntry:null,lastExit:null,bypassUntil:finite(+sq._regroupBypassUntil)};
+function rallyState(sq){
+  var st=sq&&sq._rallyState;
+  if(!st)return{accepted:false,anchor:null,enteredAt:0,entries:0,exits:0,suppressed:0,stragglerSuppressions:0,rallyRequests:0,releasableAtEntry:0,entryReasons:null,exitReasons:null,lastEntry:null,lastExit:null,bypassUntil:finite(+sq._rallyBypassUntil)};
   return{
     accepted:!!st.accepted,anchor:point(st.anchor),enteredAt:finite(+st.enteredAt),entries:finite(+st.entries),
     exits:finite(+st.exits),suppressed:finite(+st.suppressed),stragglerSuppressions:finite(+st.stragglerSuppressions),
-    regroupRequests:finite(+st.regroupRequests),releasableAtEntry:finite(+st.releasableAtEntry),
+    rallyRequests:finite(+st.rallyRequests),releasableAtEntry:finite(+st.releasableAtEntry),
     entryReasons:safePlain(st.entryReasons,2),exitReasons:safePlain(st.exitReasons,2),
-    lastEntry:safePlain(st.lastEntry,3),lastExit:safePlain(st.lastExit,3),bypassUntil:finite(+sq._regroupBypassUntil)
+    lastEntry:safePlain(st.lastEntry,3),lastExit:safePlain(st.lastExit,3),bypassUntil:finite(+sq._rallyBypassUntil)
   };
 }
 function squad(sq){
@@ -70,7 +70,7 @@ function squad(sq){
     commandHoldUntil:finite(+sq.commandHoldUntil),accuracyMultiplier:finite(+sq.accuracyMultiplier),
     /* Entry/exit reasons, not just counts: the roadmap's regroup-churn item needs to know which
        gate admitted each entry and which clause released it. `entries` alone cannot say. */
-    regroup:regroupState(sq),
+    rally:rallyState(sq),
     /* Macro brief (General-owned) vs Captain execution (Meso-owned): the two halves of the mission contract. */
     mission:safePlain(sq._macroMission?Object.assign({},sq._macroMission,{key:undefined}):null,4),lastMission:safePlain(sq._lastMacroMission?Object.assign({},sq._lastMacroMission,{key:undefined}):null,4),
     captainRequest:safePlain(sq._macroMissionRequest,3),
