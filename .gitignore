@@ -7,3 +7,8 @@ battle/build-version.json
 # py_compile byte-cache, produced by the workflow's validation step.
 __pycache__/
 *.pyc
+
+# Raw generator packs for soldiers/weapons stay local; only prepared models are tracked
+# (see Assets/PIPELINE.md). The weapon .zip sources predate this rule and remain tracked.
+Assets/soldiers/new/*.zip
+/new US models/
