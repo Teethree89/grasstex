@@ -7,6 +7,11 @@ the game. Runtime behaviour is described in `battle/ANIMATION_CONTRACT.md`.
 Blender: use the app bundle, `/Applications/Blender.app/Contents/MacOS/Blender`
 (the `blender` on PATH is a broken install).
 
+Exporting by hand from Blender: `tools/blender-presets/Grasstex_Soldier.py` and `Grasstex_Weapon.py`
+are FBX export presets with the same settings the tools use. Copy them to
+`~/Library/Application Support/Blender/<version>/scripts/presets/operator/export_scene.fbx/` and pick
+them from the Operator Presets menu in File > Export > FBX.
+
 ## Soldiers (`Assets/soldiers/<faction>-<name>.fbx`)
 
 Requirements for the source FBX: one skinned mesh, one armature using the shared bone names
