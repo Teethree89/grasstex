@@ -1,8 +1,19 @@
 name: CI
 
-# Nothing ran on pull requests before this, so a PR had no signal at all: syntax errors,
-# a manifest naming a clip that does not exist, or audio committed off the mastering
+# The single gate for pull requests. Before this nothing ran on a PR at all: syntax errors,
+# a manifest naming a clip that does not exist, and audio committed off the mastering
 # standard all reached main unchallenged.
+#
+# This also absorbs two workflows that were not doing their jobs. validate-simplify.yml ran
+# the AI sim regression suite only on a branch named simplify-v134, which does not exist, so
+# that suite had been running nowhere. normalize-audio.yml re-mastered and committed to main,
+# which is how 284 pointlessly re-encoded mp3s landed there, and its unfiltered push trigger
+# let any branch publish itself to main. The mastering standard is asserted here instead, so
+# a pull request has to arrive already correct rather than be silently rewritten afterwards.
+#
+# Deliberately not absorbed: the deploy workflows, which publish rather than check, and the
+# tag-triggered battle benchmarks, which run hundreds of battles across parallel workers and
+# have no business on a pull request.
 
 on:
   pull_request:
@@ -97,6 +108,23 @@ jobs:
             python3 scripts/slice_weapon_shots.py "$recipe" --check-only
           done
 
+      # A category with no mastering target is not an error anyone sees: the pass skips the
+      # file and moves on, so it ships unmastered. grenades/pin, throw and bounce sat in the
+      # manifest in exactly that state. Ask the script itself what each declared path would
+      # be mastered as, so its tables stay the single source of truth.
+      - name: Every declared category has a mastering target
+        run: |
+          set -euo pipefail
+          python3 -c "
+          import json
+          m = json.load(open('Assets/audio/manifest.json'))
+          paths = {p for g in m['categories'].values() for v in g.values() for p in v}
+          print('\n'.join('Assets/audio/' + p for p in sorted(paths)))
+          " > "$RUNNER_TEMP/paths.txt"
+          xargs -a "$RUNNER_TEMP/paths.txt" bash scripts/normalize_audio.sh --explain \
+            | awk '{print $1}' | sort | uniq -c
+          echo "A run with no UNCOVERED rows means every declared category is mastered."
+
       # The check that matters most. Mastering is hash-skipped, so on a tree whose audio is
       # already on standard this re-encodes nothing and cannot produce a diff - which makes
       # it independent of the runner's FFmpeg build. A diff here means either audio was
@@ -114,6 +142,41 @@ jobs:
             exit 1
           fi
           echo "Audio is on standard; the mastering pass changed nothing."
+
+  harness:
+    name: Sim regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Lifted from .github/workflows/validate-simplify.yml, which triggered only on a branch
+      # named simplify-v134. No such branch exists, so this suite ran nowhere at all. It
+      # passes on main and the whole thing takes seconds, so it belongs on every PR.
+      - name: Harness syntax
+        run: |
+          set -euo pipefail
+          for file in tools/ai-sim-harness/*.js; do node --check "$file"; done
+          echo "Parsed $(ls tools/ai-sim-harness/*.js | wc -l) harness files."
+
+      - name: Regression checks
+        run: |
+          set -euo pipefail
+          # Every check in tools/ai-sim-harness, not just the seven the old workflow named:
+          # macro-command-toggle, map-pipeline, movement-recovery and movement-state were
+          # never wired to anything.
+          for check in tools/ai-sim-harness/*-check.js; do
+            echo "--- $(basename "$check")"
+            node "$check"
+          done
+
+      - name: Engagement harness seeds
+        run: |
+          set -euo pipefail
+          for seed in 12345 1 2 3 5 8 13 21; do
+            HARNESS_SEED="$seed" node tools/ai-sim-harness/run.js > /dev/null
+          done
+          echo "Engagement harness clean across 8 seeds."
 
   deploy-plan:
     name: Deploy plan
