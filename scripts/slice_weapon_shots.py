@@ -17,13 +17,18 @@ import os
 import subprocess
 import sys
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:  # --check-only validates a recipe and touches no audio
+    np = None
 
 SAMPLE_RATE = 48000
 
 
 def decode(path):
     """Decode to mono float32 at the project sample rate."""
+    if np is None:
+        raise SystemExit('slicing audio needs numpy: pip install numpy')
     proc = subprocess.run(
         ['ffmpeg', '-nostdin', '-v', 'error', '-i', path,
          '-ac', '1', '-ar', str(SAMPLE_RATE), '-f', 'f32le', '-'],
