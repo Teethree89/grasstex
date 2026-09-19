@@ -1,13 +1,14 @@
 name: Validate Simplified Battle Runtime
 on:
+  pull_request:
   push:
-    branches: [simplify-v134]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - name: Syntax
@@ -32,3 +33,20 @@ jobs:
           node tools/ai-sim-harness/cover-positions-check.js
           node tools/ai-sim-harness/personal-space-check.js
           node tools/ai-sim-harness/world-debug-check.js
+      # Movement and Macro-toggle suites. These exist in tools/ai-sim-harness but ran in no
+      # workflow, so nothing caught a regression in them before a deploy to main.
+      - name: Movement and Macro command regressions
+        run: |
+          node tools/ai-sim-harness/movement-state-check.js
+          node tools/ai-sim-harness/movement-recovery-check.js
+          node tools/ai-sim-harness/macro-command-toggle-check.js
+      # The M3C ownership gates. These assert the Macro/Meso/Micro boundaries the ownership sweep
+      # established -- exactly the invariants a future change is most likely to erode -- and they
+      # were running nowhere. All five are plain Node with no dependencies beyond the harness.
+      - name: M3C ownership gates
+        run: |
+          node scripts/check-macro-mission-command.cjs
+          node scripts/check-meso-formation-frame-stability.cjs
+          node scripts/check-meso-micro-movement-ownership.cjs
+          node scripts/check-movement-order-ownership.cjs
+          node scripts/check-physical-waypoint-refill.cjs

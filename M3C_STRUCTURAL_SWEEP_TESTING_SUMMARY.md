@@ -144,8 +144,28 @@ Six- to nine-fold in the defend scenarios, and consistent across both sweep buil
 
 ## 4. Status
 
-- Preview deploy verified serving `preview-42a30cf`; production untouched, still v153.
-- No merge to main. Awaiting visual check, then the standard 60/20/20 benchmark.
+**Merged.** The sweep landed on `main` as `3d3e805` on 2026-09-18, after the standard 60/20/20
+benchmark was run against `main` at `5c0e0f3` over 100 seed-paired battles per arm. Per battle:
+
+| Metric | Baseline | Sweep |
+|---|---|---|
+| `writerConflicts` | 75.82 | 0 |
+| `strategicWriterConflicts` | 75.82 | 0 |
+| `longRegroups` | 1.21 | 0 |
+| `losBlockedFireAttempts` | 2.35 | 0.11 |
+| `movementStalls` | 1.88 | 0.91 |
+| `loopAlerts` | 15.57 | 13.66 |
+| `vacantObjectiveStalls` | 1.30 | 1.08 |
+| Health overall | 71.8 | 79.7 |
+
+Eliminating writer conflicts was the point of the sweep, and it is complete across those 100
+battles, corroborated locally by 0 conflicts over 561,860 ownership events.
+
+`longRegroups` falling to 0 belongs with the regroup-churn finding in section 3 rather than being
+read as an improvement on its own: taken together the two say regroup stopped being *long*, not
+that it stopped being *frequent*. See `battle/AI_SIM_ROADMAP.md` for the open root-cause item.
+
+- Preview deploy verified serving `preview-42a30cf` at the time of testing.
 - Open roadmap issues from this sweep are recorded in `battle/AI_SIM_ROADMAP.md`.
 
 **Open question for the visual check:** watch an assaulting force against a prepared defence and judge whether attackers are being beaten or are failing to commit.

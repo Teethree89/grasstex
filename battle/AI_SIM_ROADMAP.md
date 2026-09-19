@@ -1,6 +1,8 @@
 # Battle Sim / AI Roadmap — M3C
 
-Current accepted live baseline before this candidate: **v139** (`df1a368debf0839d96259df672d8071db3f84011`).
+Accepted baseline before the M3C ownership sweep: **v139** (`df1a368debf0839d96259df672d8071db3f84011`).
+The sweep is merged; `main` has carried it since `3d3e805` (2026-09-18). Sections below that still
+read as "the candidate" or "the branch" describe that merged work.
 
 The combat engine architecture is **M3C: Macro–Meso–Micro Combat**. The design rule is **one owner per responsibility, minimal module count, very little overlap, purpose-built behavior, and fixes at the producer/owner layer rather than another interception patch.**
 
@@ -81,9 +83,32 @@ The mission brief is the only contract between Macro and Meso.
 Evidence: paired deterministic replays (`scripts/run_m3c_replay.cjs`). Superseded by a 300-run paired sample (100 each: main `5c0e0f3`, branch `42a30cf`, branch `0eafc66`) split 40 meeting / 30 US-defend / 30 GE-defend. Distilled per-run data is on `evidence/m3c-sweep-20260917`; findings in `M3C_STRUCTURAL_SWEEP_TESTING_SUMMARY.md`.
 
 - [x] **Win split: no measurable change.** The large sample closed this. Per scenario, US wins on main vs branch `0eafc66`: meeting 19/40 vs 18/40 (p=1.000), US-defend 28/30 vs 29/30 (p=1.000), GE-defend 3/30 vs 1/30 (p=0.612). Pooled defender advantage 55/60 vs 58/60 (p=0.439). Nothing is distinguishable from noise. The 10/12 vs 5/12 that opened this item was a 12-seed artifact, and an intermediate reading of GE-defend as 3/30 -> 0/30 "never succeeds" was likewise an over-read of a four-run swing. These scenarios need ~216 runs/arm to call a 10% vs 3.3% difference; do not spend that unless the answer changes a decision.
-- [ ] **Personal-space corrections rose slightly** (15.7k -> 17.4k pair corrections/battle, exact overlaps 0, blocked 0). Not root-caused. Determine whether a remaining producer (formation slot, tactical position ingress, Captain regroup anchor) converges bodies before touching personal space.
-- [ ] **Window / ingress crowding not root-caused.** Claim collisions fell (133 -> 73) as a side effect of fewer command writes, but reservation vs physical occupancy was not investigated separately.
-- [ ] **Regroup churn is the sweep's one robust behavioural change.** It does have a baseline: the `regroup` object is present on all 300 baseline squads, and position releases attributed to regroup give a clean comparison. Main vs branch: GE-defend 17 -> 154, US-defend 30 -> 182, meeting 146 -> 207. Six- to nine-fold in the defend scenarios and consistent across both branch builds, so far too large to be sampling noise. Yet only 2 squads sit in regroup at the final snapshot against 13 on main: the sweep enters regroup constantly and leaves quickly where main enters rarely and stays. Root-cause the entry condition. No outcome consequence has been shown, so treat this as behaviour to understand, not a regression to revert.
+- [ ] **Personal-space volume is down; two clean invariants have regressed.** Re-measured 2026-09-19 over the same 10 replays. Pair corrections average **8.1k/battle**, roughly half the 17.4k this item was opened on — the cover-slot and personal-space work since the sweep (`3ff777c`, `b1e12cc`, `b530e73`) is the likely cause, and the volume concern is closed. But the two counters the sweep recorded as **0** no longer are: `exactOverlaps` averages 15 (present in 7 of 10 runs) and `blockedCorrections` averages 13.3 (one run at 103). `exactOverlaps` lands on almost exactly 20 in six separate runs and 30 in a seventh, which is too quantized for continuous drift and points at one repeatable event (spawn or ingress stacking) rather than general crowding. Root-cause the quantization first — it is a much narrower target than "crowding". `destinationUnresolved` is 0 in all 10 runs, so the destination-reservation layer added by `3ff777c` is resolving everything it is asked to.
+- [ ] **Window / ingress crowding: the instability is the finding.** Re-measured 2026-09-19. `claimCollisionsPrevented` averages **674/battle across a 2 -> 2320 range** — not the 73 this item was opened on, and swinging by three orders of magnitude between runs, which reproduces the same instability the live captures showed (`M3C_STRUCTURAL_SWEEP_TESTING_SUMMARY.md`, tactical position assignments: 23 / 3,838 / 970 on one seed). `ingressRoutesInvalidated` is now non-zero (mean 10.8) where all three live captures recorded 0. Separately, only ~65% of created assignments are ever occupied (mean 14.2 occupied against 22.0 created). Reservation churn and physical occupancy are still not separated; the occupancy shortfall is the more tractable end to pull.
+- [ ] **Regroup churn is the sweep's one robust behavioural change.** It does have a baseline: the `regroup` object is present on all 300 baseline squads, and position releases attributed to regroup give a clean comparison. Main vs branch: GE-defend 17 -> 154, US-defend 30 -> 182, meeting 146 -> 207. Six- to nine-fold in the defend scenarios and consistent across both branch builds, so far too large to be sampling noise. Yet only 2 squads sit in regroup at the final snapshot against 13 on main: the sweep enters regroup constantly and leaves quickly where main enters rarely and stays. The merge benchmark corroborates this independently — `longRegroups` fell 1.21 -> 0 per battle, so regroup stopped being *long*, not *frequent*. No outcome consequence has been shown, so treat this as behaviour to understand, not a regression to revert.
+
+  **Instrumented and measured (2026-09-19).** `cohesionState` now records an entry reason, an exit reason, and whether the release condition already held at the moment of entry; `modules/99-session-diagnostics-export.js` exports the full counter set per squad and `_regroupHysteresisSummary.churn` aggregates it. Measured over 10 deterministic 600 s replays on `main` (4 GE-defend, 3 US-defend, 3 meeting, seeds `m3c-regroup-1..4`):
+
+  | | total |
+  |---|---|
+  | regroup requests | 573 |
+  | suppressed | 519 (303 of them straggler suppressions) |
+  | accepted entries | 54 |
+  | exits | 53 |
+
+  | entry clause | n | | exit reason | n |
+  |---|---|---|---|---|
+  | `core-spread` | 49 | | `contact` | 32 |
+  | `outrunners` | 41 | | `max-age` | 11 |
+  | `laggards-over-allowance` | 14 | | `closed-up` | 10 |
+
+  **A rawSpread/coreSpread hysteresis gap was proposed as the mechanism and is ruled out.** Entry tests `rawSpread > limit` while release tests `coreSpread <= limit * 0.78`, and `coreSpread` is structurally the smaller quantity, so a regroup could in principle commit already satisfying its own release test. It does not happen: `releasableAtEntry` is **0 of 54**. Mean `coreSpread` at entry is 46.6 against a release threshold of 26.52 — far outside the band. The asymmetry is real in the code and inert in practice. Do not spend more time on it.
+
+  **What the data does say, and it is a different problem.** Only 10 of 53 regroups (19%) end because the squad closed up. 32 end on contact and 11 on `REGROUP_MAX`. Across 27 matched enter/exit pairs, mean `coreSpread` moves 46.6 -> 42.7 — the squad is still well above the `limit` of 34 that triggered the regroup — and 14 of the 27 end *more* scattered than they began. Regroup is being entered on a genuine cohesion failure (`core-spread` is in 49 of 54 entries) and then predominantly abandoned without achieving cohesion.
+
+  Exit-on-contact is defensible doctrine on its own: a squad that makes contact should fight rather than keep closing up. The sharper questions are the 11 `max-age` timeouts and the fact that spread barely improves while regrouping at all — that is a regroup that does not work, not a regroup that churns.
+
+  **Also: the 17 -> 154 figure is a proxy and should not be quoted as regroup frequency.** It counts tactical-position releases attributed to regroup, not regroup entries. Direct entry counts here are 2-16 per battle. Across these same 10 runs, regroup accounts for 67 of 165 position releases against only 54 entries, so the fan-out is nowhere near large enough to reconcile the two numbers. These runs are single-arm on current `main` and cannot reproduce the paired main-vs-branch comparison, so this does not retract the sweep finding — but any future work should measure entries directly now that the counter exists.
 - [ ] **Strategic stall wakes are usually no-ops.** Most `strategic-stall` wakes re-select the same objective (`decisionsUnchanged`). That is an objective-selection/doctrine limitation, not an ownership fault: the General has no alternative plan to offer.
 - [ ] **Broad axes are no longer part of the brief.** Walking the approach route before the objective cut captures (3.2 vs 3.8). If axes should be a strategic concept again they need a design that does not delay objective commitment.
 - [ ] **Hot path is now navigation and LOS.** Profile (live seed): physical replans ~3.3 s and `sightBlocked` ~3.5 s of ~13.7 s simulated-battle wall time. Profile further before optimizing; no ownership fault found there.
@@ -91,8 +116,10 @@ Evidence: paired deterministic replays (`scripts/run_m3c_replay.cjs`). Supersede
 
 ### Validation order for this sweep
 1. [x] Visual check on the branch preview (`/grasstex/preview/m3c-ownership-sweep-20260917/battle_sim.php`, plus `?defender=us` / `?defender=ge`): coherent missions, no General twitching, cover without strategic backtracking, window/ingress stacking, retreaters leaving, sensible orders after captures.
-2. [ ] Standard 60 meeting / 20 US-defend / 20 GE-defend benchmark on the branch.
+2. [x] Standard 60 meeting / 20 US-defend / 20 GE-defend benchmark on the branch. Run against main `5c0e0f3` over 100 seed-paired battles per arm; `writerConflicts` 75.82 -> 0 per battle, health 71.8 -> 79.7. Recorded on the merge commit `3d3e805`.
 3. [x] Large paired seed sample (main vs branch) by scenario type. Done at 300 runs; see above.
+
+All three validation steps are complete. The sweep merged to `main` as `3d3e805` on 2026-09-18.
 
 ## World / navigation foundation
 
@@ -128,7 +155,7 @@ v139 diagnostics showed that Micro Combat Mobility coalescing works, but the Mes
 
 - [x] **Directional cohesion keeps forward outrunners in the core.** Lagging soldiers can receive bounded catch-up treatment; soldiers who sprint ahead cannot be discarded as harmless stragglers.
 
-- [ ] Run deterministic M3C regression gates and correct failures without adding another ownership layer.
+- [x] Run deterministic M3C regression gates and correct failures without adding another ownership layer. All 17 gates pass on `main` as of 2026-09-19 (12 `tools/ai-sim-harness` suites, 5 `scripts/check-*.cjs` ownership gates); there were no failures to correct. Eight of them ran in no workflow and are now wired into `validate-simplify.yml` — see **CI / housekeeping**.
 - [ ] Visually validate the next deployed build in **German defending**, **US defending**, and **both sides attacking** scenarios.
 - [ ] Compare movement requests, `formationShadowsIgnored`, tactical-position reassignments, ingress route churn, objective progress and squad spread against v139.
 
@@ -208,6 +235,7 @@ This separation is important: prepared defense has repeatedly exposed failures t
 - [ ] Clean up GitHub Actions deprecation warnings after gameplay architecture is stable.
 - [x] Benchmark partial-shard salvage.
 - [x] Three-type benchmark matrix.
+- [x] **Restore the pre-merge validation gate.** `validate-simplify.yml` triggered on `push: branches: [simplify-v134]`, a branch that no longer exists on the remote, so the entire suite had been firing nowhere. It now runs on `pull_request` and `push`. Eight checks that ran in no workflow at all were added to it: the five `scripts/check-*.cjs` M3C ownership gates (which assert exactly the Macro/Meso/Micro boundaries the sweep established, and are plain Node with no extra dependencies) plus `movement-state-check`, `movement-recovery-check` and `macro-command-toggle-check`. Before this, the only place any check ran was `deploy-50webs-php.yml` — post-merge, on the way to production.
 
 ## Completed milestones
 

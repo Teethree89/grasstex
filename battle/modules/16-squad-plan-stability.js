@@ -80,7 +80,7 @@ function updatePlan(sim,sq){
    straggler: he expands the core, forcing the Captain to restore cohesion instead of allowing two
    scouts to sprint into the next fight alone. Lateral outliers are also non-trimmable. */
 function cohesionAssessment(sq,limit){
-  var m=alive(sq),n=m.length;if(!n)return{center:copy(sq.rally)||{x:0,z:0},rawSpread:0,coreSpread:0,stragglers:[],outrunners:[],members:[],dispersed:false,allowed:0};
+  var m=alive(sq),n=m.length;if(!n)return{center:copy(sq.rally)||{x:0,z:0},rawSpread:0,coreSpread:0,stragglers:[],outrunners:[],members:[],dispersed:false,allowed:0,laggards:0};
   var xs=[],zs=[],i;for(i=0;i<n;i++){xs.push(+m[i].root.position.x||0);zs.push(+m[i].root.position.z||0);}var med={x:median(xs),z:median(zs)},allowed=n>=9?2:(n>=5?1:0),far=[],lagging=[],blocking=[],f=commandForward(sq);
   for(i=0;i<n;i++){
     var p=m[i].root.position,d=dist(p,med);if(d<=limit)continue;
@@ -90,20 +90,47 @@ function cohesionAssessment(sq,limit){
   lagging.sort(function(a,b){return b.d-a.d;});var trim=lagging.slice(0,Math.min(allowed,lagging.length)),ids={};for(i=0;i<trim.length;i++)ids[String(trim[i].s.id)]=1;
   var core=m.filter(function(s){return!ids[String(s.id)];}),cx=0,cz=0;for(i=0;i<core.length;i++){cx+=+core[i].root.position.x||0;cz+=+core[i].root.position.z||0;}var center={x:cx/Math.max(1,core.length),z:cz/Math.max(1,core.length)},coreSpread=0;for(i=0;i<core.length;i++)coreSpread=Math.max(coreSpread,dist(core[i].root.position,center));
   var all={x:xs.reduce(function(a,b){return a+b;},0)/n,z:zs.reduce(function(a,b){return a+b;},0)/n},raw=0;for(i=0;i<n;i++)raw=Math.max(raw,dist(m[i].root.position,all));
-  return{center:center,rawSpread:raw,coreSpread:coreSpread,stragglers:trim.map(function(x){return String(x.s.id);}),outrunners:blocking.map(function(x){return String(x.s.id);}),members:trim.map(function(x){return x.s;}),dispersed:blocking.length>0||lagging.length>allowed||coreSpread>limit,allowed:allowed};
+  return{center:center,rawSpread:raw,coreSpread:coreSpread,stragglers:trim.map(function(x){return String(x.s.id);}),outrunners:blocking.map(function(x){return String(x.s.id);}),members:trim.map(function(x){return x.s;}),dispersed:blocking.length>0||lagging.length>allowed||coreSpread>limit,allowed:allowed,laggards:lagging.length};
 }
-function cohesionState(sq){return sq._regroupHysteresis||(sq._regroupHysteresis={overSince:null,accepted:false,enteredAt:0,cooldownUntil:0,anchor:null,lastForward:null,entries:0,exits:0,suppressed:0,stragglerSuppressions:0,regroupRequests:0});}
+/* Which clause of `dispersed` admitted this entry. Observational only: the roadmap's regroup-churn
+   item cannot be root-caused from `entries` alone, because the count says a regroup happened and
+   nothing about which gate let it through. */
+function dispersedReasons(ca,limit){
+  var r=[];if(ca.outrunners.length)r.push('outrunners');if(ca.laggards>ca.allowed)r.push('laggards-over-allowance');if(ca.coreSpread>limit)r.push('core-spread');return r;
+}
+function cohesionState(sq){return sq._regroupHysteresis||(sq._regroupHysteresis={overSince:null,accepted:false,enteredAt:0,cooldownUntil:0,anchor:null,lastForward:null,entries:0,exits:0,suppressed:0,stragglerSuppressions:0,regroupRequests:0,entryReasons:{},exitReasons:{},lastEntry:null,lastExit:null,releasableAtEntry:0,ageTotal:0});}
+/* Entry tests rawSpread against `limit`; release tests coreSpread against `limit * REGROUP_RELEASE`.
+   coreSpread is structurally the smaller quantity (laggards trimmed, centroid recomputed over the
+   survivors) and is measured from the core mean where `far` membership is classified against the
+   median, so a regroup could in principle commit already satisfying its own release test.
+   `releasableAtEntry` measures that directly. Over 10 replays it came back 0 of 54 entries -- the
+   asymmetry is real in the code and inert in practice. Keep the counter: it is what stops that
+   theory being re-proposed, and it would catch the day a doctrine change makes it live.
+
+   These helpers tolerate a partially-shaped state, because `cohesionState` hands back whatever
+   object is already on the squad and a fixture can predate these fields. Diagnostics must never
+   throw inside a Captain tick. */
+function counters(st,key){return st[key]||(st[key]={});}
+function noteEntry(st,ca,limit,release,t){
+  var why=dispersedReasons(ca,limit),releasable=ca.coreSpread<=release,map=counters(st,'entryReasons');if(releasable)st.releasableAtEntry=(+st.releasableAtEntry||0)+1;
+  for(var i=0;i<why.length;i++)map[why[i]]=(+map[why[i]]||0)+1;
+  st.lastEntry={at:t,why:why,rawSpread:+ca.rawSpread.toFixed(3),coreSpread:+ca.coreSpread.toFixed(3),limit:+limit.toFixed(3),release:+release.toFixed(3),releasable:releasable,outrunners:ca.outrunners.length,laggards:ca.laggards,allowed:ca.allowed};
+}
+function noteExit(st,why,ca,t){
+  var age=t-st.enteredAt,map=counters(st,'exitReasons');st.ageTotal=(+st.ageTotal||0)+age;map[why]=(+map[why]||0)+1;
+  st.lastExit={at:t,why:why,age:+age.toFixed(3),coreSpread:ca?+ca.coreSpread.toFixed(3):null,rawSpread:ca?+ca.rawSpread.toFixed(3):null};
+}
 function markCatchup(ca,t){for(var i=0;i<ca.members.length;i++){var s=ca.members[i];s._cohesionCatchupUntil=t+4;s._destinationCommitUntil=0;}}
 function updateCohesion(sim,sq){
   if(!sq||sq.state==='retreat')return;var c=cfg(sim,sq),limit=+(captainAlive(sq)?c.cohesionRadius:c.captainlessCohesion)||34,release=limit*REGROUP_RELEASE,st=cohesionState(sq),t=sim.time,ca=cohesionAssessment(sq,limit);sq._cohesionAssessment={rawSpread:+ca.rawSpread.toFixed(3),coreSpread:+ca.coreSpread.toFixed(3),stragglers:ca.stragglers.slice(),outrunners:ca.outrunners.slice(),allowed:ca.allowed,dispersed:ca.dispersed};
-  var p=sq._engagementPlan,combatPlan=p&&(p.status==='active'||p.status==='quiet');if(sq.inContact||combatPlan){st.overSince=null;if(st.accepted){st.accepted=false;st.exits++;st.cooldownUntil=t+REENTRY;}sq._regroupBypassUntil=Math.max(+sq._regroupBypassUntil||0,t+1.25);return;}
+  var p=sq._engagementPlan,combatPlan=p&&(p.status==='active'||p.status==='quiet');if(sq.inContact||combatPlan){st.overSince=null;if(st.accepted){noteExit(st,sq.inContact?'contact':'combat-plan',ca,t);st.accepted=false;st.exits++;st.cooldownUntil=t+REENTRY;}sq._regroupBypassUntil=Math.max(+sq._regroupBypassUntil||0,t+1.25);return;}
   /* Release hands the squad straight back to mission execution in the same Captain tick. */
-  if(st.accepted){var age=t-st.enteredAt;if((age>=REGROUP_MIN&&ca.coreSpread<=release)||age>=REGROUP_MAX){st.accepted=false;st.exits++;st.cooldownUntil=t+REENTRY;sq._regroupBypassUntil=Math.max(+sq._regroupBypassUntil||0,t+(age>=REGROUP_MAX?REGROUP_BYPASS:REENTRY));sq.commandHoldUntil=0;return;}sq.commandPhase='regroup';sq.objective=copy(st.anchor||ca.center);return;}
+  if(st.accepted){var age=t-st.enteredAt;if((age>=REGROUP_MIN&&ca.coreSpread<=release)||age>=REGROUP_MAX){noteExit(st,age>=REGROUP_MAX?'max-age':'closed-up',ca,t);st.accepted=false;st.exits++;st.cooldownUntil=t+REENTRY;sq._regroupBypassUntil=Math.max(+sq._regroupBypassUntil||0,t+(age>=REGROUP_MAX?REGROUP_BYPASS:REENTRY));sq.commandHoldUntil=0;return;}sq.commandPhase='regroup';sq.objective=copy(st.anchor||ca.center);return;}
   /* The Captain, not the General, decides a squad is too scattered to keep executing. */
   var requested=!sq.inContact&&t>=(+sq._regroupBypassUntil||0)&&ca.rawSpread>limit;if(!requested){st.overSince=null;return;}st.regroupRequests++;
   if(!ca.dispersed&&ca.stragglers.length){markCatchup(ca,t);st.stragglerSuppressions++;st.suppressed++;sq._regroupBypassUntil=t+STRAGGLER_BYPASS;return;}
   if(!ca.dispersed){st.suppressed++;return;}if(st.overSince==null)st.overSince=t;if(t<st.cooldownUntil||t-st.overSince<REGROUP_ENTER){st.suppressed++;return;}
-  st.accepted=true;st.enteredAt=t;st.anchor=copy(ca.center);st.entries++;sq._regroupRecovery={serial:(+sq._regroupRecoverySerial||0)+1,startedAt:t,anchor:copy(st.anchor)};sq._regroupRecoverySerial=sq._regroupRecovery.serial;sq.objective=copy(st.anchor);sq.commandPhase='regroup';telemetry(sim,'decision-regroup-commit',{faction:sq.faction,squad:sq.id,serial:sq._regroupRecovery.serial,anchor:copy(st.anchor)});
+  noteEntry(st,ca,limit,release,t);st.accepted=true;st.enteredAt=t;st.anchor=copy(ca.center);st.entries++;sq._regroupRecovery={serial:(+sq._regroupRecoverySerial||0)+1,startedAt:t,anchor:copy(st.anchor)};sq._regroupRecoverySerial=sq._regroupRecovery.serial;sq.objective=copy(st.anchor);sq.commandPhase='regroup';telemetry(sim,'decision-regroup-commit',{faction:sq.faction,squad:sq.id,serial:sq._regroupRecovery.serial,anchor:copy(st.anchor)});
 }
 
 function aliveTeam(sq,key){return(sq.members||[]).filter(function(s){return!s.dead&&teamKeyFor(s)===key;}).sort(function(a,b){return(+a.slotIndex||0)-(+b.slotIndex||0);});}
@@ -208,7 +235,8 @@ function executeMission(sim,sq,town){
   sq.objective=copy(wp);
 }
 
-function summary(sim){var out={plans:0,active:0,quiet:0,regroups:0,fireteams:0,orderPublishing:Object.assign({},sim._squadCommandPublishStats||{intentChecks:0,intentPublishes:0,intentCoalesced:0})};['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i],p=q._engagementPlan;if(p){out.plans++;if(p.status==='active')out.active++;if(p.status==='quiet')out.quiet++;}if(q._regroupHysteresis&&q._regroupHysteresis.accepted)out.regroups++;out.fireteams+=Object.keys(q._fireteamOrders||{}).length;}});sim._squadCommandSummary=out;sim._engagementPlanSummary={live:out.plans,active:out.active,quiet:out.quiet};sim._regroupHysteresisSummary={active:out.regroups,enterGrace:REGROUP_ENTER,exitRatio:REGROUP_RELEASE};return out;}
+function accumulate(into,from){for(var k in from)if(Object.prototype.hasOwnProperty.call(from,k))into[k]=(+into[k]||0)+(+from[k]||0);}
+function summary(sim){var out={plans:0,active:0,quiet:0,regroups:0,fireteams:0,orderPublishing:Object.assign({},sim._squadCommandPublishStats||{intentChecks:0,intentPublishes:0,intentCoalesced:0})},churn={entries:0,exits:0,suppressed:0,stragglerSuppressions:0,regroupRequests:0,releasableAtEntry:0,ageTotal:0,entryReasons:{},exitReasons:{}};['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i],p=q._engagementPlan;if(p){out.plans++;if(p.status==='active')out.active++;if(p.status==='quiet')out.quiet++;}var st=q._regroupHysteresis;if(st){if(st.accepted)out.regroups++;churn.entries+=+st.entries||0;churn.exits+=+st.exits||0;churn.suppressed+=+st.suppressed||0;churn.stragglerSuppressions+=+st.stragglerSuppressions||0;churn.regroupRequests+=+st.regroupRequests||0;churn.releasableAtEntry+=+st.releasableAtEntry||0;churn.ageTotal+=+st.ageTotal||0;accumulate(churn.entryReasons,st.entryReasons);accumulate(churn.exitReasons,st.exitReasons);}out.fireteams+=Object.keys(q._fireteamOrders||{}).length;}});churn.meanAge=churn.exits?+(churn.ageTotal/churn.exits).toFixed(3):0;churn.releasableAtEntryRatio=churn.entries?+(churn.releasableAtEntry/churn.entries).toFixed(3):0;out.regroupChurn=churn;sim._squadCommandSummary=out;sim._engagementPlanSummary={live:out.plans,active:out.active,quiet:out.quiet};sim._regroupHysteresisSummary={active:out.regroups,enterGrace:REGROUP_ENTER,exitRatio:REGROUP_RELEASE,minRegroup:REGROUP_MIN,maxRegroup:REGROUP_MAX,reentry:REENTRY,churn:churn};return out;}
 function reset(sim){sim._squadCommandPublishStats={intentChecks:0,intentPublishes:0,intentCoalesced:0};['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i];q._engagementPlan=null;q._stablePlan=null;q._engagementPlanSerial=0;q._planDormantSignature=null;q._missionExecution=null;q._macroMissionRequest=null;q._regroupHysteresis=null;q._regroupRecovery=null;q._regroupRecoverySerial=0;q._regroupBypassUntil=0;q._fireteamOrders={};(q.members||[]).forEach(function(s){s._fireteamDestination=null;s._fireteamPublishKey=null;s._fireteamKey=null;s._defensePost=null;s._engagementTask=null;});}});summary(sim);}
 function commanderTick(sim,payload){var town=payload&&payload.town||null;['us','ge'].forEach(function(f){var a=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i];updateCohesion(sim,q);executeMission(sim,q,town);updatePlan(sim,q);}});summary(sim);}
 

@@ -114,6 +114,31 @@ Do not assume the latest Meso cleanup solved every symptom. The current German-d
 
 These are measurements to investigate, not invitations to add four patches.
 
+## Running the deterministic replay
+
+`scripts/run_m3c_replay.cjs` drives the shipping runtime in headless Chromium and is the cheapest way
+to get a full 600 s battle with complete diagnostics (~35 s wall each, and several run in parallel).
+It needs a local web server and, in a sandbox with no trusted CDN egress, a local Babylon build —
+otherwise the page dies on `BABYLON is not defined` and the script fails with an opaque
+`TimeoutError` from `waitForFunction`:
+
+```sh
+php -S 127.0.0.1:8877 -t "$(dirname "$PWD")"          # docroot is the PARENT of the repo
+curl -o /tmp/babylon.js https://cdn.jsdelivr.net/npm/babylonjs@9.27.1/babylon.js
+
+M3C_BABYLON=/tmp/babylon.js \
+M3C_CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
+M3C_SEED=my-seed M3C_OUTPUT=/tmp/out.json \
+M3C_URL="http://127.0.0.1:8877/grasstex/battle_sim_local.php?defender=ge" \
+node scripts/run_m3c_replay.cjs
+```
+
+Drop `?defender=` for a meeting engagement. The result's `.diagnostic.runtimeDiagnostics` carries the
+aggregate summaries (`_regroupHysteresisSummary`, `_personalSpaceSummary`, `_tacticalPositionSummary`,
+`_squadCommandSummary`) and `.diagnostic` carries per-squad state. A handful of seeds per scenario is
+enough to characterize a counter; it is **not** enough to call a win-split difference — see the
+sample-size arithmetic in `M3C_STRUCTURAL_SWEEP_TESTING_SUMMARY.md`.
+
 ## Reference
 
 See `battle/AI_SIM_ROADMAP.md` for the current M3C roadmap, accepted milestones, frozen systems, regression gates, and benchmark plan.

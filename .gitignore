@@ -12,3 +12,7 @@ __pycache__/
 # field recordings; the committed assets are the sliced/mastered MP3s under Assets/audio.
 .runtime/sonniss-ww2/
 .runtime/fetch*.log
+
+# Local dev dependency for scripts/run_m3c_replay.cjs. Never committed.
+node_modules/
+package-lock.json
