@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+EXPLAIN=0
+if [[ "${1:-}" == "--explain" ]]; then
+  EXPLAIN=1
+  shift
+fi
 ROOT="${1:-Assets/audio}"
+[[ "$EXPLAIN" -eq 1 ]] && ROOT="Assets/audio"
 TP="-1.0"
 TP_LINEAR="0.891"   # 10^(-1.0/20), the same ceiling expressed for alimiter
 LRA="7.0"
@@ -33,6 +39,12 @@ method_for() {
   case "$1" in
     */weapons/*.mp3) echo "transient" ;;
     "$ROOT/rifle.mp3"|"$ROOT/carbine.mp3"|"$ROOT/lmg.mp3"|"$ROOT/pistol.mp3") echo "transient" ;;
+    # Everything else shaped like a hit rather than a sound that sustains: a grenade going
+    # off, a tank round, a bomb. They have the same crest factor and the same long tail as
+    # a rifle crack, so R128 mis-measures them the same way.
+    */grenades/*.mp3) echo "transient" ;;
+    */vehicles/tank-cannon-*.mp3|*/vehicles/tank-impact-*.mp3|*/vehicles/tank-destroyed-*.mp3) echo "transient" ;;
+    */aircraft/bomb-explosion-*.mp3) echo "transient" ;;
     *) echo "integrated" ;;
   esac
 }
@@ -41,7 +53,10 @@ method_for() {
 transient_target_for() {
   case "$1" in
     */weapons/foley/*.mp3) echo "-26.0" ;;
-    */weapons/cannon-*.mp3) echo "-13.0" ;;
+    # Handling a grenade is quiet mechanical foley; the detonation is not.
+    */grenades/pin-*.mp3|*/grenades/throw-*.mp3|*/grenades/bounce-*.mp3) echo "-26.0" ;;
+    */weapons/cannon-*.mp3|*/vehicles/tank-cannon-*.mp3) echo "-13.0" ;;
+    */grenades/explosion-*.mp3|*/aircraft/bomb-explosion-*.mp3|*/vehicles/tank-destroyed-*.mp3) echo "-14.0" ;;
     *) echo "-16.0" ;;
   esac
 }
@@ -59,7 +74,7 @@ target_for() {
     */voices/*) echo "-18.0" ;;
     */weapons/foley/*.mp3) echo "-20.0" ;;
     "$ROOT/rifle.mp3"|"$ROOT/carbine.mp3"|"$ROOT/lmg.mp3"|"$ROOT/pistol.mp3"|*/weapons/rifle-*.mp3|*/weapons/smg-*.mp3|*/weapons/lmg-*.mp3|*/weapons/hmg-*.mp3|*/weapons/pistol-*.mp3) echo "-19.0" ;;
-    */grenades/explosion-*.mp3|*/vehicles/tank-cannon-*.mp3|*/vehicles/tank-impact-*.mp3|*/vehicles/tank-destroyed-*.mp3|*/weapons/cannon-*.mp3|*/aircraft/bomb-explosion-*.mp3) echo "-21.0" ;;
+    */grenades/*.mp3|*/weapons/cannon-*.mp3|*/vehicles/tank-cannon-*.mp3|*/vehicles/tank-impact-*.mp3|*/vehicles/tank-destroyed-*.mp3|*/aircraft/bomb-explosion-*.mp3) echo "-21.0" ;;
     */vehicles/*.mp3|*/aircraft/*.mp3) echo "-22.0" ;;
     */ambience/*.mp3) echo "-26.0" ;;
     *) echo "" ;;
@@ -156,6 +171,28 @@ PY
   mv "$tmp" "$file"
 }
 
+# --explain <path>... : print the method and target each path would be mastered under, and
+# fail on any the tables do not cover. A path with no target is silently skipped by the loop
+# below, which is how a category can sit in the manifest for months never being mastered.
+if [[ "$EXPLAIN" -eq 1 ]]; then
+  explain_status=0
+  for path in "$@"; do
+    method="$(method_for "$path")"
+    if [[ "$method" == "transient" ]]; then
+      target="$(transient_target_for "$path")"; unit="dBFS/100ms"
+    else
+      target="$(target_for "$path")"; unit="LUFS"
+    fi
+    if [[ -z "$target" ]]; then
+      printf 'UNCOVERED  %-12s %s\n' "-" "$path"
+      explain_status=1
+    else
+      printf '%-10s %-12s %s\n' "$method" "$target $unit" "$path"
+    fi
+  done
+  exit "$explain_status"
+fi
+
 digest() {
   python3 -c 'import hashlib,sys
 h=hashlib.sha256()
@@ -173,18 +210,32 @@ fi
 
 count=0
 skipped=0
+uncovered=0
 declare -A seen=()
 while IFS= read -r -d '' file; do
-  target="$(target_for "$file")"
-  [[ -z "$target" ]] && continue
+  # Ask the table that actually governs this file. Consulting target_for for everything
+  # meant a transient-only category was skipped outright unless it also happened to have an
+  # integrated entry - a coupling with nothing to announce it but a file quietly never being
+  # mastered.
+  method="$(method_for "$file")"
+  if [[ "$method" == "transient" ]]; then
+    target="$(transient_target_for "$file")"
+  else
+    target="$(target_for "$file")"
+  fi
+  if [[ -z "$target" ]]; then
+    echo "SKIP   $file (no mastering target - see method_for/target_for)" >&2
+    uncovered=$((uncovered+1))
+    continue
+  fi
   before="$(digest "$file")"
   if [[ "${mastered["$file"]:-}" == "$before" ]]; then
     seen["$file"]="$before"
     skipped=$((skipped+1))
     continue
   fi
-  if [[ "$(method_for "$file")" == "transient" ]]; then
-    normalize_transient "$file" "$(transient_target_for "$file")"
+  if [[ "$method" == "transient" ]]; then
+    normalize_transient "$file" "$target"
   else
     normalize_one "$file" "$target"
   fi
@@ -205,3 +256,7 @@ for path in "${!seen[@]}"; do
 done | sort -k2 > "$STATE"
 
 echo "Normalized $count MP3 file(s); $skipped already on target."
+if [[ "$uncovered" -gt 0 ]]; then
+  echo "$uncovered file(s) had no mastering target and were left untouched." >&2
+  exit 1
+fi

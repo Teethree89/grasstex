@@ -56,8 +56,9 @@ overshoot; the limiter is what makes the ceiling a guarantee rather than a reque
 ### The script is incremental
 
 Mastering decodes and re-encodes, so re-running it over an unchanged library is **not** a
-no-op - it burns a fresh MP3 generation off every file and produces a diff the normalize
-workflow then commits. `Assets/audio/.mastering-state.tsv` records the SHA-256 of each file
+no-op - it burns a fresh MP3 generation off every file and produces a diff. That used to be
+committed to `main` automatically, 284 files at a time.
+`Assets/audio/.mastering-state.tsv` records the SHA-256 of each file
 as it was left, exactly as `.battle-deploy.sha256.tsv` does for uploads, and files whose hash
 still matches are skipped. A full-tree run costs ~40 s the first time and ~4 s thereafter.
 
@@ -76,4 +77,21 @@ bash scripts/normalize_audio.sh Assets/audio
 
 Only the new files are touched; the rest are skipped on their recorded hash.
 
-The automated normalization workflow also runs when the mastering script/workflow is changed. New categories should be assigned a target here and in `scripts/normalize_audio.sh` before production use.
+There is no longer a workflow that masters and commits for you; `normalize-audio.yml` was
+removed because its unfiltered push trigger let any branch publish itself to `main`. CI
+checks the result instead, so audio has to arrive on standard rather than be rewritten
+afterwards — see the audio job in `.github/workflows/ci.yml`.
+
+A new category must be given a target here and in `scripts/normalize_audio.sh` before
+production use. Confirm it took with:
+
+```bash
+bash scripts/normalize_audio.sh --explain Assets/audio/<category>/<clip>.mp3
+```
+
+A path the tables do not cover reports `UNCOVERED` and exits non-zero. Without a target the
+mastering loop skips the file rather than failing, so it would ship unmastered with nothing
+to indicate it — which is how `grenades/pin`, `throw` and `bounce` sat uncovered. CI runs
+this over every path the manifest declares, including the not-yet-recorded ones.
+
+The end-to-end route from a source recording to a committed clip is in `PIPELINE.md`.
