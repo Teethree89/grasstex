@@ -31,11 +31,18 @@ as the FBX Motion Lab (`fbx-animation-lab.html`).
 
 - **Sources.** Characters: `Assets/soldiers/{us,ge}-paratrooper.fbx` (default) and
   `{us,ge}-rifleman-rigged.fbx` (`?soldiers=rifleman`). Clips: `Assets/animations/*.fbx`
-  (animation-only). Rifles: `Assets/weapons/m1-garand.fbx` (US) and `kar98k.fbx` (German). The
+  (animation-only, Mixamo rig with fingers, named `<description> - <clip name>`). Rifles: `Assets/weapons/m1-garand.fbx` (US) and `kar98k.fbx` (German). The
   deploy plan uploads all three folders' `.fbx` files; the source `.zip` packs stay out.
 - **Engine.** The FBX loader ships in Babylon 9, so the page pins `babylonjs@9.27.1`; the backend
   loads the matching `babylonjs-loaders` bundle on demand.
-- **Retargeting.** Clips are authored on the rifleman skeleton. A model with the same bone names
+- **Bone naming.** Rigs name the same bones differently: the clips use Mixamo names
+  (`mixamorig:Spine/Spine1/Spine2`, `HeadTop_End`), the older characters use
+  `Spine02/Spine01/Spine`. Every rig is read through `canon()`, which lowercases, drops the prefix
+  and punctuation and maps the spine chain to `spine0/1/2` by the scheme the rig uses, so binding,
+  retargeting, the palm anchors and the weapon chain work across both.
+- **Fingers.** The library animates the finger chains; a model that has finger bones gets them, and
+  one without simply ignores those channels.
+- **Retargeting.** Clips are authored on their own skeleton. A model with the same bone names
   and hierarchy but different rest orientations or units (the paratroopers: up to ~180 degrees per
   bone, metres instead of centimetres) gets its own copy of every clip at load: each bone's
   rotation away from the clip's rest pose is taken in armature space, reapplied to the model's rest

@@ -44,10 +44,10 @@ at load.
 
 ## Animations (`Assets/animations/<clean name>.fbx`)
 
-`Assets/animations/new/` is the source library (Mixamo exports on our rig, in place or with root
-motion); it is not deployed. To use a clip, copy it to `Assets/animations/` under a short lowercase
-name and add a key to `CLIPS` (or a family: `FAMILIES` 8-way, `FOUR_WAY` 4-way) in the backend.
-Only top-level `Assets/animations/*.fbx` files deploy. In-place loops get their speed from the
+`Assets/animations/*.fbx` is the whole library (Mixamo rig with fingers, `<description> - <clip
+name>`), and all of it deploys. To use a clip, add its file name to `CLIPS` (or to a family:
+`FAMILIES` 8-way, `FOUR_WAY` 4-way) in the backend; bone names are canonicalised at load, so a clip
+binds to a model on either naming scheme. In-place loops get their speed from the
 feet automatically; one-shot clips keep their authored travel. `battle/ANIMATION_CATALOG.md` lists
 what is used and what is still available.
 

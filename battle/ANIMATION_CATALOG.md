@@ -1,17 +1,17 @@
 # Soldier animation catalog
 
-Runtime clips live in `Assets/animations/*.fbx` and are registered in `CLIPS` in
-`battle/modules/53-fbx-soldier-backend.js`. `Assets/animations/new/` (269 clips, all on our rig) is
-the source library: copy a clip up with a clean name to use it (see `Assets/PIPELINE.md`). Lengths
-and travel below were measured through the FBX loader.
+Runtime clips live in `Assets/animations/*.fbx` (270 clips, Mixamo rig with finger chains, named
+`<description> - <clip name>`) and are registered in `CLIPS` in
+`battle/modules/53-fbx-soldier-backend.js`; 92 of them are loaded today. Bone names are canonicalised
+at load, so clips bind to models on either naming scheme (see `ANIMATION_CONTRACT.md`).
 
 ## In use
 
 | Use | Clips |
 | --- | --- |
-| Idle / aim | `idle`, `idle aiming`, `idle crouching`, `idle crouching aiming`, `Rifle Prone Idle` |
-| 8-way locomotion (incl. strafes and backpedal) | `walk *`, `run *`, `sprint *`, `walk crouching *` |
-| 4-way crouch run (in place) | `crouch run forward/right/backward/left` |
+| Idle / aim | `Rifle Standing Idle`, `Rifle Standing Idle Aiming`, `Rifle Crouched Idle`, `Rifle Crouched Idle Aiming`, `Lying Down Prone With Rifle` |
+| 8-way locomotion (incl. strafes and backpedal) | `Rifle Walk/Run/Sprint <direction>`, `Rifle Crouched Walk <direction>` |
+| 4-way crouch run (in place) | `Running Crouched With Rifle`, `Run Crouched Strafe Right`, `Running Backwards Crouched`, `Crouched Strafe Run Left` |
 | Prone movement | `Prone Forward`, `Moving Backward In Prone Position` |
 | Pistol (captains) | `pistol idle aiming`, `pistol kneel idle`, `pistol walk forward/backward`, `pistol run forward/backward`, `pistol strafe left/right`, `pistol hit reaction` |
 | Fire | `Fire Rifle Single Shot` (+ crouched kneel, prone), `Fire Rifle Automatic Standing` / `Prone` (LMG) |

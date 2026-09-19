@@ -48,41 +48,65 @@ var WEAPON_BIPOD={'m1919a6.fbx':'m1919a6-bipod.fbx','mg42.fbx':'mg42-bipod.fbx'}
 
 /* key -> [clip file (Assets/animations/<name>.fbx), loops]. Directional locomotion is generated
    below as <family><sector>, sector 0..7 clockwise from forward. */
-var DIRS=['forward','forward right','right','backward right','backward','backward left','left','forward left'];
-var FAMILIES={walk:'walk ',run:'run ',sprint:'sprint ',crouch:'walk crouching '};
+var DIRS=['Forward','Forward Right','Right','Backward Right','Backward','Backward Left','Left','Forward Left'];
+/* The library names every file "<description> - <clip name>"; the 8-way families follow one pattern. */
+var FAMILIES={walk:['Rifle Walk ',' - Walk '],run:['Rifle Run ',' - Run '],sprint:['Rifle Sprint ',' - Sprint '],
+  crouch:['Rifle Crouched Walk ',' - Walk Crouching ']};
 var CLIPS={
-  idle:['idle',1],aim:['idle aiming',1],crouchIdle:['idle crouching',1],crouchAim:['idle crouching aiming',1],
-  proneIdle:['Rifle Prone Idle',1],proneForward:['Prone Forward',1],proneBackward:['Moving Backward In Prone Position',1],
-  fire:['Fire Rifle Single Shot',0],fireCrouch:['Fire Rifle Single Shot Crouched Kneel',0],fireProne:['Fire Rifle Single Shot Prone',0],
-  fireAuto:['Fire Rifle Automatic Standing',1],fireAutoProne:['Fire Rifle Automatic Prone',1],
-  reload:['Rifle Reload Standing',0],reloadCrouch:['Rifle Reload Crouched',0],reloadProne:['Rifle Reload Prone',0],
+  idle:['Rifle Standing Idle - Idle',1],aim:['Rifle Standing Idle Aiming - Idle Aiming',1],
+  crouchIdle:['Rifle Crouched Idle - Idle Crouching',1],crouchAim:['Rifle Crouched Idle Aiming - Idle Crouching Aiming',1],
+  proneIdle:['Lying Down Prone With Rifle - Prone Idle',1],
+  proneForward:['Moving Forward While In Prone Position - Prone Forward',1],
+  proneBackward:['Moving Backward In Prone Position With Rifle - Moving Backward In Prone Position',1],
+  fire:['Firing A Rifle While Standing - Firing Rifle',0],fireCrouch:['Fire Rifle While Crouched - Fire Rifle',0],
+  fireProne:['Firing A Rifle While Prone - Prone Firing Rifle',0],
+  fireAuto:['Firing A Rifle While Standing - Firing Rifle (2)',1],fireAutoProne:['Prone Fire Rifle Upper Body - Prone Firing Rifle',1],
+  reload:['Reloading Rifle While Standing - Reloading',0],reloadCrouch:['Reload Rifle While In Crouch Position - Reload',0],
+  reloadProne:['Reloading Rifle In Prone - Prone Reloading',0],
   /* Stance changes. Stand<->crouch clips play only when the soldier is standing still. */
-  standToCrouch:['stand to crouch',0],crouchToStand:['crouch to stand',0],crouchToProne:['crouch to prone',0],proneToCrouch:['prone to crouch',0],
+  standToCrouch:['Standing To Crouching Transition - Stand To Crouch',0],
+  crouchToStand:['Standing Up From A Crouched Position With An Aimed Rifle - Crouch To Standing With Rifle',0],
+  crouchToProne:['Crouching To Laying Prone Transition - Crouch To Prone',0],
+  proneToCrouch:['Transition From Prone To Crouch - Prone To Crouch Transition',0],
   /* Non-lethal hits (combat.hit). */
-  hit:['hit reaction',0],hitCrouch:['hit reaction crouched',0],hitProne:['hit reaction prone',0],hitRun:['hit reaction running',0],
+  hit:['Hit Reaction - Hit Reaction',0],hitCrouch:['Hit Reaction From Rifle Crouched - Hit Reaction',0],
+  hitProne:['Rifle Prone Hit Reaction - Rifle Prone Hit Reaction',0],hitRun:['Hit Reaction When Running With Rifle - Hit Reaction',0],
   /* Captains carry the pistol: its own aimed idle, kneel and locomotion. */
-  pistolIdle:['pistol idle aiming',1],pistolKneel:['pistol kneel idle',1],pistolHit:['pistol hit reaction',0],
+  pistolIdle:['Idle With Aimed Pistol - Pistol Idle',1],pistolKneel:['Kneeling Idle With Aimed Pistol - Pistol Kneeling Idle',1],
+  pistolHit:['Hit Reaction While Holding A Pistol - Hit Reaction',0],
   /* Deaths, grouped into pools below. death.front is a forward collapse (shot from behind). */
-  deathFront:['death from the back',0],deathBack:['death from the front',0],deathSide:['death from right',0],
-  deathBackHeadKnees:['death back of head two knees',0],deathBackOneKnee:['death from back one knee',0],deathHitGround:['death hit to ground',0],
-  deathChestKnees:['death chest two knees',0],deathHeadKnees:['death head two knees',0],deathFrontHeadKnees:['death front head two knees',0],
-  deathCrouch:['death crouching headshot front',0],deathCrouched:['death crouched',0],deathProne:['Prone Death',0],deathRunning:['death running',0],
+  deathFront:['Rifle Death From The Back - Death From The Back',0],deathBack:['Rifle Death From The Front - Death From The Front',0],
+  deathSide:['Rifle Death From Right Side - Death From Right',0],
+  deathBackHeadKnees:['Dying Shot To Back Of Head Falling On Two Knees - Dying',0],
+  deathBackOneKnee:['Death Hit From The Back Falling On One Knee - Dying',0],
+  deathHitGround:['Rifle Getting Hit To Ground - Rifle Hit To Back',0],
+  deathChestKnees:['Dying Shot To The Chest Falling On Two Knees - Dying',0],
+  deathHeadKnees:['Dying Shot To The Head Falling On Two Knees - Dying',0],
+  deathFrontHeadKnees:['Dying Front Head Impact To Two Knees - Dying',0],
+  deathCrouch:['Rifle Death Crouched From Headshot Front - Death Crouching Headshot Front',0],
+  deathCrouched:['Dying From A Crouched Position - Crouch Death',0],deathProne:['Dying From A Prone Position - Prone Death',0],
+  deathRunning:['Getting Shot While Running With An Aimed Rifle - Rifle Run To Dying',0],
   /* Turning on the spot ('turn': the hips' own yaw is removed at load; the sim turns the root). */
-  turnLeft:['turn 90 left',1,'turn'],turnRight:['turn 90 right',1,'turn'],
-  crouchTurnLeft:['crouching turn 90 left',1,'turn'],crouchTurnRight:['crouching turn 90 right',1,'turn'],
-  proneTurnLeft:['Prone Left Turn',1,'turn'],proneTurnRight:['Prone Right Turn',1,'turn'],
+  turnLeft:['Rifle Turn 90 Left - Turn 90 Left',1,'turn'],turnRight:['Rifle Turn 90 Right - Turn 90 Right',1,'turn'],
+  crouchTurnLeft:['Rifle Crouched Turn 90 Left - Crouching Turn 90 Left',1,'turn'],
+  crouchTurnRight:['Rifle Crouched Turn 90 Left - Crouching Turn 90 Right',1,'turn'],
+  proneTurnLeft:['Turning Left While Prone - Prone Left Turn',1,'turn'],proneTurnRight:['Turning Right While Prone - Prone Right Turn',1,'turn'],
   /* Idle variety for a standing rifleman with nothing to shoot at. */
-  idleLook:['idle looking around',1],idleTwoHand:['idle two hand',1],idleFidget:['idle shaking legs',1],
+  idleLook:['Rifle Idle Looking Around - Rifle Idle',1],idleTwoHand:['Two Hand Rifle Idle - Rifle Idle',1],
+  idleFidget:['Idle Holding A Rifle While Shaking Legs - Rifle Idle',1],
   /* Flinches when suppressive fire lands close. */
-  flinch:['shielding face',0],flinchCrouch:['duck and look around',0]
+  flinch:['Rifle Shielding Face From Debris - Rifle Shielding Face',0],flinchCrouch:['Duck And Look Around Apprehensively - Gunplay',0]
 };
 var IDLE_VARIANTS=['idle','idleLook','idleTwoHand','idleFidget'],FLINCH_RATE=1.6;
-Object.keys(FAMILIES).forEach(function(f){DIRS.forEach(function(d,i){CLIPS[f+i]=[FAMILIES[f]+d,1];});});
+Object.keys(FAMILIES).forEach(function(f){var p=FAMILIES[f];DIRS.forEach(function(d,i){CLIPS[f+i]=[p[0]+d+p[1]+d,1];});});
 /* Four-way in-place families (forward, right, backward, left); diagonals use forward or backward. */
 var FOUR_WAY={
-  crouchRun:['crouch run forward','crouch run right','crouch run backward','crouch run left'],
-  pistolWalk:['pistol walk forward','pistol strafe right','pistol walk backward','pistol strafe left'],
-  pistolRun:['pistol run forward','pistol strafe right','pistol run backward','pistol strafe left']
+  crouchRun:['Running Crouched With Rifle - Crouched Run','Run Crouched Strafe Right With Rifle - Crouched Strafe Run',
+    'Running Backwards Crouched While Aiming Rifle - Crouch Run Backwards','Crouched Strafe Run Left While Aiming Rifle - Crouch Strafe Run Left'],
+  pistolWalk:['Walking With An Aimed Pistol - Pistol Walk','Strafe Right With An Aimed Pistol - Pistol Strafe',
+    'Walking Backward With An Aimed Pistol - Pistol Walk Backward','Strafe Left With An Aimed Pistol - Pistol Strafe'],
+  pistolRun:['Running With Aimed Pistol - Pistol Run','Strafe Right With An Aimed Pistol - Pistol Strafe',
+    'Running Backward With An Aimed Pistol - Pistol Run Backward','Strafe Left With An Aimed Pistol - Pistol Strafe']
 };
 Object.keys(FOUR_WAY).forEach(function(f){var c=FOUR_WAY[f],pick=[0,0,1,2,2,2,3,0];for(var i=0;i<8;i++)CLIPS[f+i]=[c[pick[i]],1];});
 var DEATH_POOLS={
@@ -91,8 +115,6 @@ var DEATH_POOLS={
   side:['deathSide','deathChestKnees'],crouch:['deathCrouch','deathCrouched'],prone:['deathProne'],running:['deathRunning']
 };
 
-/* Bones the aim/fire/reload overlay owns. Everything else follows the lower layer. */
-var UPPER={Spine02:1,Spine01:1,Spine:1,neck:1,Head:1,LeftShoulder:1,LeftArm:1,LeftForeArm:1,LeftHand:1,RightShoulder:1,RightArm:1,RightForeArm:1,RightHand:1};
 /* Right-hand grip point in each weapon mesh's local space (metres), as in soldier.js GRIPS. */
 var GRIP={rifle:[0,-.055,-.12],carbine:[0,-.055,-.09],lmg:[0,-.07,-.02],pistol:[.02,-.07,0]};
 /* Where each hand holds each weapon, in weapon-local metres (barrel +Z, grip origin at 0). The
@@ -114,6 +136,31 @@ var WEAPON_POINTS={
 };
 var SMOOTH_NORMALS=!(typeof location!=='undefined'&&/[?&]smooth=0\b/.test(location.search||''));
 
+/* Rigs differ in bone naming: the clips use Mixamo names ("mixamorig:Spine/Spine1/Spine2"), the
+   older characters use "Spine02/Spine01/Spine" for the same three bones, and Mixamo's leaf bones
+   spell out "HeadTop_End". Every rig is read through canon(): names are lowercased, the prefix and
+   punctuation dropped, and the spine chain mapped to spine0/1/2 by the scheme the rig uses, so
+   binding, retargeting, the palm anchors and the weapon chain all work across both. */
+var SPINE_MAP={mixamo:{spine:'spine0',spine1:'spine1',spine2:'spine2'},legacy:{spine02:'spine0',spine01:'spine1',spine:'spine2'}};
+var CANON_ALIAS={headtopend:'headend',headend:'headend',lefttoeend:'lefttoeend',righttoeend:'righttoeend'};
+function rigScheme(names){
+  for(var i=0;i<names.length;i++){var n=String(names[i]).toLowerCase();if(n.indexOf('spine02')>=0)return'legacy';}
+  return'mixamo';
+}
+function canon(name,scheme){
+  var n=String(name||'').toLowerCase().replace(/^mixamorig[:_]?/,'').replace(/[^a-z0-9]/g,'');
+  var spine=SPINE_MAP[scheme||'mixamo'];
+  if(spine&&spine[n])return spine[n];
+  return CANON_ALIAS[n]||n;
+}
+var BONE={hips:'hips',spine0:'spine0',spine2:'spine2',neck:'neck',head:'head',
+  leftHand:'lefthand',rightHand:'righthand',leftFoot:'leftfoot',rightFoot:'rightfoot'};
+var UPPER_CANON={spine0:1,spine1:1,spine2:1,neck:1,head:1,headend:1,headfront:1,
+  leftshoulder:1,leftarm:1,leftforearm:1,lefthand:1,rightshoulder:1,rightarm:1,rightforearm:1,righthand:1};
+function isUpper(canonName){
+  /* Fingers ride with the hand they belong to. */
+  return!!UPPER_CANON[canonName]||/^(left|right)hand(thumb|index|middle|ring|pinky)/.test(canonName);
+}
 var scenes=typeof WeakMap!=='undefined'?new WeakMap():null;
 function sceneState(scene){
   var st=scenes?scenes.get(scene):scene._battleFbxSoldier;
@@ -145,13 +192,13 @@ function loadContainer(scene,url){return BABYLON.LoadAssetContainerAsync(url,sce
 /* The centre of each hand as a fixed point in that hand bone's space: the centroid of the vertices
    skinned mostly to the hand (palm and fingers), taken at bind pose. It acts like a socket bone
    added to the rig without editing the asset, and it is where the weapon is held. */
-function palmAnchors(meshes,nodes){
+function palmAnchors(meshes,nodes,scheme){
   var out={};
-  ['RightHand','LeftHand'].forEach(function(name){
+  [BONE.rightHand,BONE.leftHand].forEach(function(name){
     var sum=new V3(),count=0,node=nodes[name];
     meshes.forEach(function(mesh){
       var sk=mesh.skeleton;if(!sk||!node)return;
-      var bone=-1;for(var b=0;b<sk.bones.length;b++)if(sk.bones[b].name===name)bone=b;if(bone<0)return;
+      var bone=-1;for(var b=0;b<sk.bones.length;b++)if(canon(sk.bones[b].name,scheme)===name)bone=b;if(bone<0)return;
       var VB=BABYLON.VertexBuffer,pos=mesh.getVerticesData(VB.PositionKind),ix=[mesh.getVerticesData(VB.MatricesIndicesKind),mesh.getVerticesData(VB.MatricesIndicesExtraKind)],
           wt=[mesh.getVerticesData(VB.MatricesWeightsKind),mesh.getVerticesData(VB.MatricesWeightsExtraKind)],world=mesh.getWorldMatrix(),p=new V3();
       for(var v=0;v<pos.length/3;v++){
@@ -173,7 +220,8 @@ function prepareModel(container){
   top.getDescendants(false).forEach(function(n){if(n.computeWorldMatrix)n.computeWorldMatrix(true);});
   meshes.forEach(function(m){var b=m.getBoundingInfo().boundingBox;lo=Math.min(lo,b.minimumWorld.y);hi=Math.max(hi,b.maximumWorld.y);});
   if(!(hi>lo))throw new Error('model FBX has no measurable height');
-  var nodes={};top.getDescendants(false).forEach(function(n){nodes[n.name]=n;});
+  var all=top.getDescendants(false),scheme=rigScheme(all.map(function(n){return n.name;})),nodes={};
+  all.forEach(function(n){nodes[canon(n.name,scheme)]=n;});
   container.materials.forEach(function(m){
     if(m.specularColor)m.specularColor.set(.06,.06,.06);
     /* The atlas is hundreds of small islands; keep it crisp at glancing angles. */
@@ -184,11 +232,11 @@ function prepareModel(container){
     m.backFaceCulling=false;if('twoSidedLighting' in m)m.twoSidedLighting=true;
   });
   if(SMOOTH_NORMALS)meshes.forEach(smoothNormals);
-  var palms=palmAnchors(meshes,nodes);
+  var palms=palmAnchors(meshes,nodes,scheme);
   var scale=(M.BODY&&M.BODY.heightM||1.7)/(hi-lo);
-  if(!nodes.Hips)throw new Error('model FBX has no Hips bone');
+  if(!nodes.hips)throw new Error('model FBX has no hips bone');
   return{container:container,top:top,nodes:nodes,height:hi-lo,scale:scale,
-    hipsHeight:(nodes.Hips.getAbsolutePosition().y-lo)*scale,palms:palms,grips:null,clips:null};
+    scheme:scheme,hipsHeight:(nodes.hips.getAbsolutePosition().y-lo)*scale,palms:palms,grips:null,clips:null};
 }
 
 /* Optional look (on by default, `?smooth=0` turns it off): the models ship flat-shaded, so the
@@ -226,20 +274,21 @@ function smoothNormals(mesh){
 /* The clips' own skeleton: bone names (helper nodes excluded) and their rest local transforms.
    Every clip file carries the same one, so it is read once from the first clip loaded. */
 function sourceRig(container){
-  var bones=[],rest={};
-  container.transformNodes.forEach(function(n){
-    if(n.name==='__fbx_root__'||n.name.indexOf('__fbx')>=0)return;
-    bones.push(n.name);
-    rest[n.name]={q:(n.rotationQuaternion||Q.FromEulerVector(n.rotation)).clone(),p:n.position.clone()};
+  var real=container.transformNodes.filter(function(n){return n.name!=='__fbx_root__'&&n.name.indexOf('__fbx')<0;});
+  var scheme=rigScheme(real.map(function(n){return n.name;})),bones=[],rest={};
+  real.forEach(function(n){
+    var name=canon(n.name,scheme);bones.push(name);
+    rest[name]={q:(n.rotationQuaternion||Q.FromEulerVector(n.rotation)).clone(),p:n.position.clone()};
   });
-  return{bones:bones,rest:rest};
+  return{bones:bones,rest:rest,scheme:scheme};
 }
 function convertClip(container,key,spec,bones){
   var group=container.animationGroups[0];if(!group)throw new Error('no animation in '+spec[0]);
   var index={};bones.forEach(function(name,i){index[name]=i;});
+  var scheme=rigScheme(container.transformNodes.map(function(n){return n.name;}));
   var channels=new Array(bones.length),frames=0,duration=0,loop=!!spec[1];
   group.targetedAnimations.forEach(function(ta){
-    var i=ta.target?index[ta.target.name]:null,a=ta.animation;if(i==null||!a)return;
+    var i=ta.target?index[canon(ta.target.name,scheme)]:null,a=ta.animation;if(i==null||!a)return;
     var prop=a.targetProperty;if(prop!=='rotationQuaternion'&&prop!=='position')return;
     var afps=a.framePerSecond||FPS,span=(group.to-group.from)/afps;
     if(!frames){frames=Math.max(2,Math.round(span*FPS)+1);duration=(frames-1)/FPS;}
@@ -261,7 +310,7 @@ function convertClip(container,key,spec,bones){
      is the clip's natural ground speed (kept in the clip's own units until a model scales it).
      Looping clips are made in place by removing the linear drift, which keeps sway and bob but
      ends each cycle where it began. */
-  var hips=channels[index.Hips],travel=0;
+  var hips=channels[index.hips],travel=0;
   if(hips&&hips.pos){
     var p=hips.pos,last=(frames-1)*3,dx=p[last]-p[0],dy=p[last+1]-p[1];
     travel=Math.sqrt(dx*dx+dy*dy)/Math.max(1e-3,duration);
@@ -300,14 +349,14 @@ function retargetClips(lib,src,clips,bones){
   var n=bones.length,parent=new Int32Array(n),restS=[],restT=[],i;
   var nodes=bones.map(function(name){return lib.nodes[name]||null;});
   for(i=0;i<n;i++){
-    var node=nodes[i],pn=node&&node.parent?bones.indexOf(node.parent.name):-1;parent[i]=pn;
+    var node=nodes[i],pn=node&&node.parent?bones.indexOf(canon(node.parent.name,lib.scheme)):-1;parent[i]=pn;
     restS[i]=src.rest[bones[i]].q;restT[i]=node?(node.rotationQuaternion||Q.FromEulerVector(node.rotation)):restS[i];
   }
   /* Parents before children. */
   var order=[],depth=function(k){var d=0;while(parent[k]>=0){k=parent[k];d++;}return d;};
   for(i=0;i<n;i++)order.push(i);order.sort(function(a,b){return depth(a)-depth(b);});
   var worst=0;for(i=0;i<n;i++)if(nodes[i])worst=Math.max(worst,1-Math.abs(Q.Dot(restS[i],restT[i])));
-  var hipsS=src.rest.Hips.p,hipsT=lib.nodes.Hips.position,k=hipsT.length()/Math.max(1e-6,hipsS.length());
+  var hipsS=src.rest.hips.p,hipsT=lib.nodes.hips.position,k=hipsT.length()/Math.max(1e-6,hipsS.length());
   lib.speedScale=lib.hipsHeight/Math.max(1e-6,hipsS.z);
   var out={};
   Object.keys(clips).forEach(function(key){
@@ -364,10 +413,10 @@ function retargetClips(lib,src,clips,bones){
    is the stride speed, in metres per second. */
 var skA=new MX(),skB=new MX(),skQ=new Q(),skP=new V3(),skOne=new V3(1,1,1);
 function strideSpeed(lib,clip,bones){
-  var hipsNode=lib.nodes.Hips;if(!hipsNode)return 0;
+  var hipsNode=lib.nodes.hips;if(!hipsNode)return 0;
   var index={};bones.forEach(function(b,i){index[b]=i;});
   var unit=lib.hipsHeight/Math.max(1e-6,Math.abs(hipsNode.position.z)||hipsNode.position.length());
-  var feet=['LeftFoot','RightFoot'].map(function(name){var chain=[],node=lib.nodes[name];while(node&&node!==hipsNode){chain.unshift(node);node=node.parent;}return node?chain:null;});
+  var feet=[BONE.leftFoot,BONE.rightFoot].map(function(name){var chain=[],node=lib.nodes[name];while(node&&node!==hipsNode){chain.unshift(node);node=node.parent;}return node?chain:null;});
   if(!feet[0]||!feet[1])return 0;
   function localOf(node,frame,out){
     var i=index[node.name],ch=i!=null?clip.channels[i]:null,r=ch&&ch.rot,a=frame*4;
@@ -403,8 +452,8 @@ function solveGrips(lib,aim,bones,kinds){
   });
   lib.top.computeWorldMatrix(true);
   lib.top.getDescendants(false).forEach(function(n){if(n.computeWorldMatrix)n.computeWorldMatrix(true);});
-  var hand=nodes.RightHand.getWorldMatrix().clone(),left=nodes.LeftHand.getWorldMatrix();
-  var rightPalm=V3.TransformCoordinates(lib.palms.RightHand,hand),leftPalm=V3.TransformCoordinates(lib.palms.LeftHand,left);
+  var hand=nodes[BONE.rightHand].getWorldMatrix().clone(),left=nodes[BONE.leftHand].getWorldMatrix();
+  var rightPalm=V3.TransformCoordinates(lib.palms[BONE.rightHand],hand),leftPalm=V3.TransformCoordinates(lib.palms[BONE.leftHand],left);
   var z=new V3(0,0,1),x=V3.Cross(V3.Up(),z).normalize(),y=V3.Cross(z,x).normalize(),hands=leftPalm.subtract(rightPalm);
   var rotation=Q.RotationQuaternionFromAxis(x,y,z),basis=new MX(),inv=hand.clone().invert(),grips={};rotation.toRotationMatrix(basis);
   kinds.forEach(function(kind){
@@ -462,10 +511,10 @@ function loadLibrary(scene){
   }).then(function(list){
     st.clips={};list.forEach(function(clip){st.clips[clip.key]=clip;});
     Object.keys(st.libs).forEach(function(f){retargetClips(st.libs[f],st.src,st.clips,st.bones);});
-    st.animated=[];st.upper=[];st.hips=st.bones.indexOf('Hips');st.spineRoot=st.bones.indexOf('Spine02');
+    st.animated=[];st.upper=[];st.hips=st.bones.indexOf(BONE.hips);st.spineRoot=st.bones.indexOf(BONE.spine0);
     st.bones.forEach(function(name,i){
       if(list.some(function(c){return!!c.channels[i];}))st.animated.push(i);
-      st.upper[i]=!!UPPER[name];
+      st.upper[i]=isUpper(name);
     });
     Object.keys(st.libs).forEach(function(f){
       var lib=st.libs[f];lib.grips={};
@@ -491,7 +540,7 @@ function bind(soldier,scene,st,lib){
   inst.animationGroups.forEach(function(g){g.stop();g.dispose();});
   var byName={},meshes=[];
   holder.getDescendants(false).forEach(function(n){
-    byName[n.name]=n;
+    byName[canon(n.name,lib.scheme)]=n;
     if(n.getTotalVertices&&n.getTotalVertices()>0){n.isPickable=false;n.alwaysSelectAsActiveMesh=true;meshes.push(n);}
   });
   holder.onDisposeObservable.add(function(){inst.skeletons.forEach(function(k){k.dispose();});});
@@ -504,12 +553,12 @@ function bind(soldier,scene,st,lib){
   soldier.rig=null;
 
   /* Soldier root -> right hand. The render pass composes this chain itself (see handChain). */
-  var hand=byName.RightHand,path=[],pathL=[];for(var n=hand;n;n=n.parent)path.unshift(n);for(n=byName.LeftHand;n;n=n.parent)pathL.unshift(n);
+  var hand=byName[BONE.rightHand],path=[],pathL=[];for(var n=hand;n;n=n.parent)path.unshift(n);for(n=byName[BONE.leftHand];n;n=n.parent)pathL.unshift(n);
   var nodes=st.bones.map(function(name){var node=byName[name]||null;if(node&&!node.rotationQuaternion)node.rotationQuaternion=new Q();return node;});
-  var fx={lib:lib,st:st,nodes:nodes,holder:holder,meshes:meshes,root:soldier.root,socket:socket,hand:hand,path:path,chain:path.map(function(){return new MX();}),spineAt:path.indexOf(byName.Spine),
-    pathL:pathL,chainL:pathL.map(function(){return new MX();}),spineAtL:pathL.indexOf(byName.Spine),weaponModel:null,twoHand:0,yawRate:0,lastYaw:null,turning:false,weaponKind:'rifle',
+  var fx={lib:lib,st:st,nodes:nodes,holder:holder,meshes:meshes,root:soldier.root,socket:socket,hand:hand,path:path,chain:path.map(function(){return new MX();}),spineAt:path.indexOf(byName[BONE.spine2]),
+    pathL:pathL,chainL:pathL.map(function(){return new MX();}),spineAtL:pathL.indexOf(byName[BONE.spine2]),weaponModel:null,twoHand:0,yawRate:0,lastYaw:null,turning:false,weaponKind:'rifle',
     lower:{entries:[]},upper:{entries:[]},overlay:0,overlayTarget:0,stance:null,transition:null,sector:0,family:null,moving:false,
-    vx:0,vz:0,speed:0,lastX:null,lastZ:null,aim:0,aimWanted:false,aimAt:null,spine:byName.Spine||null,fireHold:0,fireShot:0,fireSeen:0,reloadShot:0,reloadSeen:0,reloadDuration:2.5,death:null};
+    vx:0,vz:0,speed:0,lastX:null,lastZ:null,aim:0,aimWanted:false,aimAt:null,spine:byName[BONE.spine2]||null,fireHold:0,fireShot:0,fireSeen:0,reloadShot:0,reloadSeen:0,reloadDuration:2.5,death:null};
   soldier._fbx=fx;
   soldier.animationBinding={backend:BACKEND,tags:TAGS,play:play,update:update};
   st.active.push(fx);
@@ -743,8 +792,8 @@ function holdWeapon(fx,grip,points){
   grip.multiplyToRef(fx.chain[fx.chain.length-1],socketWorld);
   var palms=fx.lib.palms,f=points&&points.fore,g=points&&points.grip;fx.twoHand=0;
   if(!f||!g||!palms)return;
-  V3.TransformCoordinatesToRef(palms.RightHand,fx.chain[fx.chain.length-1],hR);
-  V3.TransformCoordinatesToRef(palms.LeftHand,fx.chainL[fx.chainL.length-1],hL);
+  V3.TransformCoordinatesToRef(palms[BONE.rightHand],fx.chain[fx.chain.length-1],hR);
+  V3.TransformCoordinatesToRef(palms[BONE.leftHand],fx.chainL[fx.chainL.length-1],hL);
   hL.subtractToRef(hR,hV);var dist=hV.length();if(dist<1e-4)return;hV.scaleInPlace(1/dist);
   socketWorld.decompose(hS,hQ,hP);dist/=hS.x;
   /* The point on the fore-end line at the clip's hand spacing (clamped to the fore-end). */
