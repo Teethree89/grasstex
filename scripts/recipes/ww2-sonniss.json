@@ -227,14 +227,6 @@
     "tailDropDb": 26
   },
   {
-    "source": "2016-p4-Pole_Position_Production_-_T-34-85_Russian_World_War_II_Tank__T-34_foley_cannon_height_adjustment.wav",
-    "dest": "vehicles/tank-turret",
-    "count": 2,
-    "maxLengthSeconds": 4.0,
-    "minGapSeconds": 0.5,
-    "tailDropDb": 26
-  },
-  {
     "source": "2016-p4-Pole_Position_Production_-_T-34-85_Russian_World_War_II_Tank__T-34_t2_onboard_startup_driving_idle_int.wav",
     "dest": "vehicles/tank-engine-idle",
     "segments": [

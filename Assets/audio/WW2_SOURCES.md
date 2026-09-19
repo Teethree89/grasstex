@@ -38,6 +38,35 @@ matter for this repository:
 | M101 105 mm howitzer | Airborne Sound - Battlefield Howitzers | GDC 2019 part 1 |
 | T-34-85 | Pole Position - T-34-85 Russian World War II Tank | GDC 2016 part 4 |
 
+## The Garand, which is not in any bundle
+
+`battle/weapons.js` calls the sim's rifle kind an "M1-pattern rifle", and the US service
+rifle is the one weapon the bundles do not have. All nine years were scanned for it
+(`scan <year> --pattern garand "m1 rifle" "30-06"`) and there is no M1 Garand in any of them.
+
+It comes from Freesound instead, from sounds their authors dedicated to the public domain
+under **CC0 1.0** - no attribution required, commercial use unrestricted, and no conflict
+with the Sonniss licence terms above since these are separate works.
+
+| Clip | Freesound | Author |
+| --- | --- | --- |
+| `rifle-m1-garand-01` | [385785](https://freesound.org/s/385785/) | Rijam |
+| `rifle-m1-garand-02` | [386842](https://freesound.org/s/386842/) | nioczkus |
+| `foley/m1-garand-clip-load-*` | [505204](https://freesound.org/s/505204/) | shelbyshark |
+| `foley/m1-garand-reload-*` | [460855](https://freesound.org/s/460855/) | MPierluissi |
+| `foley/m1-garand-safety-*` | [505206](https://freesound.org/s/505206/) | shelbyshark |
+
+`scripts/fetch_freesound_cc0.py` re-checks the CC0 dedication on each sound page before
+writing anything and refuses on anything else, so a CC-BY or CC-BY-NC sound cannot be pulled
+into the library by mistake. Freesound needs an OAuth token to serve original files, but its
+high-quality MP3 preview is open and is ample for a one-shot that ships at 128 kbps mono.
+
+```bash
+python3 scripts/fetch_freesound_cc0.py 385785 386842 505204 460855 505206
+python3 scripts/slice_weapon_shots.py scripts/recipes/ww2-freesound.json \
+  --src-dir .runtime/freesound-cc0
+```
+
 `weapons/distant/` equivalents (`smg-mp40-distant-*`, `pistol-m1911a1-downrange-*`) were
 recorded downrange rather than at the muzzle. They are the report as it arrives across a
 field, not the crack beside the shooter, and reading them as ordinary one-shots will sound
@@ -56,14 +85,11 @@ python3 scripts/fetch_sonniss_ww2.py fetch 2016 --parts 2 4 --out .runtime/sonni
 python3 scripts/fetch_sonniss_ww2.py fetch 2019 --parts 1 --pattern howitzer --out .runtime/sonniss-ww2
 
 python3 scripts/slice_weapon_shots.py scripts/recipes/ww2-sonniss.json
-bash scripts/normalize_audio.sh Assets/audio/weapons
-bash scripts/normalize_audio.sh Assets/audio/vehicles
-bash scripts/normalize_audio.sh Assets/audio/ambience
+bash scripts/normalize_audio.sh Assets/audio
 ```
 
 The raw pulls stay in `.runtime/sonniss-ww2/` and are gitignored; only the sliced, mastered
-MP3s are committed. Run `normalize_audio.sh` against the individual directories rather than
-`Assets/audio`, or it re-encodes all ~190 committed voice callouts for no benefit.
+MP3s are committed.
 
 ## Slicing
 
@@ -77,8 +103,10 @@ recipe entries name explicit `segments` time ranges picked off the level profile
 
 ## Mastering
 
-Mastering is `scripts/normalize_audio.sh` against the targets in `MASTERING.md`, unchanged
-apart from two additions this work needed: a `-20 LUFS` row for weapon handling foley, and
-a true-peak limiter after `loudnorm`. The limiter matters here because a rifle crack has a
-30 dB crest factor, which puts it in the short/transient class where `loudnorm` falls back
-to a single pass and can overshoot the ceiling.
+Mastering is `scripts/normalize_audio.sh` against the targets in `MASTERING.md`. Levelling
+these packs is what prompted the one-shot standard documented there: mastered to integrated
+loudness they spanned 17 dB of perceived level, and on the loudest-100 ms measure they sit
+inside about 4 dB.
+
+Run the script against the whole tree (`bash scripts/normalize_audio.sh Assets/audio`); it
+skips anything whose recorded hash still matches, so only new or changed clips are touched.

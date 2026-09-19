@@ -1,0 +1,12 @@
+[
+  {"source":"385785.mp3","dest":"weapons/rifle-m1-garand","count":1,
+   "maxLengthSeconds":2.8,"tailDropDb":40},
+  {"source":"386842.mp3","dest":"weapons/rifle-m1-garand","count":1,"startIndex":2,
+   "maxLengthSeconds":2.8,"tailDropDb":40},
+  {"source":"505204.mp3","dest":"weapons/foley/m1-garand-clip-load","count":3,
+   "maxLengthSeconds":2.0,"minGapSeconds":0.3,"tailDropDb":26},
+  {"source":"460855.mp3","dest":"weapons/foley/m1-garand-reload","count":2,
+   "maxLengthSeconds":2.0,"minGapSeconds":0.3,"tailDropDb":26},
+  {"source":"505206.mp3","dest":"weapons/foley/m1-garand-safety","count":2,
+   "maxLengthSeconds":1.5,"minGapSeconds":0.3,"tailDropDb":26}
+]
