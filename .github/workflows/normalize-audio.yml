@@ -3,6 +3,14 @@ name: Normalize Battle Sim Audio
 on:
   workflow_dispatch:
   push:
+    # This job ends in `git push origin HEAD:main`. Without a branch filter it fired on
+    # feature branches too and published them straight to main - which is how 0ab9b1d, an
+    # unreviewed commit on claude/ww2-gun-sounds-f5gmvc, became main at 06:50 on 2026-09-19,
+    # about ninety seconds after being pushed to its own branch. main then deploys live.
+    # CI now asserts the mastering standard on every pull request, so this workflow is a
+    # safety net for main rather than the thing that maintains the invariant.
+    branches:
+      - main
     paths:
       - 'scripts/normalize_audio.sh'
       - '.github/workflows/normalize-audio.yml'
