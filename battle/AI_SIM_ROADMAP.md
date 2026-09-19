@@ -112,15 +112,26 @@ Evidence: paired deterministic replays (`scripts/run_m3c_replay.cjs`). Supersede
 
   Removing it exposed a real bug that the timeout had been hiding. `commandForward` is the axis that separates a man who lagged behind from a man who ran ahead, and it is derived from `sq.objective` — which an accepted rally overwrites with its own anchor. So the axis pointed at the squad's own centre, and a straggler who happened to be beyond the anchor scored as an **outrunner**. Outrunners are never trimmable, so one distant man pinned `coreSpread` above the release threshold forever. With the timeout in place this was invisible; without it, one squad sat in a rally for 510 s of a 600 s battle. The rally now commits its frame at entry (`lastForward`, a field that already existed unused) and is judged in the frame that opened it.
 
+  **And the rally never ordered anyone to the rally point.** Chasing the remaining stall found the real defect. `advanceSquadAnchor` freezes `sq.orderAnchor` for any phase in its hold list, and `'rally'` was in that list. But `orderAnchor` is what `SquadAI.formationSlot` lays fireteam slots around, and those slots are what actually publish soldier destinations. So a rally wrote its point to `sq.objective`, where nothing read it, and simultaneously froze the one anchor that could have moved anybody. The men were ordered to their existing slots, arrived, and stopped.
+
+  The stuck squad showed it plainly: rally anchor at (-61.5, 96.8), seven men standing at (-51, 181) reporting `movementStopReason: "arrived"` with `moveSpeed` 0 and an `orderDestination` equal to where they already were, 85 m from the point they were supposedly rallying to. They had been mid-move toward `orderAnchor` when the rally opened; the rally captured `ca.center` — where they *were* — and the frozen anchor kept pulling them past it. Nothing was physically stopping anyone.
+
+  `rally` is now out of the hold list. The other five phases there mean "stay where you are" and still freeze the anchor; a rally means the opposite, so the anchor strides to the rally point and the squad follows it.
+
   Matched on 10 seeds, 600 s each:
 
-  | arm | entries | exits | `closed-up` | `contact` | `max-age` | open at end | worst |
-  |---|---|---|---|---|---|---|---|
-  | expiry (previous `main`) | 54 | 53 | 10 (19%) | 32 (60%) | 11 | 0 | — |
-  | no expiry | 39 | 36 | 13 (36%) | 19 (53%) | 0 | 3 | 510.6 s |
-  | no expiry + committed frame | 35 | 34 | **18 (53%)** | 13 (38%) | 0 | 1 | 91.6 s |
+  | arm | entries | exits | `closed-up` | `contact` | `max-age` | open at end | worst | mean age |
+  |---|---|---|---|---|---|---|---|---|
+  | expiry (previous `main`) | 54 | 53 | 10 (19%) | 32 (60%) | 11 | 0 | — | 7.5 s |
+  | no expiry | 39 | 36 | 13 (36%) | 19 (53%) | 0 | 3 | 510.6 s | 10.1 s |
+  | + committed frame | 35 | 34 | 18 (53%) | 13 (38%) | 0 | 1 | 91.6 s | 10.6 s |
+  | + anchor follows the rally | 67 | 66 | **43 (65%)** | 20 (30%) | 0 | 1 | **11.1 s** | 7.8 s |
 
-  Entries fall 35%, and a rally that completes went from the rarest outcome to the most common one. Winners differ on 2 of the 10 seeds (both GE→US); at n=10 that says nothing about balance either way — per the sample-size arithmetic in `M3C_STRUCTURAL_SWEEP_TESTING_SUMMARY.md` a win-split call needs roughly 200+ runs per arm, so run the standard benchmark before reading anything into it.
+  A completed rally goes from the rarest outcome to the most common, no rally runs long, and a `closed-up` release now moves mean `coreSpread` 44.2 -> 24.1 against a 26.5 threshold where it used to move 46.6 -> 42.7. Entries rise 54 -> 67 because the rally does something now and finishes quickly enough to be needed again, but the roadmap's original proxy falls anyway: position releases attributed to rally go **67 -> 44**, claim collisions 674 -> 549/battle and tactical-position reassignments 7.0 -> 4.0.
+
+  Two things to watch. `blockedCorrections` in personal space rises 13.3 -> 41.6 per battle, which is what converging a squad on one point should do — `exactOverlaps` is unchanged at 15.0, so this is separation pressure rather than new overlap, but it belongs with the personal-space item above. And one squad rallied 17 times in a battle: six men, captain dead, so the captainless limit of 26 with a release of 20.28 leaves a 5.7 m band it crosses every ~35 s. All 17 exits were `closed-up`, so the rally succeeded every time — this is a squad that cannot hold a tight band, not a rally that fails, and it does not warrant a damping constant without more evidence.
+
+  Winners differ on 3 of the 10 seeds; at n=10 that says nothing about balance either way — per the sample-size arithmetic in `M3C_STRUCTURAL_SWEEP_TESTING_SUMMARY.md` a win-split call needs roughly 200+ runs per arm, so run the standard benchmark before reading anything into it.
 
   **Also: the 17 -> 154 figure is a proxy and should not be quoted as regroup frequency.** It counts tactical-position releases attributed to regroup, not regroup entries. Direct entry counts here are 2-16 per battle. Across these same 10 runs, regroup accounts for 67 of 165 position releases against only 54 entries, so the fan-out is nowhere near large enough to reconcile the two numbers. These runs are single-arm on current `main` and cannot reproduce the paired main-vs-branch comparison, so this does not retract the sweep finding — but any future work should measure entries directly now that the counter exists.
 - [ ] **Strategic stall wakes are usually no-ops.** Most `strategic-stall` wakes re-select the same objective (`decisionsUnchanged`). That is an objective-selection/doctrine limitation, not an ownership fault: the General has no alternative plan to offer.
@@ -216,6 +227,7 @@ This separation is important: prepared defense has repeatedly exposed failures t
 
 - [ ] A rally ends only because the squad closed up or an outside factor intervened — never on a timer. No exit is ever attributed to an expiry.
 - [ ] A rally is judged in the frame it committed to, so an accepted rally overwriting `sq.objective` cannot invert the lagging/outrunner classification.
+- [ ] A rally moves the squad's order anchor to the rally point. A rallying soldier's `orderDestination` resolves toward that point, never to the slot he already occupies.
 - [ ] Stable Meso formation/fireteam order remains unchanged while squad intent is unchanged.
 - [ ] Stable Meso fireteam orders are coalesced before the Movement Resolver.
 - [ ] Defensive/hardpoint posts survive target/contact/engagement-plan flicker.

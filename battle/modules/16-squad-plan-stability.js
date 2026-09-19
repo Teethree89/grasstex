@@ -184,7 +184,13 @@ function orderCanAdvance(sq){
    locomotion. */
 function advanceSquadAnchor(sq,battle){
   var anchor=sq.orderAnchor||(sq.orderAnchor={x:sq.rally.x,z:sq.rally.z}),goal=sq.state==='retreat'?sq.home:(sq.objective||sq.home),goalChanged=!sq._orderGoal||dist(goal,sq._orderGoal)>3;
-  var form=root.SquadAI.formationFor(sq),formChanged=form!==sq.formation,phase=sq.commandPhase||'',hold=['rally','support-hold','hold','reserve','defend','corner-check'].indexOf(phase)>=0,force=false;
+  /* `rally` is not a hold. The other five phases here mean "stay where you are", so freezing the
+     order anchor is right for them. A rally means the opposite: close on the rally point. Freezing
+     the anchor through a rally left the fireteam slots -- which are laid out around orderAnchor and
+     are what actually publishes soldier destinations -- pointing wherever the squad already stood,
+     so the rally point the Captain wrote to sq.objective was read by nothing and the men simply
+     arrived at their existing slots and stopped. */
+  var form=root.SquadAI.formationFor(sq),formChanged=form!==sq.formation,phase=sq.commandPhase||'',hold=['support-hold','hold','reserve','defend','corner-check'].indexOf(phase)>=0,force=false;
   if(goalChanged){sq._orderGoal=copy(goal);force=true;}if(formChanged){sq.formation=form;force=true;}
   var bounding=battle.time<(sq._boundUntil||0),held=!!sq.inContact&&!bounding,dx=goal.x-anchor.x,dz=goal.z-anchor.z,len=Math.hypot(dx,dz),mayAdvance=!hold&&!held&&(sq.state==='advance'||sq.state==='engaged');
   if((force||orderCanAdvance(sq))&&mayAdvance&&len>2){var stride=bounding?ORDER_STRIDE*.5:(sq.state==='engaged'?ORDER_STRIDE*.62:ORDER_STRIDE);anchor.x+=dx/len*Math.min(stride,len);anchor.z+=dz/len*Math.min(stride,len);sq._orderVersion=(+sq._orderVersion||0)+1;}

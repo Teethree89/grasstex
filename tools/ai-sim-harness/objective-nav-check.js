@@ -232,6 +232,37 @@ section('a rally ends when the squad closes up, not when a clock runs out');
   for(let i=0;i<25;i++){commandTick(r,sim,town);if(sq.commandPhase==='rally'||sq.objective.x!==120)held++;}
   check('one straggler does not re-open the rally in a loop',held===0,'held ticks='+held);
 }
+/* A rally used to sit in advanceSquadAnchor's hold list beside defend/reserve/corner-check. Those
+   phases mean "stay put", so freezing the order anchor is right for them. A rally means the
+   opposite -- and since fireteam slots are laid out around that anchor and are what publish soldier
+   destinations, freezing it meant the rally point in sq.objective was read by nobody and the squad
+   was told to hold the slots it already stood in. */
+section('a rally moves the order anchor onto the rally point');
+{
+  const H=require('./harness.js'),r=H.bootstrap({modules:false});r.console=quiet;r.BABYLON.Vector3=H.vec;r.BABYLON.Color3.prototype.scale=function(){return this;};
+  const base=bootstrap();r.BattleModules=base.BattleModules;
+  r.BattleModules.runHook=function(name,sim,payload){for(const id of Object.keys(this.systems).sort()){const h=this.systems[id][name];if(h)h(sim,payload);}};
+  r.BattleModules.unitsFor=sim=>sim._roster.us.concat(sim._roster.ge);
+  r.BattleTelemetry={record(){}};r.BattleSim={start(){}};
+  for(const f of ['battle/movement-resolver.js','battle/modules/16-squad-plan-stability.js'])load(r,f);
+  const sim=H.makeBattle(r,{seed:12345});sim.scene={metadata:{}};
+  const sq=H.addSquad(r,sim,{id:'us-0',faction:'us',x:65,z:0,objective:{x:180,z:0},seed:12345});
+  const rallyPoint={x:-40,z:0};
+  sq.orderAnchor={x:65,z:0};sq.rally={x:65,z:0};sq.state='advance';
+  sq.commandPhase='rally';sq.objective={x:rallyPoint.x,z:rallyPoint.z};
+  sq._rallyState={overSince:sim.time,accepted:true,enteredAt:sim.time,cooldownUntil:0,anchor:{x:rallyPoint.x,z:rallyPoint.z},
+    missionVersion:0,lastForward:{x:1,z:0},
+    entries:1,exits:0,suppressed:0,stragglerSuppressions:0,rallyRequests:1,entryReasons:{},exitReasons:{}};
+  const before=Math.abs(sq.orderAnchor.x-rallyPoint.x);
+  /* advanceSquadAnchor only strides once the squad has caught up to its last order, so walk the
+     soldiers with the real integrator between anchor advances rather than ticking in place. */
+  for(let i=0;i<40;i++){sq.commandPhase='rally';sq.objective={x:rallyPoint.x,z:rallyPoint.z};r.SquadAI.updateSquad(sq,sim);H.run(r,sim,1,()=>{});}
+  const after=Math.abs(sq.orderAnchor.x-rallyPoint.x);
+  check('the order anchor closes on the rally point instead of freezing',after<before-1,'gap '+before.toFixed(1)+' -> '+after.toFixed(1));
+  const slot=r.SquadAI.formationSlot(sq,sq.members[1],sq.members[1].slotIndex);
+  check('a fireteam slot sits nearer the rally point than the anchor the squad left',
+    Math.abs(slot.x-rallyPoint.x)<Math.abs(slot.x-65),'slot.x='+slot.x.toFixed(1));
+}
 section('benchmark alerts distinguish approach intent from absent orders');
 {
   const file=path.join(REPO,'scripts/battle-benchmark-intent.cjs');
