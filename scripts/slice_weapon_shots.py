@@ -141,6 +141,8 @@ def main():
     ap.add_argument('recipe', help='JSON list of {source, dest, count, ...} entries')
     ap.add_argument('--src-dir', default='.runtime/sonniss-ww2')
     ap.add_argument('--out-dir', default='Assets/audio')
+    ap.add_argument('--check-only', action='store_true',
+                    help='validate the recipe and exit, without touching any audio')
     args = ap.parse_args()
 
     recipe = json.load(open(args.recipe))
@@ -159,6 +161,11 @@ def main():
                 raise SystemExit(f'{args.recipe}: {key} is written by both '
                                  f'{claimed[key]} and {item["source"]}')
             claimed[key] = item['source']
+
+    if args.check_only:
+        print(f'{args.recipe}: {len(recipe)} entries, {len(claimed)} distinct outputs, '
+              f'no collisions')
+        return
 
     total = []
     for item in recipe:

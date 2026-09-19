@@ -1,0 +1,141 @@
+name: CI
+
+# Nothing ran on pull requests before this, so a PR had no signal at all: syntax errors,
+# a manifest naming a clip that does not exist, or audio committed off the mastering
+# standard all reached main unchallenged.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A force-push or a quick second push should not leave two runs racing on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JavaScript
+        run: |
+          set -euo pipefail
+          count=0
+          while IFS= read -r file; do
+            node --check "$file"
+            count=$((count+1))
+          done < <(git ls-files '*.js' '*.cjs' '*.mjs')
+          echo "Parsed $count JavaScript files."
+
+      - name: PHP
+        run: |
+          set -euo pipefail
+          count=0
+          while IFS= read -r file; do
+            php -l "$file" > /dev/null
+            count=$((count+1))
+          done < <(git ls-files '*.php')
+          echo "Linted $count PHP files."
+
+      - name: Python
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(git ls-files '*.py')
+          python3 -m py_compile "${files[@]}"
+          echo "Compiled ${#files[@]} Python files."
+
+      - name: Shell
+        run: |
+          set -euo pipefail
+          count=0
+          while IFS= read -r file; do
+            bash -n "$file"
+            count=$((count+1))
+          done < <(git ls-files '*.sh')
+          echo "Parsed $count shell scripts."
+
+      - name: JSON
+        run: |
+          set -euo pipefail
+          count=0
+          while IFS= read -r file; do
+            python3 -m json.tool "$file" > /dev/null
+            count=$((count+1))
+          done < <(git ls-files '*.json')
+          echo "Parsed $count JSON files."
+
+  audio:
+    name: Audio library
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Voice manifest
+        run: python3 scripts/validate_voice_manifest.py
+
+      - name: Clip references
+        run: python3 scripts/check_audio_manifest.py
+
+      - name: Slice recipes
+        run: |
+          set -euo pipefail
+          for recipe in scripts/recipes/*.json; do
+            python3 scripts/slice_weapon_shots.py "$recipe" --check-only
+          done
+
+      # The check that matters most. Mastering is hash-skipped, so on a tree whose audio is
+      # already on standard this re-encodes nothing and cannot produce a diff - which makes
+      # it independent of the runner's FFmpeg build. A diff here means either audio was
+      # committed without running the mastering pass, or .mastering-state.tsv no longer
+      # describes the files beside it. Both are how the library silently drifts off spec.
+      - name: Mastering is current
+        run: |
+          set -euo pipefail
+          bash scripts/normalize_audio.sh Assets/audio
+          if ! git diff --quiet -- Assets/audio; then
+            echo "::error::Committed audio is not on the mastering standard."
+            echo "Run 'bash scripts/normalize_audio.sh Assets/audio' and commit the result."
+            echo "Files the mastering pass changed:"
+            git diff --name-only -- Assets/audio
+            exit 1
+          fi
+          echo "Audio is on standard; the mastering pass changed nothing."
+
+  deploy-plan:
+    name: Deploy plan
+    runs-on: ubuntu-latest
+    steps:
+      # build_version.py reads build-v<N> tags to work out the next version.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Every runtime the page loads is covered
+        run: python3 scripts/check_deploy_coverage.py
+
+      # prepare_incremental_deploy.py fails on any managed file that is missing or empty,
+      # so building the plan is itself the check: it proves a real deploy would find
+      # everything it intends to upload, including the audio the manifest points at.
+      - name: Plan builds against a bare remote
+        run: |
+          set -euo pipefail
+          python3 scripts/build_version.py stamp
+          python3 scripts/prepare_incremental_deploy.py \
+            --remote-manifest /dev/null \
+            --audio-manifest Assets/audio/manifest.json \
+            --output "$RUNNER_TEMP/deploy-plan"
+          cat "$RUNNER_TEMP/deploy-plan/summary.json"

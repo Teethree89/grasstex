@@ -1,0 +1,31 @@
+# Manifest entries whose audio has not been recorded yet. The runtime tolerates these
+# (a category with no files simply never plays); scripts/check_audio_manifest.py uses this
+# list to tell a known gap from an accidentally missing clip.
+#
+# Adding the file? Delete its line here - the check fails if a listed clip exists.
+aircraft/bomb-drop-01.mp3
+aircraft/bomb-explosion-01.mp3
+aircraft/bomb-explosion-02.mp3
+aircraft/bomber-pass-01.mp3
+aircraft/bomber-pass-02.mp3
+aircraft/dive-01.mp3
+aircraft/fighter-pass-01.mp3
+aircraft/fighter-pass-02.mp3
+aircraft/strafing-01.mp3
+aircraft/strafing-02.mp3
+ambience/distant-battle-01.mp3
+ambience/distant-battle-02.mp3
+ambience/wind-01.mp3
+grenades/bounce-01.mp3
+grenades/bounce-02.mp3
+grenades/explosion-01.mp3
+grenades/explosion-02.mp3
+grenades/explosion-03.mp3
+grenades/pin-01.mp3
+grenades/throw-01.mp3
+vehicles/tank-cannon-01.mp3
+vehicles/tank-cannon-02.mp3
+vehicles/tank-destroyed-01.mp3
+vehicles/tank-destroyed-02.mp3
+vehicles/tank-impact-01.mp3
+vehicles/tank-impact-02.mp3
