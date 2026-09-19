@@ -82,8 +82,11 @@ displacement each simulation step, then:
 - **Deaths:** `death.front` (forward collapse) plays the pack's "death from the back",
   `death.back` plays "death from the front", `death.side` plays "death from right"; crouched and
   prone soldiers use the crouching/prone deaths.
-- **Weapon:** the rifle rides the right hand with an offset solved once from the aiming clip (barrel
-  level along the model's forward, grip in the right palm). While aiming, a capped spine rotation
+- **Weapon:** each hand gets a palm-centre anchor at load (the centroid of the vertices skinned to
+  it, stored in the hand bone's space, like an added socket bone). The weapon's grip point sits on
+  the right palm; the barrel swings so the fore-end line (`WEAPON_POINTS` in the backend) passes
+  through the left palm at whatever spacing the clip uses. Where the left hand leaves the weapon it
+  fades back to a rigid right-hand hold solved once from the aiming clip. While aiming, a capped spine rotation
   (<= ~40 degrees) turns the barrel onto the target, which corrects the crouched and prone clips.
   The weapon stays at world scale 1 regardless of body-shape scaling.
 
