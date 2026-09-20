@@ -24,6 +24,7 @@ Run with Blender:
     --output <intermediate>.fbx --name us-gunner
 """
 import argparse
+import re
 import sys
 
 import bpy
@@ -38,6 +39,10 @@ def args():
     parser.add_argument("--rigged", required=True, help="rigged twin (same base body and pose)")
     parser.add_argument("--output", required=True)
     parser.add_argument("--name", required=True, help="object name")
+    parser.add_argument("--mapping", default="POLYINTERP_NEAREST",
+                        help="Blender vert_mapping for the weight transfer")
+    parser.add_argument("--influences", type=int, default=8,
+                        help="max bones per vertex (Babylon reads 8; fingers need the headroom)")
     parser.add_argument("--max-gap", type=float, default=0.05,
                         help="fail if the 95%% surface gap to the twin exceeds this (metres)")
     return parser.parse_args(values)
@@ -101,7 +106,67 @@ def align(mesh, twin):
     return sum(gaps) / len(gaps), gaps[int(len(gaps) * .95)]
 
 
-def skin(mesh, twin, rig):
+def canon(name):
+    return re.sub(r"[^a-z0-9]", "", re.sub(r"^mixamorig[:_]?", "", str(name).lower()))
+
+
+def hand_pass(mesh, twin, rig, radius=0.13):
+    """Redo the weights around each hand against a hand-local alignment.
+
+    The body-wide fit lands within 1-2 cm, which is fine for a torso but not for fingers about 1 cm
+    thick: whole fingers end up nearer the gap between two of the twin's fingers than their own, so
+    most finger bones come out of the transfer owning no skin and the hand deforms as one paddle.
+    Matching the hands to each other first, then taking each vertex's weights from the single
+    nearest twin vertex, keeps the fingers separate."""
+    groups = {g.name: g.index for g in mesh.vertex_groups}
+    src_groups = {g.index: g.name for g in twin.vertex_groups}
+    fixed = 0
+    for side in ("left", "right"):
+        bone = next((b for b in rig.data.bones if canon(b.name) == side + "hand"), None)
+        if bone is None:
+            continue
+        centre = rig.matrix_world @ bone.head_local
+        tm, sm = mesh.matrix_world, twin.matrix_world
+        tgt = [v for v in mesh.data.vertices if ((tm @ v.co) - centre).length < radius]
+        src = [v for v in twin.data.vertices if ((sm @ v.co) - centre).length < radius]
+        if not tgt or not src:
+            continue
+        # line the two hands up with each other before matching vertex to vertex
+        tc = sum(((tm @ v.co) for v in tgt), Vector()) / len(tgt)
+        sc = sum(((sm @ v.co) for v in src), Vector()) / len(src)
+        shift = tc - sc
+        tree = KDTree(len(src))
+        for i, v in enumerate(src):
+            tree.insert((sm @ v.co) + shift, i)
+        tree.balance()
+        for v in tgt:
+            near = src[tree.find(tm @ v.co)[1]]
+            for g in v.groups:
+                g.weight = 0.0
+            for g in near.groups:
+                name = src_groups.get(g.group)
+                if name in groups:
+                    mesh.vertex_groups[groups[name]].add([v.index], g.weight, "REPLACE")
+            fixed += 1
+        smooth(mesh, [v.index for v in tgt])
+    return fixed
+
+
+def smooth(mesh, indices, factor=0.5, repeat=4):
+    """Nearest-vertex weights are noisy: neighbouring vertices can land on different finger bones
+    and the hand tears into spikes. Smoothing across the surface settles that without merging the
+    fingers, which are separate in the mesh and so never neighbours."""
+    for v in mesh.data.vertices:
+        v.select = False
+    for i in indices:
+        mesh.data.vertices[i].select = True
+    bpy.context.view_layer.objects.active = mesh
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.object.vertex_group_smooth(group_select_mode="ALL", factor=factor, repeat=repeat)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def skin(mesh, twin, rig, influences=8, mapping="POLYINTERP_NEAREST"):
     for g in twin.vertex_groups:
         mesh.vertex_groups.new(name=g.name)
     select_only(mesh)
@@ -109,11 +174,12 @@ def skin(mesh, twin, rig):
     mod.object = twin
     mod.use_vert_data = True
     mod.data_types_verts = {"VGROUP_WEIGHTS"}
-    mod.vert_mapping = "POLYINTERP_NEAREST"
+    mod.vert_mapping = mapping
     mod.layers_vgroup_select_src = "ALL"
     mod.layers_vgroup_select_dst = "NAME"
     bpy.ops.object.modifier_apply(modifier=mod.name)
-    bpy.ops.object.vertex_group_limit_total(group_select_mode="ALL", limit=4)
+    print("HANDS reweighted %d vertices against a hand-local fit" % hand_pass(mesh, twin, rig))
+    bpy.ops.object.vertex_group_limit_total(group_select_mode="ALL", limit=influences)
     bpy.ops.object.vertex_group_normalize_all(group_select_mode="ALL", lock_active=False)
     mesh.parent = rig
     mesh.matrix_parent_inverse = rig.matrix_world.inverted()
@@ -134,7 +200,7 @@ def main():
     if p95 > o.max_gap:
         raise RuntimeError("the mesh does not match the twin (95%% gap %.3f m > %.3f m): "
                            "different pose or body?" % (p95, o.max_gap))
-    unweighted = skin(mesh, twin, rig)
+    unweighted = skin(mesh, twin, rig, o.influences, o.mapping)
     infl = max(len(v.groups) for v in mesh.data.vertices)
     print("SKIN max influences %d, unweighted %d" % (infl, unweighted))
     if unweighted:

@@ -41,7 +41,13 @@ def args():
     parser.add_argument("--output", required=True)
     parser.add_argument("--report-only", action="store_true",
                         help="print the rest offsets and exit without writing")
+    parser.add_argument("--fingers", choices=("match", "keep"), default="match",
+                        help="'keep' leaves the fingers at the model's own rest; only useful for a "
+                             "rig whose fingers the library does not drive")
     return parser.parse_args(values)
+
+
+FINGER = re.compile(r"^(left|right)hand(thumb|index|middle|ring|pinky)")
 
 
 def scheme_of(names):
@@ -57,6 +63,19 @@ def load(path):
     before = set(bpy.data.objects)
     bpy.ops.import_scene.fbx(filepath=path)
     return [o for o in bpy.data.objects if o not in before]
+
+
+def flatten(objects):
+    """Bake each object's transform into its data so object space is world space.
+
+    The generator's files carry a 0.01 object scale. Posing works in armature space, so that scale
+    would otherwise come back multiplied by 100 through `matrix_world.inverted()` and blow the
+    skeleton apart."""
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objects:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = objects[0]
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 
 
 def rest_orientations(rig):
@@ -82,16 +101,25 @@ def worst(report, keys=("leftarm", "rightarm", "leftforearm", "rightforearm")):
     return max((report.get(k, 0.0) for k in keys), default=0.0)
 
 
-def repose(rig, reference):
+def repose(rig, reference, fingers="keep"):
     """Rotate every bone onto the reference's orientation, parents first. Bone positions follow
-    from the chain, so the model keeps its own proportions; only orientations are replaced."""
+    from the chain, so the model keeps its own proportions; only orientations are replaced.
+
+    Fingers are matched like everything else. The library does drive them: an idle holds one
+    static grip, but a reload moves all 30 finger bones. Matching their rest makes the retarget
+    reduce to the library's authored pose exactly (Wt = T0 . S0^-1 . Ws with T0 = S0 gives Ws);
+    leaving them at the model's own rest offsets every finger by up to 33 degrees, which splays
+    the hand off the weapon."""
     for bone in rig.data.bones:
         rig.pose.bones[bone.name].rotation_mode = "QUATERNION"
     ordered = sorted(rig.pose.bones, key=lambda pb: len(pb.parent_recursive))
     scheme = scheme_of([b.name for b in rig.data.bones])
     moved = 0
     for pb in ordered:
-        target = reference.get(canon(pb.name, scheme))
+        name = canon(pb.name, scheme)
+        if fingers == "keep" and FINGER.match(name):
+            continue
+        target = reference.get(name)
         if target is None:
             continue
         # pose_bone.matrix is armature space; keep the head the chain already put it at.
@@ -130,16 +158,20 @@ def main():
     objects = load(o.input)
     rig = next(x for x in objects if x.type == "ARMATURE")
     mesh = next(x for x in objects if x.type == "MESH")
+    flatten([mesh, rig])
     before = offsets(rig, reference)
     print("REST before: worst arm %.1f deg (%s)" % (
         worst(before), ", ".join("%s %.0f" % (k, before[k]) for k in sorted(before) if before[k] > 5)[:200]))
     if o.report_only:
         return
-    print("REPOSED %d bones" % repose(rig, reference))
+    print("REPOSED %d bones (fingers: %s)" % (repose(rig, reference, o.fingers), o.fingers))
     rebind(rig, mesh)
     after = offsets(rig, reference)
-    print("REST after: worst arm %.2f deg, worst any bone %.2f deg" % (
-        worst(after), max(after.values()) if after else 0.0))
+    body = {k: v for k, v in after.items() if not FINGER.match(k)}
+    held = [v for k, v in after.items() if FINGER.match(k)]
+    print("REST after: worst arm %.2f deg, worst body bone %.2f deg%s" % (
+        worst(after), max(body.values()) if body else 0.0,
+        ", %d fingers left as modelled (up to %.0f deg)" % (len(held), max(held)) if held and o.fingers == "keep" else ""))
     if worst(after) > 1.0:
         raise RuntimeError("the arms did not reach the library's rest pose")
     bpy.ops.export_scene.fbx(

@@ -21,8 +21,13 @@ per vertex. Extra end bones are fine. Rest orientations and units may differ: cl
 at load. Either naming dialect works: the tools and the backend canonicalise bone names, so a
 `mixamorig:`-prefixed rig (what the per-role characters carry) binds the same clips.
 
-0. Only if the source has no armature (Tripo exports the rig for some characters and not others):
-   borrow one from a rigged character of the same generator, base body and pose.
+0. **Get a rigged export.** Tripo can export the same character with or without its rig, and the
+   rigged one is worth going back for: it carries the generator's own skin weights, including all
+   30 finger bones with their own geometry. Everything below in this step is a fallback for a
+   source that cannot be re-exported, and it costs the hands (see the warning at the end).
+
+   Only if the source has no armature: borrow one from a rigged character of the same generator,
+   base body and pose.
 
    ```
    Blender -b --factory-startup --python tools/rig-soldier-model.py -- \
@@ -36,6 +41,14 @@ at load. Either naming dialect works: the tools and the backend canonicalise bon
    should follow; check the lineup for anything hanging off the wrong joint. The armature is passed
    through untouched, so the result's rest pose matches the twin's exactly and every clip binds.
    Feed the intermediate to step 0b.
+
+   The hands are the weak point, and the reason to prefer a rigged export. The body-wide fit lands
+   within 1-2 cm, but fingers are about 1 cm thick, so whole fingers match to the gap between two
+   of the twin's fingers: a plain transfer left 18 of 30 finger bones owning no skin at all and the
+   hand deformed as one paddle. `hand_pass` re-does the hand region against a hand-local fit and
+   smooths the result, which recovers most of it, but a transferred hand still measures below a
+   real rigged one (about 22-29 of 30 finger bones against 30 of 30). Check a reload up close: the
+   clips move every finger there, so that is where a mangled hand shows.
 0b. The model's rest pose must be the animation library's rest pose. Clips are retargeted by the
    rotation each bone makes *relative to its rest* (`retargetClips`), so when the clip rig sits at
    its rest the model sits at its own: any difference between the two is added to every clip. The
