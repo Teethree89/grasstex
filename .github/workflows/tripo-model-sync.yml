@@ -1,0 +1,89 @@
+name: Tripo model sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "List models or download models"
+        required: true
+        default: "list"
+        type: choice
+        options:
+          - list
+          - download
+      limit:
+        description: "How many recent Tripo usage records to inspect"
+        required: true
+        default: "50"
+        type: string
+      task_ids:
+        description: "Optional task IDs (comma/space/newline separated). Blank = recent model tasks"
+        required: false
+        type: string
+      destination:
+        description: "Directory to store downloaded models"
+        required: true
+        default: "Assets/tripo"
+        type: string
+      commit_downloads:
+        description: "Commit downloaded models to work/fbx-soldier-animations"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tripo-model-sync-work-fbx-soldier-animations
+  cancel-in-progress: false
+
+jobs:
+  tripo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out FBX animations branch
+        uses: actions/checkout@v4
+        with:
+          ref: work/fbx-soldier-animations
+          fetch-depth: 0
+
+      - name: Verify API secret
+        shell: bash
+        env:
+          TRIP_API: ${{ secrets.TRIP_API }}
+        run: |
+          if [ -z "$TRIP_API" ]; then
+            echo "::error::Repository secret TRIP_API is not configured."
+            exit 1
+          fi
+
+      - name: List or download Tripo models
+        env:
+          TRIP_API: ${{ secrets.TRIP_API }}
+          TRIPO_MODE: ${{ inputs.mode }}
+          TRIPO_LIMIT: ${{ inputs.limit }}
+          TRIPO_TASK_IDS: ${{ inputs.task_ids }}
+          TRIPO_DESTINATION: ${{ inputs.destination }}
+        run: |
+          python3 scripts/tripo_models.py \
+            --mode "$TRIPO_MODE" \
+            --limit "$TRIPO_LIMIT" \
+            --task-ids "$TRIPO_TASK_IDS" \
+            --destination "$TRIPO_DESTINATION" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit downloaded models
+        if: ${{ inputs.mode == 'download' && inputs.commit_downloads }}
+        shell: bash
+        run: |
+          if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
+            echo "No new or changed Tripo model files to commit." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "${{ inputs.destination }}"
+          git commit -m "assets: sync models from Tripo"
+          git push origin HEAD:work/fbx-soldier-animations
