@@ -24,10 +24,16 @@ if(typeof BABYLON==='undefined'||!root.BattleSoldierModel||root.BattleFbxSoldier
 
 var M=root.BattleSoldierModel,TAGS=M.TAGS,Q=BABYLON.Quaternion,V3=BABYLON.Vector3,MX=BABYLON.Matrix;
 var BACKEND='fbx-skeletal-v1',FPS=30;
-/* Paratroopers are the default; `?soldiers=rifleman` shows the earlier riflemen for comparison. */
+/* Models per faction and role; `default` covers the roles with no model of their own (riflemen,
+   and any role whose model is not made yet). `?soldiers=rifleman` shows the earlier riflemen. */
 var MODEL_SETS={
-  paratrooper:{us:'us-paratrooper.fbx',ge:'ge-paratrooper.fbx'},
-  rifleman:{us:'us-rifleman-rigged.fbx',ge:'ge-rifleman-rigged.fbx'}
+  paratrooper:{
+    us:{default:'us-paratrooper.fbx',captain:'us-captain.fbx',scout:'us-scout.fbx',
+        engineer:'us-engineer.fbx',gunner:'us-gunner.fbx'},
+    ge:{default:'ge-paratrooper.fbx',captain:'ge-captain.fbx',scout:'ge-scout.fbx',
+        engineer:'ge-engineer.fbx',gunner:'ge-gunner.fbx'}
+  },
+  rifleman:{us:{default:'us-rifleman-rigged.fbx'},ge:{default:'ge-rifleman-rigged.fbx'}}
 };
 var MODEL_SET=(typeof location!=='undefined'&&/[?&]soldiers=rifleman\b/.test(location.search||''))?'rifleman':'paratrooper';
 var MODELS=MODEL_SETS[MODEL_SET];
@@ -468,6 +474,10 @@ function solveGrips(lib,aim,bones,kinds){
   lib.supportHand={along:+(V3.Dot(hands,z)*lib.scale).toFixed(3),off:+(hands.subtract(z.scale(V3.Dot(hands,z))).length()*lib.scale).toFixed(3)};
 }
 
+/* The model a soldier of this faction and role wears. */
+function modelFor(st,faction,role){
+  var set=MODELS[faction==='ge'?'ge':'us']||{};return st.libs[set[role]||set.default]||null;
+}
 function prepareWeapon(container,name,butt){
   var mesh=container.meshes.filter(function(m){return m.getTotalVertices()>0;})[0];if(!mesh)throw new Error('weapon FBX has no mesh');
   /* Bake the loader's root (handedness + units) into the vertices, then normalise units from the
@@ -497,8 +507,9 @@ function loadLibrary(scene){
   var st=sceneState(scene);if(st.loading)return st.loading;
   var base=assetBase(),started=Date.now();
   st.loading=ensureLoader().then(function(){
-    return Promise.all(Object.keys(MODELS).map(function(faction){
-      return loadContainer(scene,base+'soldiers/'+MODELS[faction]).then(function(c){st.libs[faction]=prepareModel(c);st.libs[faction].faction=faction;});
+    var files={};Object.keys(MODELS).forEach(function(f){Object.keys(MODELS[f]).forEach(function(role){files[MODELS[f][role]]=1;});});
+    return Promise.all(Object.keys(files).map(function(file){
+      return loadContainer(scene,base+'soldiers/'+file).then(function(c){st.libs[file]=prepareModel(c);st.libs[file].file=file;});
     }).concat([loadWeapons(scene,st,base)]));
   }).then(function(){
     /* Each file loads once, however many keys use it. */
@@ -523,7 +534,7 @@ function loadLibrary(scene){
       solveGrips(lib,lib.clips.pistolIdle,st.bones,pistols);
     });
     hookRender(scene,st);st.ready=true;
-    console.log('[ANIM] FBX soldiers ready: '+MODEL_SET+' '+Object.keys(st.libs).map(function(f){return f+(st.libs[f].retargeted?' (retargeted)':'');}).join('/')+', weapons '+Object.keys(st.weapons||{}).join(' ')+', '+list.length+' clips, '+st.animated.length+' animated bones, '+(Date.now()-started)+' ms'+(SMOOTH_NORMALS?', smoothed normals':''));
+    console.log('[ANIM] FBX soldiers ready: '+MODEL_SET+' '+Object.keys(st.libs).map(function(f){return f.replace('.fbx','')+(st.libs[f].retargeted?'*':'');}).join(' ')+', weapons '+Object.keys(st.weapons||{}).join(' ')+', '+list.length+' clips, '+st.animated.length+' animated bones, '+(Date.now()-started)+' ms'+(SMOOTH_NORMALS?', smoothed normals':''));
     return true;
   }).catch(function(error){
     st.error=error;console.warn('[ANIM] FBX soldiers unavailable; procedural rig stays active',error);return false;
@@ -533,7 +544,7 @@ function loadLibrary(scene){
 
 /* ---- binding a soldier -------------------------------------------------------------------- */
 
-function bind(soldier,scene,st,lib){
+function bind(soldier,scene,st,lib,faction){
   var inst=lib.container.instantiateModelsToScene(function(name){return name;},false,{doNotInstantiate:true});
   var holder=new BABYLON.TransformNode('fbxSoldier',scene);holder.parent=soldier.poseRoot;holder.scaling.setAll(lib.scale);
   inst.rootNodes.forEach(function(n){n.parent=holder;});
@@ -548,7 +559,7 @@ function bind(soldier,scene,st,lib){
   /* Retire the primitive body. The weapon socket leaves the chest first: it now follows the hand
      but stays parented to the soldier root, so it inherits neither model scale nor handedness. */
   var socket=soldier.weaponSocket;socket.parent=soldier.root;if(!socket.rotationQuaternion)socket.rotationQuaternion=new Q();
-  socket._fbxFaction=lib.faction;
+  socket._fbxFaction=faction;
   var hips=soldier.rig&&soldier.rig.hips;if(hips&&!hips.isDisposed())hips.dispose();
   soldier.rig=null;
 
@@ -877,9 +888,9 @@ if(oldAttach)Weapons.attachWeapon=function(scene,socket,kind){
   return weapon;
 };
 var oldCreate=M.createSoldier,oldPreload=M.preload,oldSetEnabled=M.setImportedEnabled;
-M.createSoldier=function(scene,faction){
-  var soldier=oldCreate.apply(this,arguments),st=sceneState(scene),lib=st.ready&&st.enabled&&st.libs[faction==='ge'?'ge':'us'];
-  if(lib){try{bind(soldier,scene,st,lib);}catch(e){console.warn('[ANIM] FBX soldier bind failed; keeping procedural rig',e);}}
+M.createSoldier=function(scene,faction,role){
+  var soldier=oldCreate.apply(this,arguments),st=sceneState(scene),lib=st.ready&&st.enabled&&modelFor(st,faction,role);
+  if(lib){try{bind(soldier,scene,st,lib,faction==='ge'?'ge':'us');}catch(e){console.warn('[ANIM] FBX soldier bind failed; keeping procedural rig',e);}}
   return soldier;
 };
 M.preload=function(scene){
@@ -899,7 +910,7 @@ root.BattleFbxSoldier={
   status:function(scene){var st=sceneState(scene);return{ready:st.ready,enabled:st.enabled,error:st.error?String(st.error.message||st.error):null,active:st.active.length,clips:st.clips?Object.keys(st.clips).length:0,bones:st.bones?st.bones.length:0};},
   clip:function(scene,key){var st=sceneState(scene);return st.clips&&st.clips[key]||null;},
   /* Per-model clip timing: natural speed (m/s), stride estimate, duration, loop. */
-  speeds:function(scene,faction){var st=sceneState(scene),lib=st.libs[faction||'us'],out={};if(!lib||!lib.clips)return out;
+  speeds:function(scene,file){var st=sceneState(scene),lib=st.libs[file]||st.libs[Object.keys(st.libs)[0]],out={};if(!lib||!lib.clips)return out;
     Object.keys(lib.clips).forEach(function(k){var c=lib.clips[k];out[k]={turnRate:+(c.turnRate||0).toFixed(2),speed:+(c.speed||0).toFixed(2),stride:c.stride!=null?+c.stride.toFixed(2):null,travel:+((c.travel||0)*lib.speedScale).toFixed(2),duration:+c.duration.toFixed(2),loop:c.loop};});return out;}
 };
 console.log('[ANIM] FBX soldier backend installed (models + clips load with the battle)');

@@ -25,6 +25,7 @@ Run with Blender:
 """
 import argparse
 import os
+import re
 import sys
 import tempfile
 
@@ -35,8 +36,20 @@ from mathutils.bvhtree import BVHTree
 
 # Limb/head bones whose joints should sit inside the skin they drive. Spine bones are left out:
 # their weights also cover the backpack and pouches, so their skin centroid is not the body core.
-FIT_BONES = ["Head", "LeftArm", "LeftForeArm", "RightArm", "RightForeArm", "LeftUpLeg", "LeftLeg",
-             "LeftFoot", "RightUpLeg", "RightLeg", "RightFoot"]
+FIT_BONES = ["head", "leftarm", "leftforearm", "rightarm", "rightforearm", "leftupleg", "leftleg",
+             "leftfoot", "rightupleg", "rightleg", "rightfoot"]
+
+
+def canon(name):
+    """Bone names without rig dialect: 'mixamorig:LeftArm' and 'LeftArm' both read 'leftarm'."""
+    return re.sub(r"[^a-z0-9]", "", re.sub(r"^mixamorig[:_]?", "", str(name).lower()))
+
+
+def bone(rig, name):
+    for pose_bone in rig.pose.bones:
+        if canon(pose_bone.name) == name:
+            return pose_bone
+    return None
 
 
 def args():
@@ -62,15 +75,21 @@ def objects():
 
 
 def forward_axis(rig):
-    head, front = rig.pose.bones["Head"], rig.pose.bones["headfront"]
-    axis = (rig.matrix_world @ front.head) - (rig.matrix_world @ head.head)
-    axis.z = 0
-    return axis.normalized()
+    """Which way the character faces: the toes point forward on every rig here. Older characters
+    also carry a 'headfront' helper bone, which is used when the toes are missing."""
+    for base, tip in (("lefttoebase", "lefttoeend"), ("righttoebase", "righttoeend"), ("head", "headfront")):
+        a, b = bone(rig, base), bone(rig, tip)
+        if a and b:
+            axis = (rig.matrix_world @ b.head) - (rig.matrix_world @ a.head)
+            axis.z = 0
+            if axis.length > 1e-4:
+                return axis.normalized()
+    raise RuntimeError("cannot tell which way the rig faces")
 
 
 def skin_offset(mesh, rig, axis):
     """Mean forward distance from each fit bone's midpoint to the centroid of the skin it drives."""
-    names = {g.index: g.name for g in mesh.vertex_groups}
+    names = {g.index: canon(g.name) for g in mesh.vertex_groups}
     sums = {}
     for v in mesh.data.vertices:
         for g in v.groups:
@@ -80,8 +99,10 @@ def skin_offset(mesh, rig, axis):
                 entry[1] += 1
     offsets = []
     for name, (total, count) in sums.items():
-        bone = rig.pose.bones[name]
-        mid = rig.matrix_world @ ((bone.head + bone.tail) / 2)
+        joint = bone(rig, name)
+        if joint is None:
+            continue
+        mid = rig.matrix_world @ ((joint.head + joint.tail) / 2)
         offsets.append((mid - total / count).dot(axis))
     return sum(offsets) / len(offsets)
 

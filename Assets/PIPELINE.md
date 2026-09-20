@@ -18,14 +18,33 @@ Requirements for the source FBX: one skinned mesh, one armature using the shared
 (`Hips`, `Spine02`, `Spine01`, `Spine`, `neck`, `Head`, `head_end`, `headfront`,
 `Left/RightShoulder/Arm/ForeArm/Hand`, `Left/RightUpLeg/Leg/Foot/ToeBase`), at most 4-8 influences
 per vertex. Extra end bones are fine. Rest orientations and units may differ: clips are retargeted
-at load.
+at load. Either naming dialect works: the tools and the backend canonicalise bone names, so a
+`mixamorig:`-prefixed rig (what the per-role characters carry) binds the same clips.
 
+0. Only if the source has no armature (Tripo exports the rig for some characters and not others):
+   borrow one from a rigged character of the same generator, base body and pose.
+
+   ```
+   Blender -b --factory-startup --python tools/rig-soldier-model.py -- \
+     --input <unrigged>.fbx --rigged <rigged twin>.fbx --output <intermediate>.fbx --name <faction>-<name>
+   ```
+
+   Weights are transferred by nearest face, so the twin has to be the same body in the same pose:
+   the script prints the surface gap to it and stops above `--max-gap` (5 cm; the per-role
+   characters land at 1-2 cm, which is their different webbing and pouches, not the body). Gear the
+   twin does not have takes the weights of the nearest twin surface, which is normally what it
+   should follow; check the lineup for anything hanging off the wrong joint. The armature is passed
+   through untouched, so the result's rest pose matches the twin's exactly and every clip binds.
+   Feed the intermediate to step 1.
 1. Repair and re-export (never changes the armature):
 
    ```
    Blender -b --factory-startup --python tools/fix-soldier-model.py -- \
      --input <raw>.fbx --output Assets/soldiers/<faction>-<name>.fbx --texture-name <faction>-<name>-albedo
    ```
+
+   - add `--texture-size 2048` for a generator albedo larger than that: Tripo ships 4096 px, which
+     is ~25 MB of the export on its own and ~1.5 MB once downscaled and re-embedded as JPEG;
 
    - rewinds inside-out faces, drops normal maps (Babylon's FBX loader shades them as blotches),
      removes stray emissive/alpha wiring, embeds the albedo as a unique JPEG name (identical embedded
