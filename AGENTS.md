@@ -1,5 +1,7 @@
 # AGENTS.md
 
+For headless WebGL checks of the deployed Battle preview, use the working Chrome binary at `/Volumes/Expanse/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` as Playwright's `executablePath`. The locally downloaded Playwright Chromium bundle may be incomplete on this machine.
+
 <!-- BEGIN CODEX CONVERSATION MAINTENANCE -->
 ## Conversation Maintenance
 
