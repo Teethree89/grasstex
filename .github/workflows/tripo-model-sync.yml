@@ -1,10 +1,10 @@
-name: Tripo rigged FBX sync
+name: Tripo FBX sync
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "List available character tasks or export selected ones"
+        description: "List existing FBX outputs or download them unchanged"
         required: true
         default: "list"
         type: choice
@@ -17,16 +17,16 @@ on:
         default: "50"
         type: string
       task_ids:
-        description: "Required for download: source task IDs to export as Mixamo rigged 4K FBX"
+        description: "Optional task IDs to download. Blank = recent existing FBX outputs"
         required: false
         type: string
       destination:
-        description: "Directory for exported rigged FBX files"
+        description: "Directory for downloaded FBX files"
         required: true
         default: "Assets/tripo"
         type: string
       commit_downloads:
-        description: "Commit exported models to work/fbx-soldier-animations"
+        description: "Commit downloaded models to work/fbx-soldier-animations"
         required: true
         default: true
         type: boolean
@@ -58,7 +58,7 @@ jobs:
             exit 1
           fi
 
-      - name: List or export Tripo models
+      - name: List or download existing Tripo FBX files
         env:
           TRIP_API: ${{ secrets.TRIP_API }}
           TRIPO_MODE: ${{ inputs.mode }}
@@ -68,7 +68,7 @@ jobs:
         run: |
           python3 scripts/tripo_models.py             --mode "$TRIPO_MODE"             --limit "$TRIPO_LIMIT"             --task-ids "$TRIPO_TASK_IDS"             --destination "$TRIPO_DESTINATION"             --summary "$GITHUB_STEP_SUMMARY"
 
-      - name: Commit exported rigged FBX files
+      - name: Commit downloaded FBX files
         if: ${{ inputs.mode == 'download' && inputs.commit_downloads }}
         shell: bash
         run: |
@@ -80,5 +80,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- "${{ inputs.destination }}"
-          git commit -m "assets: sync Mixamo rigged 4K Tripo FBX"
+          git commit -m "assets: sync existing Tripo FBX models"
           git push origin HEAD:work/fbx-soldier-animations
