@@ -123,10 +123,9 @@ var DEATH_POOLS={
 
 /* Right-hand grip point in each weapon mesh's local space (metres), as in soldier.js GRIPS. */
 var GRIP={rifle:[0,-.055,-.12],carbine:[0,-.055,-.09],lmg:[0,-.07,-.02],pistol:[.02,-.07,0]};
-/* Where each hand holds each weapon, in weapon-local metres (barrel +Z, grip origin at 0). The
-   right palm takes `grip` (wrist of the stock / pistol grip); the left palm may take any point on
-   the fore-end line `fore` = [x, y, zFrom, zTo], wherever the clip puts it. Measured on the
-   prepared rifles. */
+/* Weapon reference points in local metres (barrel +Z, grip origin at 0). The right palm takes
+   `grip` (wrist of the stock / pistol grip); `fore` records the support hand's fore-end range.
+   Measured on the prepared rifles. */
 var WEAPON_POINTS={
   'm1-garand.fbx':{grip:[0,-.065,-.12],fore:[0,-.025,.06,.42]},
   'kar98k.fbx':{grip:[0,-.05,-.12],fore:[0,-.01,.06,.45]},
@@ -195,8 +194,10 @@ function loadContainer(scene,url){return BABYLON.LoadAssetContainerAsync(url,sce
 
 /* ---- import + conversion ------------------------------------------------------------------ */
 
-/* The centre of each hand as a fixed point in that hand bone's space: the centroid of the vertices
-   skinned mostly to the hand (palm and fingers), taken at bind pose. It acts like a socket bone
+/* The centre of each hand as a fixed point in that hand bone's space: the centroid of the palm
+   and finger geometry, taken at bind pose. The imported rigs give the wrist a small Hand group
+   and put most of the actual palm/fingers on the finger chains; anchoring only to Hand therefore
+   lands the weapon at the wrist, especially on the new paratroopers. It acts like a socket bone
    added to the rig without editing the asset, and it is where the weapon is held. */
 function palmAnchors(meshes,nodes,scheme){
   var out={};
@@ -204,11 +205,11 @@ function palmAnchors(meshes,nodes,scheme){
     var sum=new V3(),count=0,node=nodes[name];
     meshes.forEach(function(mesh){
       var sk=mesh.skeleton;if(!sk||!node)return;
-      var bone=-1;for(var b=0;b<sk.bones.length;b++)if(canon(sk.bones[b].name,scheme)===name)bone=b;if(bone<0)return;
+      var handBones={};for(var b=0;b<sk.bones.length;b++){var boneName=canon(sk.bones[b].name,scheme);if(boneName===name||new RegExp('^'+name+'(thumb|index|middle|ring|pinky)').test(boneName))handBones[b]=1;}if(!Object.keys(handBones).length)return;
       var VB=BABYLON.VertexBuffer,pos=mesh.getVerticesData(VB.PositionKind),ix=[mesh.getVerticesData(VB.MatricesIndicesKind),mesh.getVerticesData(VB.MatricesIndicesExtraKind)],
           wt=[mesh.getVerticesData(VB.MatricesWeightsKind),mesh.getVerticesData(VB.MatricesWeightsExtraKind)],world=mesh.getWorldMatrix(),p=new V3();
       for(var v=0;v<pos.length/3;v++){
-        var w=0;for(var set=0;set<2;set++){if(!ix[set]||!wt[set])continue;for(var j=0;j<4;j++)if(ix[set][v*4+j]===bone)w+=wt[set][v*4+j];}
+        var w=0;for(var set=0;set<2;set++){if(!ix[set]||!wt[set])continue;for(var j=0;j<4;j++)if(handBones[ix[set][v*4+j]])w+=wt[set][v*4+j];}
         if(w<.5)continue;V3.TransformCoordinatesFromFloatsToRef(pos[v*3],pos[v*3+1],pos[v*3+2],world,p);sum.addInPlace(p);count++;
       }
     });
@@ -445,9 +446,9 @@ function strideSpeed(lib,clip,bones){
   return speeds[Math.floor(speeds.length/2)];
 }
 
-/* The rifle rides the right hand rigidly. Its offset is solved once from the aiming clip: in that
-   pose the barrel points straight at the target (model +Z, level), with the weapon's grip in the
-   right palm. The result is stored in the hand's local space, so every clip then carries it. */
+/* The rifle rides the right hand rigidly. Its offset is solved once from the aiming clip: the
+   barrel follows the authored right-palm -> left-palm line, with the weapon grip in the right
+   palm. The result is stored in the hand's local space, so every clip then carries it. */
 function solveGrips(lib,aim,bones,kinds){
   var nodes=lib.nodes,saved=[];
   bones.forEach(function(name,i){
@@ -460,8 +461,10 @@ function solveGrips(lib,aim,bones,kinds){
   lib.top.getDescendants(false).forEach(function(n){if(n.computeWorldMatrix)n.computeWorldMatrix(true);});
   var hand=nodes[BONE.rightHand].getWorldMatrix().clone(),left=nodes[BONE.leftHand].getWorldMatrix();
   var rightPalm=V3.TransformCoordinates(lib.palms[BONE.rightHand],hand),leftPalm=V3.TransformCoordinates(lib.palms[BONE.leftHand],left);
-  var z=new V3(0,0,1),x=V3.Cross(V3.Up(),z).normalize(),y=V3.Cross(z,x).normalize(),hands=leftPalm.subtract(rightPalm);
-  var rotation=Q.RotationQuaternionFromAxis(x,y,z),basis=new MX(),inv=hand.clone().invert(),grips={};rotation.toRotationMatrix(basis);
+  /* The rifle's aim pose defines a fixed right-hand socket: its barrel follows the support-hand
+     line. A pistol keeps the model-forward axis because its free hand does not define its barrel. */
+  var hands=leftPalm.subtract(rightPalm),z=kinds[0]==='pistol'?new V3(0,0,1):hands.clone(),up=V3.Up();if(z.lengthSquared()<1e-8)z.set(0,0,1);else z.normalize();
+  var y=up.subtract(z.scale(V3.Dot(up,z)));if(y.lengthSquared()<1e-8)y=new V3(0,1,0);else y.normalize();var x=V3.Cross(y,z).normalize(),rotation=Q.RotationQuaternionFromAxis(x,y,z),basis=new MX(),inv=hand.clone().invert(),grips={};rotation.toRotationMatrix(basis);
   kinds.forEach(function(kind){
     var g=WEAPON_POINTS[kind].grip,offset=V3.TransformNormal(new V3(g[0],g[1],g[2]).scale(1/lib.scale),basis);
     var origin=rightPalm.subtract(offset),s=1/lib.scale;
@@ -564,10 +567,10 @@ function bind(soldier,scene,st,lib,faction){
   soldier.rig=null;
 
   /* Soldier root -> right hand. The render pass composes this chain itself (see handChain). */
-  var hand=byName[BONE.rightHand],path=[],pathL=[];for(var n=hand;n;n=n.parent)path.unshift(n);for(n=byName[BONE.leftHand];n;n=n.parent)pathL.unshift(n);
+  var hand=byName[BONE.rightHand],path=[];for(var n=hand;n;n=n.parent)path.unshift(n);
   var nodes=st.bones.map(function(name){var node=byName[name]||null;if(node&&!node.rotationQuaternion)node.rotationQuaternion=new Q();return node;});
   var fx={lib:lib,st:st,nodes:nodes,holder:holder,meshes:meshes,root:soldier.root,socket:socket,hand:hand,path:path,chain:path.map(function(){return new MX();}),spineAt:path.indexOf(byName[BONE.spine2]),
-    pathL:pathL,chainL:pathL.map(function(){return new MX();}),spineAtL:pathL.indexOf(byName[BONE.spine2]),weaponModel:null,twoHand:0,yawRate:0,lastYaw:null,turning:false,weaponKind:'rifle',
+    weaponModel:null,yawRate:0,lastYaw:null,turning:false,weaponKind:'rifle',
     lower:{entries:[]},upper:{entries:[]},overlay:0,overlayTarget:0,stance:null,transition:null,sector:0,family:null,moving:false,
     vx:0,vz:0,speed:0,lastX:null,lastZ:null,aim:0,aimWanted:false,aimAt:null,spine:byName[BONE.spine2]||null,fireHold:0,fireShot:0,fireSeen:0,reloadShot:0,reloadSeen:0,reloadDuration:2.5,death:null};
   soldier._fbx=fx;
@@ -784,47 +787,13 @@ function applyPose(fx){
   }
   /* Weapon follows the right hand: socket world = grip offset x hand world, expressed under root. */
   var key=fx.weaponModel&&fx.lib.grips&&fx.lib.grips[fx.weaponModel]?fx.weaponModel:fx.weaponKind;
-  var grip=fx.lib.grips&&(fx.lib.grips[key]||fx.lib.grips.rifle),points=WEAPON_POINTS[key]||WEAPON_POINTS.rifle;if(!grip||!fx.hand)return;
-  handChain(fx.path,fx.chain,0);handChain(fx.pathL,fx.chainL,0);holdWeapon(fx,grip,points);
-  if(fx.aim>.01&&fx.spineAt>0&&aimSpine(fx)){handChain(fx.path,fx.chain,fx.spineAt);handChain(fx.pathL,fx.chainL,fx.spineAtL);holdWeapon(fx,grip,points);}
+  var grip=fx.lib.grips&&(fx.lib.grips[key]||fx.lib.grips.rifle);if(!grip||!fx.hand)return;
+  handChain(fx.path,fx.chain,0);grip.multiplyToRef(fx.chain[fx.chain.length-1],socketWorld);
+  if(fx.aim>.01&&fx.spineAt>0&&aimSpine(fx)){handChain(fx.path,fx.chain,fx.spineAt);grip.multiplyToRef(fx.chain[fx.chain.length-1],socketWorld);}
   /* Body-shape and role scaling must not stretch the rifle: keep it at world scale 1. */
   socketWorld.decompose(sScale,sRot,sPos);MX.ComposeToRef(ONE,sRot,sPos,socketWorld);
   fx.chain[0].invertToRef(rootInv);socketWorld.multiplyToRef(rootInv,socketWorld);
   socketWorld.decompose(sScale,fx.socket.rotationQuaternion,fx.socket.position);fx.socket.scaling.copyFrom(sScale);
-}
-/* Two-hand hold. The rigid grip (weapon fixed to the right hand, solved from the aiming clip) is
-   the base; then the weapon's grip point is put on the right palm anchor and the barrel swung so
-   its fore-end point lines up with the left palm anchor, keeping the rigid hold's roll (sights
-   up). Where the left hand is off the weapon (reload, deaths, stance changes) the hands are too far
-   apart or at the wrong angle, and the hold fades back to the rigid one. */
-var hR=new V3(),hL=new V3(),hV=new V3(),hA=new V3(),hUp=new V3(),hX=new V3(),hY=new V3(),hDir=new V3(),hG=new V3(),hS=new V3(),hP=new V3(),hQ=new Q(),hQw=new Q(),hQl=new Q(),hLa=new V3(),hLy=new V3(),hLx=new V3();
-function smooth01(t){t=t<0?0:(t>1?1:t);return t*t*(3-2*t);}
-function holdWeapon(fx,grip,points){
-  grip.multiplyToRef(fx.chain[fx.chain.length-1],socketWorld);
-  var palms=fx.lib.palms,f=points&&points.fore,g=points&&points.grip;fx.twoHand=0;
-  if(!f||!g||!palms)return;
-  V3.TransformCoordinatesToRef(palms[BONE.rightHand],fx.chain[fx.chain.length-1],hR);
-  V3.TransformCoordinatesToRef(palms[BONE.leftHand],fx.chainL[fx.chainL.length-1],hL);
-  hL.subtractToRef(hR,hV);var dist=hV.length();if(dist<1e-4)return;hV.scaleInPlace(1/dist);
-  socketWorld.decompose(hS,hQ,hP);dist/=hS.x;
-  /* The point on the fore-end line at the clip's hand spacing (clamped to the fore-end). */
-  var dy=f[1]-g[1],dx=f[0]-g[0],reach=Math.sqrt(Math.max(0,dist*dist-dy*dy-dx*dx)),z=Math.max(f[2],Math.min(f[3],g[2]+reach));
-  hLa.set(dx,dy,z-g[2]);var span=hLa.length();hLa.scaleInPlace(1/span);
-  hLa.rotateByQuaternionToRef(hQ,hDir);
-  var near=Math.sqrt(dx*dx+dy*dy+(f[2]-g[2])*(f[2]-g[2])),far=Math.sqrt(dx*dx+dy*dy+(f[3]-g[2])*(f[3]-g[2]));
-  var cos=V3.Dot(hDir,hV),w=smooth01((cos-Math.cos(1.05))/(Math.cos(.6)-Math.cos(1.05)))*smooth01((dist-near*.6)/(near*.3))*smooth01((far*1.35-dist)/(far*.25));
-  if(w<=.001)return;
-  /* World frame: forward along the hands, up from the rigid hold. Local frame: the same built on
-     the weapon's grip->fore line. Rotation = world frame * local frame^-1. */
-  V3.Up().rotateByQuaternionToRef(hQ,hUp);
-  hUp.subtractToRef(hV.scale(V3.Dot(hUp,hV)),hY);hY.normalize();V3.CrossToRef(hY,hV,hX);
-  hLy.set(0,1,0).subtractInPlace(hLa.scale(hLa.y));hLy.normalize();V3.CrossToRef(hLy,hLa,hLx);
-  Q.RotationQuaternionFromAxisToRef(hX,hY,hV,hQw);Q.RotationQuaternionFromAxisToRef(hLx,hLy,hLa,hQl);
-  hQl.conjugateInPlace();hQw.multiplyToRef(hQl,hQw);
-  /* Grip point onto the right palm. */
-  hG.set(g[0]*hS.x,g[1]*hS.y,g[2]*hS.z).rotateByQuaternionToRef(hQw,hA);hR.subtractToRef(hA,hA);
-  Q.SlerpToRef(hQ,hQw,w,hQ);V3.LerpToRef(hP,hA,w,hP);
-  MX.ComposeToRef(hS,hQ,hP,socketWorld);fx.twoHand=w;
 }
 /* Clips hold the rifle a little differently (crouched and prone aim sit low or wide), so while a
    soldier aims, the upper spine turns the barrel onto the target, by at most ~40 degrees. The
