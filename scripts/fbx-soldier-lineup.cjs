@@ -97,15 +97,17 @@ function parseReady(line) {
       labShots.push({ pose, view: 'side', file: side, clip: await page.textContent('#animationLabSource').catch(() => '') });
     }
 
-    // --- Live battle close-ups: US + GE paratrooper riflemen with faction rifles ---
+    // --- Live battle close-ups per faction and weapon role (rifles, pistols, MGs) ---
     await page.click('#animationLabClose').catch(() => {});
     await page.click('#startBtn');
     await page.waitForTimeout(12000);
-    async function battleCloseup(file, png) {
-      const info = await page.evaluate((want) => {
+    async function battleCloseup(faction, role, png) {
+      const info = await page.evaluate(({ faction, role }) => {
         const sim = window.__battle__;
         if (!sim) return { err: 'no battle' };
-        const pick = [...sim._roster.us, ...sim._roster.ge].find(s => s._fbx && s._fbx.lib && s._fbx.lib.file === want)
+        const pool = [...(sim._roster[faction] || [])];
+        const pick = pool.find(s => s._fbx && s.role === role)
+          || pool.find(s => s._fbx)
           || [...sim._roster.us, ...sim._roster.ge].find(s => s._fbx);
         if (!pick) return { err: 'no FBX soldier' };
         const p = pick.root.position, cam = sim.scene && sim.scene.activeCamera;
@@ -120,29 +122,38 @@ function parseReady(line) {
         sim.pause();
         return { faction: pick.faction, role: pick.role, file: pick._fbx.lib.file,
           weapon: pick.weapon && (pick.weapon.model || pick.weapon.kind) };
-      }, file);
+      }, { faction, role });
       await page.waitForTimeout(1200);
       await page.screenshot({ path: path.join(OUT, png) });
       await page.evaluate(() => { const sim = window.__battle__; if (sim) sim.paused = false; });
       return { file: png, ...info };
     }
-    const usShot = await battleCloseup('us-paratrooper.fbx', 'battle-us-paratrooper.png');
-    await page.waitForTimeout(2000);
-    const geShot = await battleCloseup('ge-paratrooper.fbx', 'battle-ge-paratrooper.png');
-    if (usShot.err) fail.push('US battle close-up: ' + usShot.err);
-    if (geShot.err) fail.push('GE battle close-up: ' + geShot.err);
+    const shots = [];
+    for (const [faction, role] of [['us', 'rifleman'], ['ge', 'rifleman'], ['us', 'captain'], ['ge', 'captain'], ['us', 'gunner'], ['ge', 'gunner']]) {
+      const shot = await battleCloseup(faction, role, `battle-${faction}-${role}.png`);
+      shots.push(shot);
+      if (shot.err) fail.push(`${faction}/${role} close-up: ` + shot.err);
+      await page.waitForTimeout(1500);
+    }
+    const sockets = await page.evaluate(() => {
+      try { return window.BattleFbxSoldier.status(window.__battle__.scene).sockets; }
+      catch (e) { return { err: String(e).slice(0, 200) }; }
+    }).catch(e => ({ err: String(e).slice(0, 200) }));
+    if (sockets.err) fail.push('socket status: ' + sockets.err);
+    const socketLines = [...new Set(logs.filter(l => l.includes('[ANIM] hand sockets')))];
+    if (!socketLines.length) fail.push('no per-model hand-socket diagnostics logged');
 
     const pageErrors = [...new Set(logs.filter(l => /^\[pageerror\]|FBX soldier bind failed|FBX soldiers unavailable/.test(l)))];
     if (pageErrors.length) fail.push(...pageErrors.slice(0, 5));
-    const summary = { seed: SEED, url: BASE_URL, ready, labShots, usShot, geShot,
+    const summary = { seed: SEED, url: BASE_URL, ready, labShots, shots, sockets, socketLines,
       fail, ok: fail.length === 0, pageErrors };
     fs.writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify(summary, null, 2));
     console.log('OUT ' + OUT);
     console.log(ready
       ? `READY set=${ready.set} models=${ready.models.length} retargeted=${ready.models.filter(m => m.retargeted).length} weapons=${ready.weapons.length} clips=${ready.clips} bones=${ready.animatedBones}`
       : 'READY missing');
-    console.log('US ' + JSON.stringify(usShot));
-    console.log('GE ' + JSON.stringify(geShot));
+    shots.forEach(s => console.log('SHOT ' + JSON.stringify(s)));
+    console.log('SOCKETS ' + JSON.stringify(sockets));
     console.log(fail.length ? 'FAIL\n- ' + fail.join('\n- ') : 'OK: backend ready, lab + battle close-ups captured for human review');
     if (fail.length) process.exitCode = 1;
   } finally { await Promise.race([browser.close(), new Promise(r => setTimeout(r, 5000))]); }
