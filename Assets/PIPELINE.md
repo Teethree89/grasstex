@@ -124,8 +124,12 @@ Keep the untouched source pack (e.g. the Meshy `.zip`) next to it; only `.fbx` f
    long single quads, e.g. the FG42), lower `--bipod-drop` so the selection reaches the hinge
    (FG42: `--bipod-drop 0.09 --bipod-ahead 0.30`).
 2. Check the printed muzzle/butt positions and render a side view: sights up, trigger down.
-3. Measure where the hands go (weapon-local metres: right-hand `grip` on the wrist of the stock or
-   pistol grip, left-hand fore-end line `[x, y, zFrom, zTo]`) and add them to `WEAPON_POINTS`.
+3. Measure where the hands go in the Motion Lab workbench (`labs/fbx-animation-lab.html`
+   sections 3-5: pick the deployed soldier, animation and weapon, click the contact vertices,
+   read the fore-end length off the panel). Right-hand `grip` goes on the wrist of the stock or
+   pistol grip (weapon-local metres), the left-hand fore-end line is `[x, y, zFrom, zTo]`; add
+   them to `WEAPON_POINTS` (universal per weapon), with per-model soldier contacts in
+   `SOLDIER_CONTACTS` and exceptions in `WEAPON_MODEL_POINTS`.
    Register the file in `WEAPON_MODELS` under the faction and role kind (`rifle`, `carbine`, `lmg`,
    `pistol`) in the backend; a list is dealt out in turn (a squad's two scouts carry one of each).
    Unregistered kinds keep the procedural box weapon.

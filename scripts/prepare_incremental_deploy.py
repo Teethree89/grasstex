@@ -10,6 +10,11 @@ STATIC_FILES = [
     ("battle_policy.php", "battle_policy.php"),
     ("battle_learning.php", "battle_learning.php"),
     ("battle_metrics.php", "battle_metrics.php"),
+    # FBX Motion Lab workbench (labs/fbx-animation-lab.html) with its asset inventory.
+    ("labs/fbx-animation-lab.html", "labs/fbx-animation-lab.html"),
+    ("labs/fbx-animation-root-lock.js", "labs/fbx-animation-root-lock.js"),
+    ("labs/fbx-animation-compat.js", "labs/fbx-animation-compat.js"),
+    ("labs/asset-list.php", "labs/asset-list.php"),
 ]
 # Every runtime the page loads. A file missing from this list is simply never uploaded, so the
 # deployed loader ends up requesting a 404 - keep it in step with the script tags in

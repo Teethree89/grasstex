@@ -1,0 +1,1108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FBX Motion Lab</title>
+  <style>
+    :root { color-scheme: dark; --ink:#eaf0f6; --muted:#99a9bb; --line:#253443; --panel:#101a24; --panel2:#142231; --accent:#6ee7b7; --warn:#f8c46a; }
+    * { box-sizing:border-box; }
+    body { margin:0; overflow:hidden; background:#081018; color:var(--ink); font:14px/1.4 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    #app { display:grid; grid-template-columns:320px 1fr 286px; height:100vh; }
+    aside { background:linear-gradient(160deg,#101c28,#0d151e); border-right:1px solid var(--line); overflow:auto; padding:20px; }
+    #right { border-left:1px solid var(--line); border-right:0; }
+    h1 { margin:0 0 5px; font-size:21px; letter-spacing:-.04em; }
+    h2 { color:#cfdae5; font-size:11px; letter-spacing:.13em; text-transform:uppercase; margin:24px 0 9px; }
+    .eyebrow { color:var(--accent); font-size:10px; letter-spacing:.16em; font-weight:700; text-transform:uppercase; }
+    .hint, .empty { color:var(--muted); font-size:12px; margin:0; }
+    .empty { padding:10px 0; }
+    .drop { display:block; position:relative; min-height:104px; border:1px dashed #496174; border-radius:12px; padding:15px; background:rgba(110,231,183,.035); cursor:pointer; transition:.15s; }
+    .drop:hover, .drop.drag { border-color:var(--accent); background:rgba(110,231,183,.09); }
+    .drop strong { display:block; font-size:13px; margin-bottom:5px; }
+    .drop input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+    .file { margin-top:8px; padding:8px 9px; border-left:2px solid var(--accent); background:#0b131c; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    button, select { width:100%; border:1px solid #385064; border-radius:8px; background:#172635; color:var(--ink); padding:9px 10px; font:inherit; cursor:pointer; }
+    button:hover { background:#203447; }
+    button:disabled { cursor:not-allowed; opacity:.45; }
+    .row { display:flex; gap:8px; }
+    .row button { width:auto; flex:1; }
+    button.primary { background:#247c65; border-color:#39a889; color:white; }
+    button.primary:hover { background:#2d9076; }
+    label.control { display:grid; gap:6px; color:var(--muted); font-size:11px; }
+    input[type=range] { accent-color:var(--accent); width:100%; }
+    .check { display:flex; align-items:center; gap:8px; color:#c5d1dc; font-size:12px; margin-top:11px; cursor:pointer; }
+    .check input { accent-color:var(--accent); }
+    #viewport { position:relative; min-width:0; }
+    canvas { width:100%; height:100%; display:block; outline:none; }
+    #viewport::after { content:""; position:absolute; inset:0; pointer-events:none; border:1px solid rgba(255,255,255,.035); }
+    #viewport.picking canvas { cursor:crosshair; }
+    .numgrid { display:grid; grid-template-columns:52px 1fr 1fr 1fr; gap:6px; align-items:center; margin-top:8px; font-size:11px; color:var(--muted); }
+    .numgrid input { width:100%; border:1px solid #385064; border-radius:6px; background:#0b131c; color:var(--ink); padding:6px 7px; font:12px ui-monospace, monospace; }
+    button.armed { border-color:var(--accent); background:#17382f; }
+    #snippetOut { white-space:pre-wrap; word-break:break-word; font:11px ui-monospace, monospace; color:#c4d2dd; background:#0b131c; border:1px solid var(--line); border-radius:8px; padding:10px; margin-top:9px; max-height:220px; overflow:auto; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; letter-spacing:.08em; }
+    #overlay { position:absolute; left:18px; bottom:17px; padding:8px 10px; border-radius:7px; background:rgba(6,12,18,.72); color:#c4d2dd; font:11px ui-monospace, SFMono-Regular, Menlo, monospace; pointer-events:none; }
+    #status { min-height:38px; color:#bccbd6; font-size:12px; }
+    #status.error { color:#ff9a9a; }
+    .stats { display:grid; grid-template-columns:1fr auto; gap:7px 11px; margin:0; font-size:12px; }
+    .stats dt { color:var(--muted); }
+    .stats dd { margin:0; text-align:right; color:#e9f0f5; font-variant-numeric:tabular-nums; }
+    #clips { display:grid; gap:6px; }
+    .clip { text-align:left; padding:9px; border-radius:7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+    .clip.active { border-color:var(--accent); background:#17382f; }
+    .key { color:var(--accent); font-family:ui-monospace, monospace; }
+    .foot { position:sticky; bottom:-20px; margin:22px -20px -20px; padding:14px 20px; background:#0d151e; border-top:1px solid var(--line); font-size:11px; color:var(--muted); }
+    @media (max-width:900px) { #app { grid-template-columns:270px 1fr; } #right { display:none; } }
+    @media (max-width:600px) { #app { grid-template-columns:1fr; grid-template-rows:47vh 53vh; } aside { padding:15px; } #left { grid-row:2; } #viewport { grid-row:1; } }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <aside id="left">
+      <div class="eyebrow">Local character previewer</div>
+      <h1>FBX Motion Lab</h1>
+      <p class="hint">Load a skinned FBX, then load one or more animation-only FBX files onto its matching skeleton.</p>
+
+      <h2>1 — Character model</h2>
+      <label class="drop" id="modelDrop"><input id="modelInput" type="file" accept=".fbx,application/octet-stream"><strong>Drop a model FBX here</strong><span class="hint">or click to browse</span></label>
+      <div class="file" id="modelName">No model loaded</div>
+
+      <h2>2 — Animation clips</h2>
+      <label class="drop" id="animationDrop"><input id="animationInput" type="file" multiple accept=".fbx,application/octet-stream"><strong>Drop animation FBX files here</strong><span class="hint">multiple files supported</span></label>
+      <div class="row" style="margin-top:9px"><button id="clearAnimations">Clear clips</button><button id="frameModel">Frame model</button></div>
+
+      <h2>Playback</h2>
+      <label class="control">Active clip <select id="clipSelect" disabled><option>Load an animation FBX</option></select></label>
+      <div class="row" style="margin-top:9px"><button class="primary" id="play" disabled>Play</button><button id="pause" disabled>Pause</button><button id="stop" disabled>Stop</button></div>
+      <label class="control" style="margin-top:13px">Speed <span id="speedValue">1.00×</span><input id="speed" type="range" min="0.1" max="2" step="0.05" value="1"></label>
+      <label class="check"><input id="loop" type="checkbox" checked> Loop active clip</label>
+
+      <h2>3 — Imported library</h2>
+      <label class="control">Soldier model <select id="libModel"><option value="">Loading asset list…</option></select></label>
+      <label class="control" style="margin-top:9px">Animation <select id="libAnim"><option value="">Loading asset list…</option></select></label>
+      <label class="control" style="margin-top:9px">Weapon <select id="libWeapon"><option value="">None</option></select></label>
+      <div class="row" style="margin-top:9px"><button id="libLoad" class="primary">Load selection</button></div>
+      <p class="hint" id="libStatus" style="margin-top:8px">Fetching deployed asset list…</p>
+
+      <h2>4 — Contact calibration</h2>
+      <p class="hint">Click a vertex on the soldier, then assign it as a hand contact. Click on the weapon for grip / fore-end points. Contacts are stored in hand-bone space (same convention as the battle backend); weapon points in weapon metres.</p>
+      <div class="row" style="margin-top:9px"><button id="pickA">Set A · right contact</button><button id="pickB">Set B · left contact</button></div>
+      <div class="row" style="margin-top:9px"><button id="pickGrip">Set grip</button><button id="pickForeN">Fore near</button><button id="pickForeF">Fore far</button></div>
+      <div class="numgrid" id="calibGrid">
+        <span></span><span>x</span><span>y</span><span>z</span>
+        <span>A right</span><input id="ax" aria-label="A x"><input id="ay" aria-label="A y"><input id="az" aria-label="A z">
+        <span>B left</span><input id="bx" aria-label="B x"><input id="by" aria-label="B y"><input id="bz" aria-label="B z">
+        <span>Grip</span><input id="gx" aria-label="grip x"><input id="gy" aria-label="grip y"><input id="gz" aria-label="grip z">
+        <span>Fore near</span><input id="fnx" aria-label="fore near x"><input id="fny" aria-label="fore near y"><input id="fnz" aria-label="fore near z">
+        <span>Fore far</span><input id="ffx" aria-label="fore far x"><input id="ffy" aria-label="fore far y"><input id="ffz" aria-label="fore far z">
+      </div>
+      <p class="hint" style="margin-top:8px">Fore-end length <span class="key" id="foreLen">—</span> (weapon-specific; type the far point to set it).</p>
+      <div class="row" style="margin-top:9px"><button id="seatWeapon">Seat weapon</button><button id="bindPose">Bind pose</button></div>
+      <label class="check"><input id="trackHands" type="checkbox" checked> Weapon follows hands during playback</label>
+
+      <h2>Save</h2>
+      <div class="row"><button id="saveLocal">Save in browser</button><button id="loadLocal">Reload saved</button></div>
+      <div class="row" style="margin-top:9px"><button id="exportJson">Download JSON</button><button id="copySnippet">Copy backend snippet</button></div>
+      <label class="control" style="margin-top:9px">Import calibration JSON <input id="importJson" type="file" accept=".json,application/json" style="border:1px solid #385064;border-radius:8px;background:#172635;color:var(--ink);padding:9px 10px;"></label>
+      <pre id="snippetOut">Pick points to generate the backend snippet.</pre>
+
+      <h2>Debug tools</h2>
+      <label class="check"><input id="skeleton" type="checkbox"> Show skeleton</label>
+      <label class="check"><input id="animationBounds" type="checkbox"> Show animation container outline</label>
+      <p class="hint" style="margin-top:9px">The orange <span class="key">+</span> always marks the bottom center of the current animated width/depth footprint. The outline is diagnostic only; nothing is recentered or root-locked yet.</p>
+
+      <h2>Preview normalization</h2>
+      <p class="hint">The imported character is uniformly scaled to <span class="key">1.80 units</span> tall, centered over X/Z = 0 and planted on Y = 0. Imported materials render two-sided for diagnosis. This does not remove animation root motion.</p>
+      <div class="foot">Orbit: drag · Pan: right-drag · Zoom: wheel<br>Grid spacing: 1 unit · files stay local to your browser.</div>
+    </aside>
+
+    <section id="viewport"><div id="overlay">No model · drag an FBX onto the left panel</div></section>
+
+    <aside id="right">
+      <div class="eyebrow">Import report</div>
+      <h2 style="margin-top:10px">Status</h2><div id="status">Ready for a model FBX.</div>
+      <h2>Model</h2>
+      <dl class="stats">
+        <dt>Meshes</dt><dd id="meshCount">—</dd>
+        <dt>Skinned meshes</dt><dd id="skinnedCount">—</dd>
+        <dt>Bones</dt><dd id="boneCount">—</dd>
+        <dt>Embedded clips</dt><dd id="modelClips">—</dd>
+        <dt>Source height</dt><dd id="sourceHeight">—</dd>
+        <dt>Preview scale</dt><dd id="previewScale">—</dd>
+        <dt>Two-sided materials</dt><dd id="materialCount">—</dd>
+        <dt>Animation W×H×D</dt><dd id="animationSize">—</dd>
+        <dt>Bottom center</dt><dd id="animationCenter">—</dd>
+      </dl>
+      <h2>Available clips</h2><div id="clips"><p class="empty">Import an animation to see clips here.</p></div>
+      <h2>Compatibility</h2><p class="hint" id="compatibility">Waiting for model and animation.</p>
+      <h2>Workflow</h2><p class="hint">Model FBX → normalize preview → animation FBX → measure current deformed frame → play. The animation container currently measures only; it does not move the model.</p>
+    </aside>
+  </main>
+
+  <!-- Pinned to the battle runtime's exact build: calibration numbers measured here are only
+       valid in the game if both import through the same FBX loader. -->
+  <script src="https://cdn.jsdelivr.net/npm/babylonjs@9.27.1/babylon.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/babylonjs-loaders@9.27.1/babylonjs.loaders.min.js"></script>
+  <script>
+    const TARGET_MODEL_HEIGHT = 1.80;
+    const $ = id => document.getElementById(id);
+    const viewport = $('viewport'), overlay = $('overlay'), status = $('status'), clipsEl = $('clips'), clipSelect = $('clipSelect');
+    const canvas = document.createElement('canvas');
+    viewport.prepend(canvas);
+
+    const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer:true, stencil:true });
+    const scene = new BABYLON.Scene(engine);
+    scene.clearColor = new BABYLON.Color4(.031, .063, .094, 1);
+    scene.ambientColor = new BABYLON.Color3(.04, .045, .05);
+    scene.imageProcessingConfiguration.exposure = .92;
+    scene.imageProcessingConfiguration.contrast = 1.04;
+
+    const camera = new BABYLON.ArcRotateCamera('labCamera', -Math.PI / 2.4, Math.PI / 2.75, 4.4, new BABYLON.Vector3(0, .9, 0), scene);
+    camera.attachControl(canvas, true);
+    camera.wheelDeltaPercentage = .01;
+    camera.lowerRadiusLimit = .25;
+
+    const skyLight = new BABYLON.HemisphericLight('skyLight', new BABYLON.Vector3(0,1,0), scene);
+    skyLight.intensity = .62;
+    skyLight.groundColor = new BABYLON.Color3(.12, .14, .17);
+    const sun = new BABYLON.DirectionalLight('sun', new BABYLON.Vector3(-.5,-1,-.35), scene);
+    sun.position.set(4,7,4);
+    sun.intensity = .78;
+    const shadow = new BABYLON.ShadowGenerator(2048, sun);
+    shadow.useBlurExponentialShadowMap = true;
+    shadow.blurKernel = 18;
+    shadow.bias = .0004;
+    shadow.normalBias = .02;
+
+    const ground = BABYLON.MeshBuilder.CreateGround('floor', { width:40, height:40 }, scene);
+    const floorMaterial = new BABYLON.StandardMaterial('floorMaterial', scene);
+    floorMaterial.diffuseColor = new BABYLON.Color3(.025,.05,.07);
+    floorMaterial.specularColor = BABYLON.Color3.Black();
+    ground.material = floorMaterial;
+    ground.receiveShadows = true;
+
+    const gridLines = [];
+    for (let i=-6; i<=6; i++) {
+      gridLines.push([new BABYLON.Vector3(i,.002,-6), new BABYLON.Vector3(i,.002,6)]);
+      gridLines.push([new BABYLON.Vector3(-6,.002,i), new BABYLON.Vector3(6,.002,i)]);
+    }
+    const grid = BABYLON.MeshBuilder.CreateLineSystem('grid', { lines:gridLines }, scene);
+    grid.color = new BABYLON.Color3(.18,.31,.39);
+
+    let modelAssets = null;
+    let animationContainer = null;
+    let modelContainer = null;
+    let animationBoundsLines = null;
+    let animationCenterCross = null;
+    let modelMeshes = [];
+    let modelSkeletons = [];
+    let modelTargets = new Map();
+    let activeGroup = null;
+    let loadedClips = [];
+    let skeletonViewers = [];
+    let sourceHeight = 0;
+    let previewScale = 1;
+    // Bind-pose snapshot of every transform node, captured at import before any clip plays.
+    // The calibration workbench (later script block) reads this to offer a bind-pose reset.
+    let labRest = null;
+
+    function setStatus(message, error=false) {
+      status.textContent = message;
+      status.className = error ? 'error' : '';
+    }
+
+    function displayLength(group) {
+      const fps = group.targetedAnimations[0]?.animation?.framePerSecond || 30;
+      const seconds = Math.max(0, (group.to-group.from) / fps);
+      return seconds ? seconds.toFixed(2)+' s' : 'animation';
+    }
+
+    function stopAll() {
+      loadedClips.forEach(entry => entry.group.stop());
+      activeGroup = null;
+    }
+
+    function disposeSkeletonViewers() {
+      skeletonViewers.forEach(viewer => viewer.dispose());
+      skeletonViewers = [];
+    }
+
+    function disposeAnimationDebug() {
+      if (animationBoundsLines && !animationBoundsLines.isDisposed()) animationBoundsLines.dispose();
+      if (animationCenterCross && !animationCenterCross.isDisposed()) animationCenterCross.dispose();
+      animationBoundsLines = null;
+      animationCenterCross = null;
+      $('animationSize').textContent = '—';
+      $('animationCenter').textContent = '—';
+    }
+
+    function disposeModel() {
+      stopAll();
+      disposeSkeletonViewers();
+      disposeAnimationDebug();
+      if (modelAssets) {
+        modelAssets.animationGroups.forEach(group => group.dispose());
+        modelAssets.meshes.forEach(mesh => { if (!mesh.isDisposed()) mesh.dispose(false, true); });
+        modelAssets.skeletons.forEach(skeleton => skeleton.dispose());
+        modelAssets.transformNodes.forEach(node => { if (!node.isDisposed()) node.dispose(); });
+      }
+      if (modelContainer && !modelContainer.isDisposed()) modelContainer.dispose();
+      if (animationContainer && !animationContainer.isDisposed()) animationContainer.dispose();
+      modelAssets = null;
+      animationContainer = null;
+      modelContainer = null;
+      modelMeshes = [];
+      modelSkeletons = [];
+      modelTargets.clear();
+      loadedClips = [];
+      sourceHeight = 0;
+      previewScale = 1;
+      labRest = null;
+      if (typeof labDisposeWeapon === 'function') labDisposeWeapon();
+    }
+
+    function renderableMeshes() {
+      return modelMeshes.filter(mesh => mesh.getTotalVertices() > 0 && mesh.isEnabled());
+    }
+
+    function getBounds() {
+      let min = new BABYLON.Vector3(Infinity, Infinity, Infinity);
+      let max = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
+      let found = false;
+      renderableMeshes().forEach(mesh => {
+        mesh.computeWorldMatrix(true);
+        const box = mesh.getBoundingInfo().boundingBox;
+        min = BABYLON.Vector3.Minimize(min, box.minimumWorld);
+        max = BABYLON.Vector3.Maximize(max, box.maximumWorld);
+        found = true;
+      });
+      return found ? { min, max, size:max.subtract(min), center:min.add(max).scale(.5) } : null;
+    }
+
+    function refreshAnimatedBounds() {
+      renderableMeshes().forEach(mesh => {
+        if (mesh.skeleton) {
+          try {
+            mesh.refreshBoundingInfo({ applySkeleton:true, applyMorph:true, updatePositionsArray:false });
+          } catch (error) {
+            mesh.refreshBoundingInfo(true, true);
+          }
+        } else {
+          mesh.refreshBoundingInfo();
+        }
+        mesh.computeWorldMatrix(true);
+      });
+      return getBounds();
+    }
+
+    function attachModelContainer() {
+      animationContainer = new BABYLON.TransformNode('labAnimationContainer', scene);
+      modelContainer = new BABYLON.TransformNode('labModelContainer', scene);
+      modelContainer.parent = animationContainer;
+      const owned = new Set([...modelMeshes, ...modelAssets.transformNodes]);
+      owned.forEach(node => {
+        if (!node.parent || !owned.has(node.parent)) node.parent = modelContainer;
+      });
+    }
+
+    function normalizePreviewTransform() {
+      if (!modelContainer) return;
+      animationContainer.position.set(0,0,0);
+      animationContainer.rotation.set(0,0,0);
+      animationContainer.scaling.setAll(1);
+      modelContainer.position.set(0,0,0);
+      modelContainer.scaling.setAll(1);
+      modelContainer.computeWorldMatrix(true);
+
+      const original = getBounds();
+      if (!original || !Number.isFinite(original.size.y) || original.size.y <= 1e-6) return;
+      sourceHeight = original.size.y;
+      previewScale = TARGET_MODEL_HEIGHT / sourceHeight;
+      modelContainer.scaling.setAll(previewScale);
+      modelContainer.computeWorldMatrix(true);
+
+      const scaled = getBounds();
+      if (!scaled) return;
+      modelContainer.position.x -= scaled.center.x;
+      modelContainer.position.z -= scaled.center.z;
+      modelContainer.position.y -= scaled.min.y;
+      modelContainer.computeWorldMatrix(true);
+      renderableMeshes().forEach(mesh => mesh.computeWorldMatrix(true));
+
+      $('sourceHeight').textContent = sourceHeight.toFixed(3)+' u';
+      $('previewScale').textContent = previewScale.toFixed(5)+'×';
+    }
+
+    function collectMaterials() {
+      const materials = new Set();
+      const visit = material => {
+        if (!material || materials.has(material)) return;
+        materials.add(material);
+        if (Array.isArray(material.subMaterials)) material.subMaterials.forEach(visit);
+      };
+      renderableMeshes().forEach(mesh => visit(mesh.material));
+      return materials;
+    }
+
+    function normalizePreviewMaterials() {
+      const materials = collectMaterials();
+      materials.forEach(material => {
+        material.backFaceCulling = false;
+        if ('twoSidedLighting' in material) material.twoSidedLighting = true;
+        if (material instanceof BABYLON.StandardMaterial) {
+          material.specularColor = new BABYLON.Color3(.10,.10,.10);
+          material.specularPower = 48;
+        }
+        if (BABYLON.PBRMaterial && material instanceof BABYLON.PBRMaterial) {
+          if (material.metallic == null || material.metallic > .15) material.metallic = 0;
+          if (material.roughness == null || material.roughness < .55) material.roughness = .7;
+        }
+      });
+      $('materialCount').textContent = materials.size;
+      return materials.size;
+    }
+
+    function scanModel() {
+      let meshes = 0, skinned = 0;
+      const bones = new Set();
+      modelTargets.clear();
+      modelMeshes.forEach(mesh => {
+        if (mesh.getTotalVertices() > 0) {
+          meshes++;
+          mesh.receiveShadows = false;
+          shadow.addShadowCaster(mesh);
+        }
+        modelTargets.set(mesh.name, mesh);
+        if (mesh.skeleton) {
+          skinned++;
+          mesh.skeleton.bones.forEach(bone => {
+            bones.add(bone.name);
+            modelTargets.set(bone.name, bone);
+          });
+        }
+      });
+      modelAssets.transformNodes.forEach(node => modelTargets.set(node.name, node));
+      $('meshCount').textContent = meshes;
+      $('skinnedCount').textContent = skinned;
+      $('boneCount').textContent = bones.size;
+      $('modelClips').textContent = modelAssets.animationGroups.length;
+      return bones;
+    }
+
+    function boxLines(bounds) {
+      const { min, max } = bounds;
+      const p = [
+        new BABYLON.Vector3(min.x,min.y,min.z), new BABYLON.Vector3(max.x,min.y,min.z),
+        new BABYLON.Vector3(max.x,min.y,max.z), new BABYLON.Vector3(min.x,min.y,max.z),
+        new BABYLON.Vector3(min.x,max.y,min.z), new BABYLON.Vector3(max.x,max.y,min.z),
+        new BABYLON.Vector3(max.x,max.y,max.z), new BABYLON.Vector3(min.x,max.y,max.z)
+      ];
+      return [
+        [p[0],p[1]],[p[1],p[2]],[p[2],p[3]],[p[3],p[0]],
+        [p[4],p[5]],[p[5],p[6]],[p[6],p[7]],[p[7],p[4]],
+        [p[0],p[4]],[p[1],p[5]],[p[2],p[6]],[p[3],p[7]]
+      ];
+    }
+
+    function updateAnimationContainerDebug() {
+      if (!modelAssets || !modelMeshes.length) return;
+      const bounds = refreshAnimatedBounds();
+      if (!bounds) return;
+
+      const bottomCenter = new BABYLON.Vector3(
+        (bounds.min.x + bounds.max.x) * .5,
+        bounds.min.y + .006,
+        (bounds.min.z + bounds.max.z) * .5
+      );
+      const crossRadius = Math.max(.07, Math.min(.18, Math.max(bounds.size.x, bounds.size.z) * .18));
+      const crossLines = [
+        [new BABYLON.Vector3(bottomCenter.x-crossRadius,bottomCenter.y,bottomCenter.z), new BABYLON.Vector3(bottomCenter.x+crossRadius,bottomCenter.y,bottomCenter.z)],
+        [new BABYLON.Vector3(bottomCenter.x,bottomCenter.y,bottomCenter.z-crossRadius), new BABYLON.Vector3(bottomCenter.x,bottomCenter.y,bottomCenter.z+crossRadius)]
+      ];
+
+      if (!animationCenterCross) {
+        animationCenterCross = BABYLON.MeshBuilder.CreateLineSystem('animationBottomCenter', { lines:crossLines, updatable:true }, scene);
+        animationCenterCross.color = new BABYLON.Color3(1,.55,.12);
+        animationCenterCross.isPickable = false;
+        animationCenterCross.renderingGroupId = 3;
+      } else {
+        BABYLON.MeshBuilder.CreateLineSystem(null, { lines:crossLines, instance:animationCenterCross }, scene);
+      }
+
+      const outlineLines = boxLines(bounds);
+      if (!animationBoundsLines) {
+        animationBoundsLines = BABYLON.MeshBuilder.CreateLineSystem('animationContainerOutline', { lines:outlineLines, updatable:true }, scene);
+        animationBoundsLines.color = new BABYLON.Color3(.94,.74,.24);
+        animationBoundsLines.isPickable = false;
+        animationBoundsLines.renderingGroupId = 3;
+      } else {
+        BABYLON.MeshBuilder.CreateLineSystem(null, { lines:outlineLines, instance:animationBoundsLines }, scene);
+      }
+      animationBoundsLines.setEnabled($('animationBounds').checked);
+
+      $('animationSize').textContent = bounds.size.x.toFixed(3)+' × '+bounds.size.y.toFixed(3)+' × '+bounds.size.z.toFixed(3);
+      $('animationCenter').textContent = bottomCenter.x.toFixed(3)+', '+bounds.min.y.toFixed(3)+', '+bottomCenter.z.toFixed(3);
+    }
+
+    function frame() {
+      if (!modelMeshes.length) return;
+      const bounds = refreshAnimatedBounds() || getBounds();
+      if (!bounds) return;
+      const largest = Math.max(bounds.size.x, bounds.size.y, bounds.size.z, .25);
+      camera.target.copyFrom(bounds.center);
+      camera.radius = largest * 2.15;
+      camera.lowerRadiusLimit = largest * .35;
+      overlay.textContent = $('modelName').textContent+' · '+$('boneCount').textContent+' rig bones · '+TARGET_MODEL_HEIGHT.toFixed(2)+'u preview';
+    }
+
+    function refreshClipUI() {
+      clipSelect.innerHTML = '';
+      clipsEl.innerHTML = '';
+      if (!loadedClips.length) {
+        clipSelect.disabled = true;
+        clipSelect.innerHTML = '<option>Load an animation FBX</option>';
+        clipsEl.innerHTML = '<p class="empty">Import an animation to see clips here.</p>';
+        $('play').disabled = $('pause').disabled = $('stop').disabled = true;
+        return;
+      }
+      clipSelect.disabled = false;
+      $('play').disabled = $('pause').disabled = $('stop').disabled = false;
+      loadedClips.forEach((entry, i) => {
+        const option = document.createElement('option');
+        option.value = i;
+        option.textContent = entry.name;
+        clipSelect.append(option);
+        const button = document.createElement('button');
+        button.className = 'clip'+(i===+clipSelect.value?' active':'');
+        button.textContent = entry.name+'  ·  '+displayLength(entry.group);
+        button.onclick = () => { clipSelect.value=i; selectClip(i); };
+        clipsEl.append(button);
+      });
+    }
+
+    function reportCompatibility(group) {
+      const targets = [...new Set(group.targetedAnimations.map(item => item.target?.name).filter(Boolean))];
+      const match = targets.filter(name => modelTargets.has(name)).length;
+      $('compatibility').innerHTML = '<span class="key">'+match+'/'+targets.length+'</span> imported animation targets map to this model.'+(match===0?' The FBX files likely use different bone or node names.':'');
+    }
+
+    function selectClip(index) {
+      const entry = loadedClips[index];
+      if (!entry) return;
+      stopAll();
+      activeGroup = entry.group;
+      activeGroup.speedRatio = +$('speed').value;
+      activeGroup.start($('loop').checked);
+      overlay.textContent = 'Playing '+entry.name;
+      reportCompatibility(activeGroup);
+      [...clipsEl.children].forEach((node, i) => node.classList.toggle('active', i===+index));
+    }
+
+    async function importModel(file) {
+      try {
+        setStatus('Importing '+file.name+' with Babylon FBX loader…');
+        disposeModel();
+        const result = await BABYLON.SceneLoader.ImportMeshAsync('', 'file:', file, scene, undefined, '.fbx');
+        modelAssets = {
+          meshes:result.meshes||[],
+          skeletons:result.skeletons||[],
+          transformNodes:result.transformNodes||[],
+          animationGroups:result.animationGroups||[]
+        };
+        modelMeshes = modelAssets.meshes;
+        modelSkeletons = modelAssets.skeletons;
+        const bones = scanModel();
+        attachModelContainer();
+        labRest = modelAssets.transformNodes.map(node => ({
+          node,
+          position: node.position.clone(),
+          rotationQuaternion: node.rotationQuaternion ? node.rotationQuaternion.clone() : null,
+          rotation: node.rotation ? node.rotation.clone() : null,
+          scaling: node.scaling.clone()
+        }));
+        const materialCount = normalizePreviewMaterials();
+        normalizePreviewTransform();
+        $('modelName').textContent = file.name;
+        modelAssets.animationGroups.forEach((group, i) => loadedClips.push({ group, name:'Model: '+(group.name||'Clip '+(i+1)) }));
+        refreshClipUI();
+        frame();
+        updateAnimationContainerDebug();
+        setStatus('Model ready at '+TARGET_MODEL_HEIGHT.toFixed(2)+'u tall. '+materialCount+' material'+(materialCount===1?'':'s')+' rendered two-sided. '+(bones.size?'Load a matching animation FBX.':'No skeleton found; static model loaded.'));
+        $('compatibility').textContent = 'Load an animation FBX to compare its targets.';
+        if (loadedClips.length) selectClip(0);
+      } catch (error) {
+        console.error(error);
+        setStatus('Could not import '+file.name+': '+(error.message||'invalid FBX'), true);
+      }
+    }
+
+    async function importAnimations(files) {
+      if (!modelAssets) {
+        setStatus('Load the character model before its animation.', true);
+        return;
+      }
+      for (const file of files) {
+        try {
+          setStatus('Retargeting '+file.name+' onto the loaded rig…');
+          const before = new Set(scene.animationGroups);
+          await BABYLON.SceneLoader.ImportAnimationsAsync('file:', file, scene, false, BABYLON.SceneLoaderAnimationGroupLoadingMode.NoSync, target => modelTargets.get(target.name)||null);
+          const groups = scene.animationGroups.filter(group => !before.has(group));
+          if (!groups.length) {
+            setStatus(file.name+' contains no usable animation groups.', true);
+            continue;
+          }
+          groups.forEach((group, i) => loadedClips.push({ group, name:file.name+' — '+(group.name||'Clip '+(i+1)) }));
+          setStatus('Added '+groups.length+' clip'+(groups.length===1?'':'s')+' from '+file.name+'.');
+        } catch (error) {
+          console.error(error);
+          setStatus('Could not import '+file.name+': '+(error.message||'invalid FBX'), true);
+        }
+      }
+      refreshClipUI();
+      if (loadedClips.length) {
+        clipSelect.value = loadedClips.length-1;
+        selectClip(+clipSelect.value);
+      }
+    }
+
+    function setupDrop(id, handler) {
+      const el = $(id);
+      ['dragenter','dragover'].forEach(type => el.addEventListener(type, event => { event.preventDefault(); el.classList.add('drag'); }));
+      ['dragleave','drop'].forEach(type => el.addEventListener(type, event => { event.preventDefault(); el.classList.remove('drag'); }));
+      el.addEventListener('drop', event => handler([...event.dataTransfer.files].filter(file => /\.fbx$/i.test(file.name))));
+    }
+
+    function setSkeletonVisible(show) {
+      disposeSkeletonViewers();
+      if (!show || !modelSkeletons.length) return;
+      if (!BABYLON.Debug?.SkeletonViewer) {
+        setStatus('The loaded Babylon build does not expose SkeletonViewer.', true);
+        $('skeleton').checked = false;
+        return;
+      }
+      modelSkeletons.forEach(skeleton => {
+        const mesh = modelMeshes.find(candidate => candidate.skeleton===skeleton);
+        if (!mesh) return;
+        const viewer = new BABYLON.Debug.SkeletonViewer(skeleton, mesh, scene);
+        viewer.color = new BABYLON.Color3(.43,.91,.72);
+        viewer.isEnabled = true;
+        skeletonViewers.push(viewer);
+      });
+    }
+
+    $('modelInput').onchange = event => event.target.files[0] && importModel(event.target.files[0]);
+    $('animationInput').onchange = event => importAnimations([...event.target.files]);
+    setupDrop('modelDrop', files => files[0] && importModel(files[0]));
+    setupDrop('animationDrop', importAnimations);
+    $('clearAnimations').onclick = () => {
+      stopAll();
+      loadedClips.forEach(entry => entry.group.dispose());
+      loadedClips = [];
+      refreshClipUI();
+      $('compatibility').textContent = 'Animation list cleared.';
+      overlay.textContent = modelAssets ? 'Model loaded · no clip selected' : 'No model';
+    };
+    $('frameModel').onclick = frame;
+    clipSelect.onchange = () => selectClip(+clipSelect.value);
+    $('play').onclick = () => activeGroup ? activeGroup.play($('loop').checked) : selectClip(+clipSelect.value);
+    $('pause').onclick = () => activeGroup && activeGroup.pause();
+    $('stop').onclick = () => { if (activeGroup) { activeGroup.stop(); overlay.textContent='Stopped · '+loadedClips[clipSelect.value].name; } };
+    $('speed').oninput = event => {
+      const value = +event.target.value;
+      $('speedValue').textContent = value.toFixed(2)+'×';
+      if (activeGroup) activeGroup.speedRatio = value;
+    };
+    $('loop').onchange = () => { if (activeGroup) { const current=activeGroup; current.stop(); current.start($('loop').checked); } };
+    $('skeleton').onchange = event => setSkeletonVisible(event.target.checked);
+    $('animationBounds').onchange = event => {
+      if (animationBoundsLines) animationBoundsLines.setEnabled(event.target.checked);
+      if (modelAssets) updateAnimationContainerDebug();
+    };
+
+    scene.onBeforeRenderObservable.add(() => {
+      if (modelAssets) updateAnimationContainerDebug();
+    });
+    window.addEventListener('resize', () => engine.resize());
+    engine.runRenderLoop(() => scene.render());
+  </script>
+  <script>
+  /* ---- 4/5 — Contact calibration workbench ----
+     Measures backend-ready contact data with a 3D vertex picker:
+     - soldier contacts A (right hand) and B (left hand), stored in hand-bone local
+       import units: the same space as palmAnchors() in
+       battle/modules/53-fbx-soldier-backend.js. The lab's preview normalization
+       cancels out because anchors go through the inverse of the CURRENT hand
+       matrix, so container scaling never leaks into the numbers.
+     - weapon grip + fore-near / fore-far in weapon-mesh local metres: the prepared
+       weapons already use the game layout, and the mesh transform is baked at
+       import, so these drop straight into WEAPON_POINTS.
+     The live seat preview mirrors the backend hold (grip on right contact, barrel
+     through the left contact); the battle backend stays canonical. */
+  const labCalib = {
+    modelFile:'', weaponFile:'', weapon:null, // {mesh, container}
+    contacts:{ right:null, left:null },       // BABYLON.Vector3, hand-bone local
+    weaponPts:{ grip:null, foreN:null, foreF:null }, // BABYLON.Vector3, weapon local
+    pendingPick:null, markers:{}, downPos:null
+  };
+  window.__labCalib = labCalib;
+  const LAB_STORE_KEY = 'fbxLabCalib.v1';
+
+  // Same naming read as the battle backend's canon(): strip the Mixamo prefix first,
+  // or wrist lookups miss every rig ('mixamorigrighthand' !== 'righthand').
+  function labCanon(s){ return String(s||'').toLowerCase().replace(/^mixamorig[:_]?/,'').replace(/[^a-z0-9]/g,''); }
+  function labFmt(v){ return '['+v.x.toFixed(3)+','+v.y.toFixed(3)+','+v.z.toFixed(3)+']'; }
+  function labParseTriplet(ids){
+    const v = ids.map(id => parseFloat($(id).value));
+    if (v.some(n => !Number.isFinite(n))) return null;
+    return new BABYLON.Vector3(v[0], v[1], v[2]);
+  }
+
+  /* ---- imported-asset library (section 3) ---- */
+  async function labFetchFile(url, name){
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP '+res.status+' for '+url);
+    return new File([await res.blob()], name);
+  }
+  function labFillSelect(id, files, emptyLabel){
+    const sel = $(id);
+    sel.innerHTML = '';
+    const none = document.createElement('option');
+    none.value = ''; none.textContent = emptyLabel;
+    sel.append(none);
+    files.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      sel.append(opt);
+    });
+  }
+  async function labLoadLibrary(){
+    try {
+      const res = await fetch('asset-list.php');
+      if (!res.ok) throw new Error('HTTP '+res.status);
+      const data = await res.json();
+      labFillSelect('libModel', data.files.soldiers || [], 'Pick a soldier…');
+      labFillSelect('libAnim', data.files.animations || [], 'Pick an animation…');
+      labFillSelect('libWeapon', data.files.weapons || [], 'None');
+      $('libStatus').textContent = 'Deployed imports listed. Loading fetches them as files, so the existing import path is reused unchanged.';
+    } catch (error) {
+      console.warn('[lab] asset list unavailable:', error);
+      $('libStatus').textContent = 'Asset list unavailable here (needs the deployed asset-list.php); file drops below still work.';
+      labFillSelect('libModel', [], 'Unavailable — use file drop');
+      labFillSelect('libAnim', [], 'Unavailable — use file drop');
+    }
+  }
+  async function labImportWeapon(file, label){
+    labDisposeWeapon();
+    setStatus('Importing weapon '+file.name+'…');
+    const result = await BABYLON.SceneLoader.ImportMeshAsync('', 'file:', file, scene, undefined, '.fbx');
+    const meshes = (result.meshes || []).filter(m => m.getTotalVertices && m.getTotalVertices() > 0);
+    if (!meshes.length) throw new Error('weapon FBX has no mesh');
+    // Keep the largest mesh (prepared weapons carry exactly one).
+    meshes.sort((a, b) => b.getTotalVertices() - a.getTotalVertices());
+    const mesh = meshes[0];
+    // Normalize exactly like the battle backend's prepareWeapon(): the deployed files
+    // arrive in loader units, so scale from the known butt position (butt plate BUTT
+    // metres behind the grip origin; pistols use the frame-back distance instead),
+    // then bake. Mesh-local ends up as game layout metres; no skeleton: safe.
+    mesh.bakeCurrentTransformIntoVertices();
+    mesh.parent = null;
+    {
+      const vp = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+      let zmin = Infinity;
+      for (let i = 2; i < vp.length; i += 3) zmin = Math.min(zmin, vp[i]);
+      const butt = /m1911a1|p38/i.test(label) ? .06 : .40;
+      const k = -butt / zmin;
+      if (Number.isFinite(k) && Math.abs(k - 1) > 1e-3) mesh.bakeTransformIntoVertices(BABYLON.Matrix.Scaling(k, k, k));
+    }
+    mesh.isPickable = true;
+    mesh.refreshBoundingInfo();
+    labCalib.weapon = { mesh, container:result, file:label };
+    labCalib.weaponFile = label;
+    setStatus('Weapon ready: '+label+'. Pick grip / fore-end points on it, or type them below.');
+    labSeatWeapon();
+  }
+  function labDisposeWeapon(){
+    if (labCalib.weapon) {
+      try {
+        const c = labCalib.weapon.container;
+        (c.meshes || []).forEach(m => { if (!m.isDisposed()) m.dispose(false, true); });
+        (c.skeletons || []).forEach(s => s.dispose());
+        (c.transformNodes || []).forEach(n => { if (!n.isDisposed()) n.dispose(); });
+        (c.animationGroups || []).forEach(g => g.dispose());
+      } catch (error) { console.warn('[lab] weapon dispose:', error); }
+    }
+    labCalib.weapon = null;
+    labCalib.weaponFile = '';
+  }
+  $('libLoad').onclick = async () => {
+    try {
+      const model = $('libModel').value, anim = $('libAnim').value, weapon = $('libWeapon').value;
+      if (model) {
+        labCalib.modelFile = model;
+        labCalib.contacts = { right:null, left:null };
+        labRefreshFields();
+        await importModel(await labFetchFile('../Assets/soldiers/'+encodeURIComponent(model), model));
+      }
+      if (anim) await importAnimations([await labFetchFile('../Assets/animations/'+encodeURIComponent(anim), anim)]);
+      if (weapon) await labImportWeapon(await labFetchFile('../Assets/weapons/'+encodeURIComponent(weapon), weapon), weapon);
+      else { labDisposeWeapon(); labCalib.weaponPts = { grip:null, foreN:null, foreF:null }; labRefreshFields(); }
+      labRestoreSaved();
+      labSeatWeapon();
+    } catch (error) {
+      console.error(error);
+      setStatus('Library load failed: '+(error.message || error), true);
+    }
+  };
+
+  /* ---- hand nodes, bind pose, vertex picking ---- */
+  function labHandNode(side){
+    if (!modelAssets) return null;
+    const want = side + 'hand';
+    for (const node of modelAssets.transformNodes) {
+      if (!node || node.isDisposed()) continue;
+      if (labCanon(node.name) === want) return node;
+    }
+    return null;
+  }
+  function labNodeWorld(node){
+    node.computeWorldMatrix(true);
+    return node.getWorldMatrix();
+  }
+  function labInvert(matrix){
+    const inv = new BABYLON.Matrix();
+    matrix.invertToRef(inv);
+    return inv;
+  }
+  $('bindPose').onclick = () => {
+    if (!labRest) { setStatus('No bind-pose snapshot (load a model first).', true); return; }
+    stopAll();
+    labRest.forEach(entry => {
+      if (entry.node.isDisposed()) return;
+      entry.node.position.copyFrom(entry.position);
+      entry.node.scaling.copyFrom(entry.scaling);
+      if (entry.rotationQuaternion) {
+        if (!entry.node.rotationQuaternion) entry.node.rotationQuaternion = new BABYLON.Quaternion();
+        entry.node.rotationQuaternion.copyFrom(entry.rotationQuaternion);
+      }
+    });
+    setStatus('Bind pose restored. Pick contacts, then replay a clip to check the seat tracks.');
+  };
+
+  function labArm(mode){
+    labCalib.pendingPick = (labCalib.pendingPick === mode) ? null : mode;
+    ['pickA','pickB','pickGrip','pickForeN','pickForeF'].forEach(id => $(id).classList.remove('armed'));
+    const map = { A:'pickA', B:'pickB', grip:'pickGrip', foreN:'pickForeN', foreF:'pickForeF' };
+    if (labCalib.pendingPick) {
+      $(map[labCalib.pendingPick]).classList.add('armed');
+      viewport.classList.add('picking');
+    } else viewport.classList.remove('picking');
+  }
+  $('pickA').onclick = () => labArm('A');
+  $('pickB').onclick = () => labArm('B');
+  $('pickGrip').onclick = () => labArm('grip');
+  $('pickForeN').onclick = () => labArm('foreN');
+  $('pickForeF').onclick = () => labArm('foreF');
+  canvas.addEventListener('pointerdown', event => { labCalib.downPos = [event.clientX, event.clientY]; });
+  canvas.addEventListener('pointerup', event => {
+    if (!labCalib.pendingPick || !labCalib.downPos) return;
+    const dx = event.clientX - labCalib.downPos[0], dy = event.clientY - labCalib.downPos[1];
+    labCalib.downPos = null;
+    if (dx * dx + dy * dy > 36) return; // it was an orbit drag, not a pick
+    const rect = canvas.getBoundingClientRect();
+    labDoPick(event.clientX - rect.left, event.clientY - rect.top, labCalib.pendingPick);
+    labArm(labCalib.pendingPick); // disarm (labArm toggles, so pass current to clear)
+  });
+  function labNearestVertex(mesh, worldPoint){
+    mesh.computeWorldMatrix(true);
+    const local = BABYLON.Vector3.TransformCoordinates(worldPoint, labInvert(mesh.getWorldMatrix()));
+    const pos = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+    let best = -1, bestD = Infinity;
+    for (let i = 0; i < pos.length; i += 3) {
+      const dx = pos[i] - local.x, dy = pos[i + 1] - local.y, dz = pos[i + 2] - local.z;
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (best < 0) return null;
+    return new BABYLON.Vector3(pos[best], pos[best + 1], pos[best + 2]);
+  }
+  function labDoPick(x, y, mode){
+    const onSoldier = (mode === 'A' || mode === 'B');
+    const pool = onSoldier ? renderableMeshes() : (labCalib.weapon ? [labCalib.weapon.mesh] : []);
+    if (!pool.length) { setStatus(onSoldier ? 'Load a soldier model first.' : 'Load a weapon first.', true); return; }
+    const pick = scene.pick(x, y, mesh => pool.includes(mesh));
+    if (!pick.hit || !pick.pickedMesh) { setStatus('No mesh under the cursor; zoom in and click the surface.', true); return; }
+    const vertex = labNearestVertex(pick.pickedMesh, pick.pickedPoint);
+    if (!vertex) { setStatus('Could not read vertices off '+pick.pickedMesh.name+'.', true); return; }
+    if (onSoldier) {
+      const side = (mode === 'A') ? 'right' : 'left';
+      const hand = labHandNode(side);
+      if (!hand) { setStatus('No '+side+' hand joint found on this rig.', true); return; }
+      // Hand-bone local import units: mesh-local -> world -> hand-local. The lab preview
+      // scale cancels through the inverses, so this matches the battle backend's anchor
+      // space exactly.
+      pick.pickedMesh.computeWorldMatrix(true);
+      const worldV = BABYLON.Vector3.TransformCoordinates(vertex, pick.pickedMesh.getWorldMatrix());
+      const anchor = BABYLON.Vector3.TransformCoordinates(worldV, labInvert(labNodeWorld(hand)));
+      // Sanity: the vertex must actually belong to that hand (else the anchor is garbage).
+      const back = BABYLON.Vector3.TransformCoordinates(anchor, labNodeWorld(hand));
+      const meshLocal = BABYLON.Vector3.TransformCoordinates(back, labInvert(pick.pickedMesh.getWorldMatrix()));
+      if (meshLocal.subtract(vertex).length() > 1e-3) { setStatus('Anchor round-trip failed; rig matrices stale.', true); return; }
+      if (side === 'right') labCalib.contacts.right = anchor; else labCalib.contacts.left = anchor;
+      setStatus('Contact '+(side === 'right' ? 'A (right)' : 'B (left)')+' set on '+pick.pickedMesh.name+'.');
+    } else {
+      // Weapon-mesh local == game layout metres (transform baked at import).
+      if (mode === 'grip') labCalib.weaponPts.grip = vertex;
+      else if (mode === 'foreN') labCalib.weaponPts.foreN = vertex;
+      else labCalib.weaponPts.foreF = vertex;
+      setStatus({ grip:'Grip point', foreN:'Fore-end near point', foreF:'Fore-end far point' }[mode]+' set on '+(labCalib.weaponFile || 'weapon')+'.');
+    }
+    labRefreshFields();
+    labRefreshMarkers();
+    labSeatWeapon();
+    labUpdateSnippet();
+  }
+  const LAB_MARKER_COLORS = { A:[.43,.91,.72], B:[.49,.77,1], grip:[.97,.77,.42], foreN:[1,.6,.36], foreF:[1,.42,.42] };
+  function labMarker(name){
+    if (labCalib.markers[name] && !labCalib.markers[name].isDisposed()) return labCalib.markers[name];
+    const mat = new BABYLON.StandardMaterial('labMarker_'+name, scene);
+    const c = LAB_MARKER_COLORS[name] || [1,1,1];
+    mat.diffuseColor = new BABYLON.Color3(c[0], c[1], c[2]);
+    mat.emissiveColor = new BABYLON.Color3(c[0], c[1], c[2]);
+    mat.disableLighting = true;
+    const mesh = BABYLON.MeshBuilder.CreateSphere('labMarkerMesh_'+name, { diameter:.022 }, scene);
+    mesh.material = mat;
+    mesh.isPickable = false;
+    labCalib.markers[name] = mesh;
+    return mesh;
+  }
+  function labAnchorWorld(side){
+    // Current-pose world position of a stored hand contact (markers + seat follow playback).
+    const anchor = side === 'right' ? labCalib.contacts.right : labCalib.contacts.left;
+    const hand = labHandNode(side);
+    if (!anchor || !hand) return null;
+    return BABYLON.Vector3.TransformCoordinates(anchor, labNodeWorld(hand));
+  }
+  function labRefreshMarkers(){
+    const place = (name, world) => {
+      const mesh = labCalib.markers[name];
+      if (!world) { if (mesh && !mesh.isDisposed()) mesh.setEnabled(false); return; }
+      labMarker(name).setEnabled(true);
+      labMarker(name).position.copyFrom(world);
+    };
+    place('A', labAnchorWorld('right'));
+    place('B', labAnchorWorld('left'));
+    const w = labCalib.weapon && !labCalib.weapon.mesh.isDisposed() ? labCalib.weapon.mesh : null;
+    const wpos = local => {
+      if (!local || !w) return null;
+      w.computeWorldMatrix(true);
+      return BABYLON.Vector3.TransformCoordinates(local, w.getWorldMatrix());
+    };
+    place('grip', wpos(labWeaponPtsOf('grip')));
+    place('foreN', wpos(labWeaponPtsOf('foreN')));
+    place('foreF', wpos(labWeaponPtsOf('foreF')));
+  }
+  function labWeaponPtsOf(k){ return labCalib.weaponPts[k]; }
+  </script>
+  <script src="fbx-animation-root-lock.js?v=4ab61a63204894bdd1b67c93c6f1307834f1ce85"></script>
+  <script>
+  /* ---- workbench part 2: seat preview, fields, persistence, export ---- */
+  function labSeatWeapon(){
+    if (!labCalib.weapon || labCalib.weapon.mesh.isDisposed()) return;
+    if (!labCalib.contacts.right) return;
+    const mesh = labCalib.weapon.mesh;
+    mesh.computeWorldMatrix(true);
+    const R = labAnchorWorld('right');
+    if (!R) return;
+    const G = labCalib.weaponPts.grip;
+    const L = labAnchorWorld('left');
+    if (G && L) {
+      // Long-gun seat, mirroring the backend hold at full weight: grip point onto the
+      // right contact, barrel swung through the left contact, roll kept sights-up.
+      const z = L.subtract(R);
+      if (z.lengthSquared() < 1e-10) return;
+      z.normalize();
+      const up = BABYLON.Vector3.Up();
+      let y = up.subtract(z.scale(BABYLON.Vector3.Dot(up, z)));
+      if (y.lengthSquared() < 1e-10) y = new BABYLON.Vector3(0, 1, 0); else y.normalize();
+      const x = BABYLON.Vector3.Cross(y, z); x.normalize();
+      const rotQ = BABYLON.Quaternion.RotationQuaternionFromAxis(x, y, z);
+      const rotM = new BABYLON.Matrix();
+      rotQ.toRotationMatrix(rotM);
+      const origin = R.subtract(BABYLON.Vector3.TransformNormal(G, rotM));
+      if (!mesh.rotationQuaternion) mesh.rotationQuaternion = new BABYLON.Quaternion();
+      mesh.rotationQuaternion.copyFrom(rotQ);
+      mesh.position.copyFrom(origin);
+    } else if (G) {
+      // Pistol-style seat: translate only, keep the current orientation.
+      const scl = new BABYLON.Vector3(), rot = new BABYLON.Quaternion(), tp = new BABYLON.Vector3();
+      mesh.getWorldMatrix().decompose(scl, rot, tp);
+      const rotM = new BABYLON.Matrix();
+      rot.toRotationMatrix(rotM);
+      mesh.position.copyFrom(R.subtract(BABYLON.Vector3.TransformNormal(G, rotM)));
+    }
+  }
+  $('seatWeapon').onclick = () => { labSeatWeapon(); setStatus('Weapon seated on the current contacts.'); };
+  $('trackHands').onchange = () => setStatus($('trackHands').checked ? 'Weapon tracks the hands during playback.' : 'Weapon frozen; Seat weapon re-seats it once.');
+
+  function labRefreshFields(){
+    const set = (ids, v) => {
+      $(ids[0]).value = v ? v.x.toFixed(4) : '';
+      $(ids[1]).value = v ? v.y.toFixed(4) : '';
+      $(ids[2]).value = v ? v.z.toFixed(4) : '';
+    };
+    set(['ax','ay','az'], labCalib.contacts.right);
+    set(['bx','by','bz'], labCalib.contacts.left);
+    set(['gx','gy','gz'], labCalib.weaponPts.grip);
+    set(['fnx','fny','fnz'], labCalib.weaponPts.foreN);
+    set(['ffx','ffy','ffz'], labCalib.weaponPts.foreF);
+    const n = labCalib.weaponPts.foreN, f = labCalib.weaponPts.foreF;
+    $('foreLen').textContent = (n && f) ? (n.subtract(f).length().toFixed(3)+' m') : '—';
+    labUpdateSnippet();
+  }
+  [[['ax','ay','az'],'right'], [['bx','by','bz'],'left']].forEach(([ids, side]) => {
+    ids.forEach(id => $(id).onchange = () => {
+      const v = labParseTriplet(ids);
+      if (!v) { setStatus('Contacts need three finite numbers.', true); labRefreshFields(); return; }
+      if (side === 'right') labCalib.contacts.right = v; else labCalib.contacts.left = v;
+      labRefreshMarkers(); labSeatWeapon(); labUpdateSnippet();
+    });
+  });
+  [[['gx','gy','gz'],'grip'], [['fnx','fny','fnz'],'foreN'], [['ffx','ffy','ffz'],'foreF']].forEach(([ids, key]) => {
+    ids.forEach(id => $(id).onchange = () => {
+      const v = labParseTriplet(ids);
+      if (!v) { setStatus('Weapon points need three finite numbers.', true); labRefreshFields(); return; }
+      labCalib.weaponPts[key] = v;
+      labRefreshMarkers(); labSeatWeapon(); labUpdateSnippet();
+    });
+  });
+
+  /* ---- persistence + export ---- */
+  function labCollect(){
+    const arr = v => v ? [+v.x.toFixed(4), +v.y.toFixed(4), +v.z.toFixed(4)] : null;
+    return {
+      model: labCalib.modelFile || null,
+      contacts: { right: arr(labCalib.contacts.right), left: arr(labCalib.contacts.left) },
+      weapon: labCalib.weaponFile || null,
+      weaponPoints: { grip: arr(labCalib.weaponPts.grip), foreNear: arr(labCalib.weaponPts.foreN), foreFar: arr(labCalib.weaponPts.foreF) }
+    };
+  }
+  function labApply(data){
+    if (!data) return;
+    if (data.model) {
+      labCalib.modelFile = data.model;
+      const opt = [...$('libModel').options].find(o => o.value === data.model);
+      if (opt) $('libModel').value = data.model;
+    }
+    const v3 = a => a ? new BABYLON.Vector3(a[0], a[1], a[2]) : null;
+    if (data.contacts) {
+      labCalib.contacts.right = v3(data.contacts.right);
+      labCalib.contacts.left = v3(data.contacts.left);
+    }
+    if (data.weapon) {
+      labCalib.weaponFile = data.weapon;
+      const opt = [...$('libWeapon').options].find(o => o.value === data.weapon);
+      if (opt) $('libWeapon').value = data.weapon;
+    }
+    if (data.weaponPoints) {
+      labCalib.weaponPts.grip = v3(data.weaponPoints.grip);
+      labCalib.weaponPts.foreN = v3(data.weaponPoints.foreNear);
+      labCalib.weaponPts.foreF = v3(data.weaponPoints.foreFar);
+    }
+    labRefreshFields(); labRefreshMarkers(); labSeatWeapon();
+    setStatus('Calibration applied. Load the named model/weapon above to measure against them.');
+  }
+  function labStore(){
+    try { return JSON.parse(localStorage.getItem(LAB_STORE_KEY) || '{"models":{},"weapons":{}}'); }
+    catch (error) { return { models:{}, weapons:{} }; }
+  }
+  $('saveLocal').onclick = () => {
+    const data = labCollect(), store = labStore();
+    if (data.model && (data.contacts.right || data.contacts.left)) store.models[data.model] = data.contacts;
+    if (data.weapon && (data.weaponPoints.grip || data.weaponPoints.foreNear)) store.weapons[data.weapon] = data.weaponPoints;
+    localStorage.setItem(LAB_STORE_KEY, JSON.stringify(store));
+    setStatus('Saved in this browser for '+(data.model || 'no model')+' / '+(data.weapon || 'no weapon')+'.');
+  };
+  $('loadLocal').onclick = () => {
+    const store = labStore(), data = labCollect();
+    const m = data.model && store.models[data.model], w = data.weapon && store.weapons[data.weapon];
+    if (!m && !w) { setStatus('Nothing saved yet for this model/weapon.', true); return; }
+    labApply({ model:data.model, contacts:m || {}, weapon:data.weapon, weaponPoints:w || {} });
+  };
+  function labRestoreSaved(){
+    // After a library load, silently re-apply anything saved for these files.
+    const store = labStore();
+    const m = labCalib.modelFile && store.models[labCalib.modelFile];
+    const w = labCalib.weaponFile && store.weapons[labCalib.weaponFile];
+    if (m) { labCalib.contacts.right = m.right ? new BABYLON.Vector3(...m.right) : null; labCalib.contacts.left = m.left ? new BABYLON.Vector3(...m.left) : null; }
+    if (w) {
+      labCalib.weaponPts.grip = w.grip ? new BABYLON.Vector3(...w.grip) : null;
+      labCalib.weaponPts.foreN = w.foreNear ? new BABYLON.Vector3(...w.foreNear) : null;
+      labCalib.weaponPts.foreF = w.foreFar ? new BABYLON.Vector3(...w.foreFar) : null;
+    }
+    if (m || w) { labRefreshFields(); labRefreshMarkers(); setStatus('Restored saved calibration for this pair.'); }
+  }
+  $('exportJson').onclick = () => {
+    const blob = new Blob([JSON.stringify(labCollect(), null, 2)], { type:'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'lab-calibration-'+(labCalib.modelFile || 'model')+'.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  };
+  $('importJson').onchange = event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { labApply(JSON.parse(reader.result)); }
+      catch (error) { setStatus('Could not read that JSON: '+(error.message || error), true); }
+    };
+    reader.readAsText(file);
+  };
+  function labUpdateSnippet(){
+    const out = [];
+    const c = labCalib.contacts;
+    if (labCalib.modelFile && (c.right || c.left)) {
+      // Consumed by SOLDIER_CONTACTS in battle/modules/53-fbx-soldier-backend.js (hand-local units).
+      out.push('// SOLDIER_CONTACTS entry for '+labCalib.modelFile);
+      out.push('\''+labCalib.modelFile+'\':{right:'+(c.right ? labFmt(c.right) : 'null')+',left:'+(c.left ? labFmt(c.left) : 'null')+'},');
+    }
+    const w = labCalib.weaponPts;
+    if (labCalib.weaponFile && w.grip) {
+      // Universal per weapon: drops into WEAPON_POINTS (or WEAPON_MODEL_POINTS for exceptions).
+      let fore = 'fore:null';
+      if (w.foreN && w.foreF) {
+        const spread = Math.max(Math.abs(w.foreN.x - w.foreF.x), Math.abs(w.foreN.y - w.foreF.y));
+        fore = 'fore:['+w.foreN.x.toFixed(3)+','+w.foreN.y.toFixed(3)+','+w.foreN.z.toFixed(3)+','+w.foreF.z.toFixed(3)+']'
+          + (spread > .005 ? ' // WARNING: fore x/y differ by '+spread.toFixed(3)+'m; backend line shares x/y, re-pick or hand-edit' : '');
+      }
+      out.push('// WEAPON_POINTS entry for '+labCalib.weaponFile);
+      out.push('\''+labCalib.weaponFile+'\':{grip:'+labFmt(w.grip)+','+fore+'},');
+    }
+    $('snippetOut').textContent = out.length ? out.join('\n') : 'Pick points to generate the backend snippet.';
+  }
+  $('copySnippet').onclick = async () => {
+    const text = $('snippetOut').textContent;
+    try { await navigator.clipboard.writeText(text); setStatus('Snippet copied.'); }
+    catch (error) {
+      const area = document.createElement('textarea');
+      area.value = text; document.body.append(area); area.select();
+      try { document.execCommand('copy'); setStatus('Snippet copied.'); }
+      catch (err) { setStatus('Copy failed; select the snippet text manually.', true); }
+      area.remove();
+    }
+  };
+
+  scene.onBeforeRenderObservable.add(() => {
+    if (!modelAssets) return;
+    if ($('trackHands') && $('trackHands').checked) {
+      labRefreshMarkers();
+      labSeatWeapon();
+    }
+  });
+  labRefreshFields();
+  labLoadLibrary();
+  </script>
+  <script src="fbx-animation-compat.js?v=4ab61a63204894bdd1b67c93c6f1307834f1ce85"></script>
+</body>
+</html>

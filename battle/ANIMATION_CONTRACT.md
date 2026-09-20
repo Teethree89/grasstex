@@ -27,7 +27,7 @@ The battle lab deliberately separates gameplay/AI state from the rendered soldie
 
 `battle/modules/53-fbx-soldier-backend.js` renders every soldier as the rigged FBX character and
 animates it with the shared Mixamo rifle clips, using Babylon's FBX loader: the same import path
-as the FBX Motion Lab (`fbx-animation-lab.html`).
+as the FBX Motion Lab (`labs/fbx-animation-lab.html`, including its contact-calibration workbench).
 
 - **Sources.** Characters: `Assets/soldiers/{us,ge}-paratrooper.fbx` (default) and
   `{us,ge}-rifleman-rigged.fbx` (`?soldiers=rifleman`). Clips: `Assets/animations/*.fbx`
@@ -142,7 +142,7 @@ The visible soldier remains centered during moving poses. Motion Lab feeds virtu
 to the speed-sensitive animation selector, then restores the model root to the origin before
 rendering. Looping FBX clips already have horizontal hips travel removed by the backend.
 
-The separate [FBX import lab](../fbx-animation-lab.html) on the `fbx-lab-normalization` branch
+The separate [FBX import lab](../labs/fbx-animation-lab.html) on the `fbx-lab-normalization` branch
 has an experimental `fbx-animation-root-lock.js`: it can hold the bottom skeleton root's X/Z
 at its clip-start position and recenter an animated container from mesh bounds. That is a
 different root correction for raw imported clips; Motion Lab uses the battle backend's clip

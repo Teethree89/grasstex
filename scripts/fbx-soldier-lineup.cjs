@@ -178,7 +178,8 @@ function parseReady(line) {
     }).catch(e => ({ err: String(e).slice(0, 200) }));
     if (sockets.err) fail.push('socket status: ' + sockets.err);
     else for (const [file, anchors] of Object.entries(sockets)) {
-      if (anchors.right !== 'web' || anchors.left !== 'index-pip')
+      // 'stored' means a lab-measured SOLDIER_CONTACTS entry won for that hand: also fine.
+      if (!['web', 'stored'].includes(anchors.right) || !['index-pip', 'stored'].includes(anchors.left))
         fail.push(`${file}: unexpected hand contacts ${anchors.right}/${anchors.left}`);
     }
     const socketLines = [...new Set(logs.filter(l => l.includes('[ANIM] hand sockets')))];

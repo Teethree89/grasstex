@@ -39,6 +39,19 @@ Notes that keep coming up, so they live here now:
 - `tools/ai-sim-harness/` is headless AI logic with no rendering, and
   `scripts/run_m3c_replay.cjs` stops the render loop: neither can verify weapon visuals.
 
+## FBX Motion Lab contact calibrator (measure hand/weapon points)
+
+`labs/fbx-animation-lab.html` sections 3–5 are the calibration frontend for the weapon
+tables in `battle/modules/53-fbx-soldier-backend.js`: pick deployed soldiers, animations
+and weapons from `labs/asset-list.php`, click vertices to set soldier contacts A (right)
+and B (left) plus weapon grip / fore-near / fore-far, watch the weapon seat live, then
+save (browser localStorage + JSON download) and paste the generated snippet into
+`SOLDIER_CONTACTS` (per model) and `WEAPON_POINTS`/`WEAPON_MODEL_POINTS` (universal per
+weapon). Contacts are hand-bone-local import units (backend anchor space); weapon points
+are weapon-local metres (game layout). The lab pins Babylon 9.27.1, the battle runtime's
+exact build, so measured numbers transfer 1:1. Served from `labs/` locally, on branch
+previews, and in production (all three deploy the whole `labs/` directory).
+
 <!-- BEGIN CODEX CONVERSATION MAINTENANCE -->
 ## Conversation Maintenance
 

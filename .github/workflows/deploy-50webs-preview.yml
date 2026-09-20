@@ -54,6 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           php -l battle_sim_local.php
+          php -l labs/asset-list.php
           # A loader without preview support would silently serve production scripts and write production logs.
           grep -q 'BATTLE_PREVIEW' battle_sim_local.php
           grep -q 'BATTLE_PREVIEW' battle/battle-telemetry.js
@@ -77,6 +78,8 @@ jobs:
             if [ -d "Assets/$d" ]; then mkdir -p ".preview/Assets/$d" && cp "Assets/$d"/*.fbx ".preview/Assets/$d/"; fi
           done
           if [ -d Assets/effects/muzzle-flash ]; then mkdir -p .preview/Assets/effects/muzzle-flash && cp Assets/effects/muzzle-flash/*.png .preview/Assets/effects/muzzle-flash/; fi
+          # The Motion Lab workbench with its asset inventory endpoint.
+          if [ -d labs ]; then mkdir -p .preview/labs && cp labs/fbx-animation-lab.html labs/fbx-animation-*.js labs/asset-list.php .preview/labs/; fi
           python3 - <<'PY'
           import json, os, datetime
           json.dump({"ref": os.environ["PREVIEW_REF"], "sha": os.environ["PREVIEW_SHA"],
