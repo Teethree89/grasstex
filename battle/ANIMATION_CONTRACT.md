@@ -134,7 +134,17 @@ procedural rig (for example `45-stance-transition-crawl.js`) must skip it.
 
 The in-page **Motion Lab** loads the same FBX library into its own scene and previews every state:
 standing, directional and crouched/prone locomotion, aim/fire/reload overlays, stance transitions
-and deaths, labelled with the clip files that are playing.
+and deaths, labelled with the clip files that are playing. Pause/Play freezes the preview; the
+0–120 frame slider rebuilds and advances the selected pose at 30 fps to a repeatable frame.
+The visible soldier remains centered during moving poses. Motion Lab feeds virtual displacement
+to the speed-sensitive animation selector, then restores the model root to the origin before
+rendering. Looping FBX clips already have horizontal hips travel removed by the backend.
+
+The separate [FBX import lab](../fbx-animation-lab.html) on the `fbx-lab-normalization` branch
+has an experimental `fbx-animation-root-lock.js`: it can hold the bottom skeleton root's X/Z
+at its clip-start position and recenter an animated container from mesh bounds. That is a
+different root correction for raw imported clips; Motion Lab uses the battle backend's clip
+normalization and fixes its own synthetic navigation displacement as described above.
 
 ### Adding soldiers and weapons
 

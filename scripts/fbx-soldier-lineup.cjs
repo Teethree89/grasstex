@@ -18,9 +18,9 @@
  *   NODE_PATH=/Users/ivanpopov/node_modules node scripts/fbx-soldier-lineup.cjs
  *
  * Env: FBX_URL (page URL), FBX_SEED, FBX_OUT (output dir), FBX_CHROME (Chrome binary;
- * defaults to the AGENTS.md working binary), FBX_ZOOM (wheel delta for lab close-ups),
- * FBX_SIDE_DRAG (horizontal drag px for the lab side profile), FBX_POSES (comma-separated
- * lab poses), FBX_ROLES (comma-separated faction/role names such as ge/scout2).
+ * defaults to the AGENTS.md working binary), FBX_FRAME (fixed Motion Lab frame, 0-120),
+ * FBX_LAB_RADIUS (Motion Lab camera radius), FBX_POSES (comma-separated lab poses),
+ * FBX_ROLES (comma-separated faction/role names such as ge/scout2).
  */
 const { chromium } = require('playwright');
 const fs = require('node:fs');
@@ -31,8 +31,8 @@ const CHROME = process.env.FBX_CHROME || '/Volumes/Expanse/Applications/Google C
 const BASE_URL = process.env.FBX_URL || 'http://127.0.0.1:8765/grasstex/battle_sim_local.php';
 const SEED = process.env.FBX_SEED || 'live-mu9r3081-4lnto';
 const OUT = path.resolve(process.env.FBX_OUT || path.join(os.tmpdir(), 'fbx-lineup'));
-const ZOOM = Number(process.env.FBX_ZOOM || -500);
-const SIDE_DRAG = Number(process.env.FBX_SIDE_DRAG || 160);
+const FRAME = Number(process.env.FBX_FRAME || 45);
+const LAB_RADIUS = Number(process.env.FBX_LAB_RADIUS || 2.6);
 const LAB_POSES = (process.env.FBX_POSES || 'aim,reload,walk-aim,crouch-aim').split(',');
 const ROLE_FILTER = process.env.FBX_ROLES ? new Set(process.env.FBX_ROLES.split(',')) : null;
 
@@ -78,7 +78,6 @@ function parseReady(line) {
     await page.waitForTimeout(1000);
     const canvas = page.locator('#animationLabCanvas');
     const box = await canvas.boundingBox();
-    const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
     const labShots = [];
     for (const pose of LAB_POSES) {
       await page.evaluate(value => {
@@ -86,32 +85,35 @@ function parseReady(line) {
         select.value = value;
         select.dispatchEvent(new Event('change', { bubbles: true }));
       }, pose);
-      await page.waitForTimeout(2200);
-      const cameraReset = await page.evaluate(({ pose, zoom }) => {
-        const engines = (BABYLON.EngineStore && BABYLON.EngineStore.Instances) || BABYLON.Engine.Instances || [];
-        const engine = engines.find(e => e.getRenderingCanvas && e.getRenderingCanvas().id === 'animationLabCanvas');
-        const cam = engine && engine.scenes && engine.scenes[0] && engine.scenes[0].activeCamera;
-        if (!cam || typeof cam.radius !== 'number') return false;
-        cam.alpha = -Math.PI / 2;
-        cam.beta = 1.08;
-        cam.radius = /walk|run|sprint/.test(pose) ? 4.5 : Math.max(1.6, Math.min(7, 3.6 + zoom / 300));
-        cam.setTarget(new BABYLON.Vector3(0, .82, 0));
-        return true;
-      }, { pose, zoom: ZOOM });
-      await page.mouse.move(cx, cy);
-      if (!cameraReset) await page.mouse.wheel(0, ZOOM);
-      await page.waitForTimeout(600);
-      const front = `lab-us-${pose}-front.png`;
-      await page.screenshot({ path: path.join(OUT, front), clip: box, timeout: 120000 });
-      labShots.push({ pose, view: 'front', file: front, clip: await page.textContent('#animationLabSource').catch(() => '') });
-      await page.mouse.move(cx, cy);
-      await page.mouse.down();
-      await page.mouse.move(cx + SIDE_DRAG, cy, { steps: 12 });
-      await page.mouse.up();
-      await page.waitForTimeout(600);
-      const side = `lab-us-${pose}-side.png`;
-      await page.screenshot({ path: path.join(OUT, side), clip: box, timeout: 120000 });
-      labShots.push({ pose, view: 'side', file: side, clip: await page.textContent('#animationLabSource').catch(() => '') });
+      await page.evaluate(frame => {
+        const input = document.getElementById('animationLabFrame');
+        input.value = String(frame);
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }, FRAME);
+      const state = await page.evaluate(() => window.__battleMotionLab.state());
+      if (!state.paused || state.frame !== FRAME || Math.abs(state.rootX) > 1e-5 || Math.abs(state.rootZ) > 1e-5)
+        fail.push(`Motion Lab ${pose}: frame/root state ${JSON.stringify(state)}`);
+      if (pose === 'reload' && state.twoHand) fail.push('Motion Lab reload kept the left hand attached');
+      if (['aim', 'walk-aim', 'crouch-aim'].includes(pose) && state.twoHand !== 1)
+        fail.push(`Motion Lab ${pose}: two-hand hold did not attach (${JSON.stringify(state)})`);
+      for (const view of ['front', 'side']) {
+        const positioned = await page.evaluate(({ view, radius }) => {
+          const engines = (BABYLON.EngineStore && BABYLON.EngineStore.Instances) || BABYLON.Engine.Instances || [];
+          const engine = engines.find(e => e.getRenderingCanvas && e.getRenderingCanvas()?.id === 'animationLabCanvas');
+          const cam = engine?.scenes?.[0]?.activeCamera;
+          if (!cam || typeof cam.alpha !== 'number') return false;
+          cam.alpha = view === 'front' ? -Math.PI / 2 : 0;
+          cam.beta = 1.08;
+          cam.radius = radius;
+          cam.setTarget(new BABYLON.Vector3(0, .82, 0));
+          return true;
+        }, { view, radius: LAB_RADIUS });
+        if (!positioned) fail.push(`Motion Lab ${pose}: camera unavailable`);
+        await page.waitForTimeout(250);
+        const file = `lab-us-${pose}-${view}.png`;
+        await page.screenshot({ path: path.join(OUT, file), clip: box, timeout: 120000 });
+        labShots.push({ pose, view, file, frame: FRAME, state });
+      }
     }
 
     // --- Live battle close-ups for every character model and weapon variant ---
