@@ -1,10 +1,10 @@
-name: Tripo model sync
+name: Tripo rigged FBX sync
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "List models or download models"
+        description: "List available character tasks or export selected ones"
         required: true
         default: "list"
         type: choice
@@ -12,21 +12,21 @@ on:
           - list
           - download
       limit:
-        description: "How many recent Tripo usage records to inspect"
+        description: "How many recent Tripo usage records to inspect in list mode"
         required: true
         default: "50"
         type: string
       task_ids:
-        description: "Optional task IDs (comma/space/newline separated). Blank = recent model tasks"
+        description: "Required for download: source task IDs to export as Mixamo rigged 4K FBX"
         required: false
         type: string
       destination:
-        description: "Directory to store downloaded models"
+        description: "Directory for exported rigged FBX files"
         required: true
         default: "Assets/tripo"
         type: string
       commit_downloads:
-        description: "Commit downloaded models to work/fbx-soldier-animations"
+        description: "Commit exported models to work/fbx-soldier-animations"
         required: true
         default: true
         type: boolean
@@ -58,7 +58,7 @@ jobs:
             exit 1
           fi
 
-      - name: List or download Tripo models
+      - name: List or export Tripo models
         env:
           TRIP_API: ${{ secrets.TRIP_API }}
           TRIPO_MODE: ${{ inputs.mode }}
@@ -66,14 +66,9 @@ jobs:
           TRIPO_TASK_IDS: ${{ inputs.task_ids }}
           TRIPO_DESTINATION: ${{ inputs.destination }}
         run: |
-          python3 scripts/tripo_models.py \
-            --mode "$TRIPO_MODE" \
-            --limit "$TRIPO_LIMIT" \
-            --task-ids "$TRIPO_TASK_IDS" \
-            --destination "$TRIPO_DESTINATION" \
-            --summary "$GITHUB_STEP_SUMMARY"
+          python3 scripts/tripo_models.py             --mode "$TRIPO_MODE"             --limit "$TRIPO_LIMIT"             --task-ids "$TRIPO_TASK_IDS"             --destination "$TRIPO_DESTINATION"             --summary "$GITHUB_STEP_SUMMARY"
 
-      - name: Commit downloaded models
+      - name: Commit exported rigged FBX files
         if: ${{ inputs.mode == 'download' && inputs.commit_downloads }}
         shell: bash
         run: |
@@ -85,5 +80,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- "${{ inputs.destination }}"
-          git commit -m "assets: sync models from Tripo"
+          git commit -m "assets: sync Mixamo rigged 4K Tripo FBX"
           git push origin HEAD:work/fbx-soldier-animations
