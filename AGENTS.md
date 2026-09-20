@@ -44,8 +44,13 @@ Notes that keep coming up, so they live here now:
 `labs/fbx-animation-lab.html` sections 3–5 are the calibration frontend for the weapon
 tables in `battle/modules/53-fbx-soldier-backend.js`: pick deployed soldiers, animations
 and weapons from `labs/asset-list.php`, click vertices to set soldier contacts A (right)
-and B (left) plus weapon grip / fore-near / fore-far, watch the weapon seat live, then
-save (browser localStorage + JSON download) and paste the generated snippet into
+and B (left) plus weapon grip / fore-near / fore-far. Use **Frame hands** or **Frame weapon**
+for close picking. Pause on a useful pose, pick points, then press **Seat weapon**. Enable
+**Weapon follows hands during playback** after the points are set. The picker reads posed
+vertices and checks that soldier picks are
+weighted to the chosen hand; a missed click keeps the picker armed. The seat preview
+uses the picked fore-end range, and reload/death clips keep the last right-hand hold.
+Then save (browser localStorage + JSON download) and paste the generated snippet into
 `SOLDIER_CONTACTS` (per model) and `WEAPON_POINTS`/`WEAPON_MODEL_POINTS` (universal per
 weapon). Contacts are hand-bone-local import units (backend anchor space); weapon points
 are weapon-local metres (game layout). The lab pins Babylon 9.27.1, the battle runtime's

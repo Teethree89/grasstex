@@ -86,6 +86,7 @@
 
       <h2>4 — Contact calibration</h2>
       <p class="hint">Click a vertex on the soldier, then assign it as a hand contact. Click on the weapon for grip / fore-end points. Contacts are stored in hand-bone space (same convention as the battle backend); weapon points in weapon metres.</p>
+      <div class="row" style="margin-top:9px"><button id="frameHands">Frame hands</button><button id="frameWeapon">Frame weapon</button></div>
       <div class="row" style="margin-top:9px"><button id="pickA">Set A · right contact</button><button id="pickB">Set B · left contact</button></div>
       <div class="row" style="margin-top:9px"><button id="pickGrip">Set grip</button><button id="pickForeN">Fore near</button><button id="pickForeF">Fore far</button></div>
       <div class="numgrid" id="calibGrid">
@@ -98,7 +99,7 @@
       </div>
       <p class="hint" style="margin-top:8px">Fore-end length <span class="key" id="foreLen">—</span> (weapon-specific; type the far point to set it).</p>
       <div class="row" style="margin-top:9px"><button id="seatWeapon">Seat weapon</button><button id="bindPose">Bind pose</button></div>
-      <label class="check"><input id="trackHands" type="checkbox" checked> Weapon follows hands during playback</label>
+      <label class="check"><input id="trackHands" type="checkbox"> Weapon follows hands during playback</label>
 
       <h2>Save</h2>
       <div class="row"><button id="saveLocal">Save in browser</button><button id="loadLocal">Reload saved</button></div>
@@ -160,6 +161,7 @@
     const camera = new BABYLON.ArcRotateCamera('labCamera', -Math.PI / 2.4, Math.PI / 2.75, 4.4, new BABYLON.Vector3(0, .9, 0), scene);
     camera.attachControl(canvas, true);
     camera.wheelDeltaPercentage = .01;
+    camera.minZ = .01; // allow close inspection of pistol trigger and hand vertices
     camera.lowerRadiusLimit = .25;
 
     const skyLight = new BABYLON.HemisphericLight('skyLight', new BABYLON.Vector3(0,1,0), scene);
@@ -504,6 +506,7 @@
         disposeModel();
         const result = await BABYLON.SceneLoader.ImportMeshAsync('', 'file:', file, scene, undefined, '.fbx');
         modelAssets = {
+          file:file.name,
           meshes:result.meshes||[],
           skeletons:result.skeletons||[],
           transformNodes:result.transformNodes||[],
@@ -511,6 +514,11 @@
         };
         modelMeshes = modelAssets.meshes;
         modelSkeletons = modelAssets.skeletons;
+        if (typeof labCalib !== 'undefined') {
+          if (labCalib.modelFile !== file.name) labCalib.contacts = { right:null, left:null };
+          labCalib.modelFile = file.name;
+          labRefreshFields();
+        }
         const bones = scanModel();
         attachModelContainer();
         labRest = modelAssets.transformNodes.map(node => ({
@@ -642,7 +650,7 @@
     modelFile:'', weaponFile:'', weapon:null, // {mesh, container}
     contacts:{ right:null, left:null },       // BABYLON.Vector3, hand-bone local
     weaponPts:{ grip:null, foreN:null, foreF:null }, // BABYLON.Vector3, weapon local
-    pendingPick:null, markers:{}, downPos:null
+    pendingPick:null, markers:{}, downPos:null, oneHandLocal:null
   };
   window.__labCalib = labCalib;
   const LAB_STORE_KEY = 'fbxLabCalib.v1';
@@ -693,6 +701,9 @@
   }
   async function labImportWeapon(file, label){
     labDisposeWeapon();
+    labCalib.weaponPts = { grip:null, foreN:null, foreF:null };
+    labCalib.oneHandLocal = null;
+    labRefreshFields();
     setStatus('Importing weapon '+file.name+'…');
     const result = await BABYLON.SceneLoader.ImportMeshAsync('', 'file:', file, scene, undefined, '.fbx');
     const meshes = (result.meshes || []).filter(m => m.getTotalVertices && m.getTotalVertices() > 0);
@@ -714,12 +725,15 @@
       const k = -butt / zmin;
       if (Number.isFinite(k) && Math.abs(k - 1) > 1e-3) mesh.bakeTransformIntoVertices(BABYLON.Matrix.Scaling(k, k, k));
     }
+    // Keep the unseated weapon clear of the floor and soldier for point picking.
+    // This changes only the preview transform; vertex-local calibration stays metres.
+    mesh.position.set(1.35,.85,1.5);
     mesh.isPickable = true;
     mesh.refreshBoundingInfo();
     labCalib.weapon = { mesh, container:result, file:label };
     labCalib.weaponFile = label;
     setStatus('Weapon ready: '+label+'. Pick grip / fore-end points on it, or type them below.');
-    labSeatWeapon();
+    labRefreshMarkers();
   }
   function labDisposeWeapon(){
     if (labCalib.weapon) {
@@ -733,6 +747,7 @@
     }
     labCalib.weapon = null;
     labCalib.weaponFile = '';
+    labCalib.oneHandLocal = null;
   }
   $('libLoad').onclick = async () => {
     try {
@@ -764,6 +779,26 @@
     }
     return null;
   }
+  $('frameHands').onclick = () => {
+    const right = labHandNode('right'), left = labHandNode('left');
+    if (!right || !left) { setStatus('Load a soldier with both hand joints first.', true); return; }
+    camera.target.copyFrom(BABYLON.Vector3.Lerp(right.getAbsolutePosition(),left.getAbsolutePosition(),.5));
+    camera.radius = .7;
+    camera.lowerRadiusLimit = .15;
+  };
+  $('frameWeapon').onclick = () => {
+    const mesh = labCalib.weapon && labCalib.weapon.mesh;
+    if (!mesh || mesh.isDisposed()) { setStatus('Load a weapon first.', true); return; }
+    mesh.computeWorldMatrix(true);
+    mesh.refreshBoundingInfo();
+    const box = mesh.getBoundingInfo().boundingBox;
+    camera.target.copyFrom(box.centerWorld);
+    const size = box.maximumWorld.subtract(box.minimumWorld);
+    camera.alpha = 0;
+    camera.beta = 1.2;
+    camera.radius = Math.max(size.x,size.y,size.z,.12)*2;
+    camera.lowerRadiusLimit = .08;
+  };
   function labNodeWorld(node){
     node.computeWorldMatrix(true);
     return node.getWorldMatrix();
@@ -783,7 +818,7 @@
       if (entry.rotationQuaternion) {
         if (!entry.node.rotationQuaternion) entry.node.rotationQuaternion = new BABYLON.Quaternion();
         entry.node.rotationQuaternion.copyFrom(entry.rotationQuaternion);
-      }
+      } else if (entry.rotation) entry.node.rotation.copyFrom(entry.rotation);
     });
     setStatus('Bind pose restored. Pick contacts, then replay a clip to check the seat tracks.');
   };
@@ -809,13 +844,15 @@
     labCalib.downPos = null;
     if (dx * dx + dy * dy > 36) return; // it was an orbit drag, not a pick
     const rect = canvas.getBoundingClientRect();
-    labDoPick(event.clientX - rect.left, event.clientY - rect.top, labCalib.pendingPick);
-    labArm(labCalib.pendingPick); // disarm (labArm toggles, so pass current to clear)
+    if (labDoPick(event.clientX - rect.left, event.clientY - rect.top, labCalib.pendingPick))
+      labArm(labCalib.pendingPick); // keep the picker armed after a miss
   });
   function labNearestVertex(mesh, worldPoint){
     mesh.computeWorldMatrix(true);
     const local = BABYLON.Vector3.TransformCoordinates(worldPoint, labInvert(mesh.getWorldMatrix()));
-    const pos = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+    // getVerticesData is the rest mesh. Match the visible, skinned vertex when a clip
+    // is playing, but return its stable vertex index so the saved contact remains local.
+    const pos = mesh.getPositionData(!!mesh.skeleton, true);
     let best = -1, bestD = Infinity;
     for (let i = 0; i < pos.length; i += 3) {
       const dx = pos[i] - local.x, dy = pos[i + 1] - local.y, dz = pos[i + 2] - local.z;
@@ -823,20 +860,45 @@
       if (d < bestD) { bestD = d; best = i; }
     }
     if (best < 0) return null;
-    return new BABYLON.Vector3(pos[best], pos[best + 1], pos[best + 2]);
+    return { index:best / 3, position:new BABYLON.Vector3(pos[best], pos[best + 1], pos[best + 2]) };
+  }
+  function labHandWeight(mesh, vertexIndex, side){
+    if (!mesh.skeleton) return 0;
+    const vb = BABYLON.VertexBuffer, sk = mesh.skeleton;
+    const indices = [mesh.getVerticesData(vb.MatricesIndicesKind), mesh.getVerticesData(vb.MatricesIndicesExtraKind)];
+    const weights = [mesh.getVerticesData(vb.MatricesWeightsKind), mesh.getVerticesData(vb.MatricesWeightsExtraKind)];
+    let sum = 0;
+    for (let set = 0; set < 2; set++) {
+      if (!indices[set] || !weights[set]) continue;
+      for (let j = 0; j < 4; j++) {
+        const at = vertexIndex * 4 + j, bone = sk.bones[indices[set][at]];
+        if (bone && labCanon(bone.name).startsWith(side+'hand')) sum += weights[set][at];
+      }
+    }
+    return sum;
   }
   function labDoPick(x, y, mode){
     const onSoldier = (mode === 'A' || mode === 'B');
     const pool = onSoldier ? renderableMeshes() : (labCalib.weapon ? [labCalib.weapon.mesh] : []);
     if (!pool.length) { setStatus(onSoldier ? 'Load a soldier model first.' : 'Load a weapon first.', true); return; }
+    // GPU skinning leaves ordinary pick bounds at the rest pose. Update only when
+    // the user clicks; refreshing all meshes every render is needlessly expensive.
+    if (onSoldier) pool.forEach(mesh => {
+      if (mesh.skeleton) mesh.refreshBoundingInfo({ applySkeleton:true, applyMorph:true });
+    });
     const pick = scene.pick(x, y, mesh => pool.includes(mesh));
     if (!pick.hit || !pick.pickedMesh) { setStatus('No mesh under the cursor; zoom in and click the surface.', true); return; }
-    const vertex = labNearestVertex(pick.pickedMesh, pick.pickedPoint);
-    if (!vertex) { setStatus('Could not read vertices off '+pick.pickedMesh.name+'.', true); return; }
+    const hit = labNearestVertex(pick.pickedMesh, pick.pickedPoint);
+    if (!hit) { setStatus('Could not read vertices off '+pick.pickedMesh.name+'.', true); return; }
+    const vertex = hit.position;
     if (onSoldier) {
       const side = (mode === 'A') ? 'right' : 'left';
       const hand = labHandNode(side);
       if (!hand) { setStatus('No '+side+' hand joint found on this rig.', true); return; }
+      if (labHandWeight(pick.pickedMesh, hit.index, side) < .5) {
+        setStatus('That vertex is not weighted to the '+side+' hand or fingers; pick on the palm.', true);
+        return;
+      }
       // Hand-bone local import units: mesh-local -> world -> hand-local. The lab preview
       // scale cancels through the inverses, so this matches the battle backend's anchor
       // space exactly.
@@ -858,8 +920,8 @@
     }
     labRefreshFields();
     labRefreshMarkers();
-    labSeatWeapon();
     labUpdateSnippet();
+    return true;
   }
   const LAB_MARKER_COLORS = { A:[.43,.91,.72], B:[.49,.77,1], grip:[.97,.77,.42], foreN:[1,.6,.36], foreF:[1,.42,.42] };
   function labMarker(name){
@@ -879,7 +941,7 @@
     // Current-pose world position of a stored hand contact (markers + seat follow playback).
     const anchor = side === 'right' ? labCalib.contacts.right : labCalib.contacts.left;
     const hand = labHandNode(side);
-    if (!anchor || !hand) return null;
+    if (!anchor || !hand || modelAssets.file !== labCalib.modelFile) return null;
     return BABYLON.Vector3.TransformCoordinates(anchor, labNodeWorld(hand));
   }
   function labRefreshMarkers(){
@@ -891,7 +953,7 @@
     };
     place('A', labAnchorWorld('right'));
     place('B', labAnchorWorld('left'));
-    const w = labCalib.weapon && !labCalib.weapon.mesh.isDisposed() ? labCalib.weapon.mesh : null;
+    const w = labCalib.weapon && labCalib.weapon.file === labCalib.weaponFile && !labCalib.weapon.mesh.isDisposed() ? labCalib.weapon.mesh : null;
     const wpos = local => {
       if (!local || !w) return null;
       w.computeWorldMatrix(true);
@@ -906,42 +968,85 @@
   <script src="fbx-animation-root-lock.js?v=4ab61a63204894bdd1b67c93c6f1307834f1ce85"></script>
   <script>
   /* ---- workbench part 2: seat preview, fields, persistence, export ---- */
-  function labSeatWeapon(){
-    if (!labCalib.weapon || labCalib.weapon.mesh.isDisposed()) return;
-    if (!labCalib.contacts.right) return;
+  function labRightSocket(mesh, handWorld){
+    const world = labCalib.oneHandLocal.multiply(handWorld);
+    if (!mesh.rotationQuaternion) mesh.rotationQuaternion = new BABYLON.Quaternion();
+    world.decompose(mesh.scaling,mesh.rotationQuaternion,mesh.position);
+  }
+  function labRememberRightSocket(mesh, handWorld){
+    mesh.computeWorldMatrix(true);
+    labCalib.oneHandLocal = mesh.getWorldMatrix().multiply(labInvert(handWorld));
+  }
+  function labSeatWeapon(follow=false){
+    if (!labCalib.weapon || labCalib.weapon.mesh.isDisposed()) return 'Load a weapon first.';
+    if (labCalib.weapon.file !== labCalib.weaponFile) return 'Load the weapon named by this calibration first.';
+    if (!labCalib.contacts.right) return 'Pick the right hand contact first.';
     const mesh = labCalib.weapon.mesh;
     mesh.computeWorldMatrix(true);
     const R = labAnchorWorld('right');
-    if (!R) return;
+    if (!R) return 'Load the soldier named by this calibration first.';
     const G = labCalib.weaponPts.grip;
+    if (!G) return 'Pick a grip point on the weapon first.';
+    const handWorld = labNodeWorld(labHandNode('right'));
+    const clipName = (clipSelect.selectedOptions[0]?.textContent || activeGroup?.name || '').toLowerCase();
+    if (/reload|death|dying|hit reaction/.test(clipName)) {
+      if (labCalib.oneHandLocal) labRightSocket(mesh,handWorld);
+      return labCalib.oneHandLocal ? 'Support hand released for this clip.' : 'Seat the weapon in an aim pose before checking a released-hand clip.';
+    }
     const L = labAnchorWorld('left');
-    if (G && L) {
-      // Long-gun seat, mirroring the backend hold at full weight: grip point onto the
-      // right contact, barrel swung through the left contact, roll kept sights-up.
-      const z = L.subtract(R);
-      if (z.lengthSquared() < 1e-10) return;
-      z.normalize();
+    const N = labCalib.weaponPts.foreN, F = labCalib.weaponPts.foreF;
+    if (L && N && F) {
+      // Match the backend's two-point solve: select a point on the picked fore-end
+      // line at the posed hand spacing, then map grip->fore exactly onto right->left.
+      if (Math.abs(N.x-F.x) > .005 || Math.abs(N.y-F.y) > .005)
+        return 'Fore near/far must share x and y (within 5 mm); re-pick or edit them.';
+      const distance = BABYLON.Vector3.Distance(R, L);
+      const dx = N.x-G.x, dy = N.y-G.y;
+      const nearZ = Math.min(N.z,F.z), farZ = Math.max(N.z,F.z);
+      const near = Math.hypot(dx,dy,nearZ-G.z), far = Math.hypot(dx,dy,farZ-G.z);
+      if (distance < near || distance > far || distance*distance < dx*dx+dy*dy)
+        return 'Support hand is outside the picked fore-end range; widen or move the range.';
+      const z = G.z + Math.sqrt(Math.max(0,distance*distance-dx*dx-dy*dy));
+      if (z < nearZ-.001 || z > farZ+.001)
+        return 'Fore-end line does not reach the support hand; re-pick the points.';
+      const localAxis = new BABYLON.Vector3(dx,dy,z-G.z).normalize();
+      const worldAxis = L.subtract(R).normalize();
       const up = BABYLON.Vector3.Up();
-      let y = up.subtract(z.scale(BABYLON.Vector3.Dot(up, z)));
-      if (y.lengthSquared() < 1e-10) y = new BABYLON.Vector3(0, 1, 0); else y.normalize();
-      const x = BABYLON.Vector3.Cross(y, z); x.normalize();
-      const rotQ = BABYLON.Quaternion.RotationQuaternionFromAxis(x, y, z);
+      const localY = up.subtract(localAxis.scale(BABYLON.Vector3.Dot(up,localAxis))).normalize();
+      const worldY = up.subtract(worldAxis.scale(BABYLON.Vector3.Dot(up,worldAxis))).normalize();
+      const localX = BABYLON.Vector3.Cross(localY,localAxis).normalize();
+      const worldX = BABYLON.Vector3.Cross(worldY,worldAxis).normalize();
+      const localQ = BABYLON.Quaternion.RotationQuaternionFromAxis(localX,localY,localAxis);
+      const worldQ = BABYLON.Quaternion.RotationQuaternionFromAxis(worldX,worldY,worldAxis);
+      const rotQ = worldQ.multiply(localQ.conjugate());
       const rotM = new BABYLON.Matrix();
       rotQ.toRotationMatrix(rotM);
       const origin = R.subtract(BABYLON.Vector3.TransformNormal(G, rotM));
       if (!mesh.rotationQuaternion) mesh.rotationQuaternion = new BABYLON.Quaternion();
       mesh.rotationQuaternion.copyFrom(rotQ);
       mesh.position.copyFrom(origin);
-    } else if (G) {
-      // Pistol-style seat: translate only, keep the current orientation.
+      if (!follow || !labCalib.oneHandLocal) labRememberRightSocket(mesh,handWorld);
+      return 'Grip and fore-end seated on both hand contacts.';
+    } else {
+      const isPistol = /m1911a1|p38/i.test(labCalib.weaponFile);
+      if (L && !isPistol)
+        return 'Pick both fore-end points before seating a long gun.';
+      // One-hand hold: capture the seated weapon relative to the right hand. During
+      // playback, reuse that fixed local transform so the pistol rotates with the hand.
+      if (follow && labCalib.oneHandLocal) {
+        labRightSocket(mesh,handWorld);
+        return 'Grip follows the right hand.';
+      }
       const scl = new BABYLON.Vector3(), rot = new BABYLON.Quaternion(), tp = new BABYLON.Vector3();
       mesh.getWorldMatrix().decompose(scl, rot, tp);
       const rotM = new BABYLON.Matrix();
       rot.toRotationMatrix(rotM);
       mesh.position.copyFrom(R.subtract(BABYLON.Vector3.TransformNormal(G, rotM)));
+      labRememberRightSocket(mesh,handWorld);
+      return 'Grip seated on the right hand.';
     }
   }
-  $('seatWeapon').onclick = () => { labSeatWeapon(); setStatus('Weapon seated on the current contacts.'); };
+  $('seatWeapon').onclick = () => { setStatus(labSeatWeapon()); labRefreshMarkers(); };
   $('trackHands').onchange = () => setStatus($('trackHands').checked ? 'Weapon tracks the hands during playback.' : 'Weapon frozen; Seat weapon re-seats it once.');
 
   function labRefreshFields(){
@@ -964,7 +1069,7 @@
       const v = labParseTriplet(ids);
       if (!v) { setStatus('Contacts need three finite numbers.', true); labRefreshFields(); return; }
       if (side === 'right') labCalib.contacts.right = v; else labCalib.contacts.left = v;
-      labRefreshMarkers(); labSeatWeapon(); labUpdateSnippet();
+      labRefreshMarkers(); labUpdateSnippet();
     });
   });
   [[['gx','gy','gz'],'grip'], [['fnx','fny','fnz'],'foreN'], [['ffx','ffy','ffz'],'foreF']].forEach(([ids, key]) => {
@@ -972,7 +1077,7 @@
       const v = labParseTriplet(ids);
       if (!v) { setStatus('Weapon points need three finite numbers.', true); labRefreshFields(); return; }
       labCalib.weaponPts[key] = v;
-      labRefreshMarkers(); labSeatWeapon(); labUpdateSnippet();
+      labRefreshMarkers(); labUpdateSnippet();
     });
   });
 
@@ -1095,10 +1200,10 @@
 
   scene.onBeforeRenderObservable.add(() => {
     if (!modelAssets) return;
-    if ($('trackHands') && $('trackHands').checked) {
-      labRefreshMarkers();
-      labSeatWeapon();
+    if ($('trackHands') && $('trackHands').checked && !labCalib.pendingPick) {
+      labSeatWeapon(true);
     }
+    labRefreshMarkers();
   });
   labRefreshFields();
   labLoadLibrary();
