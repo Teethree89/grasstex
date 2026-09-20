@@ -35,7 +35,24 @@ at load. Either naming dialect works: the tools and the backend canonicalise bon
    twin does not have takes the weights of the nearest twin surface, which is normally what it
    should follow; check the lineup for anything hanging off the wrong joint. The armature is passed
    through untouched, so the result's rest pose matches the twin's exactly and every clip binds.
-   Feed the intermediate to step 1.
+   Feed the intermediate to step 0b.
+0b. The model's rest pose must be the animation library's rest pose. Clips are retargeted by the
+   rotation each bone makes *relative to its rest* (`retargetClips`), so when the clip rig sits at
+   its rest the model sits at its own: any difference between the two is added to every clip. The
+   library is a T-pose. The older characters are within ~15 degrees of it and look right; the
+   generator's characters arrive in an A-pose, 44-45 degrees out at the shoulder and elbow, which
+   folds the arms in across the chest in every clip and hides the weapon.
+
+   ```
+   Blender -b --factory-startup --python tools/match-rest-pose.py -- \
+     --input <rigged>.fbx --rest-from "Assets/animations/Rifle Idle Looking Around - Rifle Idle.fbx" \
+     --output <intermediate>.fbx
+   ```
+
+   Each bone is rotated onto the library's orientation (positions and bone lengths stay the model's
+   own), the deformed mesh is baked at that pose and the pose becomes the new rest. It prints the
+   worst arm offset before and after and refuses to write above 1 degree. `--report-only` measures
+   an existing model without changing it — worth running on anything that animates oddly.
 1. Repair and re-export (never changes the armature):
 
    ```
@@ -54,7 +71,11 @@ at load. Either naming dialect works: the tools and the backend canonicalise bon
 2. Use lowercase file names (the web host is case-sensitive; macOS is not: rename with `git mv`).
 3. Register the pair in `MODEL_SETS` in `battle/modules/53-fbx-soldier-backend.js`.
 4. Verify before committing:
-   - bone rest transforms unchanged against the raw file (0 cm, < 0.1 degree);
+   - the arms in a real clip, in the running game, not just a Blender pose: driving the bones by
+     hand in Blender bypasses the retargeting, which is exactly where a rest-pose mismatch shows.
+     Compare against a soldier on one of the older models in the same gait;
+   - bone rest transforms unchanged against the raw file (0 cm, < 0.1 degree), except where step 0b
+     deliberately replaced the rest pose;
    - the backend log says `FBX soldiers ready: <set> ...` and whether it retargeted;
    - a posed lineup (idle, aim, walk + aim, run, crouch aim, crouch walk, prone, reload, deaths)
      from front, side and behind, lit, with no holes or dark patches; rifle yaw/pitch within a few
