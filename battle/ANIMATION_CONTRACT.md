@@ -106,10 +106,12 @@ displacement each simulation step, then:
 - **Deaths:** each variant draws at random from a pool (`DEATH_POOLS`): forward collapses, backward
   collapses and falls to the knees; crouched and prone soldiers have their own; a soldier cut down
   at a run keeps his momentum.
-- **Weapon:** each hand gets a palm-centre anchor at load (the centroid of the vertices skinned to
-  it, stored in the hand bone's space, like an added socket bone). The weapon's grip point sits on
-  the right palm; the barrel swings so the fore-end line (`WEAPON_POINTS` in the backend) passes
-  through the left palm at whatever spacing the clip uses. Where the left hand leaves the weapon it
+- **Weapon:** the right hand gets a web anchor between thumb and index bases; the left support
+  anchor sits near the palm side of the index finger's second knuckle. Both are stored in the
+  hand bone's space like added socket bones, with a hand-skinned vertex centroid fallback. The
+  weapon's grip point sits on the right web; the barrel swings so the fore-end line
+  (`WEAPON_POINTS` in the backend) passes through the left support anchor at the clip's spacing.
+  Where the left hand leaves the weapon it
   fades back to a rigid right-hand hold solved once from the aiming clip. While aiming, a capped spine rotation
   (<= ~40 degrees) turns the barrel onto the target, which corrects the crouched and prone clips.
   The weapon stays at world scale 1 regardless of body-shape scaling.

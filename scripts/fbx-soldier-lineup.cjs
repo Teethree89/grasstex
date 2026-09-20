@@ -177,6 +177,10 @@ function parseReady(line) {
       catch (e) { return { err: String(e).slice(0, 200) }; }
     }).catch(e => ({ err: String(e).slice(0, 200) }));
     if (sockets.err) fail.push('socket status: ' + sockets.err);
+    else for (const [file, anchors] of Object.entries(sockets)) {
+      if (anchors.right !== 'web' || anchors.left !== 'index-pip')
+        fail.push(`${file}: unexpected hand contacts ${anchors.right}/${anchors.left}`);
+    }
     const socketLines = [...new Set(logs.filter(l => l.includes('[ANIM] hand sockets')))];
     if (!socketLines.length) fail.push('no per-model hand-socket diagnostics logged');
 

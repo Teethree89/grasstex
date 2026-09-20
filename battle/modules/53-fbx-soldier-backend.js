@@ -136,8 +136,9 @@ var WEAPON_POINTS={
   'fg42.fbx':{trigger:[0,-.10,-.055],grip:[0,-.095,-.12],fore:[0,-.025,.08,.30]},
   'thompson.fbx':{trigger:[0,-.08,.01],grip:[0,-.10,-.06],fore:[0,-.015,.13,.34]},
   'mp40.fbx':{trigger:[0,-.075,-.055],grip:[0,-.10,-.125],fore:[0,-.035,.06,.17]},
-  'm1911a1.fbx':{trigger:[0,-.07,.04],grip:[0,-.05,-.055],fore:null},
-  'p38.fbx':{trigger:[0,-.07,.03],grip:[0,-.055,-.06],fore:null},
+  /* Pistol frame sits deeper into the captain's right palm: back, toward body centre, lower. */
+  'm1911a1.fbx':{trigger:[0,-.07,.04],grip:[.035,0,.015],fore:null},
+  'p38.fbx':{trigger:[0,-.07,.03],grip:[.035,-.005,.01],fore:null},
   rifle:{grip:GRIP.rifle,fore:[0,-.05,.05,.35]},carbine:{grip:GRIP.carbine,fore:[0,-.05,.04,.28]},
   lmg:{grip:GRIP.lmg,fore:[0,-.075,.15,.45]},pistol:{grip:GRIP.pistol,fore:null}
 };
@@ -209,23 +210,25 @@ function loadContainer(scene,url){return BABYLON.LoadAssetContainerAsync(url,sce
 
 /* ---- import + conversion ------------------------------------------------------------------ */
 
-/* Each hand anchor is a fixed point in that hand bone's space: the web of the hand, i.e. the
-   midpoint of the thumb-base and index-base joints at bind pose. That is where a gripped
-   weapon's wrist or rear frame actually sits. The rigs carry no dedicated web bone, so the
-   socket is built from the two finger-base joints; rigs without finger bones keep the old
-   centroid of the hand-skinned vertices. Either way it acts like a socket bone added to the
-   rig without editing the asset, and it is where the weapon is held. `out[name]` is the
-   anchor; `out[name+'Source']` records 'web' or 'centroid'; `out[name+'Centroid']` always
-   keeps the centroid so the grip solve can hold long-gun placement fixed across the socket
-   change (a change of coordinates, not a re-fit). */
+/* Hand anchors are fixed in their hand bone's space. The right grip lands in the web between
+   thumb and index bases. The left fore-end rests at the palm side of the index finger's second
+   knuckle, forward of the wrist: use the second index joint blended a little toward the web.
+   This is a stable virtual socket even when the fingers animate. Rigs without those joints
+   fall back to the centroid of hand-skinned vertices. */
 function palmAnchors(meshes,nodes,scheme){
   var out={};
   [BONE.rightHand,BONE.leftHand].forEach(function(name){
     var sum=new V3(),count=0,node=nodes[name],web=null;
-    var thumb=node&&nodes[name+'thumb1'],index=node&&nodes[name+'index1'];
+    var thumb=node&&nodes[name+'thumb1'],index=node&&nodes[name+'index1'],index2=node&&nodes[name+'index2'];
     if(node&&thumb&&index){
-      var mid=thumb.getAbsolutePosition().add(index.getAbsolutePosition()).scale(.5);
-      web=V3.TransformCoordinates(mid,node.getWorldMatrix().clone().invert());
+      /* Fresh vectors only (V3.Lerp): getAbsolutePosition may hand back internal state,
+         so never chain mutating arithmetic onto it. */
+      var webMid=V3.Lerp(thumb.getAbsolutePosition(),index.getAbsolutePosition(),.5);
+      if(name===BONE.leftHand&&index2){
+        webMid=V3.Lerp(webMid,index2.getAbsolutePosition(),.8);
+        out[name+'Source']='index-pip';
+      }else out[name+'Source']='web';
+      web=V3.TransformCoordinates(webMid,node.getWorldMatrix().clone().invert());
     }
     meshes.forEach(function(mesh){
       var sk=mesh.skeleton;if(!sk||!node)return;
@@ -239,7 +242,7 @@ function palmAnchors(meshes,nodes,scheme){
     });
     var centroid=count&&node?V3.TransformCoordinates(sum.scale(1/count),node.getWorldMatrix().clone().invert()):V3.Zero();
     out[name]=web||centroid;
-    out[name+'Source']=web?'web':'centroid';
+    if(!web)out[name+'Source']='centroid';
     out[name+'Centroid']=centroid;
     out[name+'Vertices']=count;
   });
