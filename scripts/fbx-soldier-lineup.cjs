@@ -5,8 +5,8 @@
  *     model set, retarget flags, weapon list, clip count and animated-bone count.
  *  2. Opens the in-page Motion Lab (one-soldier scene) and screenshots the US paratrooper
  *     rifleman with its M1 Garand in aim / reload / walk-aim / crouch-aim, front and side.
- *  3. Starts the live battle, moves the RTS camera onto a US and a GE paratrooper rifleman
- *     (M1 Garand / Kar98k), pauses, and screenshots each close-up.
+ *  3. Starts the live battle and captures each faction's rifleman, captain, engineer,
+ *     gunner and both scout weapon variants.
  *  4. Writes <out>/summary.json plus the PNGs; exits non-zero when the backend never becomes
  *     ready, a soldier fails to bind, or the page throws.
  *
@@ -19,7 +19,8 @@
  *
  * Env: FBX_URL (page URL), FBX_SEED, FBX_OUT (output dir), FBX_CHROME (Chrome binary;
  * defaults to the AGENTS.md working binary), FBX_ZOOM (wheel delta for lab close-ups),
- * FBX_SIDE_DRAG (horizontal drag px for the lab side profile).
+ * FBX_SIDE_DRAG (horizontal drag px for the lab side profile), FBX_POSES (comma-separated
+ * lab poses), FBX_ROLES (comma-separated faction/role names such as ge/scout2).
  */
 const { chromium } = require('playwright');
 const fs = require('node:fs');
@@ -33,6 +34,7 @@ const OUT = path.resolve(process.env.FBX_OUT || path.join(os.tmpdir(), 'fbx-line
 const ZOOM = Number(process.env.FBX_ZOOM || -500);
 const SIDE_DRAG = Number(process.env.FBX_SIDE_DRAG || 160);
 const LAB_POSES = (process.env.FBX_POSES || 'aim,reload,walk-aim,crouch-aim').split(',');
+const ROLE_FILTER = process.env.FBX_ROLES ? new Set(process.env.FBX_ROLES.split(',')) : null;
 
 function parseReady(line) {
   // "[ANIM] FBX soldiers ready: paratrooper us-paratrooper* ... , weapons m1-garand.fbx ... , 106 clips, 53 animated bones, 11589 ms, smoothed normals"
@@ -64,7 +66,7 @@ function parseReady(line) {
     if (ready && !ready.models.every(m => m.retargeted)) fail.push('not every model reports retargeted clips (*)');
 
     // --- Motion Lab: US paratrooper rifleman + M1 Garand through the weapon poses ---
-    await page.click('#animationLabToggle');
+    await page.evaluate(() => document.getElementById('animationLabToggle').click());
     for (let i = 0; i < 60; i++) {
       await page.waitForTimeout(1000);
       if (/FBX clip:/.test(await page.textContent('#animationLabSource').catch(() => ''))) break;
@@ -79,13 +81,28 @@ function parseReady(line) {
     const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
     const labShots = [];
     for (const pose of LAB_POSES) {
-      await page.selectOption('#animationLabPose', pose);
+      await page.evaluate(value => {
+        const select = document.getElementById('animationLabPose');
+        select.value = value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }, pose);
       await page.waitForTimeout(2200);
+      const cameraReset = await page.evaluate(({ pose, zoom }) => {
+        const engines = (BABYLON.EngineStore && BABYLON.EngineStore.Instances) || BABYLON.Engine.Instances || [];
+        const engine = engines.find(e => e.getRenderingCanvas && e.getRenderingCanvas().id === 'animationLabCanvas');
+        const cam = engine && engine.scenes && engine.scenes[0] && engine.scenes[0].activeCamera;
+        if (!cam || typeof cam.radius !== 'number') return false;
+        cam.alpha = -Math.PI / 2;
+        cam.beta = 1.08;
+        cam.radius = /walk|run|sprint/.test(pose) ? 4.5 : Math.max(1.6, Math.min(7, 3.6 + zoom / 300));
+        cam.setTarget(new BABYLON.Vector3(0, .82, 0));
+        return true;
+      }, { pose, zoom: ZOOM });
       await page.mouse.move(cx, cy);
-      await page.mouse.wheel(0, ZOOM);
+      if (!cameraReset) await page.mouse.wheel(0, ZOOM);
       await page.waitForTimeout(600);
       const front = `lab-us-${pose}-front.png`;
-      await canvas.screenshot({ path: path.join(OUT, front) });
+      await page.screenshot({ path: path.join(OUT, front), clip: box, timeout: 120000 });
       labShots.push({ pose, view: 'front', file: front, clip: await page.textContent('#animationLabSource').catch(() => '') });
       await page.mouse.move(cx, cy);
       await page.mouse.down();
@@ -93,23 +110,21 @@ function parseReady(line) {
       await page.mouse.up();
       await page.waitForTimeout(600);
       const side = `lab-us-${pose}-side.png`;
-      await canvas.screenshot({ path: path.join(OUT, side) });
+      await page.screenshot({ path: path.join(OUT, side), clip: box, timeout: 120000 });
       labShots.push({ pose, view: 'side', file: side, clip: await page.textContent('#animationLabSource').catch(() => '') });
     }
 
-    // --- Live battle close-ups per faction and weapon role (rifles, pistols, MGs) ---
-    await page.click('#animationLabClose').catch(() => {});
-    await page.click('#startBtn');
+    // --- Live battle close-ups for every character model and weapon variant ---
+    await page.evaluate(() => document.getElementById('animationLabClose').click()).catch(() => {});
+    await page.evaluate(() => document.getElementById('startBtn').click());
     await page.waitForTimeout(12000);
-    async function battleCloseup(faction, role, png) {
-      const info = await page.evaluate(({ faction, role }) => {
+    async function battleCloseup(faction, role, index, png) {
+      const info = await page.evaluate(({ faction, role, index }) => {
         const sim = window.__battle__;
         if (!sim) return { err: 'no battle' };
         const pool = [...(sim._roster[faction] || [])];
-        const pick = pool.find(s => s._fbx && s.role === role)
-          || pool.find(s => s._fbx)
-          || [...sim._roster.us, ...sim._roster.ge].find(s => s._fbx);
-        if (!pick) return { err: 'no FBX soldier' };
+        const pick = pool.filter(s => s._fbx && s.role === role)[index];
+        if (!pick) return { err: `no FBX ${faction}/${role} soldier at index ${index}` };
         const p = pick.root.position, cam = sim.scene && sim.scene.activeCamera;
         if (cam) {
           // Production serves the UniversalCamera fly controller (see battle/camera-controls.js),
@@ -121,18 +136,38 @@ function parseReady(line) {
         }
         sim.pause();
         return { faction: pick.faction, role: pick.role, file: pick._fbx.lib.file,
-          weapon: pick.weapon && (pick.weapon.model || pick.weapon.kind) };
-      }, { faction, role });
+          weapon: pick.weapon && (pick.weapon.model || pick.weapon.kind),
+          twoHand: pick._fbx.twoHand, supportErrorCm: pick._fbx.supportErrorCm,
+          supportReason: pick._fbx.supportReason,
+          supportReach: pick._fbx.supportHandM == null ? null : {
+            hand: pick._fbx.supportHandM, near: pick._fbx.supportNearM, far: pick._fbx.supportFarM } };
+      }, { faction, role, index });
       await page.waitForTimeout(1200);
-      await page.screenshot({ path: path.join(OUT, png) });
+      await page.screenshot({ path: path.join(OUT, png), timeout: 120000 });
       await page.evaluate(() => { const sim = window.__battle__; if (sim) sim.paused = false; });
-      return { file: png, ...info };
+      return { image: png, ...info };
     }
     const shots = [];
-    for (const [faction, role] of [['us', 'rifleman'], ['ge', 'rifleman'], ['us', 'captain'], ['ge', 'captain'], ['us', 'gunner'], ['ge', 'gunner']]) {
-      const shot = await battleCloseup(faction, role, `battle-${faction}-${role}.png`);
+    const expected = {
+      us: { rifleman: ['us-paratrooper.fbx', 'm1-garand.fbx'], captain: ['us-captain.fbx', 'm1911a1.fbx'],
+        engineer: ['us-engineer.fbx', 'm1-garand.fbx'], gunner: ['us-gunner.fbx', 'm1919a6.fbx'],
+        scout: ['us-scout.fbx', 'm1-carbine.fbx'], scout2: ['us-scout.fbx', 'thompson.fbx'] },
+      ge: { rifleman: ['ge-paratrooper.fbx', 'kar98k.fbx'], captain: ['ge-captain.fbx', 'p38.fbx'],
+        engineer: ['ge-engineer.fbx', 'kar98k.fbx'], gunner: ['ge-gunner.fbx', 'mg42.fbx'],
+        scout: ['ge-scout.fbx', 'fg42.fbx'], scout2: ['ge-scout.fbx', 'mp40.fbx'] }
+    };
+    for (const faction of ['us', 'ge']) for (const label of Object.keys(expected[faction])) {
+      if (ROLE_FILTER && !ROLE_FILTER.has(`${faction}/${label}`)) continue;
+      const role = label === 'scout2' ? 'scout' : label, index = label === 'scout2' ? 1 : 0;
+      const shot = await battleCloseup(faction, role, index, `battle-${faction}-${label}.png`);
       shots.push(shot);
-      if (shot.err) fail.push(`${faction}/${role} close-up: ` + shot.err);
+      if (shot.err) fail.push(`${faction}/${label} close-up: ` + shot.err);
+      else if (shot.file !== expected[faction][label][0] || shot.weapon !== expected[faction][label][1])
+        fail.push(`${faction}/${label}: expected ${expected[faction][label].join(' + ')}, got ${shot.file} + ${shot.weapon}`);
+      else if (shot.twoHand && shot.supportErrorCm > .5)
+        fail.push(`${faction}/${label}: fore-end misses left hand by ${shot.supportErrorCm} cm`);
+      else if (shot.supportReason === 'out-of-reach')
+        fail.push(`${faction}/${label}: left hand outside fore-end reach ${JSON.stringify(shot.supportReach)}`);
       await page.waitForTimeout(1500);
     }
     const sockets = await page.evaluate(() => {

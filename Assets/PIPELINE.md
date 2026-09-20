@@ -129,7 +129,10 @@ Keep the untouched source pack (e.g. the Meshy `.zip`) next to it; only `.fbx` f
    Register the file in `WEAPON_MODELS` under the faction and role kind (`rifle`, `carbine`, `lmg`,
    `pistol`) in the backend; a list is dealt out in turn (a squad's two scouts carry one of each).
    Unregistered kinds keep the procedural box weapon.
-5. Verify in the lineup: stock at the shoulder, right hand on the wrist, left hand on the fore-end,
+   The runtime seats `grip` on the model's right hand web and a reachable point on `fore` on its
+   left hand web. If a model's posed hand spacing exceeds that weapon's generic fore-end range,
+   fit that pair in `WEAPON_MODEL_POINTS` from a lineup and keep the point on real weapon geometry.
+4. Verify in the lineup: stock at the shoulder, right hand on the wrist, left hand on the fore-end,
    every weapon at world scale 1 and on the hand.
 
 ## Muzzle flashes (`Assets/effects/muzzle-flash/NN.png`)
