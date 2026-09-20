@@ -53,17 +53,24 @@ def split_ids(value: str) -> list[str]:
     return [item for item in re.split(r"[\s,]+", value.strip()) if item] if value.strip() else []
 
 def usage_ids(key: str, limit: int) -> list[str]:
-    data = api(f"/account/usage?limit={limit}&offset=0", key)
+    # Tripo v3 documents /account/usage without pagination parameters.
+    # Fetch the account history as returned by Tripo and apply the limit locally.
+    data = api("/account/usage", key)
     if isinstance(data, dict):
         records = data.get("items") or data.get("records") or data.get("usage") or []
+    elif isinstance(data, list):
+        records = data
     else:
-        records = data or []
+        records = []
 
+    print(f"Tripo /account/usage returned {len(records)} record(s)")
     ids = []
     for row in records:
         if isinstance(row, dict) and row.get("task_id"):
             ids.append(str(row["task_id"]))
-    return list(dict.fromkeys(ids))[:limit]
+    ids = list(dict.fromkeys(ids))
+    print(f"Found {len(ids)} unique task ID(s) in usage history")
+    return ids[:limit]
 
 def task(key: str, task_id: str) -> dict[str, Any]:
     data = api(f"/tasks/{urllib.parse.quote(task_id, safe='')}", key)
@@ -262,7 +269,15 @@ def main() -> int:
 
     ids = split_ids(args.task_ids) or usage_ids(key, args.limit)
     if not ids:
-        raise SystemExit("No Tripo task IDs found")
+        write_summary(
+            args.summary,
+            "## Tripo model discovery\n\n"
+            "The API key authenticated, but Tripo returned no task IDs from /v3/account/usage.\n\n"
+            "If these models were created/rigged in the Tripo website rather than through this API key, "
+            "they may not appear in the API usage history. In that case the workflow needs their Tripo task IDs "
+            "or another Tripo endpoint that exposes website projects.\n",
+        )
+        return 0
 
     if args.mode == "list":
         return list_mode(key, ids, args.summary)
