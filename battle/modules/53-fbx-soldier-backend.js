@@ -123,19 +123,21 @@ var DEATH_POOLS={
 
 /* Right-hand grip point in each weapon mesh's local space (metres), as in soldier.js GRIPS. */
 var GRIP={rifle:[0,-.055,-.12],carbine:[0,-.055,-.09],lmg:[0,-.07,-.02],pistol:[.02,-.07,0]};
-/* Weapon reference points in local metres (barrel +Z, grip origin at 0). The right palm takes
-   `grip` (wrist of the stock / pistol grip); `fore` records the support hand's fore-end range.
-   Measured on the prepared rifles. */
+/* Weapon reference points in local metres after prepareWeapon (barrel +Z). `trigger` is the
+   centre of the visible trigger/guard, measured from the prepared mesh's side profile. The
+   right palm sits behind it at `grip`, over the stock wrist or pistol grip, not on the trigger
+   itself; `fore` records the support hand's fore-end range. */
 var WEAPON_POINTS={
-  'm1-garand.fbx':{grip:[0,-.065,-.12],fore:[0,-.025,.06,.42]},
-  'kar98k.fbx':{grip:[0,-.05,-.12],fore:[0,-.01,.06,.45]},
-  'mg42.fbx':{grip:[0,-.10,-.09],fore:[0,-.01,.15,.45]},
-  'm1919a6.fbx':{grip:[0,-.14,.05],fore:[0,-.05,.20,.60]},
-  'm1-carbine.fbx':{grip:[0,-.055,-.15],fore:[0,-.015,.06,.26]},
-  'fg42.fbx':{grip:[0,-.095,-.12],fore:[0,-.025,.08,.30]},
-  'thompson.fbx':{grip:[0,-.10,-.09],fore:[0,-.015,.13,.34]},
-  'mp40.fbx':{grip:[0,-.10,-.125],fore:[0,-.035,.06,.17]},
-  'm1911a1.fbx':{grip:[0,-.05,-.03],fore:null},'p38.fbx':{grip:[0,-.055,-.035],fore:null},
+  'm1-garand.fbx':{trigger:[0,-.08,-.03],grip:[0,-.065,-.06],fore:[0,-.025,.06,.42]},
+  'kar98k.fbx':{trigger:[0,-.08,-.035],grip:[0,-.05,-.06],fore:[0,-.01,.06,.45]},
+  'mg42.fbx':{trigger:[0,-.08,-.025],grip:[0,-.10,-.09],fore:[0,-.01,.15,.45]},
+  'm1919a6.fbx':{trigger:[0,-.10,.10],grip:[0,-.14,.05],fore:[0,-.05,.20,.60]},
+  'm1-carbine.fbx':{trigger:[0,-.075,-.07],grip:[0,-.055,-.10],fore:[0,-.015,.06,.26]},
+  'fg42.fbx':{trigger:[0,-.10,-.055],grip:[0,-.095,-.12],fore:[0,-.025,.08,.30]},
+  'thompson.fbx':{trigger:[0,-.08,.01],grip:[0,-.10,-.06],fore:[0,-.015,.13,.34]},
+  'mp40.fbx':{trigger:[0,-.075,-.055],grip:[0,-.10,-.125],fore:[0,-.035,.06,.17]},
+  'm1911a1.fbx':{trigger:[0,-.07,.04],grip:[0,-.05,-.03],fore:null},
+  'p38.fbx':{trigger:[0,-.07,.03],grip:[0,-.055,-.035],fore:null},
   rifle:{grip:GRIP.rifle,fore:[0,-.05,.05,.35]},carbine:{grip:GRIP.carbine,fore:[0,-.05,.04,.28]},
   lmg:{grip:GRIP.lmg,fore:[0,-.075,.15,.45]},pistol:{grip:GRIP.pistol,fore:null}
 };
