@@ -2,6 +2,38 @@
 
 For headless WebGL checks of the deployed Battle preview, use the working Chrome binary at `/Volumes/Expanse/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` as Playwright's `executablePath`. The locally downloaded Playwright Chromium bundle may be incomplete on this machine.
 
+## FBX soldier visual lineup (weapon-in-hand verification)
+
+`scripts/fbx-soldier-lineup.cjs` is the one-command evidence harness for imported-soldier
+visual work (PIPELINE.md posed lineup: stock at the shoulder, right hand on the wrist,
+left hand on the fore-end). Run it with:
+
+```
+php -S 127.0.0.1:8765 -t <parent-of-grasstex>   # if the local server is not already up
+NODE_PATH=/Users/ivanpopov/node_modules node scripts/fbx-soldier-lineup.cjs
+```
+
+It loads `battle_sim_local.php`, waits for `[ANIM] FBX soldiers ready` (fails if the backend
+never reports ready, a soldier fails to bind, or every model is not clip-retargeted `*`),
+screenshots the in-page Motion Lab US paratrooper through aim/reload/walk-aim/crouch-aim
+(front + side), then starts the live battle and screenshots a US and a GE paratrooper
+rifleman close-up via the fly camera. Output (PNGs + `summary.json`) goes to `$FBX_OUT`
+(default: OS temp dir `fbx-lineup`). Exit non-zero means the run itself failed; visual
+PASS stays a human judgement over the PNGs.
+
+Notes that keep coming up, so they live here now:
+
+- The Motion Lab builds a US rifleman only, so GE coverage comes from the battle
+  close-up step, not the lab shots.
+- Production serves the UniversalCamera fly controller (`battle/camera-controls.js`), not
+  the page's ArcRotate fallback: position battle close-ups with `camera.position` +
+  `camera.setTarget`, never `radius`/`alpha`/`beta` (those are inert expandos there).
+- Local headless runs show a red/black checkerboard terrain/sky plus some 404/403
+  texture/log-endpoint noise. That is missing local asset serving, unrelated to soldier
+  work; do not chase it during weapon/hand verification.
+- `tools/ai-sim-harness/` is headless AI logic with no rendering, and
+  `scripts/run_m3c_replay.cjs` stops the render loop: neither can verify weapon visuals.
+
 <!-- BEGIN CODEX CONVERSATION MAINTENANCE -->
 ## Conversation Maintenance
 
