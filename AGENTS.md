@@ -47,9 +47,11 @@ and weapons from `labs/asset-list.php`, click vertices to set soldier contacts A
 and B (left) plus weapon grip / fore-near / fore-far. Use **Frame hands** or **Frame weapon**
 for close picking. Pause on a useful pose, pick points, then press **Seat weapon**. Enable
 **Weapon follows hands during playback** after the points are set. The picker reads posed
-vertices and checks that soldier picks are
-weighted to the chosen hand; a missed click keeps the picker armed. The seat preview
+vertices and checks that soldier picks are weighted to the chosen hand; a missed click keeps
+the picker armed. The seat preview
 uses the picked fore-end range, and reload/death clips keep the last right-hand hold.
+Pistols use only the right contact and grip, even if old saved data includes fore points.
+**Reset seat** returns the weapon to its picking position, stops tracking, and keeps points.
 Then save (browser localStorage + JSON download) and paste the generated snippet into
 `SOLDIER_CONTACTS` (per model) and `WEAPON_POINTS`/`WEAPON_MODEL_POINTS` (universal per
 weapon). Contacts are hand-bone-local import units (backend anchor space); weapon points

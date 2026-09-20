@@ -97,8 +97,9 @@
         <span>Fore near</span><input id="fnx" aria-label="fore near x"><input id="fny" aria-label="fore near y"><input id="fnz" aria-label="fore near z">
         <span>Fore far</span><input id="ffx" aria-label="fore far x"><input id="ffy" aria-label="fore far y"><input id="ffz" aria-label="fore far z">
       </div>
-      <p class="hint" style="margin-top:8px">Fore-end length <span class="key" id="foreLen">—</span> (weapon-specific; type the far point to set it).</p>
-      <div class="row" style="margin-top:9px"><button id="seatWeapon">Seat weapon</button><button id="bindPose">Bind pose</button></div>
+      <p class="hint" style="margin-top:8px">Fore-end length <span class="key" id="foreLen">—</span> (long guns only; pistols use right contact + grip).</p>
+      <div class="row" style="margin-top:9px"><button id="seatWeapon">Seat weapon</button><button id="resetSeat">Reset seat</button></div>
+      <button id="bindPose" style="margin-top:9px">Bind pose</button>
       <label class="check"><input id="trackHands" type="checkbox"> Weapon follows hands during playback</label>
 
       <h2>Save</h2>
@@ -654,6 +655,7 @@
   };
   window.__labCalib = labCalib;
   const LAB_STORE_KEY = 'fbxLabCalib.v1';
+  const labIsPistol = file => /(?:m1911a1|p38)\.fbx$/i.test(file || '');
 
   // Same naming read as the battle backend's canon(): strip the Mixamo prefix first,
   // or wrist lookups miss every rig ('mixamorigrighthand' !== 'righthand').
@@ -730,9 +732,11 @@
     mesh.position.set(1.35,.85,1.5);
     mesh.isPickable = true;
     mesh.refreshBoundingInfo();
-    labCalib.weapon = { mesh, container:result, file:label };
+    mesh.computeWorldMatrix(true);
+    labCalib.weapon = { mesh, container:result, file:label, home:mesh.getWorldMatrix().clone() };
     labCalib.weaponFile = label;
-    setStatus('Weapon ready: '+label+'. Pick grip / fore-end points on it, or type them below.');
+    labRefreshFields();
+    setStatus('Weapon ready: '+label+'. '+(labIsPistol(label) ? 'Pick its grip and the soldier right contact; pistols have no fore-end hold.' : 'Pick grip / fore-end points on it, or type them below.'));
     labRefreshMarkers();
   }
   function labDisposeWeapon(){
@@ -879,6 +883,10 @@
   }
   function labDoPick(x, y, mode){
     const onSoldier = (mode === 'A' || mode === 'B');
+    if (!onSoldier && mode !== 'grip' && labIsPistol(labCalib.weaponFile)) {
+      setStatus('Pistols use the right hand contact and grip; fore-end points are unused.', true);
+      return;
+    }
     const pool = onSoldier ? renderableMeshes() : (labCalib.weapon ? [labCalib.weapon.mesh] : []);
     if (!pool.length) { setStatus(onSoldier ? 'Load a soldier model first.' : 'Load a weapon first.', true); return; }
     // GPU skinning leaves ordinary pick bounds at the rest pose. Update only when
@@ -963,7 +971,7 @@
     place('foreN', wpos(labWeaponPtsOf('foreN')));
     place('foreF', wpos(labWeaponPtsOf('foreF')));
   }
-  function labWeaponPtsOf(k){ return labCalib.weaponPts[k]; }
+  function labWeaponPtsOf(k){ return k !== 'grip' && labIsPistol(labCalib.weaponFile) ? null : labCalib.weaponPts[k]; }
   </script>
   <script src="fbx-animation-root-lock.js?v=4ab61a63204894bdd1b67c93c6f1307834f1ce85"></script>
   <script>
@@ -993,9 +1001,10 @@
       if (labCalib.oneHandLocal) labRightSocket(mesh,handWorld);
       return labCalib.oneHandLocal ? 'Support hand released for this clip.' : 'Seat the weapon in an aim pose before checking a released-hand clip.';
     }
+    const isPistol = labIsPistol(labCalib.weaponFile);
     const L = labAnchorWorld('left');
     const N = labCalib.weaponPts.foreN, F = labCalib.weaponPts.foreF;
-    if (L && N && F) {
+    if (!isPistol && L && N && F) {
       // Match the backend's two-point solve: select a point on the picked fore-end
       // line at the posed hand spacing, then map grip->fore exactly onto right->left.
       if (Math.abs(N.x-F.x) > .005 || Math.abs(N.y-F.y) > .005)
@@ -1028,7 +1037,6 @@
       if (!follow || !labCalib.oneHandLocal) labRememberRightSocket(mesh,handWorld);
       return 'Grip and fore-end seated on both hand contacts.';
     } else {
-      const isPistol = /m1911a1|p38/i.test(labCalib.weaponFile);
       if (L && !isPistol)
         return 'Pick both fore-end points before seating a long gun.';
       // One-hand hold: capture the seated weapon relative to the right hand. During
@@ -1047,6 +1055,18 @@
     }
   }
   $('seatWeapon').onclick = () => { setStatus(labSeatWeapon()); labRefreshMarkers(); };
+  $('resetSeat').onclick = () => {
+    const weapon = labCalib.weapon;
+    if (!weapon || weapon.mesh.isDisposed()) { setStatus('Load a weapon first.', true); return; }
+    $('trackHands').checked = false;
+    labCalib.oneHandLocal = null;
+    if (!weapon.mesh.rotationQuaternion) weapon.mesh.rotationQuaternion = new BABYLON.Quaternion();
+    weapon.home.decompose(weapon.mesh.scaling,weapon.mesh.rotationQuaternion,weapon.mesh.position);
+    weapon.mesh.computeWorldMatrix(true);
+    labRefreshMarkers();
+    $('frameWeapon').click();
+    setStatus('Weapon reset to its picking position; contact and weapon points kept.');
+  };
   $('trackHands').onchange = () => setStatus($('trackHands').checked ? 'Weapon tracks the hands during playback.' : 'Weapon frozen; Seat weapon re-seats it once.');
 
   function labRefreshFields(){
@@ -1058,9 +1078,12 @@
     set(['ax','ay','az'], labCalib.contacts.right);
     set(['bx','by','bz'], labCalib.contacts.left);
     set(['gx','gy','gz'], labCalib.weaponPts.grip);
-    set(['fnx','fny','fnz'], labCalib.weaponPts.foreN);
-    set(['ffx','ffy','ffz'], labCalib.weaponPts.foreF);
-    const n = labCalib.weaponPts.foreN, f = labCalib.weaponPts.foreF;
+    const pistol = labIsPistol(labCalib.weaponFile);
+    if (pistol && (labCalib.pendingPick === 'foreN' || labCalib.pendingPick === 'foreF')) labArm(labCalib.pendingPick);
+    for (const id of ['pickForeN','pickForeF','fnx','fny','fnz','ffx','ffy','ffz']) $(id).disabled = pistol;
+    set(['fnx','fny','fnz'], pistol ? null : labCalib.weaponPts.foreN);
+    set(['ffx','ffy','ffz'], pistol ? null : labCalib.weaponPts.foreF);
+    const n = pistol ? null : labCalib.weaponPts.foreN, f = pistol ? null : labCalib.weaponPts.foreF;
     $('foreLen').textContent = (n && f) ? (n.subtract(f).length().toFixed(3)+' m') : '—';
     labUpdateSnippet();
   }
@@ -1084,11 +1107,12 @@
   /* ---- persistence + export ---- */
   function labCollect(){
     const arr = v => v ? [+v.x.toFixed(4), +v.y.toFixed(4), +v.z.toFixed(4)] : null;
+    const pistol = labIsPistol(labCalib.weaponFile);
     return {
       model: labCalib.modelFile || null,
       contacts: { right: arr(labCalib.contacts.right), left: arr(labCalib.contacts.left) },
       weapon: labCalib.weaponFile || null,
-      weaponPoints: { grip: arr(labCalib.weaponPts.grip), foreNear: arr(labCalib.weaponPts.foreN), foreFar: arr(labCalib.weaponPts.foreF) }
+      weaponPoints: { grip: arr(labCalib.weaponPts.grip), foreNear: pistol ? null : arr(labCalib.weaponPts.foreN), foreFar: pistol ? null : arr(labCalib.weaponPts.foreF) }
     };
   }
   function labApply(data){
@@ -1176,10 +1200,10 @@
     if (labCalib.weaponFile && w.grip) {
       // Universal per weapon: drops into WEAPON_POINTS (or WEAPON_MODEL_POINTS for exceptions).
       let fore = 'fore:null';
-      if (w.foreN && w.foreF) {
+      if (!labIsPistol(labCalib.weaponFile) && w.foreN && w.foreF) {
         const spread = Math.max(Math.abs(w.foreN.x - w.foreF.x), Math.abs(w.foreN.y - w.foreF.y));
         fore = 'fore:['+w.foreN.x.toFixed(3)+','+w.foreN.y.toFixed(3)+','+w.foreN.z.toFixed(3)+','+w.foreF.z.toFixed(3)+']'
-          + (spread > .005 ? ' // WARNING: fore x/y differ by '+spread.toFixed(3)+'m; backend line shares x/y, re-pick or hand-edit' : '');
+        if (spread > .005) out.push('// WARNING: fore x/y differ by '+spread.toFixed(3)+'m; backend line shares x/y, re-pick or hand-edit.');
       }
       out.push('// WEAPON_POINTS entry for '+labCalib.weaponFile);
       out.push('\''+labCalib.weaponFile+'\':{grip:'+labFmt(w.grip)+','+fore+'},');
