@@ -1022,7 +1022,13 @@
     const joints = labArmChain('left');
     if (!joints.length) return 'No left arm chain above the wrist.';
     const B = labCalib.contacts.left;
-    for (let sweep = 0; sweep < 8; sweep++) {
+    // Guard: if the cup target is far from the hand (e.g. weapon still at its
+    // side display position, not seated), refuse instead of yanking the whole
+    // arm out toward it. Cup snap is a small close-in adjustment only.
+    labRefreshBelow(joints, hand);
+    const startErr = BABYLON.Vector3.TransformCoordinates(B, labNodeWorld(hand)).subtract(T).length();
+    if (startErr > .35) return 'Cup target '+(startErr * 100).toFixed(0)+' cm away; seat the grip first.';
+    for (let sweep = 0; sweep < 6; sweep++) {
       let biggest = 0;
       for (const J of joints) {
         labRefreshBelow(joints, hand);
@@ -1037,7 +1043,7 @@
         axis.normalize();
         let ang = Math.asin(Math.max(-1, Math.min(1, s)));
         if (BABYLON.Vector3.Dot(v1, v2) < 0) ang = Math.PI - ang;
-        ang = Math.max(-.5, Math.min(.5, ang));
+        ang = Math.max(-.3, Math.min(.3, ang));
         biggest = Math.max(biggest, Math.abs(ang));
         const qdWorld = BABYLON.Quaternion.RotationAxis(axis, ang);
         let qdLocal = qdWorld;
@@ -1176,10 +1182,42 @@
     });
     return true;
   }
+  // Per-frame preview stash: the wrist tweak multiplies the wrist quaternion, so
+  // re-applying it every frame without a reset winds the wrist up (full flips
+  // while paused, when no clip evaluation rewrites the joints). Stash the arm
+  // chain before the preview override and restore it after the frame renders,
+  // so every frame starts from the clean clip/paused pose: a small adjustment
+  // in, never an accumulating flip. Explicit Seat clicks still persist.
+  let labArmStash = null;
+  function labStashArm(){
+    const tip = labHandNode('left');
+    if (!tip) return false;
+    const chain = [tip];
+    let n = tip.parent;
+    for (let i = 0; i < 3 && n; i++) { chain.push(n); n = n.parent; }
+    labArmStash = chain.map(node => ({
+      node,
+      q: node.rotationQuaternion ? node.rotationQuaternion.clone() : null
+    }));
+    return true;
+  }
+  function labUnstashArm(){
+    if (!labArmStash) return false;
+    labArmStash.forEach(entry => {
+      if (entry.node.isDisposed()) return;
+      if (entry.q) {
+        if (!entry.node.rotationQuaternion) entry.node.rotationQuaternion = new BABYLON.Quaternion();
+        entry.node.rotationQuaternion.copyFrom(entry.q);
+      }
+    });
+    labArmStash = null;
+    return true;
+  }
   $('resetSeat').onclick = () => {
     const weapon = labCalib.weapon;
     if (!weapon || weapon.mesh.isDisposed()) { setStatus('Load a weapon first.', true); return; }
     $('trackHands').checked = false;
+    labArmStash = null;
     labCalib.oneHandLocal = null;
     if (!weapon.mesh.rotationQuaternion) weapon.mesh.rotationQuaternion = new BABYLON.Quaternion();
     weapon.home.decompose(weapon.mesh.scaling,weapon.mesh.rotationQuaternion,weapon.mesh.position);
@@ -1372,19 +1410,20 @@
   scene.onBeforeRenderObservable.add(() => {
     if (!modelAssets) return;
     if ($('trackHands') && $('trackHands').checked && !labCalib.pendingPick) {
+      // Stash first: the snap/wrist override below mutates arm joints, and the
+      // onAfterRender hook restores them, keeping the per-frame preview from
+      // accumulating into a flip.
+      labStashArm();
       labSeatWeapon(true);
     }
     labRefreshMarkers();
   });
-  // Arm overrides run AFTER clip evaluation (which rewrites joint rotations every frame
-  // while playing), so they land on top of the animation with one frame of lag. Weapon
-  // seating stays in onBeforeRender: the weapon mesh is not clip-driven, so no fight.
+  // Restore the stashed arm chain after the frame renders (see labStashArm):
+  // clip evaluation rewrites joints every frame while playing, but while paused
+  // nothing resets them, so without this restore the wrist tweak would pile up
+  // 2x per frame and the CCD snap would chase it until the arm flips.
   scene.onAfterRenderObservable.add(() => {
-    if (!modelAssets || labCalib.pendingPick) return;
-    if (!labIsPistol(labCalib.weaponFile)) return;
-    if ($('trackHands') && $('trackHands').checked && $('snapLeft') && !$('snapLeft').disabled && $('snapLeft').checked)
-      labSnapLeftToForeN();
-    labLeftWristTweak();
+    labUnstashArm();
   });
   labRefreshFields();
   labLoadLibrary();
