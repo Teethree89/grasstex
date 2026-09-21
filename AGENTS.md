@@ -50,8 +50,13 @@ for close picking. Pause on a useful pose, pick points, then press **Seat weapon
 vertices and checks that soldier picks are weighted to the chosen hand; a missed click keeps
 the picker armed. The seat preview
 uses the picked fore-end range, and reload/death clips keep the last right-hand hold.
-Pistols use only the right contact and grip, even if old saved data includes fore points.
-**Reset seat** returns the weapon to its picking position, stops tracking, and keeps points.
+Pistols use only the right contact and grip, even if old saved data includes fore points;
+no B contact or fore-near pick is needed for them. The support cup is posed directly with
+the left-arm **Shoulder°/Elbow°/Wrist°** dials (pistols only): degree offsets added onto the
+animated joints every frame, rotations only, so the cup follows the animation and bone
+lengths never change. Dial values persist in localStorage/JSON per model.
+**Reset seat** returns the weapon to its picking position, stops tracking, restores the arm
+from the bind snapshot (exact pre-override pose when tracking was on), and keeps points.
 Then save (browser localStorage + JSON download) and paste the generated snippet into
 `SOLDIER_CONTACTS` (per model) and `WEAPON_POINTS`/`WEAPON_MODEL_POINTS` (universal per
 weapon). Contacts are hand-bone-local import units (backend anchor space); weapon points
