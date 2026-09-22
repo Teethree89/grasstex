@@ -26,6 +26,9 @@
     button:disabled { cursor:not-allowed; opacity:.45; }
     .row { display:flex; gap:8px; }
     .row button { width:auto; flex:1; }
+    .row select { width:auto; flex:1; }
+    #animSearch { flex:2; border:1px solid #385064; border-radius:8px; background:#0b131c; color:var(--ink); padding:9px 10px; font:inherit; }
+    #animRebuild { flex:1; }
     button.primary { background:#247c65; border-color:#39a889; color:white; }
     button.primary:hover { background:#2d9076; }
     label.control { display:grid; gap:6px; color:var(--muted); font-size:11px; }
@@ -80,6 +83,8 @@
       <h2>3 — Imported library</h2>
       <label class="control">Soldier model <select id="libModel"><option value="">Loading asset list…</option></select></label>
       <label class="control" style="margin-top:9px">Animation <select id="libAnim"><option value="">Loading asset list…</option></select></label>
+      <div class="row" style="margin-top:9px"><select id="animWeapon" aria-label="Weapon filter"><option value="">All weapons</option></select><select id="animCat" aria-label="Move filter"><option value="">All moves</option></select></div>
+      <div class="row" style="margin-top:9px"><input id="animSearch" placeholder="Filter clips… (crouch matches crouching)" aria-label="Clip text filter"><button id="animRebuild" title="Recompute the cached clip index">Rebuild library</button></div>
       <label class="control" style="margin-top:9px">Weapon <select id="libWeapon"><option value="">None</option></select></label>
       <div class="row" style="margin-top:9px"><button id="libLoad" class="primary">Load selection</button></div>
       <label class="check"><input id="keepPoints" type="checkbox" checked> Keep points when switching model / weapon</label>
@@ -490,7 +495,8 @@
         clipSelect.append(option);
         const button = document.createElement('button');
         button.className = 'clip'+(i===+clipSelect.value?' active':'');
-        button.textContent = entry.name+'  ·  '+displayLength(entry.group);
+        const tag = (typeof labClipTag === 'function') ? labClipTag(entry.name) : '';
+        button.textContent = entry.name+'  ·  '+displayLength(entry.group)+(tag ? '  ·  '+tag : '');
         button.onclick = () => { clipSelect.value=i; selectClip(i); };
         clipsEl.append(button);
       });
@@ -701,13 +707,197 @@
       sel.append(opt);
     });
   }
+  /* ---- animation clip index: weapon + move tags derived from file names ----
+     Tags are computed from the deployed file list (cheap string work) and cached in
+     localStorage with a signature of that list, so repeat visits skip the lookup and a
+     changed deployment rebuilds automatically. "Rebuild library" forces a recompute.
+     Matching is stem-based: "crouch" matches "crouching"/"crouched" because all three
+     reduce to the same stem, and a typed filter hits when either stem is a prefix of
+     the other (the shortest-word rule). */
+  const LAB_ANIM_KEY = 'fbxLabAnimIndex.v1';
+  let labAnimFiles = [];
+  let labAnimIndex = []; // [{file, weapon, acts:[...], primary}]
+  // Priority order doubles as the primary-tag order: stance/state beats locomotion.
+  const LAB_ACTS = [
+    ['idle', ['idle']],
+    ['crouch', ['crouch']],
+    ['kneel', ['kneel']],
+    ['prone', ['prone']],
+    ['death', ['death']],
+    ['hit', ['hit']],
+    ['fire', ['fire', 'shoot']],
+    ['reload', ['reload']],
+    ['aim', ['aim']],
+    ['throw', ['throw', 'grenade']],
+    ['jump', ['jump']],
+    ['turn', ['turn']],
+    ['strafe', ['strafe']],
+    ['transition', ['transition']],
+    ['walk', ['walk']],
+    ['run', ['run']],
+    ['sprint', ['sprint']],
+    ['crawl', ['crawl']]
+  ];
+  const LAB_ALIAS = {
+    dying:'death', deaths:'death', firing:'fire', fires:'fire', fired:'fire',
+    shooting:'fire', shoots:'fire', shot:'fire', aiming:'aim', aimed:'aim', aims:'aim',
+    kneeling:'kneel', knelt:'kneel', strafing:'strafe', strafes:'strafe',
+    walking:'walk', walks:'walk', walked:'walk', running:'run', runs:'run',
+    sprinting:'sprint', sprints:'sprint', jumping:'jump', jumps:'jump', jumped:'jump',
+    crawling:'crawl', crawls:'crawl', crawled:'crawl', turning:'turn', turns:'turn',
+    turned:'turn', reloading:'reload', reloads:'reload', reloaded:'reload',
+    crouching:'crouch', crouched:'crouch', crouches:'crouch',
+    throwing:'throw', throws:'throw', thrown:'throw'
+  };
+  function labStem(word){
+    let w = String(word || '').toLowerCase().replace(/[^a-z]/g, '');
+    if (!w) return '';
+    if (LAB_ALIAS[w]) return LAB_ALIAS[w];
+    for (const suf of ['ing', 'ed', 'es', 's']) {
+      if (w.length > suf.length + 2 && w.endsWith(suf)) { w = w.slice(0, -suf.length); break; }
+    }
+    return LAB_ALIAS[w] || w;
+  }
+  function labFileWords(name){
+    return String(name || '').toLowerCase().replace(/\.fbx$/i, '').split(/[^a-z]+/).filter(Boolean);
+  }
+  function labTagFile(name){
+    const words = labFileWords(name);
+    const stems = new Set(words.map(labStem));
+    let weapon = 'other';
+    if (words.includes('pistol')) weapon = 'pistol';
+    else if (words.includes('rifle')) weapon = 'rifle';
+    const acts = [];
+    for (const [cat, keys] of LAB_ACTS) {
+      if (keys.some(k => stems.has(k))) acts.push(cat);
+    }
+    return { file:name, weapon, acts, primary:acts[0] || 'other' };
+  }
+  function labAnimSig(files){
+    let h = 5381;
+    const s = files.join('|');
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+    return files.length + '-' + h.toString(36);
+  }
+  function labBuildAnimIndex(files){
+    labAnimFiles = files.slice();
+    labAnimIndex = files.map(labTagFile);
+    try {
+      localStorage.setItem(LAB_ANIM_KEY, JSON.stringify({ sig:labAnimSig(files), index:labAnimIndex }));
+    } catch (error) { console.warn('[lab] anim index cache write failed:', error); }
+    labFillAnimFilters();
+    labRefreshAnimOptions();
+  }
+  function labLoadAnimIndex(files){
+    const sig = labAnimSig(files);
+    try {
+      const cached = JSON.parse(localStorage.getItem(LAB_ANIM_KEY) || 'null');
+      if (cached && cached.sig === sig && Array.isArray(cached.index) && cached.index.length === files.length) {
+        labAnimFiles = files.slice();
+        labAnimIndex = cached.index;
+        labFillAnimFilters();
+        labRefreshAnimOptions();
+        return true;
+      }
+    } catch (error) { console.warn('[lab] anim index cache read failed:', error); }
+    labBuildAnimIndex(files);
+    return false;
+  }
+  function labAnimCounts(){
+    const weapons = { rifle:0, pistol:0, other:0 }, cats = {};
+    labAnimIndex.forEach(e => {
+      weapons[e.weapon] = (weapons[e.weapon] || 0) + 1;
+      e.acts.forEach(a => { cats[a] = (cats[a] || 0) + 1; });
+    });
+    return { weapons, cats };
+  }
+  function labFillAnimFilters(){
+    const { weapons, cats } = labAnimCounts();
+    const wsel = $('animWeapon'), csel = $('animCat');
+    const wv = wsel.value, cv = csel.value;
+    wsel.innerHTML = '';
+    [['', 'All weapons ('+labAnimIndex.length+')'],
+     ['rifle', 'Rifle ('+(weapons.rifle || 0)+')'],
+     ['pistol', 'Pistol ('+(weapons.pistol || 0)+')'],
+     ['other', 'Other ('+(weapons.other || 0)+')']].forEach(([v, t]) => {
+      const o = document.createElement('option'); o.value = v; o.textContent = t; wsel.append(o);
+    });
+    csel.innerHTML = '';
+    const all = document.createElement('option'); all.value = ''; all.textContent = 'All moves ('+labAnimIndex.length+')'; csel.append(all);
+    LAB_ACTS.forEach(([cat]) => {
+      if (!cats[cat]) return;
+      const o = document.createElement('option'); o.value = cat; o.textContent = cat+' ('+cats[cat]+')'; csel.append(o);
+    });
+    if ([...wsel.options].some(o => o.value === wv)) wsel.value = wv;
+    if ([...csel.options].some(o => o.value === cv)) csel.value = cv;
+  }
+  function labClipMatches(entry, weapon, cat, q){
+    if (weapon && entry.weapon !== weapon) return false;
+    if (cat && !entry.acts.includes(cat)) return false;
+    if (q) {
+      const qs = labStem(q);
+      if (!qs) return true;
+      const words = labFileWords(entry.file);
+      // Substring hit, or the shortest-word rule: either stem prefixes the other.
+      if (entry.file.toLowerCase().includes(q.toLowerCase())) return true;
+      if (!words.some(w => {
+        const s = labStem(w);
+        return s.startsWith(qs) || (qs.length > 2 && s.length > 2 && qs.startsWith(s));
+      })) return false;
+    }
+    return true;
+  }
+  function labRefreshAnimOptions(){
+    const sel = $('libAnim');
+    const prev = sel.value;
+    const weapon = $('animWeapon').value, cat = $('animCat').value, q = $('animSearch').value.trim();
+    sel.innerHTML = '';
+    const none = document.createElement('option');
+    none.value = '';
+    const hits = labAnimIndex.filter(e => labClipMatches(e, weapon, cat, q));
+    none.textContent = hits.length ? ('Pick an animation… ('+hits.length+' of '+labAnimIndex.length+')') : 'No clips match — loosen the filters';
+    sel.append(none);
+    // Sort rifle, then pistol, then other; primary move; then filename.
+    const wRank = { rifle:0, pistol:1, other:2 };
+    const actRank = {};
+    LAB_ACTS.forEach(([c], i) => { actRank[c] = i; });
+    actRank.other = LAB_ACTS.length;
+    hits.sort((a, b) => (wRank[a.weapon] - wRank[b.weapon])
+      || (actRank[a.primary] - actRank[b.primary])
+      || (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+    let group = null;
+    hits.forEach(e => {
+      const label = e.weapon + ' — ' + e.primary;
+      if (label !== group) { group = label; const g = document.createElement('optgroup'); g.label = label; sel.append(g); }
+      const opt = document.createElement('option');
+      opt.value = e.file; opt.textContent = e.file;
+      sel.lastChild.append(opt);
+    });
+    if (prev && hits.some(e => e.file === prev)) sel.value = prev;
+  }
+  // Tag badge for an imported clip button label ("file.fbx — Clip" form).
+  function labClipTag(name){
+    if (typeof labAnimIndex === 'undefined' || !labAnimIndex.length) return '';
+    const hit = labAnimIndex.find(e => name === e.file || String(name || '').startsWith(e.file + ' '));
+    return hit ? hit.weapon + ' · ' + hit.primary : '';
+  }
+  $('animWeapon').onchange = labRefreshAnimOptions;
+  $('animCat').onchange = labRefreshAnimOptions;
+  $('animSearch').oninput = labRefreshAnimOptions;
+  $('animRebuild').onclick = () => {
+    try { localStorage.removeItem(LAB_ANIM_KEY); } catch (error) {}
+    if (labAnimFiles.length) {
+      labBuildAnimIndex(labAnimFiles);
+      setStatus('Clip library rebuilt: '+labAnimIndex.length+' clips retagged.');
+    } else setStatus('No animation list to rebuild yet.', true);
+  };
   async function labLoadLibrary(){
     try {
       const res = await fetch('asset-list.php');
       if (!res.ok) throw new Error('HTTP '+res.status);
       const data = await res.json();
       labFillSelect('libModel', data.files.soldiers || [], 'Pick a soldier…');
-      labFillSelect('libAnim', data.files.animations || [], 'Pick an animation…');
+      labLoadAnimIndex(data.files.animations || []);
       labFillSelect('libWeapon', data.files.weapons || [], 'None');
       $('libStatus').textContent = 'Deployed imports listed. Loading fetches them as files, so the existing import path is reused unchanged.';
     } catch (error) {
