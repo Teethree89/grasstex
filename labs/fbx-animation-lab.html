@@ -1034,6 +1034,7 @@
       else if (typeof labRestoreSavedSoft === 'function') labRestoreSavedSoft();
       else labRestoreSaved();
       labSeatWeapon();
+      if (typeof labSaveLast === 'function') labSaveLast();
     } catch (error) {
       console.error(error);
       setStatus('Library load failed: '+(error.message || error), true);
@@ -2363,6 +2364,7 @@
      accordions with one open at a time unless pinned. */
   const LAB_SVG_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
   const LAB_TOOLS = [
+    { id:'__last', tip:'Load last session', icon:'<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>' },
     { id:'loop', tip:'Loop active clip', icon:'<path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>' },
     { id:'keepPoints', tip:'Keep points when switching model / weapon', icon:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>' },
     { id:'trackHands', tip:'Weapon follows hands during playback', icon:'<path d="M7 3v6a5 5 0 0 0 10 0V3"/><path d="M7 3h4v5H7zM13 3h4v5h-4z"/>' },
@@ -2407,10 +2409,21 @@
     bar.id = 'toolBar';
     const defs = {};
     LAB_TOOLS.forEach(t => { defs[t.id] = t; });
-    [['loop'],['keepPoints'],['trackHands'],['aimAtTarget'],
+    [['__last'],['loop'],['keepPoints'],['trackHands'],['aimAtTarget'],
      ['skeleton','animationBounds','horizontalRootLock','bottomRootLock']].forEach((group, gi) => {
       if (gi) { const sep = document.createElement('div'); sep.className = 'tsep'; bar.append(sep); }
       group.forEach(id => {
+        if (id === '__last') {
+          const btn = document.createElement('button');
+          btn.className = 'tool';
+          btn.dataset.for = '__last';
+          btn.dataset.tip = defs[id].tip;
+          btn.setAttribute('aria-label', defs[id].tip);
+          btn.innerHTML = LAB_SVG_OPEN + defs[id].icon + '</svg>';
+          btn.onclick = () => { labLoadLast(); btn.blur(); };
+          bar.append(btn);
+          return;
+        }
         const input = $(id);
         if (!input || !defs[id]) return;
         const label = input.closest('label');
@@ -2488,6 +2501,53 @@
     if (!store.open && sections.length) store.open = sections[0].head.dataset.acc;
     applyOpen();
     labRestoreTools();
+    labLastTip();
+  }
+  /* ---- last library session (model + animation + weapon) ----
+     Saved after every library load; the toolbar button restores the exact triple
+     through the normal load path. Local file drops can't persist (no server copy),
+     so only library selections are remembered. */
+  const LAB_LAST_KEY = 'fbxLabLast.v1';
+  function labReadLast(){
+    try { return JSON.parse(localStorage.getItem(LAB_LAST_KEY) || 'null'); }
+    catch (error) { return null; }
+  }
+  function labSaveLast(){
+    try {
+      localStorage.setItem(LAB_LAST_KEY, JSON.stringify({
+        model:$('libModel').value || '', anim:$('libAnim').value || '', weapon:$('libWeapon').value || ''
+      }));
+      labLastTip();
+    } catch (error) {}
+  }
+  function labLastTip(){
+    const btn = document.querySelector('#toolBar .tool[data-for="__last"]');
+    const s = labReadLast();
+    if (btn) btn.dataset.tip = (s && (s.model || s.anim || s.weapon))
+      ? 'Load last: ' + [s.model, s.anim, s.weapon].filter(Boolean).join(' + ')
+      : 'Load last session (nothing saved yet)';
+  }
+  async function labLoadLast(){
+    const s = labReadLast();
+    if (!s || (!s.model && !s.anim && !s.weapon)) { setStatus('No saved session yet — load something first.', true); return; }
+    // Clear clip filters first: a filtered-out animation is absent from the dropdown.
+    if ($('animWeapon')) $('animWeapon').value = '';
+    if ($('animCat')) $('animCat').value = '';
+    if ($('animSearch')) $('animSearch').value = '';
+    if (typeof labRefreshAnimOptions === 'function') labRefreshAnimOptions();
+    const setSel = (id, v) => {
+      if (!v) return true;
+      const ok = [...$(id).options].some(o => o.value === v);
+      if (ok) $(id).value = v;
+      return ok;
+    };
+    const missing = [];
+    if (!setSel('libModel', s.model)) missing.push(s.model);
+    if (!setSel('libAnim', s.anim)) missing.push(s.anim);
+    if (!setSel('libWeapon', s.weapon)) missing.push(s.weapon);
+    if (missing.filter(Boolean).length) setStatus('Saved file(s) no longer listed: ' + missing.filter(Boolean).join(', '), true);
+    else setStatus('Reloading last session…');
+    $('libLoad').click();
   }
   labRefreshFields();
   labRefreshSidecarUI();
