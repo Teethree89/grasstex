@@ -54,13 +54,20 @@ Pistols use only the right contact and grip, even if old saved data includes for
 no B contact or fore-near pick is needed for them. The support cup is posed directly with
 the left-arm **Shoulder°/Elbow°/Wrist°** dials (pistols only): degree offsets added onto the
 animated joints every frame, rotations only, so the cup follows the animation and bone
-lengths never change. Dial values persist in localStorage/JSON per model.
+lengths never change. Dial values persist per model+weapon slot (localStorage + sidecar).
 **Reset seat** returns the weapon to its picking position, stops tracking, restores the arm
 from the bind snapshot (exact pre-override pose when tracking was on), and keeps points.
-Then save (browser localStorage + JSON download) and paste the generated snippet into
-`SOLDIER_CONTACTS` (per model) and `WEAPON_POINTS`/`WEAPON_MODEL_POINTS` (universal per
-weapon). Contacts are hand-bone-local import units (backend anchor space); weapon points
-are weapon-local metres (game layout). The lab pins Babylon 9.27.1, the battle runtime's
+**Keep points when switching model / weapon** (on by default) carries the live contacts,
+weapon points and dials across model/weapon swaps for per-weapon placement comparison;
+every swap also stashes the outgoing weapon's slot into the per-model dictionary, and
+unchecking it restores the old clear-and-refill-from-saved behaviour.
+Per-model sidecars (`Assets/soldiers/<model>.fbx.json`, edited in the lab's **Per-model
+sidecar** section, saved via Download or `labs/save-calibration.php`) hold contacts once
+plus one slot per weapon (grip / fore-near / fore-far + arm dials); the battle backend
+fetches them next to the soldier FBX on load and they win over the hardcoded
+`SOLDIER_CONTACTS` / `WEAPON_POINTS` / `WEAPON_MODEL_POINTS` (the snippet copy-paste path
+still works for universal per-weapon entries). Contacts are hand-bone-local import units
+(backend anchor space); weapon points are weapon-local metres (game layout). The lab pins Babylon 9.27.1, the battle runtime's
 exact build, so measured numbers transfer 1:1. Served from `labs/` locally, on branch
 previews, and in production (all three deploy the whole `labs/` directory).
 
