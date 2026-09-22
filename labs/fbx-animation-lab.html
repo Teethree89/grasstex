@@ -112,6 +112,14 @@
       <div class="row" style="margin-top:9px"><button id="seatWeapon">Seat weapon</button><button id="matchForeXY" title="Copy fore-near x/y onto fore-far (the backend only reads near x/y, so this is lossless)">Snap far x/y</button><button id="resetSeat">Reset seat</button></div>
       <p class="hint" style="margin-top:8px">Seat check <span class="key" id="seatCheck">—</span></p>
       <p class="hint" style="margin-top:8px">Aim check <span class="key" id="aimCheck">—</span></p>
+
+      <h2>Aim test</h2>
+      <p class="hint">Target dummy plus the battle backend's spine correction (max ~40°): bend the spine onto the target and re-seat every frame, exactly like the game aims. Barrel +Z is the fire path.</p>
+      <label class="check"><input id="aimAtTarget" type="checkbox"> Aim at target (spine bend)</label>
+      <div class="numgrid" id="targetGrid"><span></span><span>dist m</span><span>bear °</span><span>h m</span>
+        <span>Target</span><input id="tgD" type="number" step="0.5" value="10" aria-label="target distance metres"><input id="tgB" type="number" step="5" value="0" aria-label="target bearing degrees"><input id="tgH" type="number" step="0.1" value="1.2" aria-label="target height metres"></div>
+      <div class="row" style="margin-top:9px"><button id="frameTarget">Frame target</button><button id="faceTarget" title="Yaw the preview model to face the target (like the sim turning the root), then re-seat">Face target</button></div>
+      <p class="hint" style="margin-top:8px">Correction <span class="key" id="aimCorr">—</span></p>
       <button id="bindPose" style="margin-top:9px">Bind pose</button>
       <label class="check"><input id="trackHands" type="checkbox"> Weapon follows hands during playback</label>
       <div class="numgrid" id="shoulderGrid"><span class="nrowlab" data-row="d-shoulder" title="Select row for keyboard nudging">Shoulder°</span><input id="sx" type="number" step="1" aria-label="shoulder x deg" placeholder="0"><input id="sy" type="number" step="1" aria-label="shoulder y deg" placeholder="0"><input id="sz" type="number" step="1" aria-label="shoulder z deg" placeholder="0"></div>
@@ -1412,6 +1420,126 @@
         ? 'within the game\u2019s ~40° spine correction.'
         : 'beyond it — seat on an aiming frame (aim / crouchAim).'));
   }
+  function labSpineNode(){
+    if (!modelAssets) return null;
+    for (const n of modelAssets.transformNodes) {
+      if (!n || n.isDisposed()) continue;
+      // Same joint the backend bends (BONE.spine2): Mixamo 'Spine2', legacy 'Spine'.
+      const c = labCanon(n.name);
+      if (c === 'spine2' || c === 'spine') return n;
+    }
+    return null;
+  }
+  function labTargetPos(){
+    const d = parseFloat($('tgD').value), b = parseFloat($('tgB').value), h = parseFloat($('tgH').value);
+    const dd = Number.isFinite(d) ? d : 10, bb = Number.isFinite(b) ? b : 0, hh = Number.isFinite(h) ? h : 1.2;
+    const r = bb * Math.PI / 180;
+    return new BABYLON.Vector3(dd * Math.sin(r), hh, dd * Math.cos(r));
+  }
+  let labTarget = null;
+  function labEnsureTarget(){
+    const p = labTargetPos();
+    if (!labTarget || labTarget.ball.isDisposed()) {
+      const mat = new BABYLON.StandardMaterial('labTargetMat', scene);
+      mat.diffuseColor = new BABYLON.Color3(1,.25,.25);
+      mat.emissiveColor = new BABYLON.Color3(1,.2,.2);
+      mat.disableLighting = true;
+      const ball = BABYLON.MeshBuilder.CreateSphere('labTargetBall', { diameter:.14 }, scene);
+      ball.material = mat; ball.isPickable = false;
+      const pmat = new BABYLON.StandardMaterial('labTargetPoleMat', scene);
+      pmat.diffuseColor = new BABYLON.Color3(1,.25,.25);
+      pmat.emissiveColor = new BABYLON.Color3(.5,.12,.12);
+      pmat.disableLighting = true;
+      const pole = BABYLON.MeshBuilder.CreateCylinder('labTargetPole', { diameter:.025, height:1 }, scene);
+      pole.material = pmat; pole.isPickable = false;
+      labTarget = { ball, pole };
+    }
+    labTarget.ball.position.copyFrom(p);
+    labTarget.pole.position.set(p.x, p.y / 2, p.z);
+    labTarget.pole.scaling.set(1, Math.max(.01, p.y), 1);
+    return p;
+  }
+  // Backend aimSpine (battle/modules/53-fbx-soldier-backend.js) adapted to the preview:
+  // rotate about the spine's own origin, re-expressed in its parent's space, capped at
+  // 0.7 rad. Returns {applied, residual} in degrees. Never persists: the render observer
+  // stashes/restores the spine around it, exactly like the arm dials.
+  function labAimBend(){
+    const w = labCalib.weapon;
+    const spine = labSpineNode();
+    if (!w || !w.mesh || w.mesh.isDisposed() || !spine || spine.isDisposed()) return null;
+    const tgt = labTargetPos();
+    w.mesh.computeWorldMatrix(true);
+    const wm = w.mesh.getWorldMatrix();
+    const barrel = BABYLON.Vector3.TransformNormal(new BABYLON.Vector3(0, 0, 1), wm);
+    barrel.normalize();
+    const muzzle = wm.getTranslation();
+    const want = tgt.subtract(muzzle);
+    if (want.lengthSquared() < 1e-6) return null;
+    want.normalize();
+    const total = Math.acos(Math.max(-1, Math.min(1, BABYLON.Vector3.Dot(barrel, want))));
+    const angle = Math.min(.7, total);
+    const applied = angle * 180 / Math.PI, residual = (total - angle) * 180 / Math.PI;
+    if (angle < .004) return { applied:0, residual };
+    const axis = BABYLON.Vector3.Cross(barrel, want);
+    if (axis.lengthSquared() < 1e-8) return { applied:0, residual };
+    axis.normalize();
+    const parent = spine.parent;
+    if (!parent || parent.isDisposed()) return { applied:0, residual };
+    parent.computeWorldMatrix(true);
+    const P = parent.getWorldMatrix();
+    const o = spine.getAbsolutePosition();
+    const R = new BABYLON.Matrix();
+    BABYLON.Matrix.RotationAxisToRef(axis, angle, R);
+    const C = P.multiply(BABYLON.Matrix.Translation(-o.x, -o.y, -o.z)).multiply(R)
+      .multiply(BABYLON.Matrix.Translation(o.x, o.y, o.z)).multiply(labInvert(P));
+    if (!spine.rotationQuaternion) spine.rotationQuaternion = new BABYLON.Quaternion();
+    const local = new BABYLON.Matrix();
+    BABYLON.Matrix.ComposeToRef(spine.scaling, spine.rotationQuaternion, spine.position, local);
+    local.multiplyToRef(C, local);
+    const s = new BABYLON.Vector3(), q = new BABYLON.Quaternion(), p = new BABYLON.Vector3();
+    local.decompose(s, q, p);
+    spine.rotationQuaternion.copyFrom(q);
+    spine.computeWorldMatrix(true);
+    return { applied, residual };
+  }
+  function labShowAimCorr(bend){
+    const el = $('aimCorr');
+    if (!el) return;
+    if (!bend) { el.textContent = 'needs a seated weapon, spine joint, and target.'; return; }
+    el.textContent = 'spine +' + bend.applied.toFixed(0) + '° · residual ' + bend.residual.toFixed(0) + '° — ' +
+      (bend.residual <= 1 ? 'on target.' : (bend.applied >= 39 ? 'over budget — Face target, then re-seat.' : 'tracking…'));
+  }
+  ['tgD','tgB','tgH'].forEach(id => { $(id).oninput = () => labEnsureTarget(); });
+  $('aimAtTarget').onchange = event => {
+    labEnsureTarget();
+    setStatus(event.target.checked ? 'Aiming at the target: spine bend + re-seat every frame.' : 'Aim test off; spine untouched.');
+  };
+  $('frameTarget').onclick = () => {
+    const p = labEnsureTarget();
+    camera.target.copyFrom(p);
+    camera.radius = Math.max(2, p.subtract(new BABYLON.Vector3(0,.9,0)).length() * .6);
+    camera.lowerRadiusLimit = .15;
+  };
+  $('faceTarget').onclick = () => {
+    if (!modelAssets || !animationContainer || animationContainer.isDisposed()) { setStatus('Load a model first.', true); return; }
+    let hips = null;
+    for (const n of modelAssets.transformNodes) {
+      if (n && !n.isDisposed() && labCanon(n.name) === 'hips') { hips = n; break; }
+    }
+    if (!hips) { setStatus('No hips bone on this rig.', true); return; }
+    labEnsureTarget();
+    const hp = hips.getAbsolutePosition();
+    const tgt = labTargetPos();
+    const f = BABYLON.Vector3.TransformNormal(new BABYLON.Vector3(0, 0, 1), labNodeWorld(hips));
+    const yawF = Math.atan2(f.x, f.z), yawT = Math.atan2(tgt.x - hp.x, tgt.z - hp.z);
+    let d = yawT - yawF;
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    animationContainer.rotation.y += d;
+    animationContainer.computeWorldMatrix(true);
+    setStatus(labSeatWeapon() + ' Model yawed ' + (d * 180 / Math.PI).toFixed(0) + '° onto the target.');
+    labRefreshMarkers(); labSeatCheck(); labAimCheck();
+  };
   // Restore one arm chain (wrist + 3 parents) from the bind snapshot, undoing snap and
   // wrist-tweak rotations without touching anything else. Positions/scales are copied
   // back too, so a stray write can never strand a bone off the rig.
@@ -1446,6 +1574,12 @@
     const chain = [tip];
     let n = tip.parent;
     for (let i = 0; i < 3 && n; i++) { chain.push(n); n = n.parent; }
+    // The aim-test spine bend mutates one more joint: stash it too, so every frame
+    // starts clean and the bend can never accumulate while paused.
+    if (typeof labSpineNode === 'function') {
+      const sp = labSpineNode();
+      if (sp && !chain.includes(sp)) chain.push(sp);
+    }
     labArmStash = chain.map(node => ({
       node,
       q: node.rotationQuaternion ? node.rotationQuaternion.clone() : null
@@ -1530,7 +1664,7 @@
     });
   });
   // Mouse-wheel over a stepper must not silently retune it.
-  document.querySelectorAll('#calibGrid input[type=number], #shoulderGrid input, #elbowGrid input, #wristGrid input').forEach(el => {
+  document.querySelectorAll('#calibGrid input[type=number], #shoulderGrid input, #elbowGrid input, #wristGrid input, #targetGrid input').forEach(el => {
     el.addEventListener('wheel', () => el.blur(), { passive:true });
   });
 
@@ -2116,6 +2250,15 @@
     if (!labCalib.pendingPick && labIsPistol(labCalib.weaponFile)) {
       if (!stashed) labStashArm();
       labApplyArmDials();
+    }
+    // Aim test: seat on the clean pose, bend the spine (backend math), re-seat onto
+    // the bent pose — the same order the battle backend applies every frame.
+    if ($('aimAtTarget') && $('aimAtTarget').checked && labCalib.weapon && !labCalib.pendingPick) {
+      if (!stashed) { labStashArm(); stashed = true; }
+      labSeatWeapon();
+      const bend = labAimBend();
+      labSeatWeapon();
+      if (bend) labShowAimCorr(bend);
     }
     labRefreshMarkers();
     // Hands move under a playing clip, so the aim angle drifts: re-check at ~3 Hz.

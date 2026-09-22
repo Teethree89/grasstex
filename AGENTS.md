@@ -66,7 +66,9 @@ sidecar** section, saved via Download or `labs/save-calibration.php`) hold conta
 plus one slot per weapon (grip / fore-near / fore-far + arm dials); the battle backend
 fetches them next to the soldier FBX on load and they win over the hardcoded
 `SOLDIER_CONTACTS` / `WEAPON_POINTS` / `WEAPON_MODEL_POINTS` (the snippet copy-paste path
-still works for universal per-weapon entries). Contacts are hand-bone-local import units
+still works for universal per-weapon entries). The **Aim test** section drops a target
+dummy and replays the backend's spine-aim math (≤40°) live with applied/residual readout;
+**Face target** yaws the preview model the way the sim turns the root. Contacts are hand-bone-local import units
 (backend anchor space); weapon points are weapon-local metres (game layout). The lab pins Babylon 9.27.1, the battle runtime's
 exact build, so measured numbers transfer 1:1. Served from `labs/` locally, on branch
 previews, and in production (all three deploy the whole `labs/` directory).
