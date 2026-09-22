@@ -108,7 +108,7 @@
         <span class="nrowlab" data-row="foreF" title="Select row for keyboard nudging">Fore far</span><input id="ffx" type="number" step="0.001" aria-label="fore far x"><input id="ffy" type="number" step="0.001" aria-label="fore far y"><input id="ffz" type="number" step="0.001" aria-label="fore far z">
       </div>
       <p class="hint" style="margin-top:8px">Fore-end length <span class="key" id="foreLen">—</span> <span id="foreLenNote">(long guns: near–far; pistols: grip–near cup reach).</span></p>
-      <p class="hint" style="margin-top:8px">Nudge row: <span class="key" id="nudgeRow">none — click a row label</span>. ←/↑/→ nudge x/y/z by 0.001 (Shift: ×10, ↓: −y); the weapon re-seats live.</p>
+      <p class="hint" style="margin-top:8px">Nudge row: <span class="key" id="nudgeRow">none — click a row label</span>. ←/↑/→ nudge x/y/z by 0.001 (Shift: ×10, ↓: −y; hold to keep nudging); the weapon re-seats live.</p>
       <div class="row" style="margin-top:9px"><button id="seatWeapon">Seat weapon</button><button id="resetSeat">Reset seat</button></div>
       <button id="bindPose" style="margin-top:9px">Bind pose</button>
       <label class="check"><input id="trackHands" type="checkbox"> Weapon follows hands during playback</label>
@@ -1479,22 +1479,49 @@
     labRefreshFields(); labRefreshMarkers(); labUpdateSnippet();
     try { labSeatWeapon(); } catch (error) {}
   }
+  /* Hold-to-nudge: a tap nudges once; holding past LAB_HOLD_DELAY keeps nudging at
+     LAB_HOLD_RATE until release. OS auto-repeat is ignored so the cadence stays ours. */
+  const LAB_HOLD_DELAY = 250, LAB_HOLD_RATE = 50;
+  let labHold = null; // {axis, dir}
+  function labNudgeKey(key, shift){
+    const big = shift ? LAB_NUDGE_BIG : LAB_NUDGE;
+    let axis = null, dir = 0;
+    if (key === 'ArrowLeft') { axis = 'x'; dir = big; }
+    else if (key === 'ArrowUp') { axis = 'y'; dir = big; }
+    else if (key === 'ArrowRight') { axis = 'z'; dir = big; }
+    else if (key === 'ArrowDown') { axis = 'y'; dir = -big; }
+    else return null;
+    // Shift inverts ←/↑/→ (nudge down); ↓ is −y by definition, Shift flips it back.
+    if (shift && key !== 'ArrowDown') dir = -big;
+    if (shift && key === 'ArrowDown') dir = big;
+    return { axis, dir };
+  }
+  function labStopHold(){
+    if (!labHold) return;
+    clearTimeout(labHold.timer);
+    clearInterval(labHold.clock);
+    labHold = null;
+  }
   document.addEventListener('keydown', event => {
     const tag = (event.target && event.target.tagName) || '';
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(tag) || event.target.isContentEditable) return;
     if (!labNudgeRow || event.ctrlKey || event.metaKey || event.altKey) return;
-    const big = event.shiftKey ? LAB_NUDGE_BIG : LAB_NUDGE;
-    let axis = null, dir = 0;
-    if (event.key === 'ArrowLeft') { axis = 'x'; dir = big; }
-    else if (event.key === 'ArrowUp') { axis = 'y'; dir = big; }
-    else if (event.key === 'ArrowRight') { axis = 'z'; dir = big; }
-    else if (event.key === 'ArrowDown') { axis = 'y'; dir = -big; if (event.shiftKey) dir = big; }
-    else return;
+    if (event.repeat) { event.preventDefault(); return; }
+    const step = labNudgeKey(event.key, event.shiftKey);
+    if (!step) return;
     event.preventDefault();
-    // Shift inverts ←/↑/→ (nudge down); ↓ is −y by definition, Shift flips it back.
-    if (event.shiftKey && (event.key === 'ArrowLeft' || event.key === 'ArrowUp' || event.key === 'ArrowRight')) dir = -big;
-    labNudge(axis, dir);
+    labStopHold(); // switching arrows mid-hold moves to the new axis
+    labNudge(step.axis, step.dir);
+    const hold = { ...step, timer:0, clock:0 };
+    labHold = hold;
+    hold.timer = setTimeout(() => {
+      hold.clock = setInterval(() => labNudge(hold.axis, hold.dir), LAB_HOLD_RATE);
+    }, LAB_HOLD_DELAY);
   });
+  document.addEventListener('keyup', event => {
+    if (['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) labStopHold();
+  });
+  window.addEventListener('blur', labStopHold);
 
   /* ---- persistence + export ---- */
   // Arm dial triplets in field order: shoulder, elbow, wrist. Legacy files may carry
