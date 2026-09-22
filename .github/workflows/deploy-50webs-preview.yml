@@ -121,11 +121,13 @@ jobs:
           mkdir -f -p preview/$SLUG
           cd preview/$SLUG
           lcd .preview
-          put battle_sim.php
-          put preview.json
           mirror -R --delete --verbose=1 battle battle
           mirror -R --delete --verbose=1 labs labs
           mirror -R --delete --verbose=1 --ignore-time Assets Assets
+          put battle_sim.php
+          # preview.json advertises the deployed sha: uploaded last, so a cancelled
+          # run can never claim a commit it did not finish deploying.
+          put preview.json
           bye
           LFTP
 
