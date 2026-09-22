@@ -106,6 +106,10 @@ jobs:
           : "${FTP_USER:?Missing repository secret FTP_USER}"
           : "${FTP_PASSWORD:?Missing repository secret FTP_PASS}"
           sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+          # Code is tiny: always re-uploaded so an edit can never be missed. Bulk
+          # assets (~850 MB of FBX) are compared by size only (--ignore-time): every
+          # run re-checkouts and re-copies, so mtimes are always "now" and a time
+          # comparison would re-upload every unchanged file on each deploy.
           # mirror --delete is confined to this preview's own directory.
           lftp -u "$FTP_USER","$FTP_PASSWORD" "$FTP_HOST" <<LFTP
           set cmd:fail-exit yes
@@ -115,7 +119,13 @@ jobs:
           set ftp:passive-mode true
           cd grasstex
           mkdir -f -p preview/$SLUG
-          mirror -R --delete --verbose=1 .preview preview/$SLUG
+          cd preview/$SLUG
+          lcd .preview
+          put battle_sim.php
+          put preview.json
+          mirror -R --delete --verbose=1 battle battle
+          mirror -R --delete --verbose=1 labs labs
+          mirror -R --delete --verbose=1 --ignore-time Assets Assets
           bye
           LFTP
 
