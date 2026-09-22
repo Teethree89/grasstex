@@ -111,6 +111,7 @@
       <p class="hint" style="margin-top:8px">Nudge row: <span class="key" id="nudgeRow">none — click a row label</span>. ←/↑/→ nudge x/y/z by 0.001 (Shift: ×10, ↓: −y; hold to keep nudging); arm-dial rows nudge 1° (Shift: 5°). The weapon re-seats live.</p>
       <div class="row" style="margin-top:9px"><button id="seatWeapon">Seat weapon</button><button id="matchForeXY" title="Copy fore-near x/y onto fore-far (the backend only reads near x/y, so this is lossless)">Snap far x/y</button><button id="resetSeat">Reset seat</button></div>
       <p class="hint" style="margin-top:8px">Seat check <span class="key" id="seatCheck">—</span></p>
+      <p class="hint" style="margin-top:8px">Aim check <span class="key" id="aimCheck">—</span></p>
       <button id="bindPose" style="margin-top:9px">Bind pose</button>
       <label class="check"><input id="trackHands" type="checkbox"> Weapon follows hands during playback</label>
       <div class="numgrid" id="shoulderGrid"><span class="nrowlab" data-row="d-shoulder" title="Select row for keyboard nudging">Shoulder°</span><input id="sx" type="number" step="1" aria-label="shoulder x deg" placeholder="0"><input id="sy" type="number" step="1" aria-label="shoulder y deg" placeholder="0"><input id="sz" type="number" step="1" aria-label="shoulder z deg" placeholder="0"></div>
@@ -545,6 +546,7 @@
           if (typeof labStashCurrentWeapon === 'function') labStashCurrentWeapon();
           if (labCalib.modelFile !== file.name && !keep) labCalib.contacts = { right:null, left:null };
           labCalib.modelFile = file.name;
+          labCalib.seated = false;
           labRefreshFields();
           if (typeof labAfterModelSwitch === 'function') labAfterModelSwitch(keep);
         }
@@ -679,7 +681,7 @@
     modelFile:'', weaponFile:'', weapon:null, // {mesh, container}
     contacts:{ right:null, left:null },       // BABYLON.Vector3, hand-bone local
     weaponPts:{ grip:null, foreN:null, foreF:null }, // BABYLON.Vector3, weapon local
-    pendingPick:null, markers:{}, downPos:null, oneHandLocal:null
+    pendingPick:null, markers:{}, downPos:null, oneHandLocal:null, seated:false
   };
   window.__labCalib = labCalib;
   const LAB_STORE_KEY = 'fbxLabCalib.v1';
@@ -921,6 +923,7 @@
     labDisposeWeapon();
     labCalib.weaponPts = { grip:null, foreN:null, foreF:null };
     labCalib.oneHandLocal = null;
+    labCalib.seated = false;
     labRefreshFields();
     setStatus('Importing weapon '+file.name+'…');
     const result = await BABYLON.SceneLoader.ImportMeshAsync('', 'file:', file, scene, undefined, '.fbx');
@@ -969,6 +972,7 @@
     labCalib.weapon = null;
     labCalib.weaponFile = '';
     labCalib.oneHandLocal = null;
+    labCalib.seated = false;
   }
   $('libLoad').onclick = async () => {
     try {
@@ -1264,6 +1268,7 @@
     if (!labCalib.contacts.right) return 'Pick the right hand contact first.';
     const mesh = labCalib.weapon.mesh;
     mesh.computeWorldMatrix(true);
+    labCalib.seated = false;
     const R = labAnchorWorld('right');
     if (!R) return 'Load the soldier named by this calibration first.';
     const G = labCalib.weaponPts.grip;
@@ -1308,6 +1313,7 @@
       mesh.rotationQuaternion.copyFrom(rotQ);
       mesh.position.copyFrom(origin);
       if (!follow || !labCalib.oneHandLocal) labRememberRightSocket(mesh,handWorld);
+      labCalib.seated = true;
       return 'Grip and fore-end seated on both hand contacts.';
     } else {
       if (L && !isPistol)
@@ -1320,6 +1326,7 @@
         labRightSocket(mesh,handWorld);
         // No dials here: the render observer applies them exactly once per frame
         // (applying here too would double them while tracking).
+        labCalib.seated = true;
         return 'Grip follows the right hand.';
       }
       const scl = new BABYLON.Vector3(), rot = new BABYLON.Quaternion(), tp = new BABYLON.Vector3();
@@ -1328,12 +1335,13 @@
       rot.toRotationMatrix(rotM);
       mesh.position.copyFrom(R.subtract(BABYLON.Vector3.TransformNormal(G, rotM)));
       labRememberRightSocket(mesh,handWorld);
+      labCalib.seated = true;
       let msg = 'Grip seated on the right hand.';
       if (isPistol && labApplyArmDials()) msg += ' Arm dials applied.';
       return msg;
     }
   }
-  $('seatWeapon').onclick = () => { setStatus(labSeatWeapon()); labRefreshMarkers(); labSeatCheck(); };
+  $('seatWeapon').onclick = () => { setStatus(labSeatWeapon()); labRefreshMarkers(); labSeatCheck(); labAimCheck(); };
   $('matchForeXY').onclick = () => {
     const N = labCalib.weaponPts.foreN, F = labCalib.weaponPts.foreF;
     if (!N || !F) { setStatus('Pick fore near + fore far first.', true); return; }
@@ -1365,6 +1373,44 @@
     else if (dist < near || dist > far || dist * dist < dx * dx + dy * dy)
       verdict = 'BLOCKED: hands ' + fmt(dist) + ' outside fore range ' + fmt(near) + '–' + fmt(far);
     el.textContent = 'hands ' + fmt(dist) + ' · fore ' + fmt(near) + '–' + fmt(far) + ' · Δx/y ' + spread.toFixed(3) + ' m — ' + verdict;
+  }
+  // Top-down aim readout: barrel yaw vs hips facing, in degrees. The seat solver maps
+  // the barrel exactly onto the right→left hand line, so this angle IS the clip's hand
+  // arrangement — no re-yaw is applied (the game never re-yaws either: it turns the
+  // root onto the target and bends the spine up to ~40°). Beyond ~40°, seat the same
+  // points on an aiming clip frame instead.
+  const LAB_AIM_BUDGET_DEG = 40;
+  function labAimCheck(){
+    const el = $('aimCheck');
+    if (!el) return;
+    const w = labCalib.weapon;
+    if (!labCalib.seated || !w || !w.mesh || w.mesh.isDisposed() || !modelAssets) {
+      el.textContent = 'seat the weapon first.';
+      return;
+    }
+    let hips = null;
+    for (const n of modelAssets.transformNodes) {
+      if (n && !n.isDisposed() && labCanon(n.name) === 'hips') { hips = n; break; }
+    }
+    if (!hips) { el.textContent = 'no hips bone on this rig.'; return; }
+    w.mesh.computeWorldMatrix(true);
+    const barrel = BABYLON.Vector3.TransformNormal(new BABYLON.Vector3(0, 0, 1), w.mesh.getWorldMatrix());
+    const facing = BABYLON.Vector3.TransformNormal(new BABYLON.Vector3(0, 0, 1), labNodeWorld(hips));
+    barrel.y = 0; facing.y = 0;
+    if (barrel.lengthSquared() < 1e-8 || facing.lengthSquared() < 1e-8) {
+      el.textContent = 'barrel near-vertical — top-down angle undefined.';
+      return;
+    }
+    barrel.normalize(); facing.normalize();
+    const dot = Math.max(-1, Math.min(1, BABYLON.Vector3.Dot(barrel, facing)));
+    const crossY = barrel.z * facing.x - barrel.x * facing.z;
+    const deg = Math.atan2(crossY, dot) * 180 / Math.PI;
+    const mag = Math.abs(deg).toFixed(0);
+    const side = deg < -0.5 ? 'right' : (deg > 0.5 ? 'left' : 'dead ahead');
+    el.textContent = side === 'dead ahead' ? 'barrel dead ahead of facing.'
+      : ('barrel ' + mag + '° ' + side + ' of facing — ' + (Math.abs(deg) <= LAB_AIM_BUDGET_DEG
+        ? 'within the game\u2019s ~40° spine correction.'
+        : 'beyond it — seat on an aiming frame (aim / crouchAim).'));
   }
   // Restore one arm chain (wrist + 3 parents) from the bind snapshot, undoing snap and
   // wrist-tweak rotations without touching anything else. Positions/scales are copied
@@ -1434,6 +1480,7 @@
       labArmStash = null;
     } else labRestoreArm('left');
     labCalib.oneHandLocal = null;
+    labCalib.seated = false;
     if (!weapon.mesh.rotationQuaternion) weapon.mesh.rotationQuaternion = new BABYLON.Quaternion();
     weapon.home.decompose(weapon.mesh.scaling,weapon.mesh.rotationQuaternion,weapon.mesh.position);
     weapon.mesh.computeWorldMatrix(true);
@@ -1464,6 +1511,7 @@
     // input): the values are inert unless a pistol is seated — same rule as the game.
     labUpdateSnippet();
     if (typeof labSeatCheck === 'function') labSeatCheck();
+    if (typeof labAimCheck === 'function') labAimCheck();
   }
   [[['ax','ay','az'],'right'], [['bx','by','bz'],'left']].forEach(([ids, side]) => {
     ids.forEach(id => $(id).onchange = () => {
@@ -2053,6 +2101,7 @@
     }
   };
 
+  let labAimTick = 0;
   scene.onBeforeRenderObservable.add(() => {
     if (!modelAssets) return;
     // Stash discipline: arm dials mutate joints, and the onAfterRender hook restores
@@ -2069,6 +2118,9 @@
       labApplyArmDials();
     }
     labRefreshMarkers();
+    // Hands move under a playing clip, so the aim angle drifts: re-check at ~3 Hz.
+    labAimTick = (labAimTick + 1) % 20;
+    if (labAimTick === 0 && labCalib.seated && !labCalib.pendingPick) { labSeatCheck(); labAimCheck(); }
   });
   // Restore the stashed arm chain after the frame renders (see labStashArm):
   // clip evaluation rewrites joints every frame while playing, but while paused
