@@ -1460,7 +1460,8 @@
     set(['ffx','ffy','ffz'], pistol ? null : labCalib.weaponPts.foreF);
     const n = pistol ? null : labCalib.weaponPts.foreN, f = pistol ? null : labCalib.weaponPts.foreF;
     $('foreLen').textContent = (n && f) ? (n.subtract(f).length().toFixed(3)+' m') : '—';
-    for (const id of ['sx','sy','sz','ex','ey','ez','wx','wy','wz']) $(id).disabled = !pistol;
+    // Dial boxes stay editable even with a long gun loaded (spinners need an enabled
+    // input): the values are inert unless a pistol is seated — same rule as the game.
     labUpdateSnippet();
     if (typeof labSeatCheck === 'function') labSeatCheck();
   }

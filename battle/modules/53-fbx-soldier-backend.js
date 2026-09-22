@@ -890,7 +890,10 @@ function applyPose(fx){
   showBipod(fx);
   var st=fx.st,nodes=fx.nodes,animated=st.animated,overlay=fx.overlay>.001&&fx.upper.entries.length;
   var dialKey=fx.weaponModel||fx.weaponKind;
-  var dials=armDegFor(fx.lib.file,dialKey);
+  /* Arm dials are the pistol support cup only (same rule as the Motion Lab preview):
+     stray dial values stored on a long-gun slot stay inert here too. */
+  var dialPistol=dialKey==='pistol'||/m1911a1|p38/i.test(dialKey||'');
+  var dials=dialPistol?armDegFor(fx.lib.file,dialKey):null;
   var wristNode=null,elbowNode=null,shoulderNode=null;
   if(dials){
     var li=st.bones?st.bones.indexOf(BONE.leftHand):-1;
