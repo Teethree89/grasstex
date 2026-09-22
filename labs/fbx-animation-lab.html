@@ -47,7 +47,9 @@
     .tool[data-tip] { position:relative; }
     .tool[data-tip]:hover::after { content:attr(data-tip); position:absolute; top:calc(100% + 7px); left:0; white-space:nowrap; background:#0b131c; border:1px solid var(--line); border-radius:6px; padding:4px 8px; font-size:11px; color:var(--ink); z-index:6; pointer-events:none; }
     .tsep { width:1px; align-self:stretch; background:var(--line); margin:3px 1px; }
-    #left h2.acc-head { cursor:pointer; display:flex; align-items:center; gap:7px; }
+    #left h2.acc-head { cursor:pointer; display:flex; align-items:center; gap:7px; margin:3px 0 2px; padding:8px 0 4px; border-top:1px solid var(--line); }
+    #left h2.acc-head:first-of-type { border-top:0; padding-top:0; }
+    .acc-body.open { margin-bottom:3px; }
     #left h2.acc-head:hover { color:#fff; }
     #left h2.acc-head .chev { margin-left:auto; color:var(--muted); font-size:12px; }
     .pin { width:22px; height:22px; flex:0 0 auto; display:grid; place-items:center; background:transparent; border:1px solid transparent; border-radius:6px; color:var(--muted); cursor:pointer; padding:0; }
