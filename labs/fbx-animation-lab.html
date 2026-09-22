@@ -2372,10 +2372,32 @@
   ];
   const LAB_PIN_SVG = LAB_SVG_OPEN + '<path d="M9 3h6l-1 6 4 4v2H6v-2l4-4V3z"/><path d="M12 17v4"/></svg>';
   const LAB_ACC_KEY = 'fbxLabAcc.v1';
+  const LAB_TOOL_KEY = 'fbxLabTools.v1';
   function labSyncTools(){
     document.querySelectorAll('#toolBar .tool').forEach(btn => {
       const input = $(btn.dataset.for);
       if (input) btn.setAttribute('aria-pressed', input.checked ? 'true' : 'false');
+    });
+    labSaveTools();
+  }
+  function labSaveTools(){
+    try {
+      const s = {};
+      LAB_TOOLS.forEach(t => { const el = $(t.id); if (el) s[t.id] = !!el.checked; });
+      localStorage.setItem(LAB_TOOL_KEY, JSON.stringify(s));
+    } catch (error) {}
+  }
+  function labRestoreTools(){
+    let s = null;
+    try { s = JSON.parse(localStorage.getItem(LAB_TOOL_KEY) || 'null'); } catch (error) {}
+    if (!s) return;
+    // Apply after every change-handler is attached; dispatch so viewers/outlines follow.
+    LAB_TOOLS.forEach(t => {
+      const el = $(t.id);
+      if (el && typeof s[t.id] === 'boolean' && el.checked !== s[t.id]) {
+        el.checked = s[t.id];
+        el.dispatchEvent(new Event('change'));
+      }
     });
   }
   function labInitChrome(){
@@ -2463,6 +2485,7 @@
     });
     if (!store.open && sections.length) store.open = sections[0].head.dataset.acc;
     applyOpen();
+    labRestoreTools();
   }
   labRefreshFields();
   labRefreshSidecarUI();
