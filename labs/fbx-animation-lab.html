@@ -108,13 +108,13 @@
         <span class="nrowlab" data-row="foreF" title="Select row for keyboard nudging">Fore far</span><input id="ffx" type="number" step="0.001" aria-label="fore far x"><input id="ffy" type="number" step="0.001" aria-label="fore far y"><input id="ffz" type="number" step="0.001" aria-label="fore far z">
       </div>
       <p class="hint" style="margin-top:8px">Fore-end length <span class="key" id="foreLen">—</span> <span id="foreLenNote">(long guns: near–far; pistols: grip–near cup reach).</span></p>
-      <p class="hint" style="margin-top:8px">Nudge row: <span class="key" id="nudgeRow">none — click a row label</span>. ←/↑/→ nudge x/y/z by 0.001 (Shift: ×10, ↓: −y; hold to keep nudging); the weapon re-seats live.</p>
+      <p class="hint" style="margin-top:8px">Nudge row: <span class="key" id="nudgeRow">none — click a row label</span>. ←/↑/→ nudge x/y/z by 0.001 (Shift: ×10, ↓: −y; hold to keep nudging); arm-dial rows nudge 1° (Shift: 5°). The weapon re-seats live.</p>
       <div class="row" style="margin-top:9px"><button id="seatWeapon">Seat weapon</button><button id="resetSeat">Reset seat</button></div>
       <button id="bindPose" style="margin-top:9px">Bind pose</button>
       <label class="check"><input id="trackHands" type="checkbox"> Weapon follows hands during playback</label>
-      <div class="numgrid" id="shoulderGrid"><span>Shoulder°</span><input id="sx" aria-label="shoulder x deg" placeholder="0"><input id="sy" aria-label="shoulder y deg" placeholder="0"><input id="sz" aria-label="shoulder z deg" placeholder="0"></div>
-      <div class="numgrid" id="elbowGrid"><span>Elbow°</span><input id="ex" aria-label="elbow x deg" placeholder="0"><input id="ey" aria-label="elbow y deg" placeholder="0"><input id="ez" aria-label="elbow z deg" placeholder="0"></div>
-      <div class="numgrid" id="wristGrid"><span>Wrist°</span><input id="wx" aria-label="wrist x deg" placeholder="0"><input id="wy" aria-label="wrist y deg" placeholder="0"><input id="wz" aria-label="wrist z deg" placeholder="0"></div>
+      <div class="numgrid" id="shoulderGrid"><span class="nrowlab" data-row="d-shoulder" title="Select row for keyboard nudging">Shoulder°</span><input id="sx" type="number" step="1" aria-label="shoulder x deg" placeholder="0"><input id="sy" type="number" step="1" aria-label="shoulder y deg" placeholder="0"><input id="sz" type="number" step="1" aria-label="shoulder z deg" placeholder="0"></div>
+      <div class="numgrid" id="elbowGrid"><span class="nrowlab" data-row="d-elbow" title="Select row for keyboard nudging">Elbow°</span><input id="ex" type="number" step="1" aria-label="elbow x deg" placeholder="0"><input id="ey" type="number" step="1" aria-label="elbow y deg" placeholder="0"><input id="ez" type="number" step="1" aria-label="elbow z deg" placeholder="0"></div>
+      <div class="numgrid" id="wristGrid"><span class="nrowlab" data-row="d-wrist" title="Select row for keyboard nudging">Wrist°</span><input id="wx" type="number" step="1" aria-label="wrist x deg" placeholder="0"><input id="wy" type="number" step="1" aria-label="wrist y deg" placeholder="0"><input id="wz" type="number" step="1" aria-label="wrist z deg" placeholder="0"></div>
       <p class="hint" style="margin-top:8px">Left-arm dials in degrees (pistols): added onto the animated shoulder, elbow and wrist every frame — dial the cup and it follows the animation. Rotations only; bone lengths are never touched. Pistols need no fore-near pick and no left contact: the dials pose the support hand directly.</p>
 
       <h2>Save</h2>
@@ -1447,7 +1447,7 @@
     });
   });
   // Mouse-wheel over a stepper must not silently retune it.
-  document.querySelectorAll('#calibGrid input[type=number]').forEach(el => {
+  document.querySelectorAll('#calibGrid input[type=number], #shoulderGrid input, #elbowGrid input, #wristGrid input').forEach(el => {
     el.addEventListener('wheel', () => el.blur(), { passive:true });
   });
 
@@ -1456,21 +1456,34 @@
      its x/y/z by LAB_NUDGE (Shift: LAB_NUDGE_BIG, ↓: −y). Typing in any field keeps
      normal arrow-key behaviour. Every nudge refreshes markers/snippet and re-seats
      the weapon live so placement can be dialled in by eye. */
-  const LAB_NUDGE = 0.001, LAB_NUDGE_BIG = 0.01;
+  const LAB_NUDGE = 0.001, LAB_NUDGE_BIG = 0.01, LAB_DEG = 1, LAB_DEG_BIG = 5;
+  const LAB_DIAL_IDS = { shoulder:['sx','sy','sz'], elbow:['ex','ey','ez'], wrist:['wx','wy','wz'] };
+  const LAB_NUDGE_NAMES = { right:'A right', left:'B left', grip:'Grip', foreN:'Fore near', foreF:'Fore far',
+    'd-shoulder':'Shoulder°', 'd-elbow':'Elbow°', 'd-wrist':'Wrist°' };
   let labNudgeRow = null;
   function labSelectNudgeRow(key){
     labNudgeRow = (labNudgeRow === key) ? null : key;
-    document.querySelectorAll('#calibGrid .nrowlab').forEach(el => {
+    document.querySelectorAll('.nrowlab').forEach(el => {
       el.classList.toggle('sel', el.dataset.row === labNudgeRow);
     });
-    const names = { right:'A right', left:'B left', grip:'Grip', foreN:'Fore near', foreF:'Fore far' };
-    $('nudgeRow').textContent = labNudgeRow ? names[labNudgeRow] : 'none — click a row label';
+    $('nudgeRow').textContent = labNudgeRow ? (LAB_NUDGE_NAMES[labNudgeRow] || labNudgeRow) : 'none — click a row label';
   }
-  document.querySelectorAll('#calibGrid .nrowlab').forEach(el => {
+  document.querySelectorAll('.nrowlab').forEach(el => {
     el.addEventListener('click', () => labSelectNudgeRow(el.dataset.row));
   });
+  function labNudgeDial(which, axis, dir){
+    const ids = LAB_DIAL_IDS[which];
+    if (!ids) return;
+    const idx = { x:0, y:1, z:2 }[axis];
+    const cur = ids.map(id => { const n = parseFloat($(id).value); return Number.isFinite(n) ? n : 0; });
+    cur[idx] = +(cur[idx] + dir).toFixed(2);
+    ids.forEach((id, i) => { $(id).value = cur[i]; });
+    labRefreshFields(); labRefreshMarkers(); labUpdateSnippet();
+    try { labSeatWeapon(); } catch (error) {}
+  }
   function labNudge(axis, dir){
-    if (!labNudgeRow) { setStatus('Click a row label first (A right … Fore far), then use ←/↑/→.', true); return; }
+    if (!labNudgeRow) { setStatus('Click a row label first (contacts, weapon points, or arm dials), then use ←/↑/→.', true); return; }
+    if (labNudgeRow.startsWith('d-')) { labNudgeDial(labNudgeRow.slice(2), axis, dir); return; }
     const isContact = (labNudgeRow === 'right' || labNudgeRow === 'left');
     const cur = isContact ? labCalib.contacts[labNudgeRow] : labCalib.weaponPts[labNudgeRow];
     const v = cur ? cur.clone() : new BABYLON.Vector3(0, 0, 0);
@@ -1483,8 +1496,9 @@
      LAB_HOLD_RATE until release. OS auto-repeat is ignored so the cadence stays ours. */
   const LAB_HOLD_DELAY = 250, LAB_HOLD_RATE = 50;
   let labHold = null; // {axis, dir}
-  function labNudgeKey(key, shift){
-    const big = shift ? LAB_NUDGE_BIG : LAB_NUDGE;
+  function labNudgeKey(key, shift, isDial){
+    const unit = isDial ? LAB_DEG : LAB_NUDGE, bigUnit = isDial ? LAB_DEG_BIG : LAB_NUDGE_BIG;
+    const big = shift ? bigUnit : unit;
     let axis = null, dir = 0;
     if (key === 'ArrowLeft') { axis = 'x'; dir = big; }
     else if (key === 'ArrowUp') { axis = 'y'; dir = big; }
@@ -1507,7 +1521,7 @@
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(tag) || event.target.isContentEditable) return;
     if (!labNudgeRow || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.repeat) { event.preventDefault(); return; }
-    const step = labNudgeKey(event.key, event.shiftKey);
+    const step = labNudgeKey(event.key, event.shiftKey, !!labNudgeRow && labNudgeRow.startsWith('d-'));
     if (!step) return;
     event.preventDefault();
     labStopHold(); // switching arrows mid-hold moves to the new axis
