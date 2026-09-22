@@ -63,7 +63,7 @@ every swap also stashes the outgoing weapon's slot into the per-model dictionary
 unchecking it restores the old clear-and-refill-from-saved behaviour.
 Per-model sidecars (`Assets/soldiers/<model>.fbx.json`, edited in the lab's **Per-model
 sidecar** section, saved via Download or `labs/save-calibration.php`) hold contacts once
-plus one slot per weapon (grip / fore-near / fore-far + trigger + arm dials + right-wrist dial); the battle backend
+plus one slot per weapon (grip / fore-near / fore-far + arm dials + right-wrist dial); the battle backend
 fetches them next to the soldier FBX on load and they win over the hardcoded
 `SOLDIER_CONTACTS` / `WEAPON_POINTS` / `WEAPON_MODEL_POINTS` (the snippet copy-paste path
 still works for universal per-weapon entries). The **Aim test** section drops a target

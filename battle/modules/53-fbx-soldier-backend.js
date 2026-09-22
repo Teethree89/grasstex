@@ -176,7 +176,7 @@ function applySidecarData(file,data){
     }
     var base=WEAPON_POINTS[w]||WEAPON_POINTS.rifle;
     (SIDE_MODEL_POINTS[file]||(SIDE_MODEL_POINTS[file]={}))[w]={
-      trigger:isSideTriplet(slot.trigger)?slot.trigger.slice():((base&&base.trigger)||[0,0,0]),
+      trigger:(base&&base.trigger)||[0,0,0],
       grip:slot.grip?slot.grip.slice():(base&&base.grip?base.grip.slice():[0,0,0]),
       fore:fore
     };

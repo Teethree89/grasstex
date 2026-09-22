@@ -56,8 +56,8 @@ foreach ($weapons as $wfile => $slot) {
             if (isset($slot['armDeg'][$j]) && !isTriplet($slot['armDeg'][$j])) fail(400, 'Bad armDeg.' . $j . ' for ' . $wfile);
         }
     }
-    /* Optional: trigger reference point and right-wrist dial (straight stocks). */
-    foreach (array('trigger', 'wristR') as $k) {
+    /* Optional: right-wrist dial (straight stocks). Unknown extra keys pass through. */
+    foreach (array('wristR') as $k) {
         if (array_key_exists($k, $slot) && $slot[$k] !== null && !isTriplet($slot[$k])) fail(400, 'Bad ' . $k . ' for ' . $wfile);
     }
 }

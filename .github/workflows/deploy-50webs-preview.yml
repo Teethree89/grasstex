@@ -85,6 +85,13 @@ jobs:
             [ -e "$f" ] && mkdir -p .preview/Assets/soldiers && cp Assets/soldiers/*.json .preview/Assets/soldiers/
             break
           done
+          # Git-tracked sidecars upload as explicit puts (see below): they are excluded
+          # from the Assets mirror, which spares server-tuned *.json from --delete.
+          : > .preview-sidecars.lftp
+          for f in .preview/Assets/soldiers/*.json; do
+            [ -e "$f" ] || continue
+            printf 'put "%s" -o "Assets/soldiers/%s"\n' "$GITHUB_WORKSPACE/$f" "$(basename "$f")" >> .preview-sidecars.lftp
+          done
           python3 - <<'PY'
           import json, os, datetime
           json.dump({"ref": os.environ["PREVIEW_REF"], "sha": os.environ["PREVIEW_SHA"],
@@ -123,7 +130,12 @@ jobs:
           lcd .preview
           mirror -R --delete --verbose=1 battle battle
           mirror -R --delete --verbose=1 labs labs
-          mirror -R --delete --verbose=1 --ignore-time Assets Assets
+          # Sidecar calibrations (*.json) ride along neither way here: git-tracked ones
+          # upload as explicit puts below, and ones tuned on the server with
+          # Save-to-server survive every deploy (mirror --delete spares excluded files,
+          # so without this exclusion each push would wipe them as "extras").
+          mirror -R --delete --verbose=1 --ignore-time --exclude '\.json$' Assets Assets
+          source "$GITHUB_WORKSPACE/.preview-sidecars.lftp"
           put battle_sim.php
           # preview.json advertises the deployed sha: uploaded last, so a cancelled
           # run can never claim a commit it did not finish deploying.
