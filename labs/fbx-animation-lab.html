@@ -41,6 +41,10 @@
     #viewport.picking canvas { cursor:crosshair; }
     .numgrid { display:grid; grid-template-columns:52px 1fr 1fr 1fr; gap:6px; align-items:center; margin-top:8px; font-size:11px; color:var(--muted); }
     .numgrid input { width:100%; border:1px solid #385064; border-radius:6px; background:#0b131c; color:var(--ink); padding:6px 7px; font:12px ui-monospace, monospace; }
+    .numgrid input[type=number] { padding-right:2px; }
+    .nrowlab { cursor:pointer; border-radius:6px; padding:3px 4px; margin-left:-4px; }
+    .nrowlab:hover { background:#172635; color:var(--ink); }
+    .nrowlab.sel { background:#17382f; color:var(--accent); font-weight:700; }
     button.armed { border-color:var(--accent); background:#17382f; }
     #snippetOut { white-space:pre-wrap; word-break:break-word; font:11px ui-monospace, monospace; color:#c4d2dd; background:#0b131c; border:1px solid var(--line); border-radius:8px; padding:10px; margin-top:9px; max-height:220px; overflow:auto; }
     .pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; letter-spacing:.08em; }
@@ -97,13 +101,14 @@
       <div class="row" style="margin-top:9px"><button id="pickGrip">Set grip</button><button id="pickForeN">Fore near</button><button id="pickForeF">Fore far</button></div>
       <div class="numgrid" id="calibGrid">
         <span></span><span>x</span><span>y</span><span>z</span>
-        <span>A right</span><input id="ax" aria-label="A x"><input id="ay" aria-label="A y"><input id="az" aria-label="A z">
-        <span>B left</span><input id="bx" aria-label="B x"><input id="by" aria-label="B y"><input id="bz" aria-label="B z">
-        <span>Grip</span><input id="gx" aria-label="grip x"><input id="gy" aria-label="grip y"><input id="gz" aria-label="grip z">
-        <span>Fore near</span><input id="fnx" aria-label="fore near x"><input id="fny" aria-label="fore near y"><input id="fnz" aria-label="fore near z">
-        <span>Fore far</span><input id="ffx" aria-label="fore far x"><input id="ffy" aria-label="fore far y"><input id="ffz" aria-label="fore far z">
+        <span class="nrowlab" data-row="right" title="Select row for keyboard nudging">A right</span><input id="ax" type="number" step="0.001" aria-label="A x"><input id="ay" type="number" step="0.001" aria-label="A y"><input id="az" type="number" step="0.001" aria-label="A z">
+        <span class="nrowlab" data-row="left" title="Select row for keyboard nudging">B left</span><input id="bx" type="number" step="0.001" aria-label="B x"><input id="by" type="number" step="0.001" aria-label="B y"><input id="bz" type="number" step="0.001" aria-label="B z">
+        <span class="nrowlab" data-row="grip" title="Select row for keyboard nudging">Grip</span><input id="gx" type="number" step="0.001" aria-label="grip x"><input id="gy" type="number" step="0.001" aria-label="grip y"><input id="gz" type="number" step="0.001" aria-label="grip z">
+        <span class="nrowlab" data-row="foreN" title="Select row for keyboard nudging">Fore near</span><input id="fnx" type="number" step="0.001" aria-label="fore near x"><input id="fny" type="number" step="0.001" aria-label="fore near y"><input id="fnz" type="number" step="0.001" aria-label="fore near z">
+        <span class="nrowlab" data-row="foreF" title="Select row for keyboard nudging">Fore far</span><input id="ffx" type="number" step="0.001" aria-label="fore far x"><input id="ffy" type="number" step="0.001" aria-label="fore far y"><input id="ffz" type="number" step="0.001" aria-label="fore far z">
       </div>
       <p class="hint" style="margin-top:8px">Fore-end length <span class="key" id="foreLen">—</span> <span id="foreLenNote">(long guns: near–far; pistols: grip–near cup reach).</span></p>
+      <p class="hint" style="margin-top:8px">Nudge row: <span class="key" id="nudgeRow">none — click a row label</span>. ←/↑/→ nudge x/y/z by 0.001 (Shift: ×10, ↓: −y); the weapon re-seats live.</p>
       <div class="row" style="margin-top:9px"><button id="seatWeapon">Seat weapon</button><button id="resetSeat">Reset seat</button></div>
       <button id="bindPose" style="margin-top:9px">Bind pose</button>
       <label class="check"><input id="trackHands" type="checkbox"> Weapon follows hands during playback</label>
@@ -1440,6 +1445,55 @@
       labCalib.weaponPts[key] = v;
       labRefreshMarkers(); labUpdateSnippet();
     });
+  });
+  // Mouse-wheel over a stepper must not silently retune it.
+  document.querySelectorAll('#calibGrid input[type=number]').forEach(el => {
+    el.addEventListener('wheel', () => el.blur(), { passive:true });
+  });
+
+  /* ---- row select + keyboard nudging ----
+     Click a row label (A right … Fore far) to select that block; ←/↑/→ then nudge
+     its x/y/z by LAB_NUDGE (Shift: LAB_NUDGE_BIG, ↓: −y). Typing in any field keeps
+     normal arrow-key behaviour. Every nudge refreshes markers/snippet and re-seats
+     the weapon live so placement can be dialled in by eye. */
+  const LAB_NUDGE = 0.001, LAB_NUDGE_BIG = 0.01;
+  let labNudgeRow = null;
+  function labSelectNudgeRow(key){
+    labNudgeRow = (labNudgeRow === key) ? null : key;
+    document.querySelectorAll('#calibGrid .nrowlab').forEach(el => {
+      el.classList.toggle('sel', el.dataset.row === labNudgeRow);
+    });
+    const names = { right:'A right', left:'B left', grip:'Grip', foreN:'Fore near', foreF:'Fore far' };
+    $('nudgeRow').textContent = labNudgeRow ? names[labNudgeRow] : 'none — click a row label';
+  }
+  document.querySelectorAll('#calibGrid .nrowlab').forEach(el => {
+    el.addEventListener('click', () => labSelectNudgeRow(el.dataset.row));
+  });
+  function labNudge(axis, dir){
+    if (!labNudgeRow) { setStatus('Click a row label first (A right … Fore far), then use ←/↑/→.', true); return; }
+    const isContact = (labNudgeRow === 'right' || labNudgeRow === 'left');
+    const cur = isContact ? labCalib.contacts[labNudgeRow] : labCalib.weaponPts[labNudgeRow];
+    const v = cur ? cur.clone() : new BABYLON.Vector3(0, 0, 0);
+    v[axis] = +(v[axis] + dir).toFixed(4);
+    if (isContact) labCalib.contacts[labNudgeRow] = v; else labCalib.weaponPts[labNudgeRow] = v;
+    labRefreshFields(); labRefreshMarkers(); labUpdateSnippet();
+    try { labSeatWeapon(); } catch (error) {}
+  }
+  document.addEventListener('keydown', event => {
+    const tag = (event.target && event.target.tagName) || '';
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(tag) || event.target.isContentEditable) return;
+    if (!labNudgeRow || event.ctrlKey || event.metaKey || event.altKey) return;
+    const big = event.shiftKey ? LAB_NUDGE_BIG : LAB_NUDGE;
+    let axis = null, dir = 0;
+    if (event.key === 'ArrowLeft') { axis = 'x'; dir = big; }
+    else if (event.key === 'ArrowUp') { axis = 'y'; dir = big; }
+    else if (event.key === 'ArrowRight') { axis = 'z'; dir = big; }
+    else if (event.key === 'ArrowDown') { axis = 'y'; dir = -big; if (event.shiftKey) dir = big; }
+    else return;
+    event.preventDefault();
+    // Shift inverts ←/↑/→ (nudge down); ↓ is −y by definition, Shift flips it back.
+    if (event.shiftKey && (event.key === 'ArrowLeft' || event.key === 'ArrowUp' || event.key === 'ArrowRight')) dir = -big;
+    labNudge(axis, dir);
   });
 
   /* ---- persistence + export ---- */
