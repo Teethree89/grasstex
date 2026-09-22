@@ -109,7 +109,8 @@
       </div>
       <p class="hint" style="margin-top:8px">Fore-end length <span class="key" id="foreLen">—</span> <span id="foreLenNote">(long guns: near–far; pistols: grip–near cup reach).</span></p>
       <p class="hint" style="margin-top:8px">Nudge row: <span class="key" id="nudgeRow">none — click a row label</span>. ←/↑/→ nudge x/y/z by 0.001 (Shift: ×10, ↓: −y; hold to keep nudging); arm-dial rows nudge 1° (Shift: 5°). The weapon re-seats live.</p>
-      <div class="row" style="margin-top:9px"><button id="seatWeapon">Seat weapon</button><button id="resetSeat">Reset seat</button></div>
+      <div class="row" style="margin-top:9px"><button id="seatWeapon">Seat weapon</button><button id="matchForeXY" title="Copy fore-near x/y onto fore-far (the backend only reads near x/y, so this is lossless)">Snap far x/y</button><button id="resetSeat">Reset seat</button></div>
+      <p class="hint" style="margin-top:8px">Seat check <span class="key" id="seatCheck">—</span></p>
       <button id="bindPose" style="margin-top:9px">Bind pose</button>
       <label class="check"><input id="trackHands" type="checkbox"> Weapon follows hands during playback</label>
       <div class="numgrid" id="shoulderGrid"><span class="nrowlab" data-row="d-shoulder" title="Select row for keyboard nudging">Shoulder°</span><input id="sx" type="number" step="1" aria-label="shoulder x deg" placeholder="0"><input id="sy" type="number" step="1" aria-label="shoulder y deg" placeholder="0"><input id="sz" type="number" step="1" aria-label="shoulder z deg" placeholder="0"></div>
@@ -1332,7 +1333,39 @@
       return msg;
     }
   }
-  $('seatWeapon').onclick = () => { setStatus(labSeatWeapon()); labRefreshMarkers(); };
+  $('seatWeapon').onclick = () => { setStatus(labSeatWeapon()); labRefreshMarkers(); labSeatCheck(); };
+  $('matchForeXY').onclick = () => {
+    const N = labCalib.weaponPts.foreN, F = labCalib.weaponPts.foreF;
+    if (!N || !F) { setStatus('Pick fore near + fore far first.', true); return; }
+    F.x = N.x; F.y = N.y;
+    labRefreshFields(); labRefreshMarkers(); labUpdateSnippet(); labSeatCheck();
+    setStatus('Fore-far x/y snapped to near ('+N.x.toFixed(3)+', '+N.y.toFixed(3)+') — the backend only reads near x/y, so nothing is lost.');
+  };
+  // Live seat-readiness readout: mirrors labSeatWeapon's refusal thresholds so a
+  // failed seat names its cause before you press the button. Not a second solver —
+  // the numbers below are the same ones the seat path checks.
+  function labSeatCheck(){
+    const el = $('seatCheck');
+    if (!el) return;
+    if (!labCalib.modelFile || !labCalib.weaponFile) { el.textContent = 'load a model + weapon.'; return; }
+    if (labIsPistol(labCalib.weaponFile)) { el.textContent = 'pistol: one-hand hold, no fore-end check.'; return; }
+    const R = labAnchorWorld('right'), L = labAnchorWorld('left');
+    if (!R || !L) { el.textContent = 'pick both hand contacts (A + B).'; return; }
+    const G = labCalib.weaponPts.grip, N = labCalib.weaponPts.foreN, F = labCalib.weaponPts.foreF;
+    if (!G) { el.textContent = 'pick a grip point.'; return; }
+    if (!N || !F) { el.textContent = 'pick fore near + fore far.'; return; }
+    const spread = Math.max(Math.abs(N.x - F.x), Math.abs(N.y - F.y));
+    const dist = BABYLON.Vector3.Distance(R, L);
+    const dx = N.x - G.x, dy = N.y - G.y;
+    const near = Math.hypot(dx, dy, Math.min(N.z, F.z) - G.z);
+    const far = Math.hypot(dx, dy, Math.max(N.z, F.z) - G.z);
+    const fmt = n => n.toFixed(3) + ' m';
+    let verdict = 'READY';
+    if (spread > .005) verdict = 'BLOCKED: fore x/y differ by ' + spread.toFixed(3) + ' m — press Snap far x/y';
+    else if (dist < near || dist > far || dist * dist < dx * dx + dy * dy)
+      verdict = 'BLOCKED: hands ' + fmt(dist) + ' outside fore range ' + fmt(near) + '–' + fmt(far);
+    el.textContent = 'hands ' + fmt(dist) + ' · fore ' + fmt(near) + '–' + fmt(far) + ' · Δx/y ' + spread.toFixed(3) + ' m — ' + verdict;
+  }
   // Restore one arm chain (wrist + 3 parents) from the bind snapshot, undoing snap and
   // wrist-tweak rotations without touching anything else. Positions/scales are copied
   // back too, so a stray write can never strand a bone off the rig.
@@ -1429,6 +1462,7 @@
     $('foreLen').textContent = (n && f) ? (n.subtract(f).length().toFixed(3)+' m') : '—';
     for (const id of ['sx','sy','sz','ex','ey','ez','wx','wy','wz']) $(id).disabled = !pistol;
     labUpdateSnippet();
+    if (typeof labSeatCheck === 'function') labSeatCheck();
   }
   [[['ax','ay','az'],'right'], [['bx','by','bz'],'left']].forEach(([ids, side]) => {
     ids.forEach(id => $(id).onchange = () => {
