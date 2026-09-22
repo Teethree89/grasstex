@@ -112,6 +112,7 @@
       <p class="hint" style="margin-top:8px">Nudge row: <span class="key" id="nudgeRow">none — click a row label</span>. ←/↑/→ nudge x/y/z by 0.001 (Shift: ×10, ↓: −y; hold to keep nudging); arm-dial rows nudge 1° (Shift: 5°). The weapon re-seats live.</p>
       <div class="row" style="margin-top:9px"><button id="seatWeapon">Seat weapon</button><button id="matchForeXY" title="Copy fore-near x/y onto fore-far (the backend only reads near x/y, so this is lossless)">Snap far x/y</button><button id="resetSeat">Reset seat</button></div>
       <p class="hint" style="margin-top:8px">Seat check <span class="key" id="seatCheck">—</span></p>
+      <p class="hint" style="margin-top:8px">Trigger gap <span class="key" id="trigGap">—</span></p>
       <p class="hint" style="margin-top:8px">Aim check <span class="key" id="aimCheck">—</span></p>
 
       <h2>Aim test</h2>
@@ -1386,7 +1387,7 @@
       return msg;
     }
   }
-  $('seatWeapon').onclick = () => { setStatus(labSeatWeapon()); labRefreshMarkers(); labSeatCheck(); labAimCheck(); };
+  $('seatWeapon').onclick = () => { setStatus(labSeatWeapon()); labRefreshMarkers(); labSeatCheck(); labAimCheck(); labTrigGap(); };
   $('matchForeXY').onclick = () => {
     const N = labCalib.weaponPts.foreN, F = labCalib.weaponPts.foreF;
     if (!N || !F) { setStatus('Pick fore near + fore far first.', true); return; }
@@ -1577,6 +1578,47 @@
     setStatus(labSeatWeapon() + ' Model yawed ' + (d * 180 / Math.PI).toFixed(0) + '° onto the target.');
     labRefreshMarkers(); labSeatCheck(); labAimCheck();
   };
+  // Index-finger segment (PIP→tip) in world space, or null when the rig lacks those
+  // joints. The trigger gap below measures the picked dot against this segment.
+  function labFingerSeg(side){
+    if (!modelAssets) return null;
+    const wantA = side + 'handindex2', wantB = side + 'handindex3', fallA = side + 'handindex1';
+    let a = null, b = null, fa = null;
+    for (const n of modelAssets.transformNodes) {
+      if (!n || n.isDisposed()) continue;
+      const c = labCanon(n.name);
+      if (c === wantA) a = n;
+      else if (c === wantB) b = n;
+      else if (c === fallA) fa = n;
+    }
+    if (a && !b && fa) { b = a; a = fa; } // two-segment rigs: index1→index2
+    if (!a || !b) return null;
+    return [a.getAbsolutePosition(), b.getAbsolutePosition()];
+  }
+  // Live gauge, not a solver input: millimetres from the trigger dot to the index
+  // segment. Dial R wrist to close it; the seat math itself is untouched, so the lab
+  // and the game cannot disagree about it.
+  function labTrigGap(){
+    const el = $('trigGap');
+    if (!el) return;
+    const T = labCalib.weaponPts.trig, w = labCalib.weapon;
+    if (!T || !w || !w.mesh || w.mesh.isDisposed() || w.file !== labCalib.weaponFile) {
+      el.textContent = 'pick a trigger point.';
+      return;
+    }
+    const seg = labFingerSeg('right');
+    if (!seg) { el.textContent = 'no index joints on this rig.'; return; }
+    w.mesh.computeWorldMatrix(true);
+    const tp = BABYLON.Vector3.TransformCoordinates(T, w.mesh.getWorldMatrix());
+    const ab = seg[1].subtract(seg[0]);
+    const len2 = ab.lengthSquared();
+    const t = len2 > 1e-10
+      ? Math.max(0, Math.min(1, BABYLON.Vector3.Dot(tp.subtract(seg[0]), ab) / len2))
+      : 0;
+    const closest = seg[0].add(ab.scale(t));
+    const mm = tp.subtract(closest).length() * 1000;
+    el.textContent = mm.toFixed(0) + ' mm' + (mm <= 10 ? ' — finger on it.' : ' — dial R wrist to close it.');
+  }
   // Restore one arm chain (wrist + 3 parents) from the bind snapshot, undoing snap and
   // wrist-tweak rotations without touching anything else. Positions/scales are copied
   // back too, so a stray write can never strand a bone off the rig.
@@ -1687,6 +1729,7 @@
     labUpdateSnippet();
     if (typeof labSeatCheck === 'function') labSeatCheck();
     if (typeof labAimCheck === 'function') labAimCheck();
+    if (typeof labTrigGap === 'function') labTrigGap();
   }
   [[['ax','ay','az'],'right'], [['bx','by','bz'],'left']].forEach(([ids, side]) => {
     ids.forEach(id => $(id).onchange = () => {
@@ -2340,7 +2383,7 @@
     labRefreshMarkers();
     // Hands move under a playing clip, so the aim angle drifts: re-check at ~3 Hz.
     labAimTick = (labAimTick + 1) % 20;
-    if (labAimTick === 0 && labCalib.seated && !labCalib.pendingPick) { labSeatCheck(); labAimCheck(); }
+    if (labAimTick === 0 && labCalib.seated && !labCalib.pendingPick) { labSeatCheck(); labAimCheck(); labTrigGap(); }
   });
   // Restore the stashed arm chain after the frame renders (see labStashArm):
   // clip evaluation rewrites joints every frame while playing, but while paused
