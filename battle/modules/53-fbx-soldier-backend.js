@@ -153,8 +153,9 @@ var WEAPON_MODEL_POINTS={
 /* Runtime sidecar overlays (Assets/soldiers/<model>.json, written by the Motion Lab):
    SIDE_MODEL_POINTS[model][weapon] wins over WEAPON_MODEL_POINTS, SIDE_CONTACTS[model]
    wins over SOLDIER_CONTACTS, SIDE_ARM[model][weapon] carries the lab's left-arm dial
-   degrees {shoulder,elbow,wrist} for that pair (pistol support cup). */
-var SIDE_MODEL_POINTS={},SIDE_CONTACTS={},SIDE_ARM={};
+   degrees {shoulder,elbow,wrist} for that pair (pistol support cup), and
+   SIDE_WRISTR[model][weapon] the right-wrist dial (straight stocks, finger on trigger). */
+var SIDE_MODEL_POINTS={},SIDE_CONTACTS={},SIDE_ARM={},SIDE_WRISTR={};
 function isSideTriplet(a){
   return Array.isArray(a)&&a.length===3&&a.every(function(n){return typeof n==='number'&&isFinite(n);});
 }
@@ -175,10 +176,16 @@ function applySidecarData(file,data){
     }
     var base=WEAPON_POINTS[w]||WEAPON_POINTS.rifle;
     (SIDE_MODEL_POINTS[file]||(SIDE_MODEL_POINTS[file]={}))[w]={
-      trigger:(base&&base.trigger)||[0,0,0],
+      trigger:isSideTriplet(slot.trigger)?slot.trigger.slice():((base&&base.trigger)||[0,0,0]),
       grip:slot.grip?slot.grip.slice():(base&&base.grip?base.grip.slice():[0,0,0]),
       fore:fore
     };
+    /* Right-wrist dial for straight stocks: rotate the firing hand so the finger meets
+       the trigger. Stored only when non-zero; applied with the same yaw/pitch/roll
+       order as the lab preview, ahead of the hand chains. */
+    if(isSideTriplet(slot.wristR)&&slot.wristR.some(function(n){return Math.abs(n)>1e-9;})){
+      (SIDE_WRISTR[file]||(SIDE_WRISTR[file]={}))[w]=slot.wristR.slice();
+    }
     var arm=slot.armDeg;
     if(arm&&(isSideTriplet(arm.shoulder)||isSideTriplet(arm.elbow)||isSideTriplet(arm.wrist))){
       var nz=function(a){return isSideTriplet(a)&&a.some(function(n){return Math.abs(n)>1e-9;});};
@@ -210,6 +217,10 @@ function pointsFor(file,kind){
 }
 function armDegFor(modelFile,weaponFile){
   var m=modelFile&&SIDE_ARM[modelFile];
+  return(m&&weaponFile&&m[weaponFile])||null;
+}
+function wristRFor(modelFile,weaponFile){
+  var m=modelFile&&SIDE_WRISTR[modelFile];
   return(m&&weaponFile&&m[weaponFile])||null;
 }
 /* Measured per-model hand contacts, in hand-bone local import units: the same space
@@ -894,6 +905,11 @@ function applyPose(fx){
      stray dial values stored on a long-gun slot stay inert here too. */
   var dialPistol=dialKey==='pistol'||/m1911a1|p38/i.test(dialKey||'');
   var dials=dialPistol?armDegFor(fx.lib.file,dialKey):null;
+  var wrDial=wristRFor(fx.lib.file,dialKey),wrNode=null;
+  if(wrDial){
+    var ri=st.bones?st.bones.indexOf(BONE.rightHand):-1;
+    wrNode=(ri>=0&&nodes[ri])||null;
+  }
   var wristNode=null,elbowNode=null,shoulderNode=null;
   if(dials){
     var li=st.bones?st.bones.indexOf(BONE.leftHand):-1;
@@ -930,6 +946,14 @@ function applyPose(fx){
         if(!node.rotationQuaternion)node.rotationQuaternion=new Q();
         node.rotationQuaternion.multiplyInPlace(dialQuat(dd));
       }
+    }
+    /* Right-wrist dial for straight stocks: same yaw/pitch/roll order as the lab's
+       R wrist dial, applied ahead of the hand chains so the grip anchor (and the
+       finger) rides in the corrected hand. Ungated by weapon: the lab previews it
+       identically, so parity holds by construction. */
+    if(wrNode&&node===wrNode&&wrDial){
+      if(!node.rotationQuaternion)node.rotationQuaternion=new Q();
+      node.rotationQuaternion.multiplyInPlace(dialQuat(wrDial));
     }
     if(got===2)node.position.copyFrom(pa);
   }
@@ -1062,10 +1086,10 @@ M.setImportedEnabled=function(scene,enabled){
 };
 
 root.BattleFbxSoldier={
-  version:'1.2',backend:BACKEND,clips:CLIPS,models:MODELS,modelSet:MODEL_SET,
+  version:'1.3',backend:BACKEND,clips:CLIPS,models:MODELS,modelSet:MODEL_SET,
   load:loadLibrary,
-  sidecars:function(){return{contacts:Object.keys(SIDE_CONTACTS),points:Object.keys(SIDE_MODEL_POINTS),arms:Object.keys(SIDE_ARM)};},
-  status:function(scene){var st=sceneState(scene),sockets={};Object.keys(st.libs||{}).forEach(function(f){var lib=st.libs[f],p=lib.palms||{};sockets[f]={right:p[BONE.rightHand+'Source']||null,left:p[BONE.leftHand+'Source']||null,aimHandSpacingM:lib.supportHand&&lib.supportHand.along||0,sidecar:!!SIDE_CONTACTS[f],sideWeapons:SIDE_MODEL_POINTS[f]?Object.keys(SIDE_MODEL_POINTS[f]):[],sideArms:SIDE_ARM[f]?Object.keys(SIDE_ARM[f]):[]};});return{ready:st.ready,enabled:st.enabled,error:st.error?String(st.error.message||st.error):null,active:st.active.length,clips:st.clips?Object.keys(st.clips).length:0,bones:st.bones?st.bones.length:0,sockets:sockets,sidecars:Object.keys(SIDE_CONTACTS)};},
+  sidecars:function(){return{contacts:Object.keys(SIDE_CONTACTS),points:Object.keys(SIDE_MODEL_POINTS),arms:Object.keys(SIDE_ARM),wrists:Object.keys(SIDE_WRISTR)};},
+  status:function(scene){var st=sceneState(scene),sockets={};Object.keys(st.libs||{}).forEach(function(f){var lib=st.libs[f],p=lib.palms||{};sockets[f]={right:p[BONE.rightHand+'Source']||null,left:p[BONE.leftHand+'Source']||null,aimHandSpacingM:lib.supportHand&&lib.supportHand.along||0,sidecar:!!SIDE_CONTACTS[f],sideWeapons:SIDE_MODEL_POINTS[f]?Object.keys(SIDE_MODEL_POINTS[f]):[],sideArms:SIDE_ARM[f]?Object.keys(SIDE_ARM[f]):[],sideWrists:SIDE_WRISTR[f]?Object.keys(SIDE_WRISTR[f]):[]};});return{ready:st.ready,enabled:st.enabled,error:st.error?String(st.error.message||st.error):null,active:st.active.length,clips:st.clips?Object.keys(st.clips).length:0,bones:st.bones?st.bones.length:0,sockets:sockets,sidecars:Object.keys(SIDE_CONTACTS)};},
   clip:function(scene,key){var st=sceneState(scene);return st.clips&&st.clips[key]||null;},
   /* Per-model clip timing: natural speed (m/s), stride estimate, duration, loop. */
   speeds:function(scene,file){var st=sceneState(scene),lib=st.libs[file]||st.libs[Object.keys(st.libs)[0]],out={};if(!lib||!lib.clips)return out;
