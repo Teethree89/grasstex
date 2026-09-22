@@ -39,6 +39,23 @@
     canvas { width:100%; height:100%; display:block; outline:none; }
     #viewport::after { content:""; position:absolute; inset:0; pointer-events:none; border:1px solid rgba(255,255,255,.035); }
     #viewport.picking canvas { cursor:crosshair; }
+    #toolBar { position:absolute; top:12px; left:12px; display:flex; gap:5px; flex-wrap:wrap; align-items:center; z-index:5; background:rgba(6,12,18,.78); border:1px solid var(--line); border-radius:10px; padding:6px; max-width:calc(100% - 24px); }
+    .tool { width:32px; height:32px; display:grid; place-items:center; background:transparent; border:1px solid transparent; border-radius:8px; color:#c5d1dc; cursor:pointer; padding:0; }
+    .tool:hover { background:#203447; }
+    .tool[aria-pressed="true"] { background:#17382f; border-color:var(--accent); color:var(--accent); }
+    .tool svg { width:18px; height:18px; }
+    .tool[data-tip] { position:relative; }
+    .tool[data-tip]:hover::after { content:attr(data-tip); position:absolute; top:calc(100% + 7px); left:0; white-space:nowrap; background:#0b131c; border:1px solid var(--line); border-radius:6px; padding:4px 8px; font-size:11px; color:var(--ink); z-index:6; pointer-events:none; }
+    .tsep { width:1px; align-self:stretch; background:var(--line); margin:3px 1px; }
+    #left h2.acc-head { cursor:pointer; display:flex; align-items:center; gap:7px; }
+    #left h2.acc-head:hover { color:#fff; }
+    #left h2.acc-head .chev { margin-left:auto; color:var(--muted); font-size:12px; }
+    .pin { width:22px; height:22px; flex:0 0 auto; display:grid; place-items:center; background:transparent; border:1px solid transparent; border-radius:6px; color:var(--muted); cursor:pointer; padding:0; }
+    .pin:hover { background:#203447; color:var(--ink); }
+    .pin[aria-pressed="true"] { color:var(--accent); border-color:var(--accent); background:#17382f; }
+    .pin svg { width:13px; height:13px; }
+    .acc-body { display:none; }
+    .acc-body.open { display:block; }
     .numgrid { display:grid; grid-template-columns:52px 1fr 1fr 1fr; gap:6px; align-items:center; margin-top:8px; font-size:11px; color:var(--muted); }
     .numgrid input { width:100%; border:1px solid #385064; border-radius:6px; background:#0b131c; color:var(--ink); padding:6px 7px; font:12px ui-monospace, monospace; }
     .numgrid input[type=number] { padding-right:2px; }
@@ -627,6 +644,7 @@
       if (!BABYLON.Debug?.SkeletonViewer) {
         setStatus('The loaded Babylon build does not expose SkeletonViewer.', true);
         $('skeleton').checked = false;
+        if (typeof labSyncTools === 'function') labSyncTools();
         return;
       }
       modelSkeletons.forEach(skeleton => {
@@ -1637,6 +1655,7 @@
     const weapon = labCalib.weapon;
     if (!weapon || weapon.mesh.isDisposed()) { setStatus('Load a weapon first.', true); return; }
     $('trackHands').checked = false;
+    if (typeof labSyncTools === 'function') labSyncTools();
     if (labArmStash) {
       // Exact pre-override pose when tracking was on; bind fallback otherwise.
       labArmStash.forEach(entry => {
@@ -2336,9 +2355,119 @@
   scene.onAfterRenderObservable.add(() => {
     labUnstashArm();
   });
+  /* ---- viewport toolbar + accordion panel ----
+     Every checkbox toggle lives as an icon button over the viewport (state stays on the
+     original inputs, so all existing readers keep working); left-panel h2 sections become
+     accordions with one open at a time unless pinned. */
+  const LAB_SVG_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+  const LAB_TOOLS = [
+    { id:'loop', tip:'Loop active clip', icon:'<path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>' },
+    { id:'keepPoints', tip:'Keep points when switching model / weapon', icon:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>' },
+    { id:'trackHands', tip:'Weapon follows hands during playback', icon:'<path d="M7 3v6a5 5 0 0 0 10 0V3"/><path d="M7 3h4v5H7zM13 3h4v5h-4z"/>' },
+    { id:'aimAtTarget', tip:'Aim at target (spine bend)', icon:'<circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>' },
+    { id:'skeleton', tip:'Show skeleton', icon:'<circle cx="6.5" cy="6.5" r="2.4"/><circle cx="17.5" cy="17.5" r="2.4"/><circle cx="9" cy="4.8" r="1.5"/><circle cx="4.8" cy="9" r="1.5"/><circle cx="19.2" cy="15" r="1.5"/><circle cx="15" cy="19.2" r="1.5"/><path d="M8.2 8.2l7.6 7.6"/>' },
+    { id:'animationBounds', tip:'Show animation container outline', icon:'<rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="3.5 2.5"/>' },
+    { id:'horizontalRootLock', tip:'Lock animated container center to model origin', icon:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>' },
+    { id:'bottomRootLock', tip:'Also lock bottom/base skeleton root X/Z', icon:'<path d="M8 10V7a4 4 0 0 1 8 0v3"/><rect x="6" y="10" width="12" height="7" rx="1.5"/><path d="M3 20.5h18"/>' }
+  ];
+  const LAB_PIN_SVG = LAB_SVG_OPEN + '<path d="M9 3h6l-1 6 4 4v2H6v-2l4-4V3z"/><path d="M12 17v4"/></svg>';
+  const LAB_ACC_KEY = 'fbxLabAcc.v1';
+  function labSyncTools(){
+    document.querySelectorAll('#toolBar .tool').forEach(btn => {
+      const input = $(btn.dataset.for);
+      if (input) btn.setAttribute('aria-pressed', input.checked ? 'true' : 'false');
+    });
+  }
+  function labInitChrome(){
+    const bar = document.createElement('div');
+    bar.id = 'toolBar';
+    const defs = {};
+    LAB_TOOLS.forEach(t => { defs[t.id] = t; });
+    [['loop'],['keepPoints'],['trackHands'],['aimAtTarget'],
+     ['skeleton','animationBounds','horizontalRootLock','bottomRootLock']].forEach((group, gi) => {
+      if (gi) { const sep = document.createElement('div'); sep.className = 'tsep'; bar.append(sep); }
+      group.forEach(id => {
+        const input = $(id);
+        if (!input || !defs[id]) return;
+        const label = input.closest('label');
+        if (label) label.style.display = 'none';
+        const btn = document.createElement('button');
+        btn.className = 'tool';
+        btn.dataset.for = id;
+        btn.dataset.tip = defs[id].tip;
+        btn.setAttribute('aria-label', defs[id].tip);
+        btn.setAttribute('aria-pressed', input.checked ? 'true' : 'false');
+        btn.innerHTML = LAB_SVG_OPEN + defs[id].icon + '</svg>';
+        btn.onclick = () => { input.click(); btn.blur(); };
+        input.addEventListener('change', labSyncTools);
+        bar.append(btn);
+      });
+    });
+    viewport.prepend(bar);
+
+    const store = (() => {
+      try { return JSON.parse(localStorage.getItem(LAB_ACC_KEY) || '{"open":null,"pinned":{}}'); }
+      catch (error) { return { open:null, pinned:{} }; }
+    })();
+    const save = () => { try { localStorage.setItem(LAB_ACC_KEY, JSON.stringify(store)); } catch (error) {} };
+    const kids = [...$('left').children];
+    let head = null, body = [];
+    const sections = [];
+    const flush = () => { if (head) sections.push({ head, body }); head = null; body = []; };
+    kids.forEach(el => {
+      if (el.tagName === 'H2') { flush(); head = el; }
+      else if (el.classList && el.classList.contains('foot')) flush();
+      else if (head) body.push(el);
+    });
+    flush();
+    const applyOpen = () => {
+      sections.forEach(s => {
+        const title = s.head.dataset.acc;
+        const isOpen = store.open === title || !!store.pinned[title];
+        s.bodyWrap.classList.toggle('open', isOpen);
+        s.head.querySelector('.chev').textContent = isOpen ? '▾' : '▸';
+        s.head.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      });
+    };
+    sections.forEach(s => {
+      const title = s.head.textContent.trim();
+      s.head.dataset.acc = title;
+      s.head.classList.add('acc-head');
+      const pin = document.createElement('button');
+      pin.className = 'pin';
+      pin.innerHTML = LAB_PIN_SVG;
+      pin.title = 'Pin section open';
+      pin.setAttribute('aria-label', 'Pin ' + title);
+      pin.setAttribute('aria-pressed', store.pinned[title] ? 'true' : 'false');
+      pin.onclick = ev => {
+        ev.stopPropagation();
+        if (store.pinned[title]) delete store.pinned[title];
+        else store.pinned[title] = true;
+        pin.setAttribute('aria-pressed', store.pinned[title] ? 'true' : 'false');
+        save(); applyOpen(); pin.blur();
+      };
+      const chev = document.createElement('span');
+      chev.className = 'chev';
+      chev.textContent = '▸';
+      s.head.prepend(pin);
+      s.head.append(chev);
+      const wrap = document.createElement('div');
+      wrap.className = 'acc-body';
+      s.head.after(wrap);
+      s.body.forEach(el => wrap.append(el));
+      s.bodyWrap = wrap;
+      s.head.onclick = () => {
+        store.open = (store.open === title && !store.pinned[title]) ? null : title;
+        save(); applyOpen();
+      };
+    });
+    if (!store.open && sections.length) store.open = sections[0].head.dataset.acc;
+    applyOpen();
+  }
   labRefreshFields();
   labRefreshSidecarUI();
   labLoadLibrary();
+  labInitChrome();
   </script>
   <script src="fbx-animation-compat.js?v=4ab61a63204894bdd1b67c93c6f1307834f1ce85"></script>
 </body>
