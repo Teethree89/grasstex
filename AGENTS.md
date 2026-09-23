@@ -51,11 +51,13 @@ vertices and checks that soldier picks are weighted to the chosen hand; a missed
 the picker armed. The seat preview
 uses the picked fore-end range, and reload/death clips keep the last right-hand hold.
 Pistols seat from the right contact and grip, even if old saved data includes fore points.
-The pistol support cup is dials-only: the left-arm **Shoulder°/Elbow°/Wrist°** dials pose
-it with constant rotation offsets (no per-frame solve, so hit reactions cannot pop it).
-**Seat cup** solves the right-hand-local cup goal once on the paused frame and bakes it
-into the dials. Goal and dial values persist per model+weapon slot (localStorage + sidecar;
-the battle backend ignores the stored goal and applies the dials).
+For pistols, **Set Left Grip** captures contact B in right-hand-local space, so the cup
+target follows the firing hand. The left-arm **Shoulder°/Elbow°/Wrist°** dials provide
+the initial pose; a rotation-only CCD keeps the support hand aligned during animation.
+Its correction is cached, shortest-path slerped and rate-limited, and smoothly releases
+during hit/reload/death or unreachable poses instead of popping. Goal and dial values
+persist per model+weapon slot (localStorage + sidecar), and the lab/backend use the same
+three-joint wrist/elbow/shoulder chain.
 **Reset seat** returns the weapon to its picking position, stops tracking, restores the arm
 from the bind snapshot (exact pre-override pose when tracking was on), and keeps points.
 **Keep points when switching model / weapon** (on by default) carries the live contacts,

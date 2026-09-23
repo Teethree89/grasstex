@@ -153,9 +153,10 @@ var WEAPON_MODEL_POINTS={
 /* Runtime sidecar overlays (Assets/soldiers/<model>.json, written by the Motion Lab):
    SIDE_MODEL_POINTS[model][weapon] wins over WEAPON_MODEL_POINTS, SIDE_CONTACTS[model]
    wins over SOLDIER_CONTACTS, SIDE_ARM[model][weapon] carries the lab's left-arm dial
-   degrees {shoulder,elbow,wrist} for that pair (pistol support cup, rotations only), and
+   degrees {shoulder,elbow,wrist} for that pair (pistol support cup), SIDE_LEFT_GRIP
+   carries its right-hand-local support target, and
    SIDE_WRISTR[model][weapon] the right-wrist dial (straight stocks, finger on trigger). */
-var SIDE_MODEL_POINTS={},SIDE_CONTACTS={},SIDE_ARM={},SIDE_WRISTR={};
+var SIDE_MODEL_POINTS={},SIDE_CONTACTS={},SIDE_ARM={},SIDE_WRISTR={},SIDE_LEFT_GRIP={};
 function isSideTriplet(a){
   return Array.isArray(a)&&a.length===3&&a.every(function(n){return typeof n==='number'&&isFinite(n);});
 }
@@ -186,9 +187,9 @@ function applySidecarData(file,data){
     if(isSideTriplet(slot.wristR)&&slot.wristR.some(function(n){return Math.abs(n)>1e-9;})){
       (SIDE_WRISTR[file]||(SIDE_WRISTR[file]={}))[w]=slot.wristR.slice();
     }
-    /* NOTE: legacy slot.leftGripR (CCD support target) is intentionally ignored:
-       the per-frame rotation solve popped up to ~40 deg on hit reactions when the
-       spine moved the target out of reach, so the cup is dials-only now. */
+    if(isSideTriplet(slot.leftGripR)){
+      (SIDE_LEFT_GRIP[file]||(SIDE_LEFT_GRIP[file]={}))[w]=slot.leftGripR.slice();
+    }
     var arm=slot.armDeg;
     if(arm&&(isSideTriplet(arm.shoulder)||isSideTriplet(arm.elbow)||isSideTriplet(arm.wrist))){
       var nz=function(a){return isSideTriplet(a)&&a.some(function(n){return Math.abs(n)>1e-9;});};
@@ -224,6 +225,10 @@ function armDegFor(modelFile,weaponFile){
 }
 function wristRFor(modelFile,weaponFile){
   var m=modelFile&&SIDE_WRISTR[modelFile];
+  return(m&&weaponFile&&m[weaponFile])||null;
+}
+function leftGripFor(modelFile,weaponFile){
+  var m=modelFile&&SIDE_LEFT_GRIP[modelFile];
   return(m&&weaponFile&&m[weaponFile])||null;
 }
 /* Measured per-model hand contacts, in hand-bone local import units: the same space
@@ -900,11 +905,72 @@ function dialQuat(deg){
   Q.RotationYawPitchRollToRef((+d[1]||0)*Math.PI/180,(+d[0]||0)*Math.PI/180,(+d[2]||0)*Math.PI/180,dialQ);
   return dialQ;
 }
-/* Pistol support cup is dials-only: constant degree offsets on the left arm
-   (rotations only, so bone lengths can never change and no per-frame solve can pop).
-   The old CCD support-target solve is deleted: on hit reactions the spine moved the
-   right-hand-local target >0.35 m out of reach, the guard bailed, and the arm snapped
-   up to ~40 deg for a frame. */
+function cupQuatAngle(a,b){return 2*Math.acos(Math.min(1,Math.abs(Q.Dot(a,b))));}
+function cupSlerpLimited(from,to,alpha,maxStep){
+  var goal=to;
+  if(Q.Dot(from,goal)<0)goal=new Q(-goal.x,-goal.y,-goal.z,-goal.w);
+  var angle=cupQuatAngle(from,goal),t=angle>1e-7?Math.min(alpha,maxStep/angle):1,out=new Q();
+  Q.SlerpToRef(from,goal,t,out);out.normalize();return out;
+}
+/* The dials author a stable initial cup. CCD then finds only the per-frame correction
+   needed to keep contact B on a right-hand-local target. Corrections are cached,
+   shortest-path slerped and angular-rate-limited; released or unreachable poses decay
+   toward the animation instead of dropping a large solve in one frame. */
+function applyPistolCup(fx,targetLocal){
+  var palms=fx.lib.palms,right=fx.path[fx.path.length-1],left=fx.pathL[fx.pathL.length-1];
+  var anchor=palms&&palms[BONE.leftHand];if(!targetLocal||!anchor||!right||!left)return null;
+  var joints=[left,left.parent,left.parent&&left.parent.parent].filter(function(n){return!!n;});if(joints.length<3)return null;
+  right.computeWorldMatrix(true);left.computeWorldMatrix(true);
+  var target=V3.TransformCoordinates(new V3(targetLocal[0],targetLocal[1],targetLocal[2]),right.getWorldMatrix());
+  var base=joints.map(function(j){return j.rotationQuaternion?j.rotationQuaternion.clone():Q.Identity();});
+  function refresh(){for(var r=joints.length-1;r>=0;r--)joints[r].computeWorldMatrix(true);left.computeWorldMatrix(true);}
+  function endpoint(){refresh();return V3.TransformCoordinates(anchor,left.getWorldMatrix());}
+  var startError=V3.Distance(endpoint(),target),released=!!(fx.death||fx.transition||fx.supportReleased),guarded=startError>.30;
+  var desired=[Q.Identity(),Q.Identity(),Q.Identity()];
+  if(!released&&!guarded){
+    var error=startError;
+    for(var sweep=0;sweep<6&&error>.0005;sweep++){
+      var biggest=0;
+      for(var i=0;i<joints.length;i++){
+        var joint=joints[i],end=endpoint(),pivot=joint.getAbsolutePosition().clone();
+        var from=end.subtract(pivot),to=target.subtract(pivot);if(from.lengthSquared()<1e-10||to.lengthSquared()<1e-10)continue;
+        from.normalize();to.normalize();var axis=V3.Cross(from,to),sine=axis.length();if(sine<1e-6)continue;axis.normalize();
+        var angle=Math.asin(Math.max(-1,Math.min(1,sine)));if(V3.Dot(from,to)<0)angle=Math.PI-angle;
+        angle=Math.max(-.30,Math.min(.30,angle));biggest=Math.max(biggest,Math.abs(angle));
+        if(!joint.rotationQuaternion)joint.rotationQuaternion=new Q();
+        var deltaWorld=Q.RotationAxis(axis,angle),localBase=joint.rotationQuaternion.clone(),bestQ=localBase,bestError=V3.Distance(endpoint(),target),pq=Q.Identity();
+        if(joint.parent){joint.parent.computeWorldMatrix(true);var ps=new V3(),pt=new V3();joint.parent.getWorldMatrix().decompose(ps,pq,pt);}
+        var pi=pq.conjugate(),di=deltaWorld.conjugate(),deltas=[pq.multiply(deltaWorld).multiply(pi),pi.multiply(deltaWorld).multiply(pq),pq.multiply(di).multiply(pi),pi.multiply(di).multiply(pq)];
+        for(var d=0;d<deltas.length;d++)for(var pre=0;pre<2;pre++){
+          joint.rotationQuaternion.copyFrom(localBase);
+          joint.rotationQuaternion=pre?deltas[d].multiply(joint.rotationQuaternion):joint.rotationQuaternion.multiply(deltas[d]);
+          var candidate=V3.Distance(endpoint(),target);if(candidate<bestError){bestError=candidate;bestQ=joint.rotationQuaternion.clone();}
+        }
+        joint.rotationQuaternion.copyFrom(bestQ);error=bestError;if(error<=.0005)break;
+      }
+      if(biggest<1e-3)break;
+    }
+    var reachWeight=Math.max(0,Math.min(1,(.30-startError)/.10)),limits=[80,110,80];
+    joints.forEach(function(j,i){
+      var delta=base[i].conjugate().multiply(j.rotationQuaternion);delta.normalize();
+      var limit=limits[i]*Math.PI/180,a=cupQuatAngle(Q.Identity(),delta),limited=new Q();
+      if(a>limit){Q.SlerpToRef(Q.Identity(),delta,limit/a,limited);delta=limited;}
+      var weighted=new Q();Q.SlerpToRef(Q.Identity(),delta,reachWeight,weighted);weighted.normalize();desired[i]=weighted;
+    });
+  }
+  joints.forEach(function(j,i){j.rotationQuaternion.copyFrom(base[i]);});
+  var signature=fx.lib.file+'|'+(fx.weaponModel||fx.weaponKind)+'|'+targetLocal.join(',');
+  if(!fx.cupQ||fx.cupSignature!==signature){fx.cupQ=[Q.Identity(),Q.Identity(),Q.Identity()];fx.cupSignature=signature;}
+  var engine=fx.holder.getScene().getEngine(),dt=Math.max(1/240,Math.min(.05,(engine.getDeltaTime()/1000)||1/60));
+  var alpha=1-Math.exp(-(released||guarded?10:24)*dt),maxStep=360*Math.PI/180*dt;fx.cupCorrectionStepDeg=0;
+  joints.forEach(function(j,i){
+    var before=fx.cupQ[i],after=cupSlerpLimited(before,desired[i],alpha,maxStep);
+    fx.cupCorrectionStepDeg=Math.max(fx.cupCorrectionStepDeg,cupQuatAngle(before,after)*180/Math.PI);fx.cupQ[i]=after;
+    j.rotationQuaternion.copyFrom(base[i].multiply(after));
+  });
+  var finalError=V3.Distance(endpoint(),target);fx.cupMode=released?'released':(guarded?'out-of-reach':'tracking');
+  return{error:finalError,guarded:guarded,released:released};
+}
 function applyPose(fx){
   showBipod(fx);
   var st=fx.st,nodes=fx.nodes,animated=st.animated,overlay=fx.overlay>.001&&fx.upper.entries.length;
@@ -913,6 +979,7 @@ function applyPose(fx){
      stray dial values stored on a long-gun slot stay inert here too. */
   var dialPistol=dialKey==='pistol'||/m1911a1|p38/i.test(dialKey||'');
   var dials=dialPistol?armDegFor(fx.lib.file,dialKey):null;
+  var leftGrip=dialPistol?leftGripFor(fx.lib.file,dialKey):null;
   var wrDial=wristRFor(fx.lib.file,dialKey),wrNode=null;
   if(wrDial){
     var ri=st.bones?st.bones.indexOf(BONE.rightHand):-1;
@@ -923,7 +990,7 @@ function applyPose(fx){
     var li=st.bones?st.bones.indexOf(BONE.leftHand):-1;
     wristNode=(li>=0&&nodes[li])||null;
     elbowNode=wristNode&&wristNode.parent;
-    shoulderNode=elbowNode&&elbowNode.parent&&elbowNode.parent.parent;
+    shoulderNode=elbowNode&&elbowNode.parent;
     // Fall back to canon bone names when the parent chain is unavailable.
     if(!elbowNode||!shoulderNode){
       var ei=st.bones?st.bones.indexOf('leftforearm'):-1,si=st.bones?st.bones.indexOf('leftarm'):-1;
@@ -975,6 +1042,11 @@ function applyPose(fx){
   if(fx.aim>.01&&fx.spineAt>0&&aimSpine(fx)){
     handChain(fx.path,fx.chain,fx.spineAt);if(fx.chainL.length&&fx.spineAtL>0)handChain(fx.pathL,fx.chainL,fx.spineAtL);holdWeapon(fx,grip,points);
   }
+  var leftSnap=leftGrip?applyPistolCup(fx,leftGrip):null;
+  if(leftSnap){
+    fx.leftGripErrorCm=leftSnap.error*100;
+    if(fx.chainL.length)handChain(fx.pathL,fx.chainL,fx.spineAtL>0?fx.spineAtL:0);
+  }else{fx.cupMode=leftGrip?'unavailable':'off';}
   /* Body-shape and role scaling must not stretch the rifle: keep it at world scale 1. */
   socketWorld.decompose(sScale,sRot,sPos);MX.ComposeToRef(ONE,sRot,sPos,socketWorld);
   fx.chain[0].invertToRef(rootInv);socketWorld.multiplyToRef(rootInv,socketWorld);
@@ -1099,8 +1171,8 @@ M.setImportedEnabled=function(scene,enabled){
 root.BattleFbxSoldier={
   version:'1.3',backend:BACKEND,clips:CLIPS,models:MODELS,modelSet:MODEL_SET,
   load:loadLibrary,
-  sidecars:function(){return{contacts:Object.keys(SIDE_CONTACTS),points:Object.keys(SIDE_MODEL_POINTS),arms:Object.keys(SIDE_ARM),wrists:Object.keys(SIDE_WRISTR)};},
-  status:function(scene){var st=sceneState(scene),sockets={};Object.keys(st.libs||{}).forEach(function(f){var lib=st.libs[f],p=lib.palms||{};sockets[f]={right:p[BONE.rightHand+'Source']||null,left:p[BONE.leftHand+'Source']||null,aimHandSpacingM:lib.supportHand&&lib.supportHand.along||0,sidecar:!!SIDE_CONTACTS[f],sideWeapons:SIDE_MODEL_POINTS[f]?Object.keys(SIDE_MODEL_POINTS[f]):[],sideArms:SIDE_ARM[f]?Object.keys(SIDE_ARM[f]):[],sideWrists:SIDE_WRISTR[f]?Object.keys(SIDE_WRISTR[f]):[]};});return{ready:st.ready,enabled:st.enabled,error:st.error?String(st.error.message||st.error):null,active:st.active.length,clips:st.clips?Object.keys(st.clips).length:0,bones:st.bones?st.bones.length:0,sockets:sockets,sidecars:Object.keys(SIDE_CONTACTS)};},
+  sidecars:function(){return{contacts:Object.keys(SIDE_CONTACTS),points:Object.keys(SIDE_MODEL_POINTS),arms:Object.keys(SIDE_ARM),wrists:Object.keys(SIDE_WRISTR),leftGrips:Object.keys(SIDE_LEFT_GRIP)};},
+  status:function(scene){var st=sceneState(scene),sockets={};Object.keys(st.libs||{}).forEach(function(f){var lib=st.libs[f],p=lib.palms||{};sockets[f]={right:p[BONE.rightHand+'Source']||null,left:p[BONE.leftHand+'Source']||null,aimHandSpacingM:lib.supportHand&&lib.supportHand.along||0,sidecar:!!SIDE_CONTACTS[f],sideWeapons:SIDE_MODEL_POINTS[f]?Object.keys(SIDE_MODEL_POINTS[f]):[],sideArms:SIDE_ARM[f]?Object.keys(SIDE_ARM[f]):[],sideWrists:SIDE_WRISTR[f]?Object.keys(SIDE_WRISTR[f]):[],sideLeftGrips:SIDE_LEFT_GRIP[f]?Object.keys(SIDE_LEFT_GRIP[f]):[]};});return{ready:st.ready,enabled:st.enabled,error:st.error?String(st.error.message||st.error):null,active:st.active.length,clips:st.clips?Object.keys(st.clips).length:0,bones:st.bones?st.bones.length:0,sockets:sockets,sidecars:Object.keys(SIDE_CONTACTS)};},
   clip:function(scene,key){var st=sceneState(scene);return st.clips&&st.clips[key]||null;},
   /* Per-model clip timing: natural speed (m/s), stride estimate, duration, loop. */
   speeds:function(scene,file){var st=sceneState(scene),lib=st.libs[file]||st.libs[Object.keys(st.libs)[0]],out={};if(!lib||!lib.clips)return out;

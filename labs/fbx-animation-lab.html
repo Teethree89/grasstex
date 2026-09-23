@@ -144,7 +144,7 @@
       <div class="numgrid" id="shoulderGrid"><span class="nrowlab" data-row="d-shoulder" title="Select row for keyboard nudging">Shoulder°</span><input id="sx" type="number" step="1" aria-label="shoulder x deg" placeholder="0"><input id="sy" type="number" step="1" aria-label="shoulder y deg" placeholder="0"><input id="sz" type="number" step="1" aria-label="shoulder z deg" placeholder="0"></div>
       <div class="numgrid" id="elbowGrid"><span class="nrowlab" data-row="d-elbow" title="Select row for keyboard nudging">Elbow°</span><input id="ex" type="number" step="1" aria-label="elbow x deg" placeholder="0"><input id="ey" type="number" step="1" aria-label="elbow y deg" placeholder="0"><input id="ez" type="number" step="1" aria-label="elbow z deg" placeholder="0"></div>
       <div class="numgrid" id="wristGrid"><span class="nrowlab" data-row="d-wrist" title="Select row for keyboard nudging">Wrist°</span><input id="wx" type="number" step="1" aria-label="wrist x deg" placeholder="0"><input id="wy" type="number" step="1" aria-label="wrist y deg" placeholder="0"><input id="wz" type="number" step="1" aria-label="wrist z deg" placeholder="0"></div>
-      <p class="hint" style="margin-top:8px">Left-arm dials in degrees (pistols): constant offsets on the animated shoulder, elbow and wrist that pose the support cup. <b>Seat cup</b> solves the Cup goal once on the paused frame and bakes it into these dials — no per-frame solve runs, so hit reactions and spine motion cannot pop the arm. Rotations only; bone lengths are never touched.</p>
+      <p class="hint" style="margin-top:8px">Left-arm dials in degrees (pistols): provide the initial shoulder, elbow and wrist pose before the support hand snaps to Left Grip. Set contact B first, then <b>Set Left Grip</b>; the target is stored on the right hand and follows it. The rotation-only solver is cached, rate-limited and smoothly releases on action clips, so bone lengths are never touched.</p>
       <div class="numgrid" id="rwristGrid"><span class="nrowlab" data-row="d-right" title="Select row for keyboard nudging">R wrist°</span><input id="rwx" type="number" step="1" aria-label="right wrist x deg" placeholder="0"><input id="rwy" type="number" step="1" aria-label="right wrist y deg" placeholder="0"><input id="rwz" type="number" step="1" aria-label="right wrist z deg" placeholder="0"></div>
       <p class="hint" style="margin-top:8px">Right-wrist dial (all guns, for straight stocks with no pistol grip): rotates the firing hand about the wrist so the finger meets the trigger — play a firing clip and dial against the finger animation. Dial once, then nudge the grip freely — the correction rides along every frame, in the game too.</p>
 
@@ -708,17 +708,16 @@
      - weapon grip + fore-near / fore-far in weapon-mesh local metres: the prepared
        weapons already use the game layout, and the mesh transform is baked at
        import, so these drop straight into WEAPON_POINTS.
-      - pistol support cup: constant Shoulder°/Elbow°/Wrist° dial offsets (rotations
-        only). Dials-only by design — no per-frame solve, so hit reactions and spine
-        motion cannot pop the arm.
+      - pistol support cup: contact B is captured in right-hand-local space. The
+        Shoulder°/Elbow°/Wrist° dials provide its initial pose, then a temporally
+        smoothed rotation-only CCD keeps the support hand aligned during playback.
       The live seat preview mirrors the backend hold (grip on right contact, barrel
       through the left contact); the battle backend stays canonical. */
   const labCalib = {
     modelFile:'', weaponFile:'', weapon:null, // {mesh, container}
     contacts:{ right:null, left:null },       // BABYLON.Vector3, hand-bone local
     weaponPts:{ grip:null, foreN:null, foreF:null }, // BABYLON.Vector3, weapon local
-    pistolLeftGrip:null, // legacy CCD support target (retired, ignored by preview)
-    capturePistolLeftGrip:false,
+    pistolLeftGrip:null, // support target in right-hand-local import units
     pendingPick:null, markers:{}, downPos:null, oneHandLocal:null, seated:false
   };
   window.__labCalib = labCalib;
@@ -953,7 +952,17 @@
       labFillSelect('libAnim', [], 'Unavailable — use file drop');
     }
   }
+  let labWeaponImportSeq = 0;
+  function labDisposeImportedWeaponResult(result){
+    try {
+      (result.meshes || []).forEach(m => { if (!m.isDisposed()) m.dispose(false, true); });
+      (result.skeletons || []).forEach(s => s.dispose());
+      (result.transformNodes || []).forEach(n => { if (!n.isDisposed()) n.dispose(); });
+      (result.animationGroups || []).forEach(g => g.dispose());
+    } catch (error) { console.warn('[lab] stale weapon dispose:', error); }
+  }
   async function labImportWeapon(file, label){
+    const importSeq = ++labWeaponImportSeq;
     if (typeof labStashCurrentWeapon === 'function') labStashCurrentWeapon();
     const keep = !$('keepPoints') || $('keepPoints').checked;
     const keptPts = keep ? { ...labCalib.weaponPts } : null;
@@ -963,12 +972,17 @@
     labDisposeWeapon();
     labCalib.weaponPts = { grip:null, foreN:null, foreF:null };
     labCalib.pistolLeftGrip = null;
-    labCalib.capturePistolLeftGrip = false;
     labCalib.oneHandLocal = null;
     labCalib.seated = false;
     labRefreshFields();
     setStatus('Importing weapon '+file.name+'…');
     const result = await BABYLON.SceneLoader.ImportMeshAsync('', 'file:', file, scene, undefined, '.fbx');
+    // A double-click / overlapping Load-last used to leave the first resolved mesh
+    // orphaned in the scene: one pistol seated, one floating at the picking position.
+    if (importSeq !== labWeaponImportSeq) { labDisposeImportedWeaponResult(result); return false; }
+    // A previous request may have resolved after this request began but before now.
+    // Dispose whichever result currently owns the slot before publishing this one.
+    if (labCalib.weapon) labDisposeWeapon();
     const meshes = (result.meshes || []).filter(m => m.getTotalVertices && m.getTotalVertices() > 0);
     if (!meshes.length) throw new Error('weapon FBX has no mesh');
     // Keep the largest mesh (prepared weapons carry exactly one).
@@ -998,8 +1012,9 @@
     labCalib.weaponFile = label;
     if (typeof labAfterWeaponSwitch === 'function') labAfterWeaponSwitch(label, keptPts, keptDials, keptWristR, keptLeftGrip);
     else labRefreshFields();
-    setStatus('Weapon ready: '+label+'. '+(labIsPistol(label) ? 'Pick its grip plus soldier contacts A/B, then pose the cup with the arm dials.' : 'Pick grip / fore-end points on it, or type them below.'));
+    setStatus('Weapon ready: '+label+'. '+(labIsPistol(label) ? 'Pick its grip plus soldier contacts A/B, pose with the arm dials, then Set Left Grip.' : 'Pick grip / fore-end points on it, or type them below.'));
     labRefreshMarkers();
+    return true;
   }
   function labDisposeWeapon(){
     if (labCalib.weapon) {
@@ -1166,7 +1181,7 @@
   function labDoPick(x, y, mode){
     const onSoldier = (mode === 'A' || mode === 'B');
     if (!onSoldier && mode !== 'grip' && labIsPistol(labCalib.weaponFile)) {
-      setStatus('Pistols use grip only — the cup goal is tuned via its XYZ fields, then Seat cup.', true);
+      setStatus('Pistols use grip only — pose the cup with the arm dials, then Set Left Grip from contact B.', true);
       return;
     }
     const pool = onSoldier ? renderableMeshes() : (labCalib.weapon ? [labCalib.weapon.mesh] : []);
@@ -1239,10 +1254,11 @@
     if (!labCalib.pistolLeftGrip || !hand || modelAssets.file !== labCalib.modelFile) return null;
     return BABYLON.Vector3.TransformCoordinates(labCalib.pistolLeftGrip, labNodeWorld(hand));
   }
-  // Honest cup gap: measured with the current dials applied (what you see rendered),
-  // not the clean clip pose. Stash/restore keeps it side-effect free between frames.
+  // Prefer the live filtered-solver result. Before the first rendered solve, measure
+  // the dialled pose side-effect-free so the field is still useful while paused.
   function labCupGapCm(){
     if (!labIsPistol(labCalib.weaponFile) || !labCalib.pistolLeftGrip || !labCalib.contacts.left) return null;
+    if (Number.isFinite(labCupFollow && labCupFollow.errorCm)) return labCupFollow.errorCm;
     const hand = labHandNode('left');
     if (!hand || !modelAssets || modelAssets.file !== labCalib.modelFile) return null;
     if (!labStashArm()) return null;
@@ -1275,7 +1291,7 @@
     place('foreN', labIsPistol(labCalib.weaponFile) ? null : wpos(labWeaponPtsOf('foreN')));
     place('foreF', wpos(labWeaponPtsOf('foreF')));
   }
-  // Pistol weapon seating uses grip only; there is no fore-end target (dials-only cup).
+  // Pistol weapon seating uses grip only; its support target lives on the right hand.
   function labWeaponPtsOf(k){ return k !== 'grip' && labIsPistol(labCalib.weaponFile) ? null : labCalib.weaponPts[k]; }
   </script>
   <script src="fbx-animation-root-lock.js?v=4ab61a63204894bdd1b67c93c6f1307834f1ce85"></script>
@@ -1291,11 +1307,10 @@
     labCalib.oneHandLocal = mesh.getWorldMatrix().multiply(labInvert(handWorld));
   }
   /* Left-arm dials (pistols): degree offsets added onto the animated shoulder, elbow
-     and wrist joints, outermost first. Dial the cup directly instead of solving for it:
-     no targets, no iteration, and rotations only so bone lengths can never change.
-     Reapplied every frame (see the render observers), so the offsets follow the
-     animation. The render observer is the sole owner of these temporary offsets,
-     including while paused, so an explicit Seat can never apply them twice. */
+     and wrist joints, outermost first. They author the initial cup pose before the
+     filtered CCD correction. Reapplied every frame (see the render observers), so
+     the offsets follow the animation. The render observer is the sole owner of these
+     temporary offsets, including while paused, so an explicit Seat cannot double them. */
   const LAB_ARM_DIALS = [
     { ids:['sx','sy','sz'], depth:3, label:'shoulder' },
     { ids:['ex','ey','ez'], depth:2, label:'elbow' },
@@ -1349,19 +1364,81 @@
     [...joints].reverse().forEach(node => node.computeWorldMatrix(true));
     hand.computeWorldMatrix(true);
   }
-  // Dials-only: the CCD left-hand snap is retired. On hit reactions the spine moved
-  // the right-hand-local target >0.35 m out of reach, the guard bailed, and the arm
-  // snapped up to ~40 deg for a frame. Constant dial offsets cannot twitch (frame
-  // delta is exactly the clip's own motion), so this stays a null hook for callers.
-  function labSnapPistolLeftHand(){
-    return null;
+  const labCupFollow = { corrections:null, signature:'', errorCm:null, mode:'off', maxStepDeg:0 };
+  function labResetCupFollow(){
+    labCupFollow.corrections = [0,1,2].map(() => BABYLON.Quaternion.Identity());
+    labCupFollow.signature = '';
+    labCupFollow.errorCm = null;
+    labCupFollow.mode = 'off';
+    labCupFollow.maxStepDeg = 0;
   }
-  // One-shot cup solver: runs the retired CCD math synchronously on the CURRENT paused
-  // pose only (never per-frame), then bakes the result into the constant arm dials.
-  // Same inherently-twitch-free runtime as hand-tuned dials, with one-click posing.
-  // NOTE: joints must be the dial joints [hand, parent, grandparent] (wrist, elbow,
-  // shoulder) — not the old CCD chain — so every solved rotation has a dial box to
-  // bake into exactly.
+  function labQuatAngle(a,b){
+    return 2 * Math.acos(Math.min(1, Math.abs(BABYLON.Quaternion.Dot(a,b))));
+  }
+  function labSlerpLimited(from,to,alpha,maxStep){
+    let goal = to;
+    if (BABYLON.Quaternion.Dot(from,goal) < 0) goal = new BABYLON.Quaternion(-goal.x,-goal.y,-goal.z,-goal.w);
+    const angle = labQuatAngle(from,goal);
+    const t = angle > 1e-7 ? Math.min(alpha, maxStep / angle) : 1;
+    return BABYLON.Quaternion.Slerp(from,goal,t).normalize();
+  }
+  function labCupReleased(){
+    const clipName = (clipSelect.selectedOptions[0]?.textContent || activeGroup?.name || '').toLowerCase();
+    return /reload|death|dying|hit|flinch|pistol whip|strike/.test(clipName);
+  }
+  // Rotation-only CCD computes the correction wanted by this frame. Its result is
+  // restored into a clean base pose before a cached, rate-limited correction is
+  // applied; this keeps CCD's firm cup without allowing a one-frame arm flip.
+  function labSnapPistolLeftHand(){
+    if (!labIsPistol(labCalib.weaponFile) || !labCalib.contacts.left || !labCalib.pistolLeftGrip) return null;
+    const hand = labHandNode('left'), target = labPistolLeftGripWorld();
+    if (!hand || !target) return null;
+    const joints = [hand, hand.parent, hand.parent && hand.parent.parent].filter(n => n && !n.isDisposed());
+    if (joints.length < 3) return null;
+    const signature = [labCalib.modelFile,labCalib.weaponFile,labCalib.pistolLeftGrip.asArray().join(',')].join('|');
+    if (!labCupFollow.corrections || labCupFollow.signature !== signature) {
+      labResetCupFollow();
+      labCupFollow.signature = signature;
+    }
+    const base = joints.map(j => j.rotationQuaternion ? j.rotationQuaternion.clone() : BABYLON.Quaternion.Identity());
+    const endpoint = () => {
+      labRefreshArmWorld(joints,hand);
+      return BABYLON.Vector3.TransformCoordinates(labCalib.contacts.left,labNodeWorld(hand));
+    };
+    const startError = BABYLON.Vector3.Distance(endpoint(),target);
+    const released = labCupReleased();
+    const desired = [0,1,2].map(() => BABYLON.Quaternion.Identity());
+    let guarded = startError > .30;
+    if (!released && !guarded) {
+      const solved = labSolveCupOnce(target,joints);
+      guarded = !solved || solved.guarded;
+      if (!guarded) joints.forEach((j,i) => {
+        let delta = base[i].conjugate().multiply(j.rotationQuaternion).normalize();
+        const limit = [80,110,80][i] * Math.PI / 180;
+        const angle = labQuatAngle(BABYLON.Quaternion.Identity(),delta);
+        if (angle > limit) delta = BABYLON.Quaternion.Slerp(BABYLON.Quaternion.Identity(),delta,limit/angle).normalize();
+        const reachWeight = Math.max(0,Math.min(1,(.30-startError)/.10));
+        desired[i] = BABYLON.Quaternion.Slerp(BABYLON.Quaternion.Identity(),delta,reachWeight).normalize();
+      });
+    }
+    joints.forEach((j,i) => j.rotationQuaternion.copyFrom(base[i]));
+    const dt = Math.max(1/240,Math.min(.05,(engine.getDeltaTime ? engine.getDeltaTime()/1000 : 1/60) || 1/60));
+    const alpha = 1-Math.exp(-(released || guarded ? 10 : 24)*dt), maxStep = 360*Math.PI/180*dt;
+    labCupFollow.maxStepDeg = 0;
+    joints.forEach((j,i) => {
+      const before = labCupFollow.corrections[i];
+      const after = labSlerpLimited(before,desired[i],alpha,maxStep);
+      labCupFollow.maxStepDeg = Math.max(labCupFollow.maxStepDeg,labQuatAngle(before,after)*180/Math.PI);
+      labCupFollow.corrections[i] = after;
+      j.rotationQuaternion.copyFrom(base[i].multiply(after));
+    });
+    const error = BABYLON.Vector3.Distance(endpoint(),target);
+    labCupFollow.errorCm = error*100;
+    labCupFollow.mode = released ? 'released' : (guarded ? 'out-of-reach' : 'tracking');
+    return { applied:!released&&!guarded, error, guarded, released };
+  }
+  // Raw CCD solve used only to find this frame's desired local correction. The caller
+  // restores the base pose and applies the filtered correction afterward.
   function labSolveCupOnce(target, joints){
     const hand = labHandNode('left');
     if (!hand || !target || !joints || !joints.length) return null;
@@ -1425,24 +1502,6 @@
     error = BABYLON.Vector3.TransformCoordinates(anchor, labNodeWorld(hand)).subtract(target).length();
     return { error, guarded:false };
   }
-  // Inverse of BABYLON.Quaternion.RotationYawPitchRoll(yaw, pitch, roll) = Ry*Rx*Rz.
-  // Returns [pitch, yaw, roll] degrees = the dial-box order [sx, sy, sz].
-  // NOTE: Matrix.m is column-major, so element (row r, col c) lives at m[c*4+r].
-  function labQuatToDialDeg(q){
-    const m = new BABYLON.Matrix();
-    q.toRotationMatrix(m);
-    const a = m.m, d = Math.PI / 180;
-    const sx = Math.max(-1, Math.min(1, -a[9])); // (1,2) = -sin(pitch)
-    let pitch = Math.asin(sx) / d, yaw, roll;
-    if (Math.abs(a[9]) < 1 - 1e-6) {
-      yaw = Math.atan2(a[8], a[10]) / d;   // (0,2)/(2,2)
-      roll = Math.atan2(a[1], a[5]) / d;   // (1,0)/(1,1)
-    } else {
-      roll = 0;
-      yaw = Math.atan2(sx > 0 ? a[4] : -a[4], a[0]) / d; // (0,1)/(0,0) at ±90° pitch
-    }
-    return [pitch, yaw, roll];
-  }
   function labApplyDialsToJoints(joints, dials){
     // joints are the dial joints [hand, parent, grandparent]; names line up 1:1.
     const names = ['wrist', 'elbow', 'shoulder'];
@@ -1454,59 +1513,19 @@
       joint.rotationQuaternion = joint.rotationQuaternion.multiply(dq);
     });
   }
-  // "Seat cup": solve the cup goal once on this paused frame and bake it into the
-  // dial boxes as constant offsets. Idempotent (re-pressing converges to ~zero change).
-  // The goal lives in right-hand-local units; nudge its XYZ to tune, then seat.
+  // Capture contact B in right-hand-local space. The dials remain the authored initial
+  // pose; the temporal CCD above maintains this target during playback.
   function labSeatCupFromB(){
-    if (!labIsPistol(labCalib.weaponFile)) { setStatus('Seat cup is for pistols.', true); return false; }
+    if (!labIsPistol(labCalib.weaponFile)) { setStatus('Set Left Grip is for pistols.', true); return false; }
     const hand = labHandNode('left'), rhand = labHandNode('right');
     if (!hand || !rhand || modelAssets.file !== labCalib.modelFile) { setStatus('Load the soldier named by this calibration first.', true); return false; }
     if (!labCalib.contacts.left) { setStatus('Set contact B on the left hand first.', true); return false; }
-    if (!labCalib.pistolLeftGrip) {
-      // First press creates the goal from B in this moment (old "Set Left Grip"
-      // behaviour); XYZ nudges tune it, and the solve below bakes it into dials.
-      const B = labAnchorWorld('left');
-      if (!B) { setStatus('Set contact B on the left hand first.', true); return false; }
-      labCalib.pistolLeftGrip = BABYLON.Vector3.TransformCoordinates(B, labInvert(labNodeWorld(rhand)));
-    }
-    const chain = labArmChain('left');
-    if (!chain.length) { setStatus('No left-arm chain found.', true); return false; }
-    // Solve on the dial joints so the bake is exact: wrist=hand, elbow=parent,
-    // shoulder=grandparent (same nodes + order as labApplyArmDials).
-    const joints = [hand, chain[0], chain[1]].filter(n => n && !n.isDisposed());
-    if (joints.length < 3) { setStatus('Left-arm chain too short.', true); return false; }
-    const target = labPistolLeftGripWorld();
-    if (!target) { setStatus('Cup goal has no world position.', true); return false; }
-    // Joints sit at the clean clip pose between frames (observer restores overrides
-    // after render), so cloning now captures the exact base. Everything below runs
-    // synchronously — no render happens mid-click — and the base is restored at the end.
-    const clean = joints.map(j => j.rotationQuaternion ? j.rotationQuaternion.clone() : null);
-    const restore = () => joints.forEach((j, i) => {
-      if (clean[i]) { if (!j.rotationQuaternion) j.rotationQuaternion = new BABYLON.Quaternion(); j.rotationQuaternion.copyFrom(clean[i]); }
-    });
-    let residual = null, guarded = false;
-    for (let pass = 0; pass < 3; pass++) {
-      labApplyDialsToJoints(joints, labReadDials());
-      const r = labSolveCupOnce(target, joints);
-      if (!r) { restore(); setStatus('Cup solve failed.', true); return false; }
-      if (r.guarded) { restore(); residual = r.error; guarded = true; break; }
-      residual = r.error;
-      // Bake: total dials = clean⁻¹ * solved, per joint, replacing the inputs.
-      const baked = {};
-      const names = ['wrist', 'elbow', 'shoulder'];
-      joints.forEach((j, i) => {
-        const solvedQ = j.rotationQuaternion.clone();
-        const ci = clean[i] || new BABYLON.Quaternion();
-        const total = ci.conjugate().multiply(solvedQ);
-        baked[names[i]] = labQuatToDialDeg(total);
-      });
-      labWriteDials({ shoulder:baked.shoulder, elbow:baked.elbow, wrist:baked.wrist });
-      restore();
-      if (residual <= .0005) break;
-    }
+    const B = labAnchorWorld('left');
+    if (!B) { setStatus('Set contact B on the left hand first.', true); return false; }
+    labCalib.pistolLeftGrip = BABYLON.Vector3.TransformCoordinates(B, labInvert(labNodeWorld(rhand)));
+    labResetCupFollow();
     labRefreshFields(); labRefreshMarkers(); labUpdateSnippet();
-    if (guarded) { setStatus('Cup goal out of reach on this frame (gap ' + (residual * 100).toFixed(1) + ' cm) — move the goal XYZ closer or pick a nearer pose.', true); return false; }
-    setStatus('Cup seated into dials — residual ' + (residual * 100).toFixed(2) + ' cm. Dials persist per model+weapon; no per-frame solve runs.');
+    setStatus('Left Grip set from contact B in right-hand-local space. Arm dials provide the initial pose; the smoothed rotation-only solver keeps the cup aligned.');
     return true;
   }
   /* Right-wrist dial (all guns): rotates the firing hand about the wrist so the finger
@@ -1637,8 +1656,8 @@
         return 'Pick both fore-end points before seating a long gun.';
       // One-hand hold: capture the seated weapon relative to the right hand. During
       // playback, reuse that fixed local transform so the pistol rotates with the hand.
-      // Pistols additionally take the left-arm dials (cup posed by hand); dials re-run
-      // every frame.
+      // Pistols additionally take the left-arm dials plus the filtered support-cup
+      // correction; both are applied by the render observer every frame.
       if (follow && labCalib.oneHandLocal) {
         labRightSocket(mesh,handWorld);
         // No dials here: the render observer applies them exactly once per frame
@@ -1951,8 +1970,8 @@
     set(['gx','gy','gz'], labCalib.weaponPts.grip);
     const pistol = labIsPistol(labCalib.weaponFile);
     if (pistol && (labCalib.pendingPick === 'foreN' || labCalib.pendingPick === 'foreF')) labArm(labCalib.pendingPick);
-    $('pickForeN').textContent = pistol ? 'Seat cup' : 'Fore near';
-    $('foreNLabel').textContent = pistol ? 'Cup goal (R-local)' : 'Fore near';
+    $('pickForeN').textContent = pistol ? 'Set Left Grip' : 'Fore near';
+    $('foreNLabel').textContent = pistol ? 'Left grip (R-local)' : 'Fore near';
     ['fnx','fny','fnz'].forEach((id, i) => $(id).setAttribute('aria-label', (pistol ? 'left grip ' : 'fore near ') + ['x','y','z'][i]));
     for (const id of ['pickForeF','ffx','ffy','ffz']) $(id).disabled = pistol;
     $('matchForeXY').disabled = pistol;
@@ -1963,9 +1982,9 @@
     const n = pistol ? null : labCalib.weaponPts.foreN, f = pistol ? null : labCalib.weaponPts.foreF;
     $('foreMeasureLabel').textContent = pistol ? 'Cup gap' : 'Fore-end length';
     const pistolGap = pistol ? labCupGapCm() : null;
-    $('foreLen').textContent = pistol ? (pistolGap === null ? '—' : pistolGap.toFixed(1)+' cm · dials-only')
+    $('foreLen').textContent = pistol ? (pistolGap === null ? '—' : pistolGap.toFixed(1)+' cm · '+labCupFollow.mode)
       : ((n && f) ? (n.subtract(f).length().toFixed(3)+' m') : '—');
-    $('foreLenNote').textContent = pistol ? '(goal in right-hand-local units; Seat cup bakes it into the dials once).' : '(long guns: near–far).';
+    $('foreLenNote').textContent = pistol ? '(target follows the right hand; dials set the initial cup pose).' : '(long guns: near–far).';
     // Dial boxes stay editable even with a long gun loaded (spinners need an enabled
     // input): the values are inert unless a pistol is seated — same rule as the game.
     labUpdateSnippet();
@@ -2123,7 +2142,7 @@
       contacts: { right: arr(labCalib.contacts.right), left: arr(labCalib.contacts.left) },
       weapon: labCalib.weaponFile || null,
       weaponPoints: { grip: arr(labCalib.weaponPts.grip), foreNear: pistol ? null : arr(labCalib.weaponPts.foreN), foreFar: pistol ? null : arr(labCalib.weaponPts.foreF) },
-      leftGripR: pistol ? arr(labCalib.pistolLeftGrip) : null, // cup goal (bake-once input; backend ignores, runtime is dials-only)
+      leftGripR: pistol ? arr(labCalib.pistolLeftGrip) : null,
       armDeg: {
         shoulder: labDialDeg(['sx','sy','sz']),
         elbow: labDialDeg(['ex','ey','ez']),
@@ -2224,7 +2243,7 @@
         grip: arr(labCalib.weaponPts.grip),
         foreNear: arr(labCalib.weaponPts.foreN),
         foreFar: arr(labCalib.weaponPts.foreF),
-          leftGripR: labIsPistol(labCalib.weaponFile) ? arr(labCalib.pistolLeftGrip) : null, // cup goal; backend ignores
+        leftGripR: labIsPistol(weapon) ? arr(labCalib.pistolLeftGrip) : null,
         armDeg: dials,
         wristR
       };
@@ -2433,7 +2452,7 @@
           grip: arr(labCalib.weaponPts.grip),
           foreNear: arr(labCalib.weaponPts.foreN),
           foreFar: arr(labCalib.weaponPts.foreF),
-        leftGripR: labIsPistol(weapon) ? arr(labCalib.pistolLeftGrip) : null, // cup goal; backend ignores
+          leftGripR: labIsPistol(labCalib.weaponFile) ? arr(labCalib.pistolLeftGrip) : null,
           armDeg: labReadDials(),
           wristR: labReadRightWrist()
         };
@@ -2587,7 +2606,8 @@
     const w = labCalib.weaponPts;
     if (labCalib.weaponFile && w.grip) {
       // Universal per weapon: drops into WEAPON_POINTS (or WEAPON_MODEL_POINTS for exceptions).
-      // Pistols keep fore:null (one-hand hold); the support cup is posed with the arm dials.
+      // Pistols keep fore:null (rigid right-hand weapon hold); leftGripR + arm dials
+      // independently constrain the support cup.
       let fore = 'fore:null';
       if (!labIsPistol(labCalib.weaponFile) && w.foreN && w.foreF) {
         const spread = Math.max(Math.abs(w.foreN.x - w.foreF.x), Math.abs(w.foreN.y - w.foreF.y));
@@ -2644,8 +2664,11 @@
       labSeatWeapon(true);
       if (bend) labShowAimCorr(bend);
     }
-    // Pistols: no per-frame solve (dials-only runtime). The cup gap readout is
-    // refreshed by labRefreshFields on edits; Seat cup re-bakes on demand.
+    const leftSnap = !labCalib.pendingPick ? labSnapPistolLeftHand() : null;
+    if (leftSnap && $('foreLen')) {
+      const label = leftSnap.released ? 'released' : (leftSnap.guarded ? 'out-of-reach' : 'tracking');
+      $('foreLen').textContent = (leftSnap.error * 100).toFixed(1)+' cm · '+label;
+    }
     labRefreshMarkers();
     // Hands move under a playing clip, so the aim angle drifts: re-check at ~3 Hz.
     labAimTick = (labAimTick + 1) % 20;
