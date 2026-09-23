@@ -50,11 +50,11 @@ for close picking. Pause on a useful pose, pick points, then press **Seat weapon
 vertices and checks that soldier picks are weighted to the chosen hand; a missed click keeps
 the picker armed. The seat preview
 uses the picked fore-end range, and reload/death clips keep the last right-hand hold.
-Pistols use only the right contact and grip, even if old saved data includes fore points;
-no B contact or fore-near pick is needed for them. The support cup is posed directly with
-the left-arm **Shoulder°/Elbow°/Wrist°** dials (pistols only): degree offsets added onto the
-animated joints every frame, rotations only, so the cup follows the animation and bone
-lengths never change. Dial values persist per model+weapon slot (localStorage + sidecar).
+Pistols seat from the right contact and grip, even if old saved data includes fore points.
+Their **Set Left Grip** button captures the current B contact into right-hand-local space;
+that target follows the firing hand while a short rotation-only arm solve keeps B snapped
+to it. The left-arm **Shoulder°/Elbow°/Wrist°** dials bias the support-cup pose before the
+snap. Target and dial values persist per model+weapon slot (localStorage + sidecar).
 **Reset seat** returns the weapon to its picking position, stops tracking, restores the arm
 from the bind snapshot (exact pre-override pose when tracking was on), and keeps points.
 **Keep points when switching model / weapon** (on by default) carries the live contacts,
@@ -63,7 +63,7 @@ every swap also stashes the outgoing weapon's slot into the per-model dictionary
 unchecking it restores the old clear-and-refill-from-saved behaviour.
 Per-model sidecars (`Assets/soldiers/<model>.fbx.json`, edited in the lab's **Per-model
 sidecar** section, saved via Download or `labs/save-calibration.php`) hold contacts once
-plus one slot per weapon (grip / fore-near / fore-far + arm dials + right-wrist dial); the battle backend
+plus one slot per weapon (grip / fore-near / fore-far or pistol left-grip target + arm dials + right-wrist dial); the battle backend
 fetches them next to the soldier FBX on load and they win over the hardcoded
 `SOLDIER_CONTACTS` / `WEAPON_POINTS` / `WEAPON_MODEL_POINTS` (the snippet copy-paste path
 still works for universal per-weapon entries). The **Aim test** section drops a target

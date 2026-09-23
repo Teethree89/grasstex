@@ -123,10 +123,10 @@
         <span class="nrowlab" data-row="right" title="Select row for keyboard nudging">A right</span><input id="ax" type="number" step="0.001" aria-label="A x"><input id="ay" type="number" step="0.001" aria-label="A y"><input id="az" type="number" step="0.001" aria-label="A z">
         <span class="nrowlab" data-row="left" title="Select row for keyboard nudging">B left</span><input id="bx" type="number" step="0.001" aria-label="B x"><input id="by" type="number" step="0.001" aria-label="B y"><input id="bz" type="number" step="0.001" aria-label="B z">
         <span class="nrowlab" data-row="grip" title="Select row for keyboard nudging">Grip</span><input id="gx" type="number" step="0.001" aria-label="grip x"><input id="gy" type="number" step="0.001" aria-label="grip y"><input id="gz" type="number" step="0.001" aria-label="grip z">
-        <span class="nrowlab" data-row="foreN" title="Select row for keyboard nudging">Fore near</span><input id="fnx" type="number" step="0.001" aria-label="fore near x"><input id="fny" type="number" step="0.001" aria-label="fore near y"><input id="fnz" type="number" step="0.001" aria-label="fore near z">
+        <span class="nrowlab" id="foreNLabel" data-row="foreN" title="Select row for keyboard nudging">Fore near</span><input id="fnx" type="number" step="0.001" aria-label="fore near x"><input id="fny" type="number" step="0.001" aria-label="fore near y"><input id="fnz" type="number" step="0.001" aria-label="fore near z">
         <span class="nrowlab" data-row="foreF" title="Select row for keyboard nudging">Fore far</span><input id="ffx" type="number" step="0.001" aria-label="fore far x"><input id="ffy" type="number" step="0.001" aria-label="fore far y"><input id="ffz" type="number" step="0.001" aria-label="fore far z">
       </div>
-      <p class="hint" style="margin-top:8px">Fore-end length <span class="key" id="foreLen">—</span> <span id="foreLenNote">(long guns: near–far; pistols: grip–near cup reach).</span></p>
+      <p class="hint" style="margin-top:8px"><span id="foreMeasureLabel">Fore-end length</span> <span class="key" id="foreLen">—</span> <span id="foreLenNote">(long guns: near–far).</span></p>
       <p class="hint" style="margin-top:8px">Nudge row: <span class="key" id="nudgeRow">none — click a row label</span>. ←/↑/→ nudge x/y/z by 0.001 (Shift: ×10, ↓: −y; hold to keep nudging); arm-dial rows nudge 1° (Shift: 5°). The weapon re-seats live.</p>
       <div class="row" style="margin-top:9px"><button id="seatWeapon">Seat weapon</button><button id="matchForeXY" title="Copy fore-near x/y onto fore-far (the backend only reads near x/y, so this is lossless)">Snap far x/y</button><button id="resetSeat">Reset seat</button></div>
       <p class="hint" style="margin-top:8px">Seat check <span class="key" id="seatCheck">—</span></p>
@@ -144,7 +144,7 @@
       <div class="numgrid" id="shoulderGrid"><span class="nrowlab" data-row="d-shoulder" title="Select row for keyboard nudging">Shoulder°</span><input id="sx" type="number" step="1" aria-label="shoulder x deg" placeholder="0"><input id="sy" type="number" step="1" aria-label="shoulder y deg" placeholder="0"><input id="sz" type="number" step="1" aria-label="shoulder z deg" placeholder="0"></div>
       <div class="numgrid" id="elbowGrid"><span class="nrowlab" data-row="d-elbow" title="Select row for keyboard nudging">Elbow°</span><input id="ex" type="number" step="1" aria-label="elbow x deg" placeholder="0"><input id="ey" type="number" step="1" aria-label="elbow y deg" placeholder="0"><input id="ez" type="number" step="1" aria-label="elbow z deg" placeholder="0"></div>
       <div class="numgrid" id="wristGrid"><span class="nrowlab" data-row="d-wrist" title="Select row for keyboard nudging">Wrist°</span><input id="wx" type="number" step="1" aria-label="wrist x deg" placeholder="0"><input id="wy" type="number" step="1" aria-label="wrist y deg" placeholder="0"><input id="wz" type="number" step="1" aria-label="wrist z deg" placeholder="0"></div>
-      <p class="hint" style="margin-top:8px">Left-arm dials in degrees (pistols): added onto the animated shoulder, elbow and wrist every frame — dial the cup and it follows the animation. Rotations only; bone lengths are never touched. Pistols need no fore-near pick and no left contact: the dials pose the support hand directly.</p>
+      <p class="hint" style="margin-top:8px">Left-arm dials in degrees (pistols): bias the animated shoulder, elbow and wrist before the support hand snaps to Left Grip. Set contact B first, then Set Left Grip; the target is stored on the right hand and follows it. Rotations only; bone lengths are never touched.</p>
       <div class="numgrid" id="rwristGrid"><span class="nrowlab" data-row="d-right" title="Select row for keyboard nudging">R wrist°</span><input id="rwx" type="number" step="1" aria-label="right wrist x deg" placeholder="0"><input id="rwy" type="number" step="1" aria-label="right wrist y deg" placeholder="0"><input id="rwz" type="number" step="1" aria-label="right wrist z deg" placeholder="0"></div>
       <p class="hint" style="margin-top:8px">Right-wrist dial (all guns, for straight stocks with no pistol grip): rotates the firing hand about the wrist so the finger meets the trigger — play a firing clip and dial against the finger animation. Dial once, then nudge the grip freely — the correction rides along every frame, in the game too.</p>
 
@@ -155,7 +155,7 @@
       <pre id="snippetOut">Pick points to generate the backend snippet.</pre>
 
       <h2>Per-model sidecar</h2>
-      <p class="hint">One JSON per soldier: contacts once, then a slot per weapon (grip / fore + arm dials). Stored beside the model as <span class="key" id="sidecarName">…</span>; the game loads it automatically when present.</p>
+      <p class="hint">One JSON per soldier: contacts once, then a slot per weapon (grip / fore or pistol left-grip target + arm dials). Stored beside the model as <span class="key" id="sidecarName">…</span>; the game loads it automatically when present.</p>
       <label class="control" style="margin-top:9px">Weapon slot <select id="sidecarWeapon"><option value="">No sidecar yet</option></select></label>
       <div class="row" style="margin-top:9px"><button id="sidecarStore">Store current → slot</button><button id="sidecarApply">Apply slot</button></div>
       <div class="row" style="margin-top:9px"><button id="sidecarDownload">Download sidecar</button><button id="sidecarSaveServer">Save sidecar to server</button></div>
@@ -573,7 +573,10 @@
         if (typeof labCalib !== 'undefined') {
           const keep = !$('keepPoints') || $('keepPoints').checked;
           if (typeof labStashCurrentWeapon === 'function') labStashCurrentWeapon();
-          if (labCalib.modelFile !== file.name && !keep) labCalib.contacts = { right:null, left:null };
+          if (labCalib.modelFile !== file.name && !keep) {
+            labCalib.contacts = { right:null, left:null };
+            labCalib.pistolLeftGrip = null;
+          }
           labCalib.modelFile = file.name;
           labCalib.seated = false;
           labRefreshFields();
@@ -705,12 +708,16 @@
      - weapon grip + fore-near / fore-far in weapon-mesh local metres: the prepared
        weapons already use the game layout, and the mesh transform is baked at
        import, so these drop straight into WEAPON_POINTS.
+     - pistol leftGripR in right-hand local import units: initialized from contact B,
+       then carried by the firing hand as the support-arm target.
      The live seat preview mirrors the backend hold (grip on right contact, barrel
      through the left contact); the battle backend stays canonical. */
   const labCalib = {
     modelFile:'', weaponFile:'', weapon:null, // {mesh, container}
     contacts:{ right:null, left:null },       // BABYLON.Vector3, hand-bone local
     weaponPts:{ grip:null, foreN:null, foreF:null }, // BABYLON.Vector3, weapon local
+    pistolLeftGrip:null, // BABYLON.Vector3, right-hand local support target
+    capturePistolLeftGrip:false,
     pendingPick:null, markers:{}, downPos:null, oneHandLocal:null, seated:false
   };
   window.__labCalib = labCalib;
@@ -949,10 +956,13 @@
     if (typeof labStashCurrentWeapon === 'function') labStashCurrentWeapon();
     const keep = !$('keepPoints') || $('keepPoints').checked;
     const keptPts = keep ? { ...labCalib.weaponPts } : null;
+    const keptLeftGrip = keep && labCalib.pistolLeftGrip ? labCalib.pistolLeftGrip.clone() : null;
     const keptDials = keep ? labReadDials() : null;
     const keptWristR = keep ? labReadRightWrist() : null;
     labDisposeWeapon();
     labCalib.weaponPts = { grip:null, foreN:null, foreF:null };
+    labCalib.pistolLeftGrip = null;
+    labCalib.capturePistolLeftGrip = false;
     labCalib.oneHandLocal = null;
     labCalib.seated = false;
     labRefreshFields();
@@ -985,9 +995,9 @@
     mesh.computeWorldMatrix(true);
     labCalib.weapon = { mesh, container:result, file:label, home:mesh.getWorldMatrix().clone() };
     labCalib.weaponFile = label;
-    if (typeof labAfterWeaponSwitch === 'function') labAfterWeaponSwitch(label, keptPts, keptDials, keptWristR);
+    if (typeof labAfterWeaponSwitch === 'function') labAfterWeaponSwitch(label, keptPts, keptDials, keptWristR, keptLeftGrip);
     else labRefreshFields();
-    setStatus('Weapon ready: '+label+'. '+(labIsPistol(label) ? 'Pick its grip and the soldier right contact; pistols have no fore-end hold.' : 'Pick grip / fore-end points on it, or type them below.'));
+    setStatus('Weapon ready: '+label+'. '+(labIsPistol(label) ? 'Pick its grip plus soldier contacts A/B, then Set Left Grip.' : 'Pick grip / fore-end points on it, or type them below.'));
     labRefreshMarkers();
   }
   function labDisposeWeapon(){
@@ -1028,7 +1038,7 @@
       else {
         if (typeof labStashCurrentWeapon === 'function') labStashCurrentWeapon();
         labDisposeWeapon();
-        if (!keep) { labCalib.weaponPts = { grip:null, foreN:null, foreF:null }; labRefreshFields(); }
+        if (!keep) { labCalib.weaponPts = { grip:null, foreN:null, foreF:null }; labCalib.pistolLeftGrip = null; labRefreshFields(); }
       }
       if (!keep) labRestoreSaved();
       else if (typeof labRestoreSavedSoft === 'function') labRestoreSavedSoft();
@@ -1107,7 +1117,15 @@
   $('pickA').onclick = () => labArm('A');
   $('pickB').onclick = () => labArm('B');
   $('pickGrip').onclick = () => labArm('grip');
-  $('pickForeN').onclick = () => labArm('foreN');
+  $('pickForeN').onclick = () => {
+    if (!labIsPistol(labCalib.weaponFile)) { labArm('foreN'); return; }
+    if (!labCalib.contacts.left) { setStatus('Set contact B on the left hand first.', true); return; }
+    if (!labHandNode('right')) { setStatus('Load the soldier before setting Left Grip.', true); return; }
+    // Capture on the next rendered preview pose, after dials/aim are applied. This
+    // makes the new right-hand-local target exactly match the visible B contact.
+    labCalib.capturePistolLeftGrip = true;
+    setStatus('Capturing Left Grip from contact B…');
+  };
   $('pickForeF').onclick = () => labArm('foreF');
   canvas.addEventListener('pointerdown', event => { labCalib.downPos = [event.clientX, event.clientY]; });
   canvas.addEventListener('pointerup', event => {
@@ -1152,7 +1170,7 @@
   function labDoPick(x, y, mode){
     const onSoldier = (mode === 'A' || mode === 'B');
     if (!onSoldier && mode !== 'grip' && labIsPistol(labCalib.weaponFile)) {
-      setStatus('Pistols use the grip only; pose the support hand with the arm dials.', true);
+      setStatus('Use Set Left Grip for pistols; it captures the current B contact.', true);
       return;
     }
     const pool = onSoldier ? renderableMeshes() : (labCalib.weapon ? [labCalib.weapon.mesh] : []);
@@ -1220,6 +1238,20 @@
     if (!anchor || !hand || modelAssets.file !== labCalib.modelFile) return null;
     return BABYLON.Vector3.TransformCoordinates(anchor, labNodeWorld(hand));
   }
+  function labPistolLeftGripWorld(){
+    const hand = labHandNode('right');
+    if (!labCalib.pistolLeftGrip || !hand || modelAssets.file !== labCalib.modelFile) return null;
+    return BABYLON.Vector3.TransformCoordinates(labCalib.pistolLeftGrip, labNodeWorld(hand));
+  }
+  function labCapturePistolLeftGrip(){
+    labCalib.capturePistolLeftGrip = false;
+    const B = labAnchorWorld('left'), hand = labHandNode('right');
+    if (!B || !hand) { setStatus('Set contact B and load the soldier before setting Left Grip.', true); return false; }
+    labCalib.pistolLeftGrip = BABYLON.Vector3.TransformCoordinates(B, labInvert(labNodeWorld(hand)));
+    labRefreshFields(); labRefreshMarkers(); labUpdateSnippet();
+    setStatus('Left Grip set from contact B and attached to the right hand. Nudge its XYZ to tune the cup.');
+    return true;
+  }
   function labRefreshMarkers(){
     const place = (name, world) => {
       const mesh = labCalib.markers[name];
@@ -1236,10 +1268,11 @@
       return BABYLON.Vector3.TransformCoordinates(local, w.getWorldMatrix());
     };
     place('grip', wpos(labWeaponPtsOf('grip')));
-    place('foreN', wpos(labWeaponPtsOf('foreN')));
+    place('foreN', labIsPistol(labCalib.weaponFile) ? labPistolLeftGripWorld() : wpos(labWeaponPtsOf('foreN')));
     place('foreF', wpos(labWeaponPtsOf('foreF')));
   }
-  // Pistols use grip only; the support hand is posed with the arm dials.
+  // Pistol weapon seating uses grip only; foreN's UI row is repurposed as a
+  // right-hand-local support target and never enters the weapon point solver.
   function labWeaponPtsOf(k){ return k !== 'grip' && labIsPistol(labCalib.weaponFile) ? null : labCalib.weaponPts[k]; }
   </script>
   <script src="fbx-animation-root-lock.js?v=4ab61a63204894bdd1b67c93c6f1307834f1ce85"></script>
@@ -1294,6 +1327,93 @@
       applied = true;
     }
     return applied;
+  }
+  function labArmChain(side){
+    const hand = labHandNode(side);
+    if (!hand) return [];
+    const joints = [];
+    let node = hand.parent;
+    for (let i = 0; i < 3 && node; i++) { joints.push(node); node = node.parent; }
+    return joints;
+  }
+  function labWorldRotation(node){
+    node.computeWorldMatrix(true);
+    const scale = new BABYLON.Vector3(), rotation = new BABYLON.Quaternion(), translation = new BABYLON.Vector3();
+    node.getWorldMatrix().decompose(scale, rotation, translation);
+    return rotation;
+  }
+  function labRefreshArmWorld(joints, hand){
+    [...joints].reverse().forEach(node => node.computeWorldMatrix(true));
+    hand.computeWorldMatrix(true);
+  }
+  // The target is cached in right-hand space, but the left arm must be solved on each
+  // animated pose. CCD touches only three rotations, exits early below 0.5 mm, and is
+  // restored after render with the rest of the preview overrides.
+  function labSnapPistolLeftHand(){
+    if (!labIsPistol(labCalib.weaponFile) || !labCalib.contacts.left || !labCalib.pistolLeftGrip) return null;
+    const hand = labHandNode('left'), target = labPistolLeftGripWorld();
+    if (!hand || !target) return null;
+    const joints = labArmChain('left');
+    if (!joints.length) return null;
+    const anchor = labCalib.contacts.left;
+    labRefreshArmWorld(joints, hand);
+    let error = BABYLON.Vector3.TransformCoordinates(anchor, labNodeWorld(hand)).subtract(target).length();
+    if (error > .35) return { applied:false, error, guarded:true };
+    const endpointError = () => {
+      labRefreshArmWorld(joints, hand);
+      return BABYLON.Vector3.TransformCoordinates(anchor, labNodeWorld(hand)).subtract(target).length();
+    };
+    for (let sweep = 0; sweep < 6 && error > .0005; sweep++) {
+      let biggest = 0;
+      for (const joint of joints) {
+        labRefreshArmWorld(joints, hand);
+        const end = BABYLON.Vector3.TransformCoordinates(anchor, labNodeWorld(hand));
+        const pivot = joint.getAbsolutePosition().clone();
+        const from = end.subtract(pivot), to = target.subtract(pivot);
+        if (from.lengthSquared() < 1e-10 || to.lengthSquared() < 1e-10) continue;
+        from.normalize(); to.normalize();
+        const axis = BABYLON.Vector3.Cross(from, to);
+        const sine = axis.length();
+        if (sine < 1e-6) continue;
+        axis.normalize();
+        let angle = Math.asin(Math.max(-1, Math.min(1, sine)));
+        if (BABYLON.Vector3.Dot(from, to) < 0) angle = Math.PI - angle;
+        angle = Math.max(-.30, Math.min(.30, angle));
+        biggest = Math.max(biggest, Math.abs(angle));
+        const deltaWorld = BABYLON.Quaternion.RotationAxis(axis, angle);
+        if (!joint.rotationQuaternion) joint.rotationQuaternion = new BABYLON.Quaternion();
+        const base = joint.rotationQuaternion.clone();
+        let bestQ = base, bestError = endpointError();
+        // These FBX chains contain reflected parent scales. Quaternion decomposition
+        // therefore has two equivalent handedness conventions; try both conjugations,
+        // signs and multiply orders, then retain only a monotonic improvement. This
+        // prevents the old CCD arm-flip while remaining tiny (three joints only).
+        const parentWorld = joint.parent ? labWorldRotation(joint.parent) : BABYLON.Quaternion.Identity();
+        const parentInv = parentWorld.conjugate(), deltaInv = deltaWorld.conjugate();
+        const deltas = [
+          parentWorld.multiply(deltaWorld).multiply(parentInv),
+          parentInv.multiply(deltaWorld).multiply(parentWorld),
+          parentWorld.multiply(deltaInv).multiply(parentInv),
+          parentInv.multiply(deltaInv).multiply(parentWorld)
+        ];
+        for (const deltaLocal of deltas) {
+          for (const pre of [true, false]) {
+            joint.rotationQuaternion.copyFrom(base);
+            joint.rotationQuaternion = pre ? deltaLocal.multiply(joint.rotationQuaternion)
+              : joint.rotationQuaternion.multiply(deltaLocal);
+            const candidateError = endpointError();
+            if (candidateError < bestError) { bestError = candidateError; bestQ = joint.rotationQuaternion.clone(); }
+          }
+        }
+        joint.rotationQuaternion.copyFrom(bestQ);
+        error = bestError;
+        if (error <= .0005) break;
+      }
+      if (biggest < 1e-3) break;
+    }
+    labRefreshArmWorld(joints, hand);
+    error = BABYLON.Vector3.TransformCoordinates(anchor, labNodeWorld(hand)).subtract(target).length();
+    return { applied:true, error, guarded:false };
   }
   /* Right-wrist dial (all guns): rotates the firing hand about the wrist so the finger
      meets the trigger — the straight-stock answer to the pistol cup dials.
@@ -1737,12 +1857,22 @@
     set(['gx','gy','gz'], labCalib.weaponPts.grip);
     const pistol = labIsPistol(labCalib.weaponFile);
     if (pistol && (labCalib.pendingPick === 'foreN' || labCalib.pendingPick === 'foreF')) labArm(labCalib.pendingPick);
-    // Pistols use grip only; the support hand is posed with the arm dials below.
-    for (const id of ['pickForeN','pickForeF','fnx','fny','fnz','ffx','ffy','ffz']) $(id).disabled = pistol;
-    set(['fnx','fny','fnz'], pistol ? null : labCalib.weaponPts.foreN);
+    $('pickForeN').textContent = pistol ? 'Set Left Grip' : 'Fore near';
+    $('foreNLabel').textContent = pistol ? 'Left grip' : 'Fore near';
+    ['fnx','fny','fnz'].forEach((id, i) => $(id).setAttribute('aria-label', (pistol ? 'left grip ' : 'fore near ') + ['x','y','z'][i]));
+    for (const id of ['pickForeF','ffx','ffy','ffz']) $(id).disabled = pistol;
+    $('matchForeXY').disabled = pistol;
+    $('pickForeN').disabled = false;
+    for (const id of ['fnx','fny','fnz']) $(id).disabled = false;
+    set(['fnx','fny','fnz'], pistol ? labCalib.pistolLeftGrip : labCalib.weaponPts.foreN);
     set(['ffx','ffy','ffz'], pistol ? null : labCalib.weaponPts.foreF);
     const n = pistol ? null : labCalib.weaponPts.foreN, f = pistol ? null : labCalib.weaponPts.foreF;
-    $('foreLen').textContent = (n && f) ? (n.subtract(f).length().toFixed(3)+' m') : '—';
+    $('foreMeasureLabel').textContent = pistol ? 'Left-grip error' : 'Fore-end length';
+    const pistolGap = pistol && labCalib.pistolLeftGrip && labCalib.contacts.left && labPistolLeftGripWorld() && labAnchorWorld('left')
+      ? BABYLON.Vector3.Distance(labPistolLeftGripWorld(), labAnchorWorld('left')) : null;
+    $('foreLen').textContent = pistol ? (pistolGap === null ? '—' : (pistolGap * 100).toFixed(1)+' cm')
+      : ((n && f) ? (n.subtract(f).length().toFixed(3)+' m') : '—');
+    $('foreLenNote').textContent = pistol ? '(target coordinates are local to the right hand).' : '(long guns: near–far).';
     // Dial boxes stay editable even with a long gun loaded (spinners need an enabled
     // input): the values are inert unless a pistol is seated — same rule as the game.
     labUpdateSnippet();
@@ -1758,11 +1888,24 @@
     });
   });
   [[['gx','gy','gz'],'grip'], [['fnx','fny','fnz'],'foreN'], [['ffx','ffy','ffz'],'foreF']].forEach(([ids, key]) => {
-    ids.forEach(id => $(id).onchange = () => {
+    const apply = (validate) => {
       const v = labParseTriplet(ids);
-      if (!v) { setStatus('Weapon points need three finite numbers.', true); labRefreshFields(); return; }
-      labCalib.weaponPts[key] = v;
+      if (!v) {
+        if (validate) { setStatus('Points need three finite numbers.', true); labRefreshFields(); }
+        return;
+      }
+      if (key === 'foreN' && labIsPistol(labCalib.weaponFile)) labCalib.pistolLeftGrip = v;
+      else labCalib.weaponPts[key] = v;
+      // Hybrid update: rebuild the rigid right-hand socket once when its grip changes;
+      // ordinary playback keeps reusing that cached transform.
+      if (!(key === 'foreN' && labIsPistol(labCalib.weaponFile)) && labCalib.weapon && labCalib.contacts.right)
+        labSeatWeapon(false);
       labRefreshMarkers(); labUpdateSnippet();
+    };
+    ids.forEach(id => {
+      id = $(id);
+      id.oninput = () => apply(false);
+      id.onchange = () => apply(true);
     });
   });
   // Mouse-wheel over a stepper must not silently retune it.
@@ -1785,7 +1928,8 @@
     document.querySelectorAll('.nrowlab').forEach(el => {
       el.classList.toggle('sel', el.dataset.row === labNudgeRow);
     });
-    $('nudgeRow').textContent = labNudgeRow ? (LAB_NUDGE_NAMES[labNudgeRow] || labNudgeRow) : 'none — click a row label';
+    const name = labNudgeRow === 'foreN' && labIsPistol(labCalib.weaponFile) ? 'Left grip' : (LAB_NUDGE_NAMES[labNudgeRow] || labNudgeRow);
+    $('nudgeRow').textContent = labNudgeRow ? name : 'none — click a row label';
   }
   document.querySelectorAll('.nrowlab').forEach(el => {
     el.addEventListener('click', () => labSelectNudgeRow(el.dataset.row));
@@ -1814,12 +1958,15 @@
     if (labNudgeRow === 'd-right') { labNudgeRightWrist(axis, dir); return; }
     if (labNudgeRow.startsWith('d-')) { labNudgeDial(labNudgeRow.slice(2), axis, dir); return; }
     const isContact = (labNudgeRow === 'right' || labNudgeRow === 'left');
-    const cur = isContact ? labCalib.contacts[labNudgeRow] : labCalib.weaponPts[labNudgeRow];
+    const pistolLeftGrip = labNudgeRow === 'foreN' && labIsPistol(labCalib.weaponFile);
+    const cur = isContact ? labCalib.contacts[labNudgeRow] : (pistolLeftGrip ? labCalib.pistolLeftGrip : labCalib.weaponPts[labNudgeRow]);
     const v = cur ? cur.clone() : new BABYLON.Vector3(0, 0, 0);
     v[axis] = +(v[axis] + dir).toFixed(4);
-    if (isContact) labCalib.contacts[labNudgeRow] = v; else labCalib.weaponPts[labNudgeRow] = v;
+    if (isContact) labCalib.contacts[labNudgeRow] = v;
+    else if (pistolLeftGrip) labCalib.pistolLeftGrip = v;
+    else labCalib.weaponPts[labNudgeRow] = v;
     labRefreshFields(); labRefreshMarkers(); labUpdateSnippet();
-    try { labSeatWeapon(); } catch (error) {}
+    if (!pistolLeftGrip) try { labSeatWeapon(); } catch (error) {}
   }
   /* Hold-to-nudge: a tap nudges once; holding past LAB_HOLD_DELAY keeps nudging at
      LAB_HOLD_RATE until release. OS auto-repeat is ignored so the cadence stays ours. */
@@ -1883,6 +2030,7 @@
       contacts: { right: arr(labCalib.contacts.right), left: arr(labCalib.contacts.left) },
       weapon: labCalib.weaponFile || null,
       weaponPoints: { grip: arr(labCalib.weaponPts.grip), foreNear: pistol ? null : arr(labCalib.weaponPts.foreN), foreFar: pistol ? null : arr(labCalib.weaponPts.foreF) },
+      leftGripR: pistol ? arr(labCalib.pistolLeftGrip) : null,
       armDeg: {
         shoulder: labDialDeg(['sx','sy','sz']),
         elbow: labDialDeg(['ex','ey','ez']),
@@ -1913,6 +2061,7 @@
       labCalib.weaponPts.foreN = v3(data.weaponPoints.foreNear);
       labCalib.weaponPts.foreF = v3(data.weaponPoints.foreFar);
     }
+    if (data.leftGripR !== undefined) labCalib.pistolLeftGrip = v3(data.leftGripR);
     if (data.wristR) labWriteRightWrist(data.wristR);
     const dialIds = [['sx','sy','sz'],['ex','ey','ez'],['wx','wy','wz']];
     const setDial = (ids, arr) => ids.forEach((id, i) => { $(id).value = (arr && Number.isFinite(+arr[i])) ? +arr[i] : 0; });
@@ -1969,7 +2118,8 @@
     try {
       const model = labCalib.modelFile, weapon = labCalib.weaponFile;
       if (!model || !weapon) return;
-      const hasPts = labCalib.weaponPts.grip || labCalib.weaponPts.foreN || labCalib.weaponPts.foreF;
+      const hasPts = labCalib.weaponPts.grip || labCalib.weaponPts.foreN || labCalib.weaponPts.foreF ||
+        (labIsPistol(weapon) && labCalib.pistolLeftGrip);
       const dials = labReadDials();
       const wristR = labReadRightWrist();
       const wristNonZero = wristR.some(n => Math.abs(n) > 1e-9);
@@ -1981,6 +2131,7 @@
         grip: arr(labCalib.weaponPts.grip),
         foreNear: arr(labCalib.weaponPts.foreN),
         foreFar: arr(labCalib.weaponPts.foreF),
+        leftGripR: labIsPistol(weapon) ? arr(labCalib.pistolLeftGrip) : null,
         armDeg: dials,
         wristR
       };
@@ -2011,13 +2162,14 @@
     } else {
       // Legacy universal shape {grip, foreNear, foreFar} is the same; nothing else to do.
     }
+    if (slot.leftGripR !== undefined) labCalib.pistolLeftGrip = v3(slot.leftGripR);
     if (slot.armDeg) labWriteDials(slot.armDeg);
     if (slot.wristR) labWriteRightWrist(slot.wristR);
     return true;
   }
   // After a weapon mesh finishes importing: prefer the per-model slot for this
   // model+weapon, else keep the live points (keep-points mode), else universal fallback.
-  function labAfterWeaponSwitch(label, keptPts, keptDials, keptWristR){
+  function labAfterWeaponSwitch(label, keptPts, keptDials, keptWristR, keptLeftGrip){
     const model = labCalib.modelFile;
     const slot = labPerModelWeapon(model, label);
     if (slot) {
@@ -2028,8 +2180,9 @@
     const keep = !$('keepPoints') || $('keepPoints').checked;
     const keptHas = keptPts && (keptPts.grip || keptPts.foreN || keptPts.foreF);
     const keptWristHas = keptWristR && keptWristR.some(n => Math.abs(+n) > 1e-9);
-    if (keep && (keptHas || (keptDials && labDialsNonZero(keptDials)) || keptWristHas)) {
+    if (keep && (keptHas || keptLeftGrip || (keptDials && labDialsNonZero(keptDials)) || keptWristHas)) {
       labCalib.weaponPts = { ...keptPts };
+      labCalib.pistolLeftGrip = keptLeftGrip ? keptLeftGrip.clone() : null;
       if (keptDials) labWriteDials({ shoulder:keptDials.shoulder, elbow:keptDials.elbow, wrist:keptDials.wrist });
       if (keptWristHas) labWriteRightWrist(keptWristR);
       labRefreshFields(); labRefreshMarkers();
@@ -2044,6 +2197,7 @@
         labCalib.weaponPts.grip = v3(w.grip);
         labCalib.weaponPts.foreN = v3(w.foreNear);
         labCalib.weaponPts.foreF = v3(w.foreFar);
+        labCalib.pistolLeftGrip = v3(w.leftGripR);
       }
     } catch (error) {}
     labRefreshFields(); labRefreshMarkers();
@@ -2062,8 +2216,8 @@
       const entry = labModelEntry(store, data.model);
       entry.right = data.contacts.right; entry.left = data.contacts.left;
       entry.armDeg = data.armDeg;
-      if (data.weapon && (data.weaponPoints.grip || data.weaponPoints.foreNear || labDialsNonZero(data.armDeg) || (data.wristR && data.wristR.some(n => Math.abs(+n) > 1e-9)))) {
-        entry.weapons[data.weapon] = { ...data.weaponPoints, armDeg: data.armDeg, wristR: data.wristR };
+      if (data.weapon && (data.weaponPoints.grip || data.weaponPoints.foreNear || data.leftGripR || labDialsNonZero(data.armDeg) || (data.wristR && data.wristR.some(n => Math.abs(+n) > 1e-9)))) {
+        entry.weapons[data.weapon] = { ...data.weaponPoints, leftGripR:data.leftGripR, armDeg: data.armDeg, wristR: data.wristR };
       }
     }
     if (data.weapon && (data.weaponPoints.grip || data.weaponPoints.foreNear)) store.weapons[data.weapon] = data.weaponPoints;
@@ -2077,7 +2231,7 @@
     const perWeapon = (data.model && data.weapon && m && m.weapons && m.weapons[data.weapon]) || null;
     const w = perWeapon || (data.weapon && store.weapons[data.weapon]);
     if (!m && !w) { setStatus('Nothing saved yet for this model/weapon.', true); return; }
-    labApply({ model:data.model, contacts:m || {}, weapon:data.weapon, weaponPoints:w || {}, armDeg:(perWeapon && perWeapon.armDeg) || (m && m.armDeg), wristR:perWeapon && perWeapon.wristR });
+    labApply({ model:data.model, contacts:m || {}, weapon:data.weapon, weaponPoints:w || {}, leftGripR:perWeapon && perWeapon.leftGripR, armDeg:(perWeapon && perWeapon.armDeg) || (m && m.armDeg), wristR:perWeapon && perWeapon.wristR });
   };
   function labRestoreSaved(){
     // After a library load, silently re-apply anything saved for these files.
@@ -2095,6 +2249,7 @@
       labCalib.weaponPts.grip = w.grip ? new BABYLON.Vector3(...w.grip) : null;
       labCalib.weaponPts.foreN = w.foreNear ? new BABYLON.Vector3(...w.foreNear) : null;
       labCalib.weaponPts.foreF = w.foreFar ? new BABYLON.Vector3(...w.foreFar) : null;
+      labCalib.pistolLeftGrip = w.leftGripR ? new BABYLON.Vector3(...w.leftGripR) : null;
       if (w.armDeg) labWriteDials(w.armDeg);
       if (w.wristR) labWriteRightWrist(w.wristR);
     }
@@ -2118,6 +2273,7 @@
       if (!labCalib.weaponPts.grip && w.grip) { labCalib.weaponPts.grip = new BABYLON.Vector3(...w.grip); filled = true; }
       if (!labCalib.weaponPts.foreN && w.foreNear) { labCalib.weaponPts.foreN = new BABYLON.Vector3(...w.foreNear); filled = true; }
       if (!labCalib.weaponPts.foreF && w.foreFar) { labCalib.weaponPts.foreF = new BABYLON.Vector3(...w.foreFar); filled = true; }
+      if (!labCalib.pistolLeftGrip && w.leftGripR) { labCalib.pistolLeftGrip = new BABYLON.Vector3(...w.leftGripR); filled = true; }
       if (w.wristR) {
         const wr = labReadRightWrist();
         if (!wr.some(n => Math.abs(n) > 1e-9) && w.wristR.some(n => Math.abs(+n) > 1e-9)) { labWriteRightWrist(w.wristR); filled = true; }
@@ -2156,7 +2312,7 @@
   };
   /* ---- per-model sidecar (Assets/soldiers/<model>.json) ----
      Shape: { model, version:1, contacts:{right,left}, weapons:{ [weaponFile]: {
-       grip, foreNear, foreFar, armDeg:{shoulder,elbow,wrist} } } }
+       grip, foreNear, foreFar, leftGripR, armDeg:{shoulder,elbow,wrist} } } }
      The game fetches this file next to the soldier FBX on load; the lab edits it here. */
   let labSidecar = null;
   function labSidecarName(model){
@@ -2184,6 +2340,7 @@
           grip: arr(labCalib.weaponPts.grip),
           foreNear: arr(labCalib.weaponPts.foreN),
           foreFar: arr(labCalib.weaponPts.foreF),
+          leftGripR: labIsPistol(labCalib.weaponFile) ? arr(labCalib.pistolLeftGrip) : null,
           armDeg: labReadDials(),
           wristR: labReadRightWrist()
         };
@@ -2393,6 +2550,11 @@
       const bend = labAimBend();
       labSeatWeapon(true);
       if (bend) labShowAimCorr(bend);
+    }
+    if (labCalib.capturePistolLeftGrip && labIsPistol(labCalib.weaponFile)) labCapturePistolLeftGrip();
+    const leftSnap = !labCalib.pendingPick ? labSnapPistolLeftHand() : null;
+    if (leftSnap && $('foreLen')) {
+      $('foreLen').textContent = leftSnap.guarded ? 'out of reach' : (leftSnap.error * 100).toFixed(1)+' cm';
     }
     labRefreshMarkers();
     // Hands move under a playing clip, so the aim angle drifts: re-check at ~3 Hz.
