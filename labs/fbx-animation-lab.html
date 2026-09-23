@@ -1258,7 +1258,8 @@
      and wrist joints, outermost first. Dial the cup directly instead of solving for it:
      no targets, no iteration, and rotations only so bone lengths can never change.
      Reapplied every frame (see the render observers), so the offsets follow the
-     animation; explicit Seat clicks apply them once for paused inspection. */
+     animation. The render observer is the sole owner of these temporary offsets,
+     including while paused, so an explicit Seat can never apply them twice. */
   const LAB_ARM_DIALS = [
     { ids:['sx','sy','sz'], depth:3, label:'shoulder' },
     { ids:['ex','ey','ez'], depth:2, label:'elbow' },
@@ -1323,6 +1324,23 @@
     j.rotationQuaternion = j.rotationQuaternion.multiply(q);
     return true;
   }
+  // The imported rig's hips joint axes are not its anatomical frame: on these
+  // soldiers hips +Z points 90 degrees sideways, while hips -X is model-forward.
+  // Keep the conversion in one place so the readout and Face target stay paired.
+  function labModelFacing(hips){
+    return BABYLON.Vector3.TransformNormal(new BABYLON.Vector3(-1, 0, 0), labNodeWorld(hips));
+  }
+  // Runtime pistol sockets deliberately use model-local +Z as their barrel axis
+  // (solveGrips in 53-fbx-soldier-backend.js). Mirror that here instead of retaining
+  // the weapon mesh's arbitrary picking/import rotation.
+  function labCanonicalWeaponRotation(){
+    if (animationContainer && !animationContainer.isDisposed()) animationContainer.computeWorldMatrix(true);
+    const world = animationContainer && !animationContainer.isDisposed()
+      ? animationContainer.getWorldMatrix() : BABYLON.Matrix.Identity();
+    const scale = new BABYLON.Vector3(), rotation = new BABYLON.Quaternion(), position = new BABYLON.Vector3();
+    world.decompose(scale, rotation, position);
+    return rotation;
+  }
   function labSeatWeapon(follow=false){
     if (!labCalib.weapon || labCalib.weapon.mesh.isDisposed()) return 'Load a weapon first.';
     if (labCalib.weapon.file !== labCalib.weaponFile) return 'Load the weapon named by this calibration first.';
@@ -1343,6 +1361,7 @@
     const isPistol = labIsPistol(labCalib.weaponFile);
     const L = labAnchorWorld('left');
     const N = labCalib.weaponPts.foreN, F = labCalib.weaponPts.foreF;
+    if (!isPistol && !L) return 'Pick the left hand contact before seating a long gun.';
     if (!isPistol && L && N && F) {
       // Match the backend's two-point solve: select a point on the picked fore-end
       // line at the posed hand spacing, then map grip->fore exactly onto right->left.
@@ -1390,16 +1409,19 @@
         labCalib.seated = true;
         return 'Grip follows the right hand.';
       }
-      const scl = new BABYLON.Vector3(), rot = new BABYLON.Quaternion(), tp = new BABYLON.Vector3();
-      mesh.getWorldMatrix().decompose(scl, rot, tp);
+      const rot = isPistol ? labCanonicalWeaponRotation() : (() => {
+        const scl = new BABYLON.Vector3(), q = new BABYLON.Quaternion(), tp = new BABYLON.Vector3();
+        mesh.getWorldMatrix().decompose(scl, q, tp);
+        return q;
+      })();
       const rotM = new BABYLON.Matrix();
       rot.toRotationMatrix(rotM);
+      if (!mesh.rotationQuaternion) mesh.rotationQuaternion = new BABYLON.Quaternion();
+      mesh.rotationQuaternion.copyFrom(rot);
       mesh.position.copyFrom(R.subtract(BABYLON.Vector3.TransformNormal(G, rotM)));
       labRememberRightSocket(mesh,handWorld);
       labCalib.seated = true;
-      let msg = 'Grip seated on the right hand.';
-      if (isPistol && labApplyArmDials()) msg += ' Arm dials applied.';
-      return msg;
+      return 'Grip seated on the right hand.';
     }
   }
   $('seatWeapon').onclick = () => { setStatus(labSeatWeapon()); labRefreshMarkers(); labSeatCheck(); labAimCheck(); };
@@ -1456,7 +1478,7 @@
     if (!hips) { el.textContent = 'no hips bone on this rig.'; return; }
     w.mesh.computeWorldMatrix(true);
     const barrel = BABYLON.Vector3.TransformNormal(new BABYLON.Vector3(0, 0, 1), w.mesh.getWorldMatrix());
-    const facing = BABYLON.Vector3.TransformNormal(new BABYLON.Vector3(0, 0, 1), labNodeWorld(hips));
+    const facing = labModelFacing(hips);
     barrel.y = 0; facing.y = 0;
     if (barrel.lengthSquared() < 1e-8 || facing.lengthSquared() < 1e-8) {
       el.textContent = 'barrel near-vertical — top-down angle undefined.';
@@ -1583,7 +1605,7 @@
     labEnsureTarget();
     const hp = hips.getAbsolutePosition();
     const tgt = labTargetPos();
-    const f = BABYLON.Vector3.TransformNormal(new BABYLON.Vector3(0, 0, 1), labNodeWorld(hips));
+    const f = labModelFacing(hips);
     const yawF = Math.atan2(f.x, f.z), yawT = Math.atan2(tgt.x - hp.x, tgt.z - hp.z);
     let d = yawT - yawF;
     while (d > Math.PI) d -= 2 * Math.PI;
@@ -2334,16 +2356,19 @@
       labSeatWeapon(true);
     }
     if (!labCalib.pendingPick && labIsPistol(labCalib.weaponFile)) {
-      if (!stashed) labStashArm();
+      if (!stashed) { labStashArm(); stashed = true; }
       labApplyArmDials();
     }
-    // Aim test: seat on the clean pose, bend the spine (backend math), re-seat onto
-    // the bent pose — the same order the battle backend applies every frame.
+    // Aim test: follow the already-calibrated right-hand socket on the clean pose,
+    // bend the spine (backend math), then follow that SAME socket onto the bent pose.
+    // Re-seating in calibration mode here used to rebuild a pistol's one-hand socket
+    // twice per frame from the current clip pose, making Aim-at-target fight every
+    // pistol animation instead of matching the battle backend's fixed rigid hold.
     if ($('aimAtTarget') && $('aimAtTarget').checked && labCalib.weapon && !labCalib.pendingPick) {
       if (!stashed) { labStashArm(); stashed = true; }
-      labSeatWeapon();
+      labSeatWeapon(true);
       const bend = labAimBend();
-      labSeatWeapon();
+      labSeatWeapon(true);
       if (bend) labShowAimCorr(bend);
     }
     labRefreshMarkers();
