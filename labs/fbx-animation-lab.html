@@ -1330,16 +1330,39 @@
   function labModelFacing(hips){
     return BABYLON.Vector3.TransformNormal(new BABYLON.Vector3(-1, 0, 0), labNodeWorld(hips));
   }
-  // Runtime pistol sockets deliberately use model-local +Z as their barrel axis
-  // (solveGrips in 53-fbx-soldier-backend.js). Mirror that here instead of retaining
-  // the weapon mesh's arbitrary picking/import rotation.
-  function labCanonicalWeaponRotation(){
-    if (animationContainer && !animationContainer.isDisposed()) animationContainer.computeWorldMatrix(true);
-    const world = animationContainer && !animationContainer.isDisposed()
-      ? animationContainer.getWorldMatrix() : BABYLON.Matrix.Identity();
-    const scale = new BABYLON.Vector3(), rotation = new BABYLON.Quaternion(), position = new BABYLON.Vector3();
-    world.decompose(scale, rotation, position);
-    return rotation;
+  function labRigNode(canonName){
+    if (!modelAssets) return null;
+    for (const n of modelAssets.transformNodes) {
+      if (n && !n.isDisposed() && labCanon(n.name) === canonName) return n;
+    }
+    return null;
+  }
+  // A pistol is rigid in the firing hand, but the rig's raw hand axes do not describe
+  // the palm: local +Z points sideways on these imports. Build an anatomical hand frame
+  // from stable bone origins instead. Barrel +Z follows wrist -> base knuckles; local Y
+  // (the slide top) spans pinky -> index; their orthogonal cross-product supplies X.
+  // Finger curls are deliberately excluded, so trigger motion cannot wobble the weapon.
+  function labPistolHandRotation(){
+    const hand = labRigNode('righthand');
+    const index = labRigNode('righthandindex1');
+    const middle = labRigNode('righthandmiddle1');
+    const ring = labRigNode('righthandring1');
+    const pinky = labRigNode('righthandpinky1');
+    if (!hand || !index || !middle || !ring || !pinky) return null;
+    [hand,index,middle,ring,pinky].forEach(n => n.computeWorldMatrix(true));
+    const hp = hand.getAbsolutePosition();
+    const z = index.getAbsolutePosition().add(middle.getAbsolutePosition())
+      .addInPlace(ring.getAbsolutePosition()).addInPlace(pinky.getAbsolutePosition())
+      .scaleInPlace(.25).subtractInPlace(hp);
+    let y = index.getAbsolutePosition().subtract(pinky.getAbsolutePosition());
+    if (z.lengthSquared() < 1e-8 || y.lengthSquared() < 1e-8) return null;
+    z.normalize();
+    y.subtractInPlace(z.scale(BABYLON.Vector3.Dot(y,z)));
+    if (y.lengthSquared() < 1e-8) return null;
+    y.normalize();
+    const x = BABYLON.Vector3.Cross(y,z).normalize();
+    y = BABYLON.Vector3.Cross(z,x).normalize();
+    return BABYLON.Quaternion.RotationQuaternionFromAxis(x,y,z);
   }
   function labSeatWeapon(follow=false){
     if (!labCalib.weapon || labCalib.weapon.mesh.isDisposed()) return 'Load a weapon first.';
@@ -1409,7 +1432,7 @@
         labCalib.seated = true;
         return 'Grip follows the right hand.';
       }
-      const rot = isPistol ? labCanonicalWeaponRotation() : (() => {
+      const rot = (isPistol && labPistolHandRotation()) || (() => {
         const scl = new BABYLON.Vector3(), q = new BABYLON.Quaternion(), tp = new BABYLON.Vector3();
         mesh.getWorldMatrix().decompose(scl, q, tp);
         return q;
