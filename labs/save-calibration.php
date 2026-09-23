@@ -3,7 +3,7 @@
    Body: { "model": "us-paratrooper.fbx", "data": { model, version, contacts, weapons } }
    Strict: model must be a deployed soldier FBX basename, no paths. Numbers are validated
    as finite triplets; weapon slots carry grip/foreNear/foreFar triplets (or null) plus
-   optional right-hand-local leftGripR and armDeg shoulder/elbow/wrist triplets. Served from labs/ locally, on branch
+    optional right-hand-local leftGripR (legacy CCD target, ignored) and armDeg shoulder/elbow/wrist triplets. Served from labs/ locally, on branch
    previews, and in production (all three deploy the whole labs/ directory). */
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -56,7 +56,7 @@ foreach ($weapons as $wfile => $slot) {
             if (isset($slot['armDeg'][$j]) && !isTriplet($slot['armDeg'][$j])) fail(400, 'Bad armDeg.' . $j . ' for ' . $wfile);
         }
     }
-    /* Optional: right-wrist dial and pistol support target. Unknown extra keys pass through. */
+    /* Optional: right-wrist dial and legacy pistol support target (ignored). Unknown extra keys pass through. */
     foreach (array('wristR', 'leftGripR') as $k) {
         if (array_key_exists($k, $slot) && $slot[$k] !== null && !isTriplet($slot[$k])) fail(400, 'Bad ' . $k . ' for ' . $wfile);
     }

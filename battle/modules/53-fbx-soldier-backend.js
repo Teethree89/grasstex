@@ -153,10 +153,9 @@ var WEAPON_MODEL_POINTS={
 /* Runtime sidecar overlays (Assets/soldiers/<model>.json, written by the Motion Lab):
    SIDE_MODEL_POINTS[model][weapon] wins over WEAPON_MODEL_POINTS, SIDE_CONTACTS[model]
    wins over SOLDIER_CONTACTS, SIDE_ARM[model][weapon] carries the lab's left-arm dial
-   degrees {shoulder,elbow,wrist} for that pair (pistol support cup), SIDE_LEFT_GRIP
-   carries its right-hand-local support target, and
+   degrees {shoulder,elbow,wrist} for that pair (pistol support cup, rotations only), and
    SIDE_WRISTR[model][weapon] the right-wrist dial (straight stocks, finger on trigger). */
-var SIDE_MODEL_POINTS={},SIDE_CONTACTS={},SIDE_ARM={},SIDE_WRISTR={},SIDE_LEFT_GRIP={};
+var SIDE_MODEL_POINTS={},SIDE_CONTACTS={},SIDE_ARM={},SIDE_WRISTR={};
 function isSideTriplet(a){
   return Array.isArray(a)&&a.length===3&&a.every(function(n){return typeof n==='number'&&isFinite(n);});
 }
@@ -187,9 +186,9 @@ function applySidecarData(file,data){
     if(isSideTriplet(slot.wristR)&&slot.wristR.some(function(n){return Math.abs(n)>1e-9;})){
       (SIDE_WRISTR[file]||(SIDE_WRISTR[file]={}))[w]=slot.wristR.slice();
     }
-    if(isSideTriplet(slot.leftGripR)){
-      (SIDE_LEFT_GRIP[file]||(SIDE_LEFT_GRIP[file]={}))[w]=slot.leftGripR.slice();
-    }
+    /* NOTE: legacy slot.leftGripR (CCD support target) is intentionally ignored:
+       the per-frame rotation solve popped up to ~40 deg on hit reactions when the
+       spine moved the target out of reach, so the cup is dials-only now. */
     var arm=slot.armDeg;
     if(arm&&(isSideTriplet(arm.shoulder)||isSideTriplet(arm.elbow)||isSideTriplet(arm.wrist))){
       var nz=function(a){return isSideTriplet(a)&&a.some(function(n){return Math.abs(n)>1e-9;});};
@@ -225,10 +224,6 @@ function armDegFor(modelFile,weaponFile){
 }
 function wristRFor(modelFile,weaponFile){
   var m=modelFile&&SIDE_WRISTR[modelFile];
-  return(m&&weaponFile&&m[weaponFile])||null;
-}
-function leftGripFor(modelFile,weaponFile){
-  var m=modelFile&&SIDE_LEFT_GRIP[modelFile];
   return(m&&weaponFile&&m[weaponFile])||null;
 }
 /* Measured per-model hand contacts, in hand-bone local import units: the same space
@@ -905,55 +900,11 @@ function dialQuat(deg){
   Q.RotationYawPitchRollToRef((+d[1]||0)*Math.PI/180,(+d[0]||0)*Math.PI/180,(+d[2]||0)*Math.PI/180,dialQ);
   return dialQ;
 }
-/* Pistol support target: left contact B is solved onto a point stored in right-hand
-   local space. The target transform is cached in the sidecar; only the three-joint
-   rotation solve runs per posed frame, aiming for an error below 0.5 mm. */
-function snapPistolLeft(fx,targetLocal){
-  if(!targetLocal||fx.death||fx.transition||fx.supportReleased||!fx.path.length||!fx.pathL.length)return null;
-  var palms=fx.lib.palms,right=fx.path[fx.path.length-1],left=fx.pathL[fx.pathL.length-1];
-  var anchor=palms&&palms[BONE.leftHand];if(!anchor||!right||!left)return null;
-  right.computeWorldMatrix(true);left.computeWorldMatrix(true);
-  var target=V3.TransformCoordinates(new V3(targetLocal[0],targetLocal[1],targetLocal[2]),right.getWorldMatrix());
-  var joints=[],node=left.parent;for(var i=0;i<3&&node;i++){joints.push(node);node=node.parent;}
-  if(!joints.length)return null;
-  function endpoint(){left.computeWorldMatrix(true);return V3.TransformCoordinates(anchor,left.getWorldMatrix());}
-  var error=V3.Distance(endpoint(),target);if(error>.35)return{error:error,guarded:true};
-  for(var sweep=0;sweep<6&&error>.0005;sweep++){
-    var biggest=0;
-    for(i=0;i<joints.length;i++){
-      var joint=joints[i];joint.computeWorldMatrix(true);left.computeWorldMatrix(true);
-      var end=V3.TransformCoordinates(anchor,left.getWorldMatrix()),pivot=joint.getAbsolutePosition().clone();
-      var from=end.subtract(pivot),to=target.subtract(pivot);if(from.lengthSquared()<1e-10||to.lengthSquared()<1e-10)continue;
-      from.normalize();to.normalize();var axis=V3.Cross(from,to),sine=axis.length();if(sine<1e-6)continue;axis.normalize();
-      var angle=Math.asin(Math.max(-1,Math.min(1,sine)));if(V3.Dot(from,to)<0)angle=Math.PI-angle;
-      angle=Math.max(-.30,Math.min(.30,angle));biggest=Math.max(biggest,Math.abs(angle));
-      if(!joint.rotationQuaternion)joint.rotationQuaternion=new Q();
-      var deltaWorld=Q.RotationAxis(axis,angle),base=joint.rotationQuaternion.clone(),bestQ=base;
-      var bestError=V3.Distance(endpoint(),target),pq=Q.Identity();
-      if(joint.parent){
-        joint.parent.computeWorldMatrix(true);
-        var ps=new V3(),pt=new V3();joint.parent.getWorldMatrix().decompose(ps,pq,pt);
-      }
-      /* Reflected FBX parent scales make quaternion decomposition handedness-ambiguous.
-         Test both conjugations/signs/orders and keep only a monotonic improvement. */
-      var pi=pq.conjugate(),di=deltaWorld.conjugate(),deltas=[
-        pq.multiply(deltaWorld).multiply(pi),pi.multiply(deltaWorld).multiply(pq),
-        pq.multiply(di).multiply(pi),pi.multiply(di).multiply(pq)
-      ];
-      for(var d=0;d<deltas.length;d++)for(var pre=0;pre<2;pre++){
-        joint.rotationQuaternion.copyFrom(base);
-        joint.rotationQuaternion=pre?deltas[d].multiply(joint.rotationQuaternion):joint.rotationQuaternion.multiply(deltas[d]);
-        var candidateError=V3.Distance(endpoint(),target);
-        if(candidateError<bestError){bestError=candidateError;bestQ=joint.rotationQuaternion.clone();}
-      }
-      joint.rotationQuaternion.copyFrom(bestQ);error=bestError;
-      if(error<=.0005)break;
-    }
-    if(biggest<1e-3)break;
-  }
-  error=V3.Distance(endpoint(),target);
-  return{error:error,guarded:false};
-}
+/* Pistol support cup is dials-only: constant degree offsets on the left arm
+   (rotations only, so bone lengths can never change and no per-frame solve can pop).
+   The old CCD support-target solve is deleted: on hit reactions the spine moved the
+   right-hand-local target >0.35 m out of reach, the guard bailed, and the arm snapped
+   up to ~40 deg for a frame. */
 function applyPose(fx){
   showBipod(fx);
   var st=fx.st,nodes=fx.nodes,animated=st.animated,overlay=fx.overlay>.001&&fx.upper.entries.length;
@@ -962,7 +913,6 @@ function applyPose(fx){
      stray dial values stored on a long-gun slot stay inert here too. */
   var dialPistol=dialKey==='pistol'||/m1911a1|p38/i.test(dialKey||'');
   var dials=dialPistol?armDegFor(fx.lib.file,dialKey):null;
-  var leftGrip=dialPistol?leftGripFor(fx.lib.file,dialKey):null;
   var wrDial=wristRFor(fx.lib.file,dialKey),wrNode=null;
   if(wrDial){
     var ri=st.bones?st.bones.indexOf(BONE.rightHand):-1;
@@ -1020,11 +970,9 @@ function applyPose(fx){
      line and keep the rigid hold). Socket world is expressed under the soldier root. */
   var key=fx.weaponModel&&fx.lib.grips&&fx.lib.grips[fx.weaponModel]?fx.weaponModel:fx.weaponKind;
   var grip=fx.lib.grips&&(fx.lib.grips[key]||fx.lib.grips.rifle),points=pointsFor(fx.lib.file,key)||WEAPON_POINTS.rifle;if(!grip||!fx.hand)return;
-  var leftSnap=leftGrip?snapPistolLeft(fx,leftGrip):null;
-  fx.leftGripErrorCm=leftSnap?leftSnap.error*100:null;
+  fx.leftGripErrorCm=null;
   handChain(fx.path,fx.chain,0);if(fx.chainL.length)handChain(fx.pathL,fx.chainL,0);holdWeapon(fx,grip,points);
   if(fx.aim>.01&&fx.spineAt>0&&aimSpine(fx)){
-    if(leftGrip){leftSnap=snapPistolLeft(fx,leftGrip);fx.leftGripErrorCm=leftSnap?leftSnap.error*100:null;}
     handChain(fx.path,fx.chain,fx.spineAt);if(fx.chainL.length&&fx.spineAtL>0)handChain(fx.pathL,fx.chainL,fx.spineAtL);holdWeapon(fx,grip,points);
   }
   /* Body-shape and role scaling must not stretch the rifle: keep it at world scale 1. */
@@ -1151,8 +1099,8 @@ M.setImportedEnabled=function(scene,enabled){
 root.BattleFbxSoldier={
   version:'1.3',backend:BACKEND,clips:CLIPS,models:MODELS,modelSet:MODEL_SET,
   load:loadLibrary,
-  sidecars:function(){return{contacts:Object.keys(SIDE_CONTACTS),points:Object.keys(SIDE_MODEL_POINTS),arms:Object.keys(SIDE_ARM),wrists:Object.keys(SIDE_WRISTR),leftGrips:Object.keys(SIDE_LEFT_GRIP)};},
-  status:function(scene){var st=sceneState(scene),sockets={};Object.keys(st.libs||{}).forEach(function(f){var lib=st.libs[f],p=lib.palms||{};sockets[f]={right:p[BONE.rightHand+'Source']||null,left:p[BONE.leftHand+'Source']||null,aimHandSpacingM:lib.supportHand&&lib.supportHand.along||0,sidecar:!!SIDE_CONTACTS[f],sideWeapons:SIDE_MODEL_POINTS[f]?Object.keys(SIDE_MODEL_POINTS[f]):[],sideArms:SIDE_ARM[f]?Object.keys(SIDE_ARM[f]):[],sideWrists:SIDE_WRISTR[f]?Object.keys(SIDE_WRISTR[f]):[],sideLeftGrips:SIDE_LEFT_GRIP[f]?Object.keys(SIDE_LEFT_GRIP[f]):[]};});return{ready:st.ready,enabled:st.enabled,error:st.error?String(st.error.message||st.error):null,active:st.active.length,clips:st.clips?Object.keys(st.clips).length:0,bones:st.bones?st.bones.length:0,sockets:sockets,sidecars:Object.keys(SIDE_CONTACTS)};},
+  sidecars:function(){return{contacts:Object.keys(SIDE_CONTACTS),points:Object.keys(SIDE_MODEL_POINTS),arms:Object.keys(SIDE_ARM),wrists:Object.keys(SIDE_WRISTR)};},
+  status:function(scene){var st=sceneState(scene),sockets={};Object.keys(st.libs||{}).forEach(function(f){var lib=st.libs[f],p=lib.palms||{};sockets[f]={right:p[BONE.rightHand+'Source']||null,left:p[BONE.leftHand+'Source']||null,aimHandSpacingM:lib.supportHand&&lib.supportHand.along||0,sidecar:!!SIDE_CONTACTS[f],sideWeapons:SIDE_MODEL_POINTS[f]?Object.keys(SIDE_MODEL_POINTS[f]):[],sideArms:SIDE_ARM[f]?Object.keys(SIDE_ARM[f]):[],sideWrists:SIDE_WRISTR[f]?Object.keys(SIDE_WRISTR[f]):[]};});return{ready:st.ready,enabled:st.enabled,error:st.error?String(st.error.message||st.error):null,active:st.active.length,clips:st.clips?Object.keys(st.clips).length:0,bones:st.bones?st.bones.length:0,sockets:sockets,sidecars:Object.keys(SIDE_CONTACTS)};},
   clip:function(scene,key){var st=sceneState(scene);return st.clips&&st.clips[key]||null;},
   /* Per-model clip timing: natural speed (m/s), stride estimate, duration, loop. */
   speeds:function(scene,file){var st=sceneState(scene),lib=st.libs[file]||st.libs[Object.keys(st.libs)[0]],out={};if(!lib||!lib.clips)return out;
