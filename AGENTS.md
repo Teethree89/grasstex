@@ -53,7 +53,9 @@ uses the picked fore-end range, and reload/death clips keep the last right-hand 
 Pistols seat from the right contact and grip, even if old saved data includes fore points.
 The pistol support cup is dials-only: the left-arm **Shoulder°/Elbow°/Wrist°** dials pose
 it with constant rotation offsets (no per-frame solve, so hit reactions cannot pop it).
-Dial values persist per model+weapon slot (localStorage + sidecar).
+**Seat cup** solves the right-hand-local cup goal once on the paused frame and bakes it
+into the dials. Goal and dial values persist per model+weapon slot (localStorage + sidecar;
+the battle backend ignores the stored goal and applies the dials).
 **Reset seat** returns the weapon to its picking position, stops tracking, restores the arm
 from the bind snapshot (exact pre-override pose when tracking was on), and keeps points.
 **Keep points when switching model / weapon** (on by default) carries the live contacts,
