@@ -223,7 +223,7 @@ function standGoal(sim,soldier,start,dest){
       if(!baseMovementClear(dest,p)||!edgeClear(sim,p,p,shapes,ROUTE_MARGIN))continue;
       var ox=p.x-dest.x,oz=p.z-dest.z,progress=ox*f.x+oz*f.z;
       /* Distance keeps the adjustment local; forward projection breaks the near/far tie in favor
-         of continuing the Captain's movement intent. A tiny start-distance term is deterministic
+         of continuing the Squad Leader's movement intent. A tiny start-distance term is deterministic
          only and cannot overpower the command-side preference. */
       var score=dist(dest,p)-progress*.65+dist(start,p)*.002;
       if(!best||score<best.score)best={point:p,score:score};

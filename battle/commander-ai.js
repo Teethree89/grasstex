@@ -6,11 +6,11 @@
      commander-doctrine.js  what is worth doing, with what force  (genome, objective scores)
      commander-routes.js    who goes where                        (roles, approach routes)
      commander-ai.js        which mission each squad holds        (event-driven wakes, victory)
-     modules/16-squad-...   how the Captain executes that mission (legs, phase, regroup)
+     modules/16-squad-...   how the Squad Leader executes that mission (legs, phase, regroup)
      engagement.js          how a soldier fights                  (contact drills)
 
    The General is event-driven: it issues a brief, then sleeps until the mission completes, becomes
-   invalid, a reserve is due, a strategic stall occurs or the Captain escalates. It never writes a
+   invalid, a reserve is due, a strategic stall occurs or the Squad Leader escalates. It never writes a
    phase, route leg, squad objective point or soldier destination. */
 (function (root) {
   'use strict';
@@ -57,8 +57,8 @@
     return next;
   }
 
-  /* General owns this brief; Captain owns its execution. Compatibility fields are projections:
-     targetObjective / commandRole belong to General, objective / phase / routeIndex to Captain.
+  /* General owns this brief; Squad Leader owns its execution. Compatibility fields are projections:
+     targetObjective / commandRole belong to General, objective / phase / routeIndex to Squad Leader.
      No periodic doctrine evaluation, local pause or route waypoint is a new mission. */
   function point(p) {
     return p ? { x: +p.x || 0, z: +p.z || 0 } : null;
@@ -397,7 +397,7 @@
   var RECON_STRENGTH = 10, // one full rifle squad (SquadAI.COMPOSITION)
     RALLY_RADIUS = 20,
     RALLY_FORWARD = 30,
-    PROMOTION_ORDER = { captain: 0, rifleman: 1, scout: 2, gunner: 9 };
+    PROMOTION_ORDER = { sergeant: 0, rifleman: 1, scout: 2, gunner: 9 };
   function reconState(sim) {
     var st = missionState(sim);
     return (
@@ -639,7 +639,7 @@
       D.dist(p.x, p.z, g.rally.x, g.rally.z) <= RALLY_RADIUS
     );
   }
-  /* Pool first, then advance groups: a squad merged this tick still reads `retreat` until its Captain
+  /* Pool first, then advance groups: a squad merged this tick still reads `retreat` until its Squad Leader
      recomputes its status, so it must not be pooled in the same pass. */
   function reconstitute(sim, faction) {
     var st = reconState(sim),

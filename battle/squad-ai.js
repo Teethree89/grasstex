@@ -8,13 +8,13 @@
   'use strict';
 
   var ROLES = {
-    captain: { weapon: 'pistol', speed: 3.0, visionRange: 150, engageRange: 55, hp: 110 },
+    sergeant: { weapon: 'pistol', speed: 3.0, visionRange: 150, engageRange: 55, hp: 110 },
     rifleman: { weapon: 'rifle', speed: 2.9, visionRange: 140, engageRange: 135, hp: 100 },
     gunner: { weapon: 'lmg', speed: 2.2, visionRange: 150, engageRange: 160, hp: 100 },
     scout: { weapon: 'carbine', speed: 3.8, visionRange: 175, engageRange: 105, hp: 90 }
   };
   var COMPOSITION = [
-    'captain',
+    'sergeant',
     'gunner',
     'scout',
     'scout',
@@ -368,7 +368,7 @@
     shotModel: ['ballistics'], // where an aimed round goes (default: resolveFire accuracy roll)
     areaFireGate: ['ammunition'], // before a suppressive shot
     afterShot: ['ammunition'], // a round left the weapon: ammo, heat, stoppages
-    squadCommand: ['captain'], // the squad's command owner; without one a squad only reports status
+    squadCommand: ['squad-leader'], // the squad's command owner; without one a squad only reports status
     beforeSoldier: ['weapon-cycle'], // each soldier AI tick, before perception
     afterSoldier: ['weapon-cycle'] // after engagement and movement resolution
   });
@@ -460,7 +460,7 @@
     };
   }
   /* Command belongs to one man, not to a weapon role. `leaderId` names him once a squad has been
-     re-formed; until then the squad is led by its living `captain` role, as it was spawned. */
+     re-formed; until then the squad is led by its living `sergeant` role, as it was spawned. */
   function leaderOf(squad) {
     var a = (squad && squad.members) || [],
       i;
@@ -468,7 +468,7 @@
       for (i = 0; i < a.length; i++) if (a[i] && a[i].id === squad.leaderId && !a[i].dead) return a[i];
       return null;
     }
-    for (i = 0; i < a.length; i++) if (a[i] && !a[i].dead && a[i].role === 'captain') return a[i];
+    for (i = 0; i < a.length; i++) if (a[i] && !a[i].dead && a[i].role === 'sergeant') return a[i];
     return null;
   }
   function isLeader(soldier) {
@@ -480,7 +480,7 @@
     return +squad.establishment || squad.members.length;
   }
   /* Where a retreating squad walks: home, or the rally point of the reconstitution brief once its
-     Captain has brought it home safely (`_assembly`, 16-squad-plan-stability.js). */
+     Squad Leader has brought it home safely (`_assembly`, 16-squad-plan-stability.js). */
   function retreatGoal(squad) {
     var a = squad._assembly,
       m = squad._macroMission;
@@ -529,14 +529,14 @@
       anchor = squad.orderAnchor || squad.rally,
       form = squad.formation || formationFor(squad),
       role = isLeader(soldier)
-        ? 'captain'
-        : soldier.slotRole || (soldier.role === 'captain' ? 'rifleman' : soldier.role),
+        ? 'sergeant'
+        : soldier.slotRole || (soldier.role === 'sergeant' ? 'rifleman' : soldier.role),
       side = slotIndex % 2 === 0 ? 1 : -1,
       lateral = slotJitter(soldier, 0),
       depth = slotJitter(soldier, 1),
       forward = 0;
     if (form === 'column') {
-      if (role === 'captain') {
+      if (role === 'sergeant') {
         forward = -1;
         lateral = 0;
       } else if (role === 'scout') {
@@ -550,7 +550,7 @@
         lateral = side * (1.8 + (slotIndex % 3) * 0.8) + lateral;
       }
     } else if (form === 'line') {
-      if (role === 'captain') {
+      if (role === 'sergeant') {
         forward = -7;
         lateral = 0;
       } else if (role === 'gunner') {
@@ -565,7 +565,7 @@
         lateral = lane * 5.3 + lateral;
       }
     } else {
-      if (role === 'captain') {
+      if (role === 'sergeant') {
         forward = -4;
         lateral = 0;
       } else if (role === 'gunner') {
@@ -632,7 +632,7 @@
     }
   }
   /* Squad status only: alive count, retreat/engaged/advance state and the Engagement contact report.
-     Orders, fire and movement belong to the squad's command owner (the Captain in
+     Orders, fire and movement belong to the squad's command owner (the Squad Leader in
      16-squad-plan-stability.js), which attaches to the squadCommand slot and runs instead. */
   function squadStatus(squad, battle) {
     var alive = 0,

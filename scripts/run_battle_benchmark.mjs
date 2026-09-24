@@ -165,9 +165,9 @@ try {
       return (sim._objectives || []).map(o => { const s = objectiveStatus(o); return `${o.id}:${s.owner || 'neutral'}:${s.active || '-'}:${Math.round(+s.progress || 0)}`; }).join('|');
     }
     function phaseAllowsAdvance(phase) { return ['approach','assault','capture','clear-town','flank','contact','corner-check'].includes(String(phase || '')); }
-    function captainAlive(sq) { return !!root.SquadAI.leaderOf(sq); }
+    function leaderAlive(sq) { return !!root.SquadAI.leaderOf(sq); }
     function cohesionLimit(sq) {
-      try { const cfg = root.BattleCommanderAI.policyFor?.(sim, sq.faction); return cfg ? +(captainAlive(sq) ? cfg.cohesionRadius : cfg.captainlessCohesion) : null; }
+      try { const cfg = root.BattleCommanderAI.policyFor?.(sim, sq.faction); return cfg ? +(leaderAlive(sq) ? cfg.cohesionRadius : cfg.captainlessCohesion) : null; }
       catch (_) { return null; }
     }
     function squadSpread(sq, p) {
@@ -220,7 +220,7 @@ try {
           const key = `${faction}:${sq.id}`, p = avgSquad(sq), phase = String(sq.commandPhase || 'none');
           state.squadSamples++; addMap(state.phaseSamples, phase);
           if (sq.inContact) { state.inContactSamples++; if (state.firstContactSeconds == null) state.firstContactSeconds = +now.toFixed(1); }
-          if (!captainAlive(sq)) state.captainlessSamples++;
+          if (!leaderAlive(sq)) state.captainlessSamples++;
           const spread = squadSpread(sq, p), limit = cohesionLimit(sq);
           if (spread != null && limit != null && spread > limit) state.overCohesionSamples++;
           if (sq._stablePlan) state.stablePlanSamples++;

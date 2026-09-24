@@ -4,7 +4,7 @@ const vm = require('vm');
 const assert = require('assert');
 
 const proposals = [];
-// The real lease primitive (squad-ai.js); everything else the Captain touches is stubbed below.
+// The real lease primitive (squad-ai.js); everything else the Squad Leader touches is stubbed below.
 const { BattleLeases, SquadAI: real } = require('../tools/ai-sim-harness/harness').bootstrap({ modules: false });
 const context = {
   BattleLeases,
@@ -28,7 +28,7 @@ const context = {
     }
   },
   SquadAI: {
-    // The Captain attaches as the squad's command owner; this stub simply installs it.
+    // The Squad Leader attaches as the squad's command owner; this stub simply installs it.
     extend(stage, id, fn) { if (stage === 'squadCommand') this.updateSquad = fn; },
     SLOT_SPACING: 1.25,
     leaderOf: real.leaderOf,
@@ -36,7 +36,7 @@ const context = {
     establishment: real.establishment,
     retreatGoal: real.retreatGoal,
     formationFor() { return 'line'; },
-    // A deterministic formation around the Captain-owned squad anchor. This keeps the test about
+    // A deterministic formation around the Squad Leader-owned squad anchor. This keeps the test about
     // Meso commitment lifecycle rather than production formation geometry.
     formationSlot(sq, soldier) {
       const a = sq.orderAnchor || sq.rally || { x: 0, z: 0 };

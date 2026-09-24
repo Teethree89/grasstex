@@ -224,7 +224,7 @@
       out;
     /* Formation intent is Meso-owned and terrain-blind. Do not collapse it onto the soldier's
        current side of a hedge. Physical Navigation resolves a route-margin-clear endpoint while
-       intentPoint keeps the Captain's original slot for ownership/provenance. */
+       intentPoint keeps the Squad Leader's original slot for ownership/provenance. */
     if (kind === 'formation' && P && typeof P.resolveStandGoal === 'function') {
       out = P.resolveStandGoal(battle, soldier, p);
       if (out && distance(out, p) > ORDER_WRITE_EPS) {

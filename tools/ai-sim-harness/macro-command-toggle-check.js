@@ -12,7 +12,7 @@ root.BattleCommanderRoutes={
   ensureAssignments:function(){ensured++;},assignSquad:function(){},initForce:function(){}
 };
 root.BattleCommanderDoctrine={
-  dist:function(){return 0;},avgPos:function(){return{x:0,z:0};},maxSpread:function(){return 0;},captain:function(){return null;},enemyFaction:function(f){return f==='us'?'ge':'us';},
+  dist:function(){return 0;},avgPos:function(){return{x:0,z:0};},maxSpread:function(){return 0;},leader:function(){return null;},enemyFaction:function(f){return f==='us'?'ge':'us';},
   policyFor:function(){return{decisionSnapshotSeconds:5};},doctrineFor:function(){return{};},genomeFor:function(){return{};},forceUnits:function(){return[];},
   objectiveValueScore:function(){return 0;},forceScore:function(){return 0;},chooseObjective:function(){return null;},buildContext:function(){return{};},nearestEnemyToSquad:function(){return{distance:Infinity};}
 };

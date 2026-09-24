@@ -91,13 +91,13 @@ section('a squad in contact stops marching (base of fire)');
   for(let x=-40;x<=40;x+=7)obstacles.push(cover(x,-46,'hedge'));
   for(let x=-40;x<=40;x+=7)obstacles.push(cover(x,46,'hedge'));
   const {root,battle,us}=duel({gap:130,obstacles});
-  /* Only an assault-authorized Captain phase may bound (16-squad-plan-stability.js fireAndMovement). */
+  /* Only an assault-authorized Squad Leader phase may bound (16-squad-plan-stability.js fireAndMovement). */
   us.commandPhase='assault';
   H.run(root,battle,3);
   const L=root.BattleLeases,boundUntil=()=>L.until(us,'bound'),bounding=()=>L.holds(us,'bound',battle.time);
   let boundSeconds=0,contactSeconds=0,missedBounds=0,creepInContact=0,last={x:us.orderAnchor.x,z:us.orderAnchor.z,contact:us.inContact,bound:bounding()};
   H.run(root,battle,40,()=>{
-    /* In contact the anchor advances only during an authorised bound (Captain advanceSquadAnchor);
+    /* In contact the anchor advances only during an authorised bound (Squad Leader advanceSquadAnchor);
        once contact breaks it may march. Total distance is the dice, creeping outside a bound is not. */
     if(last.contact&&us.inContact&&!last.bound&&!bounding()&&us.state!=='retreat')creepInContact+=Math.hypot(us.orderAnchor.x-last.x,us.orderAnchor.z-last.z);
     last={x:us.orderAnchor.x,z:us.orderAnchor.z,contact:us.inContact,bound:bounding()};

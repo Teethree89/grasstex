@@ -22,7 +22,7 @@
 
   /* Seconds between acquiring a target and being allowed to shoot at it. This is recognition and
      weapon handling, not aiming accuracy - the aim cone below is a separate gate. */
-  var REACT = { captain: 0.55, rifleman: 0.7, gunner: 0.85, scout: 0.45 };
+  var REACT = { sergeant: 0.55, rifleman: 0.7, gunner: 0.85, scout: 0.45 };
   var AIM_CONE = 0.22; // ~12.6 deg; wider than this and the body is still turning
   var AIM_SETTLE = 0.4; // after a stance change or a major retarget
   var MOVE_FIRE_FRACTION = 0.12; // above this fraction of top speed the weapon stays down
@@ -747,8 +747,8 @@
     return SA().formationSlot(s.squad, s, s.slotIndex);
   }
   function followOrders(s, battle, urgent) {
-    /* Captain already published this persistent order. Micro relinquishes combat authority;
-       it must not republish the Captain's point once per soldier tick. */
+    /* Squad Leader already published this persistent order. Micro relinquishes combat authority;
+       it must not republish the Squad Leader's point once per soldier tick. */
     if (root.BattleMovementResolver) return;
     var pt = orderPoint(s);
     SA().setDestination(s, pt, battle, !!urgent);
@@ -765,7 +765,7 @@
     return len > 0.1 ? { x: dx / len, z: dz / len } : null;
   }
 
-  /* One Captain permission produces one displacement. Cover and a no-cover rush use the same
+  /* One Squad Leader permission produces one displacement. Cover and a no-cover rush use the same
      engagement lifecycle, so target flicker cannot create a second, invisible movement drill. */
   function orderedBound(s, battle) {
     var e = state(s),
@@ -1236,7 +1236,7 @@
   }
 
   /* Squad contact report. Micro state flows up: who can see the enemy, who is pinned, who is
-     actually putting rounds out (the base of fire). The Captain (16-squad-plan-stability.js) reads
+     actually putting rounds out (the base of fire). The Squad Leader (16-squad-plan-stability.js) reads
      this report to decide fire and movement; Engagement only executes a bound it is ordered to. */
   function updateSquad(sq, battle) {
     if (!sq || !battle) return null;
@@ -1304,7 +1304,7 @@
     if (!sq.inContact) sq.contactSince = null;
     return { contactStarted: started, effective: effective, pinned: pinnedCount, fireSupport: fireSupport };
   }
-  /* The Captain's bound order, stored as Micro state and consumed once by orderedBound(). */
+  /* The Squad Leader's bound order, stored as Micro state and consumed once by orderedBound(). */
   function orderBound(movers) {
     for (var i = 0; i < movers.length; i++) {
       var e = state(movers[i]);

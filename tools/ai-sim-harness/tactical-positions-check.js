@@ -21,7 +21,7 @@ function fixture({physical=true,inside=false}={}){
   let code=fs.readFileSync(path.join(H.REPO,'battle/battle-sim.js'),'utf8');
   code=code.replace('  BattleSim.prototype._frame=function','  root.stepMovementProbe=stepMovement;root.killProbe=BattleSim.prototype.killSoldier;\n  BattleSim.prototype._frame=function');
   new Function('window','globalThis','BABYLON','BattleSoldierModel',code)(r,r,r.BABYLON,r.BattleSoldierModel);
-  const sim=H.makeBattle(r),sq=H.addSquad(r,sim,{id:'us-0',faction:'us',x:0,z:-14,objective:{x:0,z:0},composition:['rifleman','rifleman','captain','gunner']});
+  const sim=H.makeBattle(r),sq=H.addSquad(r,sim,{id:'us-0',faction:'us',x:0,z:-14,objective:{x:0,z:0},composition:['rifleman','rifleman','sergeant','gunner']});
   const room={id:'room',x:0,z:0,w:12,d:12,rot:0,openings:[
     {id:'rear',type:'door',side:'south',offset:0,width:2},
     {id:'front',type:'door',side:'north',offset:3,width:2},
@@ -30,13 +30,13 @@ function fixture({physical=true,inside=false}={}){
   sq.state='engaged';sq.commandPhase='support-hold';sq.inContact=true;sq.targetObjective='house';
   systems['squad-command'].onCommanderTick(sim,{town:null});
   sq.members.forEach((s,i)=>{s._fireteamKey=i===2?'command':'alpha';s._engagementTask=i===2?'control':'support-by-fire';s.root.position.x=i*3;s.root.position.z=inside?0:-14;s.destination={x:s.root.position.x,z:s.root.position.z};r.BattleAmmunition.initialize(s);});
-  const s=sq.members[0],other=sq.members[1],captain=sq.members[2],P=r.BattleTacticalPositions,M=r.BattleMovementResolver,N=r.BattleNavigation;
+  const s=sq.members[0],other=sq.members[1],leader=sq.members[2],P=r.BattleTacticalPositions,M=r.BattleMovementResolver,N=r.BattleNavigation;
   const threat={x:0,z:40},enemy={id:99,hp:100,dead:false,root:{position:{...threat,y:0}},faction:'ge'};
   s.target=enemy;sq.contact={...threat,at:sim.time,unit:enemy};
   const st=N.firingStations[0];
   function claim(man=s){return P.claim(man,sim,st,threat);}
   function tick(dt=.15){sim.time+=dt;r.BattleEngagement.updateSoldier(s,sim);M.resolve(s,sim);r.stepMovementProbe(sim,s,dt);systems['building-hardpoints'].onSimulationStep(sim);}
-  return{r,sim,sq,s,other,captain,P,M,N,st,threat,enemy,systems,claim,tick};
+  return{r,sim,sq,s,other,leader,P,M,N,st,threat,enemy,systems,claim,tick};
 }
 test('one station has one assignee, including soldier id zero and another faction',()=>{
   const f=fixture();assert.equal(f.s.id,0);const t=f.claim();assert.ok(t);f.other.faction='ge';assert.equal(f.claim(f.other),null);assert.equal(f.P.current(f.s),t);assert.equal(f.P.summary(f.sim).claimCollisionsPrevented,1);
@@ -64,15 +64,15 @@ for(const [reason,change] of [
   ['explicit-task-change',f=>{f.sq.targetObjective='different-house';}],
   ['engagement-ended',f=>{f.sim.winner='us';}],['station-invalid',f=>{f.N.installScenario({buildings:[]});}]
 ])test(reason+' releases through the manager',()=>{const f=fixture();f.claim();change(f);f.M.resolve(f.s,f.sim);assert.equal(f.P.current(f.s),null);assert.equal(f.P.summary(f.sim).releaseReasons[reason],1);assert.notEqual(f.M.resolve(f.s,f.sim)?.kind,'firing-station');});
-test('Micro task, target and engagement-plan churn cannot revoke a Captain-owned post',()=>{
+test('Micro task, target and engagement-plan churn cannot revoke a Squad Leader-owned post',()=>{
   const f=fixture(),t=f.claim();
   f.s._engagementTask='maneuver';f.sq._engagementPlan.serial++;f.s.target=null;f.sq.inContact=false;f.sq.contact=null;
   f.sim.time=10;f.systems['squad-command'].onCommanderTick(f.sim,{town:null});f.P.update(f.s,f.sim);
   assert.equal(f.P.current(f.s),t);assert.equal(f.P.summary(f.sim).assignmentsReleased,0);
 });
-test('normal allocation excludes captain and maneuver team; occupied slots count without personal targets',()=>{
-  const f=fixture();assert.equal(f.claim(f.captain),null);f.other._engagementTask='maneuver';assert.equal(f.claim(f.other),null);
-  f.P.assign(f.sim);assert.equal(f.P.current(f.captain),null);assert.equal(f.P.summary(f.sim).captainWindowAssignments,0);assert.equal(f.P.summary(f.sim).currentLiveAssignments,1);
+test('normal allocation excludes the squad leader and maneuver team; occupied slots count without personal targets',()=>{
+  const f=fixture();assert.equal(f.claim(f.leader),null);f.other._engagementTask='maneuver';assert.equal(f.claim(f.other),null);
+  f.P.assign(f.sim);assert.equal(f.P.current(f.leader),null);assert.equal(f.P.summary(f.sim).captainWindowAssignments,0);assert.equal(f.P.summary(f.sim).currentLiveAssignments,1);
 });
 test('rear door, complete ingress and station hold survive target flicker without path replanning',()=>{
   const f=fixture(),t=f.claim(),route=t.route;assert.equal(route.door,'rear');
@@ -102,7 +102,7 @@ test('occupied station survives separation while approaching soldiers remain mov
   Object.assign(f.other.root.position,{x:f.st.x+.1,z:f.st.z});const p={...f.s.root.position};
   f.systems['soldier-personal-space'].onSimulationStep(f.sim);assert.deepEqual(f.s.root.position,p);assert.ok(f.other.root.position.x>f.st.x+.1);assert.ok(t.occupiedAt!=null);
 });
-test('engagement quiet closure cannot revoke a still-valid Captain positional order',()=>{
+test('engagement quiet closure cannot revoke a still-valid Squad Leader positional order',()=>{
   const f=fixture(),t=f.claim();f.s.target=null;f.sq.inContact=false;f.sq.contact=null;
   f.systems['squad-command'].onCommanderTick(f.sim,{town:null});f.sim.time=8;f.P.update(f.s,f.sim);assert.equal(f.P.current(f.s),t);
   f.sim.time=10;f.systems['squad-command'].onCommanderTick(f.sim,{town:null});f.P.update(f.s,f.sim);assert.equal(f.P.current(f.s),t);assert.equal(f.P.summary(f.sim).assignmentsReleased,0);

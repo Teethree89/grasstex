@@ -1,6 +1,6 @@
 /* Stable per-soldier voice variation.
    Pitch variants are pre-rendered during deployment so playback duration/speech speed stays unchanged.
-   Social chatter and tactical speech use separate throttle lanes: a captain/contact call can speak
+   Social chatter and tactical speech use separate throttle lanes: a squad leader/contact call can speak
    over a story instead of being discarded because somebody was joking half a second earlier.
 
    enqueue() returns a playback handle. Callers may pass {onEnded:function(){...}}; the callback is

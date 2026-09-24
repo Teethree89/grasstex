@@ -1,4 +1,4 @@
-/* Persistent positional tasks. Captain/Squad Command owns the Meso job; this manager alone owns
+/* Persistent positional tasks. Squad Leader/Squad Command owns the Meso job; this manager alone owns
    its reservation, lifecycle and committed ingress. Navigation supplies geometry/routes,
    Engagement supplies Micro fire control, and Movement Resolver remains the only writer of
    soldier.destination. */
@@ -146,7 +146,7 @@
     if (phase(s) === 'regroup') return 'regroup';
     if (sim.winner || sim.manualEnded) return 'engagement-ended';
     if (N.version !== t.geometryVersion) return 'station-invalid';
-    /* M3C boundary: target/contact state and engagement-plan serials are Micro state. A Captain-owned
+    /* M3C boundary: target/contact state and engagement-plan serials are Micro state. A Squad Leader-owned
      positional order survives target loss, plan quiet/closure and target reacquisition. Only a
      materially different Meso command invalidates the assignment. */
     if (commandSignature(sq) !== t.commandSignature) return 'explicit-task-change';
@@ -242,7 +242,7 @@
     if (s._positionAssignments) c.stats.reassignments++;
     s._positionAssignments = (s._positionAssignments || 0) + 1;
     c.stats.assignmentsByRole[s.role] = (c.stats.assignmentsByRole[s.role] || 0) + 1;
-    if (s.role === 'captain') c.stats.captainWindowAssignments++;
+    if (s.role === 'sergeant') c.stats.captainWindowAssignments++;
     s._navCache = null;
     s._physicalPath = null;
     s._nextStationClaimAt = 0;
@@ -377,7 +377,7 @@
     publish(sim);
   }
   root.BattleTacticalPositions = {
-    version: '1.1-m3c-captain-owned',
+    version: '1.2-m3c-squad-leader-owned',
     revision: function (sim) {
       return context(sim).revision;
     },
@@ -392,7 +392,7 @@
     summary: summary
   };
   root.BattleModules.registerSystem('building-hardpoints', {
-    version: '48-m3c-captain-owned-posts',
+    version: '49-m3c-squad-leader-owned-posts',
     onBattleStart: reset,
     onBattleRestart: reset,
     beforeBattleRestart: reset,
