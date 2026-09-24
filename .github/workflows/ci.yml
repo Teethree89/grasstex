@@ -202,3 +202,8 @@ jobs:
             --audio-manifest Assets/audio/manifest.json \
             --output "$RUNNER_TEMP/deploy-plan"
           cat "$RUNNER_TEMP/deploy-plan/summary.json"
+
+      # Sidecar JSON, the FBX soldier-animation lab and anything else the repo does not manage live
+      # only on the server; a deploy must never delete or overwrite them. Needs the stamp above.
+      - name: Deploy never touches unmanaged server files
+        run: python3 scripts/check_deploy_safety.py

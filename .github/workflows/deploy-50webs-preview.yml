@@ -98,7 +98,8 @@ jobs:
           : "${FTP_USER:?Missing repository secret FTP_USER}"
           : "${FTP_PASSWORD:?Missing repository secret FTP_PASS}"
           sudo apt-get update -qq && sudo apt-get install -y -qq lftp
-          # mirror --delete is confined to this preview's own directory.
+          # mirror --delete is confined to this preview's own directory, and never removes JSON
+          # (sidecar metadata) or lab files placed there by hand; preview.json is put explicitly.
           lftp -u "$FTP_USER","$FTP_PASSWORD" "$FTP_HOST" <<LFTP
           set cmd:fail-exit yes
           set net:max-retries 2
@@ -107,7 +108,8 @@ jobs:
           set ftp:passive-mode true
           cd grasstex
           mkdir -f -p preview/$SLUG
-          mirror -R --delete --verbose=1 .preview preview/$SLUG
+          mirror -R --delete --verbose=1 --exclude '\.json\$' --exclude '[Ll][Aa][Bb]' --exclude '[Ss][Ii][Dd][Ee][Cc][Aa][Rr]' .preview preview/$SLUG
+          put .preview/preview.json -o preview/$SLUG/preview.json
           bye
           LFTP
 

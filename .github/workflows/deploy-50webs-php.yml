@@ -230,6 +230,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Refuse to deploy if the planner could delete or overwrite sidecar JSON, lab or other
+          # unmanaged server files, or wipe many modules at once.
+          python3 scripts/check_deploy_safety.py
           python3 scripts/prepare_incremental_deploy.py \
             --remote-manifest .deploy-remote.sha256.tsv \
             --audio-manifest .audio-deploy/manifest.json \

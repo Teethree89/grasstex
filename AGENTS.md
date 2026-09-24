@@ -32,7 +32,7 @@ URL flags: `?seed=`, `?defender=us|ge`, `?soldiers=rifleman`, `?smooth=0`.
 
 ## Test harnesses
 
-All of these run offline in seconds unless noted, and all pass at `1a5b0cf`.
+All of these run offline in seconds unless noted, and all pass on `main`.
 
 **Node sim checks** (`tools/ai-sim-harness/`). They load the shipping sources with no Babylon and
 no browser. CI runs every `*-check.js` plus `run.js` across 8 seeds.
@@ -103,6 +103,7 @@ Hosted textures 404 when served locally, so the ground renders red. That's expec
 python3 scripts/validate_voice_manifest.py     # voice manifest resolves
 python3 scripts/check_audio_manifest.py        # every clip referenced and present
 python3 scripts/check_deploy_coverage.py       # deploy plan covers every page runtime
+python3 scripts/check_deploy_safety.py         # deploy never deletes/overwrites sidecar JSON, lab or unmanaged server files
 for r in scripts/recipes/*.json; do python3 scripts/slice_weapon_shots.py "$r" --check-only; done
 bash scripts/normalize_audio.sh Assets/audio && git diff --quiet -- Assets/audio   # needs ffmpeg
 ```
@@ -111,9 +112,9 @@ bash scripts/normalize_audio.sh Assets/audio && git diff --quiet -- Assets/audio
 
 | Workflow | Trigger | Does |
 | --- | --- | --- |
-| `ci.yml` | PR, push to main | Syntax (JS/PHP/Py/sh/JSON), audio library, sim regressions (all harness checks + 8 seeds), deploy plan |
-| `deploy-50webs-php.yml` | push to main | Stamps `build-v<N>`, reruns checks, uploads by content hash to production |
-| `deploy-50webs-preview.yml` | push `work/**`, `preview/**` | `https://test.ivandpopov.com/grasstex/preview/<slug>/battle_sim.php`; never touches prod, makes no telemetry/learning writes |
+| `ci.yml` | PR, push to main | Syntax (JS/PHP/Py/sh/JSON), audio library, sim regressions (all harness checks + 8 seeds), deploy plan + deploy safety |
+| `deploy-50webs-php.yml` | push to main | Stamps `build-v<N>`, reruns checks and the deploy-safety check, uploads by content hash to production |
+| `deploy-50webs-preview.yml` | push `work/**`, `preview/**` | `https://test.ivandpopov.com/grasstex/preview/<slug>/battle_sim.php`; never touches prod, makes no telemetry/learning writes; its `mirror --delete` skips JSON and lab files |
 | `battle-benchmark-standard.yml` | tag `standard-benchmark-*` or dispatch | 10 workers × 10 = **100 battles**: the routine 60 meeting / 20 US-defend / 20 GE-defend checkpoint |
 | `battle-benchmark.yml` | tag `benchmark-*` or dispatch (source must be on main) | 30 workers × 10 = **300 battles**, 100 per type. Major milestones only. |
 | `battle-hotpath-profile.yml` | dispatch (type/seed/seconds) | Hot-path profile on one seed |
@@ -136,10 +137,11 @@ Intent flows down and status flows up. No layer rewrites another's state.
 | Macro: Force Command | `commander-ai.js`, `commander-doctrine.js`, `commander-routes.js` | `_macroMission` brief {intent, action, objectiveId, point, flank leg, status}, `targetObjective`, `commandRole`, force allocation, reserves | write `commandPhase`/`objective`/route legs, cover, slots or soldier destinations |
 | Meso: Captain / Squad Command | `modules/16-squad-plan-stability.js` (`executeMission`, `fireAndMovement`; SquadAI's `squadCommand` owner) | stable squad plan: fireteams, formation, order anchor, fire and movement (assault authorisation, bound cycle and team), corner pauses, defensive posts, regroup, objective phase; the only writer of `commandPhase` (setup states it through `initialPhase`) | do obstacle avoidance; republish orders every tick |
 | Micro: Engagement | `engagement.js` (+ `modules/44-combat-urgency.js` drills on its `afterDrill` slot) | per-soldier state machine, stance (`prone`/`crawling`/`tacticalCrouch`), permission to fire, combat proposals to the resolver, the squad contact report (`inContact`, base of fire, pinned) | write final destination; pick objectives; decide squad bounds |
-| Perception | `squad-ai.js` | who sees whom, shot resolution, shared `squad.contact`, `areaFire` suppression | set stance/destination in combat |
+| Perception + shared primitives | `squad-ai.js` | who sees whom, shot resolution, shared `squad.contact`, `areaFire` suppression; hosts the declared extension points (`SquadAI.extend`) and `BattleLeases`; a status-only squad update when no `squadCommand` owner is loaded | set stance/destination in combat |
 | Tactical positions | `modules/20-building-hardpoints.js` (`BattleTacticalPositions`: `claim`/`current`/`station`/`release`) | window/hardpoint reservations `assigned→ingress→occupying→holding→released`, committed ingress route | |
 | Tactical routing | `modules/52-survival-tactical-route.js` | safe ingress, suppressed cover detours | resurrect an obsolete objective |
 | Movement Resolver | `movement-resolver.js` | **sole normal-runtime writer of `soldier.destination`**; coalesces Engagement's per-tick combat requests and arbitrates Meso vs Micro proposals | act as a garbage collector for redundant producers |
+| Diagnostics | `modules/36-order-provenance.js` (writer provenance, fast setters, 1.6 s in-place sampler), `32` Loop Watch, `43` forward progress, `99` session export | observe only: removing them leaves a battle identical (~4% wall time) | change gameplay |
 | Navigation | `battle-navigation.js`, `modules/39-navigation-physicality-debug.js` | doors, stations, pathfinding, 0.45 m body legality | assign or release tasks |
 | Personal space | `modules/51-soldier-personal-space.js` | local physical correction | own commands |
 
@@ -222,7 +224,7 @@ four-run swing. Live-browser runs at `timeScale` 8 aren't deterministic, so use 
 for controlled pairs, and serve both arms the same way: `battle_sim_local.php` in preview mode (a
 `preview.json` beside it) reads `state/` and the audio manifest two directories up.
 
-### Open issues (as of v153 / 2026-09-17 sweep)
+### Open issues (as of v160 / 2026-09-24)
 
 - Regroups (2026-09-24): half used to time out at 18 s because the order anchor stayed with the
   leading men instead of moving to the rally point; fixed (timeouts 76 → 6 over 30 seeds, time
@@ -315,12 +317,22 @@ the `.fbx` deploys.
 
 ## Deploy and assets
 
-- `battle_sim.php` resolves a GitHub commit and injects the pinned runtime. It falls back to
-  `battle_sim_local.php` when GitHub is down. It also mirrors git-tracked `Assets/` to the host
-  without deleting untracked hosted files.
+- Production `/grasstex/battle_sim.php` is `battle_sim_local.php`, uploaded under that name by the
+  deploy; it serves the deployed runtime and writes nothing to the host. The repo's own
+  `battle_sim.php` (a GitHub-mirroring loader that writes git-tracked `Assets/` to the host and
+  never deletes) is not deployed.
 - `scripts/prepare_incremental_deploy.py` uploads by content hash: `.fbx` from soldiers,
   animations and weapons, muzzle-flash `.png`, and audio. `scripts/build_version.py stamp|show|tag`
   derives the version from `build-v<N>` tags.
+- **The deploy never deletes or overwrites server files the repo does not manage.** Hand-placed
+  sidecar JSON (clip/model/lab metadata beside the FBX assets), the live FBX soldier-animation lab
+  files and everything else unmanaged stay put. The planner may delete only a
+  `battle/modules/*.js` it deployed itself that has left the repo; any JSON other than
+  `battle/build-version.json` and `Assets/audio/manifest.json`, and any path containing `lab` or
+  `sidecar`, can never be deleted or uploaded over; more than 8 deletes in one run aborts the
+  deploy (`DEPLOY_MAX_DELETES` to override an intended bulk retirement). `check_deploy_safety.py`
+  proves this in CI and again inside the deploy before anything is uploaded. Keep it that way:
+  don't add `mirror --delete` or broaden the delete rule for production.
 - `Assets/terrain/{terrain.json,terrain.bin,splat.png,roaduv.png}` exist only on the host. **Don't
   add placeholders** with those names.
 - Hosted textures load only from `test.ivandpopov.com` (WebGL rejects them cross-origin).
