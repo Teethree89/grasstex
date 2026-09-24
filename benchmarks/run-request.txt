@@ -1,4 +1,0 @@
-Headless battle benchmark request.
-Default: 100 battles, 600 simulated seconds maximum each, fixed 0.15 s steps.
-Update this file to trigger a fresh benchmark run from ChatGPT/GitHub without changing runtime code.
-Initial request: 2026-09-13 regression baseline after vacant-objective, firing-FX, and infantry-variation changes.

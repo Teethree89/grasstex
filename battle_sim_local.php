@@ -5,7 +5,7 @@
    The build number comes from the deploy workflow's git tag; see scripts/build_version.py.
    v29 gave individual combat a single owner: battle/engagement.js decides contact, cover, stance
    and permission to fire, and the cover field is dense enough for those drills to have somewhere
-   to go. See battle/AI_ENGAGEMENT.md.
+   to go. See the engagement section of AGENTS.md.
    Runtimes are separate cache-busted files and battle/modules/*.js are discovered automatically.
    Generic commander code loads before extension modules so unit/building modules can safely add
    final behavior without being hard-coded into the commander. */

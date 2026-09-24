@@ -8,7 +8,7 @@ transient, trims to just before the crack, lets the tail decay naturally, and wr
 48 kHz MP3s named for the weapon.
 
 Loudness is deliberately left alone here: `scripts/normalize_audio.sh` owns the mastering
-targets in Assets/audio/MASTERING.md and runs over the tree afterwards.
+targets (see the Audio section of AGENTS.md) and runs over the tree afterwards.
 """
 
 import argparse
