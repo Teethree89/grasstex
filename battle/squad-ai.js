@@ -618,9 +618,13 @@
     return EXT.first('squadCommand', squadStatus)(squad, battle);
   }
 
+  /* Voice never draws from the combat RNG: whether a callout plays depends on the voice modules and
+     the audio manifest, so a random draw here made the same seed simulate a different battle with and
+     without voice audio. The 4-9 s cooldown jitter is deterministic per soldier and callout instead. */
   function callout(soldier, battle, type) {
     if (!battle.onCallout || battle.time < (soldier.voiceCooldown || 0)) return;
-    soldier.voiceCooldown = battle.time + 4 + rand(battle) * 5;
+    var n = (soldier._calloutCount = (soldier._calloutCount || 0) + 1);
+    soldier.voiceCooldown = battle.time + 4 + (((+soldier.id || 0) * 37 + n * 11) % 50) / 10;
     battle.onCallout(soldier, type);
   }
 

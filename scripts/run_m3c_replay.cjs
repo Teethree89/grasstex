@@ -1,4 +1,8 @@
-/* Deterministic browser replay of the shipping runtime. No gameplay replacements. */
+/* Deterministic browser replay of the shipping runtime. No gameplay replacements.
+   Compare arms served the same way. battle_sim_local.php in preview mode (a preview.json next to it)
+   reads the audio manifest and state/ two directories up, so a copy served that way can run with a
+   different asset/state set than the main checkout. Voice no longer draws from the combat RNG
+   (tools/ai-sim-harness/voice-determinism-check.js), but policy/memory state still changes battles. */
 const { chromium } = require('playwright');
 const fs = require('node:fs');
 const path = require('node:path');
