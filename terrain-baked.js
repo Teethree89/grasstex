@@ -9,7 +9,7 @@
 
    which is the invariant this whole thing rests on. Grass no longer samples "the mesh's
    grid"; grass and the mesh sample one field, and measured disagreement stays under a
-   third of a pixel at every distance (tools/terrain-bake/README.md).
+   third of a pixel at every distance (measurements: git show 1a5b0cf:tools/terrain-bake/README.md).
 
    Road paint is a splat + road-space UVs rather than vPositionW.x, so curves and
    branches work. That also drops BABYLON.CustomMaterial, and with it the CDN script
