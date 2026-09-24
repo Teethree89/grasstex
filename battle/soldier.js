@@ -15,7 +15,7 @@
 
   var TAGS={
     idle:'locomotion.idle',walk:'locomotion.walk',crouchWalk:'locomotion.crouch-walk',crawl:'locomotion.prone-crawl',
-    aim:'combat.aim',fire:'combat.fire',reload:'combat.reload',
+    aim:'combat.aim',fire:'combat.fire',reload:'combat.reload',hit:'combat.hit',
     stand:'stance.stand',crouch:'stance.crouch',prone:'stance.prone',
     deathFront:'death.front',deathBack:'death.back',deathSide:'death.side'
   };

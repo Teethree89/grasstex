@@ -11,6 +11,13 @@ STATIC_FILES = [
     ("battle_learning.php", "battle_learning.php"),
     ("battle_metrics.php", "battle_metrics.php"),
 ]
+# The repo's FBX Motion Lab (labs/): workbench, asset inventory and the endpoint that saves
+# per-model sidecar calibrations (Assets/soldiers/<model>.json) the game reads at load. These
+# exact paths are the only lab files the deploy owns; it uploads them and never deletes them.
+# The sidecars it writes stay server-owned (protected below), so a deploy never clobbers a tuning.
+MANAGED_LAB = ["labs/fbx-animation-lab.html", "labs/fbx-animation-root-lock.js", "labs/fbx-animation-compat.js",
+               "labs/asset-list.php", "labs/save-calibration.php"]
+STATIC_FILES += [(path, path) for path in MANAGED_LAB]
 # Every runtime the page loads. A file missing from this list is simply never uploaded, so the
 # deployed loader ends up requesting a 404 - keep it in step with the script tags in
 # battle/battle_sim.html and the lists in battle_sim_local.php.
@@ -44,7 +51,7 @@ DELETABLE = re.compile(r"^battle/modules/[A-Za-z0-9._-]+\.js$")
 # A handful of modules retire per release; more means the checkout or state is wrong, not a cleanup.
 MAX_DELETES = int(os.environ.get("DEPLOY_MAX_DELETES", "8"))
 def is_protected(remote: str) -> bool:
-    return remote not in MANAGED_JSON and any(p.search(remote) for p in PROTECTED)
+    return remote not in MANAGED_JSON and remote not in MANAGED_LAB and any(p.search(remote) for p in PROTECTED)
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
