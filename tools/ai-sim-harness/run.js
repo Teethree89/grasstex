@@ -91,7 +91,7 @@ section('a squad in contact stops marching (base of fire)');
   for(let x=-40;x<=40;x+=7)obstacles.push(cover(x,-46,'hedge'));
   for(let x=-40;x<=40;x+=7)obstacles.push(cover(x,46,'hedge'));
   const {root,battle,us}=duel({gap:130,obstacles});
-  /* Only an assault-authorized Captain phase may bound (engagement.js updateSquad). */
+  /* Only an assault-authorized Captain phase may bound (16-squad-plan-stability.js fireAndMovement). */
   us.commandPhase='assault';
   H.run(root,battle,3);
   const bounding=()=>battle.time<(us._boundUntil||0);
@@ -106,7 +106,7 @@ section('a squad in contact stops marching (base of fire)');
     /* Whether a bound actually happens in any given 40 seconds depends on whether the squad spent
        them pinned, which is the dice talking. What must always hold is that a squad which COULD
        bound did: every precondition satisfied and still no bound is the regression that stopped
-       squads advancing. updateSquad authorises on the same tick the conditions are met, so from
+       squads advancing. fireAndMovement authorises on the same tick the conditions are met, so from
        out here this should never be observable. */
     if(us.inContact&&us._assaultAuthorized&&(us.effectiveCount||0)>=2&&(us.pinnedCount||0)<(us.effectiveCount||0)&&
        battle.time>=(us._nextBoundAt||0)&&battle.time>=(us._boundUntil||0))missedBounds++;
@@ -126,12 +126,12 @@ section('bound authorisation needs a base of fire');
   /* Everybody pinned: nobody is left shooting, so nobody is sent forward. */
   us.members.forEach(s=>{s.suppressedUntil=battle.time+30;});
   us._nextBoundAt=battle.time;us._boundUntil=0;
-  root.BattleEngagement.updateSquad(us,battle);
+  root.BattleSquadStability.fireAndMovement(us,battle);
   check('a wholly pinned squad is not sent forward',(us._boundUntil||0)<=battle.time,'boundUntil='+us._boundUntil);
   us.members.forEach(s=>{s.suppressedUntil=0;});
   H.run(root,battle,1);
   us._nextBoundAt=battle.time;us._boundUntil=0;
-  root.BattleEngagement.updateSquad(us,battle);
+  root.BattleSquadStability.fireAndMovement(us,battle);
   const ordered=us.members.filter(s=>!s.dead&&root.BattleEngagement.stateOf(s).boundOrder).length;
   const holding=us.members.filter(s=>!s.dead&&!root.BattleEngagement.stateOf(s).boundOrder).length;
   check('an unpinned squad bounds one team and holds the rest',(us._boundUntil||0)>battle.time&&ordered>0&&holding>0,

@@ -70,18 +70,18 @@ test('one authorized no-cover bound commits once through target loss and arrival
 });
 
 test('Captain never calls the moving fireteam its own base of fire',()=>{
-  const {q,b,E}=fixture(); q.members=q.members.filter(s=>[2,4,5].includes(s.slotIndex));
+  const {r,q,b,E}=fixture(); q.members=q.members.filter(s=>[2,4,5].includes(s.slotIndex));
   for(const s of q.members){s._fireteamKey='alpha';s.target={id:99,root:{position:{x:0,y:0,z:100}}};E.stateOf(s).state='engage';}
   q.inContact=true; q._nextBoundAt=0; q._boundUntil=0;
-  E.updateSquad(q,b);
+  r.BattleSquadStability.fireAndMovement(q,b);
   assert.equal(q._boundUntil,0,'a fireteam cannot move when that leaves no base of fire');
   assert.ok(q.members.every(s=>!E.stateOf(s).boundOrder));
 });
 
 test('a defensive Captain mission does not issue offensive bounds',()=>{
-  const {q,b,E}=fixture(); q.commandPhase='defend'; q.inContact=true; q._nextBoundAt=0;
+  const {r,q,b,E}=fixture(); q.commandPhase='defend'; q.inContact=true; q._nextBoundAt=0;
   for(const s of q.members){s.target={id:99,root:{position:{x:0,y:0,z:100}}};E.stateOf(s).state='engage';}
-  E.updateSquad(q,b);
+  r.BattleSquadStability.fireAndMovement(q,b);
   assert.equal(q._boundUntil||0,0); assert.ok(q.members.every(s=>!E.stateOf(s).boundOrder));
 });
 if(failed)process.exitCode=1;

@@ -35,7 +35,7 @@
      nearly fully exposed. */
   var OPEN_COVER=.92,USEFUL_COVER=.88;
   var PRONE_ROLES={rifleman:1,gunner:1};
-  var BOUND_CYCLE=9.0,BOUND_DURATION=3.6,BOUND_METERS=6.5,BOUND_ARRIVED=1.25,BOUND_TEAMS=['alpha','bravo','charlie'];
+  var BOUND_METERS=6.5,BOUND_ARRIVED=1.25;
   /* Suppressing a known position. Capped per squad so it reads as suppressing fire rather than
      everyone emptying magazines into a hedge, and fired in short bursts so the sound of a
      firefight has a rhythm. */
@@ -647,10 +647,11 @@
     return chosen;
   }
 
-  /* Fire and movement: a squad in contact stops walking, shoots, and then moves one fireteam at a
-     time. Without this the commander kept marching the whole squad through a firefight. */
+  /* Squad contact report. Micro state flows up: who can see the enemy, who is pinned, who is
+     actually putting rounds out (the base of fire). The Captain (16-squad-plan-stability.js) reads
+     this report to decide fire and movement; Engagement only executes a bound it is ordered to. */
   function updateSquad(sq,battle){
-    if(!sq||!battle)return;
+    if(!sq||!battle)return null;
     var members=sq.members||[],contact=0,effective=0,pinnedCount=0,fireSupport=[],i,s;
     /* Suppression is assigned off the shared contact, not off current visibility, so it keeps
        working in the gap where nobody can see anyone - which is exactly when a squad used to fall
@@ -672,8 +673,6 @@
       }
     }
     sq.contactCount=contact;sq.pinnedCount=pinnedCount;sq.effectiveCount=effective;
-    /* A bound order that was not taken up inside its window is stale, not pending. */
-    if(battle.time>=(sq._boundUntil||0))for(i=0;i<members.length;i++)if(!members[i].dead)state(members[i]).boundOrder=false;
     var wasInContact=!!sq.inContact;
     /* In contact means shooting at somebody or shooting at where they are - NOT merely knowing a
        position exists. One blink of line of sight used to clear the firefight state and reset the
@@ -684,56 +683,31 @@
        answers the question that matters - can anybody here actually put rounds on it - so that is
        the test. Out of reach means keep advancing until it is in reach. */
     sq.inContact=contact>0||suppressing>0;
-    if(sq.inContact&&!wasInContact){sq.contactSince=battle.time;sq._boundUntil=0;sq._nextBoundAt=battle.time+BOUND_CYCLE;
-      telemetry(battle,'decision-contact',{faction:sq.faction,squad:sq.id,phase:sq.commandPhase||'',contacts:contact});}
-    if(!sq.inContact){sq.contactSince=null;sq._boundUntil=0;sq._assaultAuthorized=false;return;}
-
-    var phase=sq.commandPhase||'';
-    sq._assaultAuthorized=phase==='assault'||phase==='capture'||phase==='clear-town';
-
-    /* A bound needs a base of fire: somebody has to be shooting while somebody else moves. */
-    if(sq._assaultAuthorized&&battle.time>=(sq._nextBoundAt||0)&&battle.time>=(sq._boundUntil||0)&&effective>=2&&pinnedCount<effective){
-      /* Rotate teams, but skip a team whose departure would strip the base of fire: waiting a
-         tick for the rotation to reach a team that can go is a missed bound. */
-      var first=sq._boundTurn==null?0:sq._boundTurn+1,turn,team,movers,holding;
-      for(var k=0;k<BOUND_TEAMS.length;k++){
-        turn=first+k;team=BOUND_TEAMS[turn%BOUND_TEAMS.length];movers=[];
-        for(i=0;i<members.length;i++){
-          s=members[i];if(s.dead||s.suppressedUntil>battle.time||s.reloading||s.clearingStoppage||s.outOfAmmo)continue;
-          if(s.role==='gunner'||(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s)))continue; // positional tasks hold the base of fire
-          if(s._fireteamKey&&s._fireteamKey!==team)continue;
-          movers.push(s);
-        }
-        holding=fireSupport.filter(function(man){return movers.indexOf(man)<0;}).length;
-        if(movers.length&&holding>=2)break;
-      }
-      if(!(movers.length&&holding>=2))turn=first;
-      sq._boundTurn=turn;
-      if(movers.length&&holding>=2){
-        sq._boundTeam=team;sq._boundUntil=battle.time+BOUND_DURATION;sq._nextBoundAt=battle.time+BOUND_CYCLE;
-        for(i=0;i<movers.length;i++){state(movers[i]).boundOrder=true;state(movers[i]).suppressOrder=false;}
-        telemetry(battle,'decision-bound',{faction:sq.faction,squad:sq.id,team:team,movers:movers.length,holding:holding});
-      }
-    }
+    var started=sq.inContact&&!wasInContact;
+    if(started){sq.contactSince=battle.time;telemetry(battle,'decision-contact',{faction:sq.faction,squad:sq.id,phase:sq.commandPhase||'',contacts:contact});}
+    if(!sq.inContact)sq.contactSince=null;
+    return{contactStarted:started,effective:effective,pinned:pinnedCount,fireSupport:fireSupport};
   }
+  /* The Captain's bound order, stored as Micro state and consumed once by orderedBound(). */
+  function orderBound(movers){for(var i=0;i<movers.length;i++){var e=state(movers[i]);e.boundOrder=true;e.suppressOrder=false;}}
+  function clearBoundOrders(sq){var a=sq&&sq.members||[];for(var i=0;i<a.length;i++)if(!a[i].dead)state(a[i]).boundOrder=false;}
 
   function resetSoldier(s){
     s.eng=null;s._faceHint=null;s.prone=false;s.crawling=false;s.tacticalCrouch=false;s.setUp=false;
   }
   function resetSquad(sq){
-    sq.inContact=false;sq.contactSince=null;sq.contactCount=0;sq.contact=null;sq.suppressorCount=0;sq._boundUntil=0;sq._nextBoundAt=0;
-    sq._boundTeam=null;sq._boundTurn=null;sq._assaultAuthorized=false;
+    sq.inContact=false;sq.contactSince=null;sq.contactCount=0;sq.contact=null;sq.suppressorCount=0;
   }
 
   root.BattleCoverPositions={warm:function(battle){var c=coverRegistry(battle);if(!c.slots)buildCoverSlots(c);return c.slotCount;},candidates:coverCandidates,reserve:reserveCover,release:releaseCover,current:currentCover,snapshot:coverSnapshot,spacing:COVER_SPACING};
 
   root.BattleEngagement={
-    updateSoldier:updateSoldier,updateSquad:updateSquad,decide:decide,
+    updateSoldier:updateSoldier,updateSquad:updateSquad,orderBound:orderBound,clearBoundOrders:clearBoundOrders,decide:decide,
     suppress:suppress,assignSuppressors:assignSuppressors,reactTime:reactTime,knownThreat:knownThreat,
     findCover:findCover,threatSector:threatSector,sectorDistance:sectorDistance,
     facingError:facingError,fireAllowed:fireAllowed,commitStance:commitStance,applyStance:applyStance,
     resetSoldier:resetSoldier,resetSquad:resetSquad,stateOf:state,
-    tuning:{REACT:REACT,AIM_CONE:AIM_CONE,ALERT_HOLD:ALERT_HOLD,COVER_RANGE:COVER_RANGE,BOUND_CYCLE:BOUND_CYCLE,BOUND_DURATION:BOUND_DURATION,USEFUL_COVER:USEFUL_COVER,OPEN_COVER:OPEN_COVER,
+    tuning:{REACT:REACT,AIM_CONE:AIM_CONE,ALERT_HOLD:ALERT_HOLD,COVER_RANGE:COVER_RANGE,BOUND_METERS:BOUND_METERS,USEFUL_COVER:USEFUL_COVER,OPEN_COVER:OPEN_COVER,
       MAX_SUPPRESSORS:MAX_SUPPRESSORS,SUPPRESS_BURST:SUPPRESS_BURST,SUPPRESS_PAUSE:SUPPRESS_PAUSE,PREWARNED_REACT:PREWARNED_REACT}
   };
   if(typeof console!=='undefined')console.log('[ENGAGE] state/fire owner loaded; combat locomotion proposed to the Movement Resolver');

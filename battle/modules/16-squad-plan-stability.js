@@ -6,7 +6,8 @@
      - mission execution: route legs, corner pauses, objective phase, doctrine holds,
      - one tactical command lease (`_engagementPlan`),
      - one cohesion/regroup state,
-     - one set of committed fireteam slots.
+     - one set of committed fireteam slots,
+     - fire and movement: whether the squad may assault and which fireteam bounds.
 
    It never selects an objective. When a doctrine hold/support/regroup commitment ends it escalates to
    the General through `_macroMissionRequest`.
@@ -21,6 +22,7 @@ if(!root.BattleModules||!root.SquadAI||root.BattleSquadStability)return;
 var ASSAULT_LEASE=26,DEFENSE_LEASE=38,QUIET_CLOSE=9,TEAM_LEASE=12;
 var REGROUP_ENTER=1.35,REGROUP_RELEASE=.78,REGROUP_MIN=2.4,REGROUP_MAX=18,REGROUP_BYPASS=14,REENTRY=4;
 var STRAGGLER_BYPASS=2.8,URBAN_ARRIVAL_COHESION=.5;
+var BOUND_CYCLE=9.0,BOUND_DURATION=3.6,BOUND_TEAMS=['alpha','bravo','charlie'],ASSAULT_PHASES={assault:1,capture:1,'clear-town':1};
 var ORDER_STRIDE=13,ORDER_ARRIVAL_RADIUS=8,ORDER_COHESION=.55,ORDER_PUBLISH_EPS=.05;
 var TACTICAL={contact:1,assault:1,flank:1,capture:1,defend:1,hold:1,'support-hold':1,'clear-town':1};
 var DEFENSIVE={capture:1,defend:1,hold:1,'support-hold':1};
@@ -37,6 +39,9 @@ function alive(sq){return(sq&&sq.members||[]).filter(function(s){return s&&!s.de
 function average(sq){var a=alive(sq),x=0,z=0;if(!a.length)return null;for(var i=0;i<a.length;i++){x+=+a[i].root.position.x||0;z+=+a[i].root.position.z||0;}return{x:x/a.length,z:z/a.length};}
 function median(a){if(!a.length)return 0;var b=a.slice().sort(function(x,y){return x-y;}),m=Math.floor(b.length/2);return b.length%2?b[m]:(b[m-1]+b[m])*.5;}
 function cfg(sim,sq){try{return root.BattleCommanderDoctrine.policyFor(sim,sq.faction)||{};}catch(_){return{};}}
+/* Battle setup (route assignment, garrison placement) states the starting phase through here, so the
+   Captain stays the only writer of commandPhase. No telemetry: nothing has been decided yet. */
+function initialPhase(sq,phase){if(sq)sq.commandPhase=phase;}
 function setPhase(sim,sq,next,why){if(!sq||sq.commandPhase===next)return;sq.commandPhase=next;telemetry(sim,'decision-phase',{faction:sq.faction,squad:sq.id,phase:next,why:why||''});}
 function commandForward(sq){
   var a=sq.orderAnchor||sq.rally||{x:0,z:0},g=sq.objective||sq.home||a,dx=(+g.x||0)-(+a.x||0),dz=(+g.z||0)-(+a.z||0),l=Math.hypot(dx,dz);
@@ -153,10 +158,46 @@ function updateFireteams(sq,battle){
     }
   });
 }
+/* Fire and movement. Engagement reports the squad's contact and base of fire; the Captain decides
+   whether the phase allows an assault and, every BOUND_CYCLE seconds, sends one fireteam forward
+   for BOUND_DURATION while at least two men keep shooting. */
+function fireAndMovement(sq,battle){
+  var E=root.BattleEngagement;if(!E||!sq||!battle)return;
+  var r=E.updateSquad(sq,battle);if(!r)return;
+  var members=sq.members||[],i,s;
+  /* A bound order that was not taken up inside its window is stale, not pending. */
+  if(battle.time>=(sq._boundUntil||0))E.clearBoundOrders(sq);
+  if(r.contactStarted){sq._boundUntil=0;sq._nextBoundAt=battle.time+BOUND_CYCLE;}
+  if(!sq.inContact){sq._boundUntil=0;sq._assaultAuthorized=false;return;}
+  sq._assaultAuthorized=!!ASSAULT_PHASES[sq.commandPhase||''];
+  /* A bound needs a base of fire: somebody has to be shooting while somebody else moves. */
+  if(!sq._assaultAuthorized||battle.time<(sq._nextBoundAt||0)||battle.time<(sq._boundUntil||0)||r.effective<2||r.pinned>=r.effective)return;
+  /* Rotate teams, but skip a team whose departure would strip the base of fire: waiting a tick for
+     the rotation to reach a team that can go is a missed bound. */
+  var first=sq._boundTurn==null?0:sq._boundTurn+1,turn,team,movers,holding;
+  for(var k=0;k<BOUND_TEAMS.length;k++){
+    turn=first+k;team=BOUND_TEAMS[turn%BOUND_TEAMS.length];movers=[];
+    for(i=0;i<members.length;i++){
+      s=members[i];if(s.dead||s.suppressedUntil>battle.time||s.reloading||s.clearingStoppage||s.outOfAmmo)continue;
+      if(s.role==='gunner'||(root.BattleTacticalPositions&&root.BattleTacticalPositions.current(s)))continue; // positional tasks hold the base of fire
+      if(s._fireteamKey&&s._fireteamKey!==team)continue;
+      movers.push(s);
+    }
+    holding=r.fireSupport.filter(function(man){return movers.indexOf(man)<0;}).length;
+    if(movers.length&&holding>=2)break;
+  }
+  if(!(movers.length&&holding>=2))turn=first;
+  sq._boundTurn=turn;
+  if(movers.length&&holding>=2){
+    sq._boundTeam=team;sq._boundUntil=battle.time+BOUND_DURATION;sq._nextBoundAt=battle.time+BOUND_CYCLE;
+    E.orderBound(movers);
+    telemetry(battle,'decision-bound',{faction:sq.faction,squad:sq.id,team:team,movers:movers.length,holding:holding});
+  }
+}
 function updateSquadState(sq,battle){
   var living=0,anyEngaged=false;for(var i=0;i<sq.members.length;i++){var s=sq.members[i];if(!s.dead)living++;if(s.target)anyEngaged=true;}sq.aliveCount=living;
   var casualtyFrac=1-living/sq.members.length;if(casualtyFrac>=.6)sq.state='retreat';else sq.state=anyEngaged?'engaged':'advance';
-  if(root.BattleEngagement)root.BattleEngagement.updateSquad(sq,battle);
+  fireAndMovement(sq,battle);
 }
 root.SquadAI.updateSquad=function(sq,battle){updateSquadState(sq,battle);if(!battle)return;advanceSquadAnchor(sq,battle);updateFireteams(sq,battle);};
 
@@ -209,11 +250,11 @@ function executeMission(sim,sq,town){
 }
 
 function summary(sim){var out={plans:0,active:0,quiet:0,regroups:0,fireteams:0,orderPublishing:Object.assign({},sim._squadCommandPublishStats||{intentChecks:0,intentPublishes:0,intentCoalesced:0})};['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i],p=q._engagementPlan;if(p){out.plans++;if(p.status==='active')out.active++;if(p.status==='quiet')out.quiet++;}if(q._regroupHysteresis&&q._regroupHysteresis.accepted)out.regroups++;out.fireteams+=Object.keys(q._fireteamOrders||{}).length;}});sim._squadCommandSummary=out;sim._engagementPlanSummary={live:out.plans,active:out.active,quiet:out.quiet};sim._regroupHysteresisSummary={active:out.regroups,enterGrace:REGROUP_ENTER,exitRatio:REGROUP_RELEASE};return out;}
-function reset(sim){sim._squadCommandPublishStats={intentChecks:0,intentPublishes:0,intentCoalesced:0};['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i];q._engagementPlan=null;q._stablePlan=null;q._engagementPlanSerial=0;q._planDormantSignature=null;q._missionExecution=null;q._macroMissionRequest=null;q._regroupHysteresis=null;q._regroupRecovery=null;q._regroupRecoverySerial=0;q._regroupBypassUntil=0;q._fireteamOrders={};(q.members||[]).forEach(function(s){s._fireteamDestination=null;s._fireteamPublishKey=null;s._fireteamKey=null;s._defensePost=null;s._engagementTask=null;});}});summary(sim);}
+function reset(sim){sim._squadCommandPublishStats={intentChecks:0,intentPublishes:0,intentCoalesced:0};['us','ge'].forEach(function(f){var a=sim&&sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i];q._engagementPlan=null;q._stablePlan=null;q._engagementPlanSerial=0;q._planDormantSignature=null;q._missionExecution=null;q._macroMissionRequest=null;q._regroupHysteresis=null;q._regroupRecovery=null;q._regroupRecoverySerial=0;q._regroupBypassUntil=0;q._fireteamOrders={};q._boundUntil=0;q._nextBoundAt=0;q._boundTeam=null;q._boundTurn=null;q._assaultAuthorized=false;(q.members||[]).forEach(function(s){s._fireteamDestination=null;s._fireteamPublishKey=null;s._fireteamKey=null;s._defensePost=null;s._engagementTask=null;});}});summary(sim);}
 function commanderTick(sim,payload){var town=payload&&payload.town||null;['us','ge'].forEach(function(f){var a=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<a.length;i++){var q=a[i];updateCohesion(sim,q);executeMission(sim,q,town);updatePlan(sim,q);}});summary(sim);}
 
 root.BattleModules.registerSystem('squad-command',{version:'1.5-m3c-mission-execution',onBattleStart:reset,beforeBattleRestart:reset,onBattleRestart:reset,onCommanderTick:commanderTick});
-root.BattleSquadStability={version:'1.5-m3c-mission-execution',planSeconds:{assault:ASSAULT_LEASE,defense:DEFENSE_LEASE},teamOrderSeconds:TEAM_LEASE,teamKeyFor:teamKeyFor,executeMission:executeMission};
+root.BattleSquadStability={version:'1.6-m3c-captain-fire-and-movement',planSeconds:{assault:ASSAULT_LEASE,defense:DEFENSE_LEASE},teamOrderSeconds:TEAM_LEASE,boundCycle:BOUND_CYCLE,boundDuration:BOUND_DURATION,fireAndMovement:fireAndMovement,initialPhase:initialPhase,teamKeyFor:teamKeyFor,executeMission:executeMission};
 root.BattleEngagementPlans={version:'1.5-m3c-mission-execution',current:function(sq){return planSnapshot(sq&&sq._engagementPlan);},summary:function(sim){return sim&&sim._engagementPlanSummary?JSON.parse(JSON.stringify(sim._engagementPlanSummary)):null;}};
 root.BattleRegroupHysteresis={version:'1.5-m3c-mission-execution',enterGrace:REGROUP_ENTER,exitRatio:REGROUP_RELEASE,minRegroup:REGROUP_MIN,reentryCooldown:REENTRY,assessment:cohesionAssessment,summary:function(sim){return sim&&sim._regroupHysteresisSummary?JSON.parse(JSON.stringify(sim._regroupHysteresisSummary)):null;}};
 console.log('[M3C] meso squad-command owner: stable Captain plan + coalesced fireteam publishing');

@@ -153,11 +153,14 @@ soldier is firing at a place and not at nothing.
 
 ## Fire and movement
 
-`BattleEngagement.updateSquad` counts contacts, effective shooters and pinned men. While a squad is
-in contact, `issueOrders` in `squad-ai.js` stops creeping the order anchor forward: the squad is a
-base of fire, not a marching column. Every `BOUND_CYCLE` seconds, if at least two men are shooting
-and not everyone is pinned, one fireteam is authorised to bound for `BOUND_DURATION` seconds. The
-machine gunner is never a mover.
+`BattleEngagement.updateSquad` counts contacts, effective shooters and pinned men and reports them
+up. The decision is the Captain's: `fireAndMovement` in `modules/16-squad-plan-stability.js`
+authorises assault only in an assault phase (`assault`, `capture`, `clear-town`) and, every
+`BOUND_CYCLE` seconds, if at least two men are shooting and not everyone is pinned, sends one
+fireteam forward for `BOUND_DURATION` seconds through `BattleEngagement.orderBound`. Engagement only
+executes the order it is given. While a squad is in contact the Captain's order anchor stops creeping
+forward except during a bound: the squad is a base of fire, not a marching column. The machine
+gunner is never a mover.
 
 ## Why stance matters mechanically
 

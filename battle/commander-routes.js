@@ -32,7 +32,9 @@
   function assignSquad(sim,sq,town,index){
     var count=sim.factions[sq.faction].squads.length||5,role=rolePlan(sim,sq.faction,index,count),route=routeFor(sq,role,town,index);
     sq._battleSim=sim;sq.commandRole=role;sq.route=route;sq.routeIndex=0;
-    sq.commandPhase=role==='reserve'?'reserve':'approach';
+    var phase=role==='reserve'?'reserve':'approach';
+    /* The Captain owns commandPhase; route assignment only states where the squad starts. */
+    if(root.BattleSquadStability)root.BattleSquadStability.initialPhase(sq,phase);else sq.commandPhase=phase;
     sq.commandHoldUntil=0;sq.lastCommandTime=0;sq.objective=route[0];sq._lastLoggedRoute=-1;sq.targetObjective=null;sq._lastDoctrineRule=null;
     if(root.BattleTelemetry)root.BattleTelemetry.record('decision-assign',{faction:sq.faction,squad:sq.id,role:role,routePoints:route.length,policyRevision:root.BattleAIPolicy?root.BattleAIPolicy.revision:0,genomeVersion:2},sim);
   }
