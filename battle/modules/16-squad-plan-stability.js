@@ -36,6 +36,7 @@
     BOUND_DURATION = 3.6,
     BOUND_TEAMS = ['alpha', 'bravo', 'charlie'],
     ASSAULT_PHASES = { assault: 1, capture: 1, 'clear-town': 1 };
+  var ASSEMBLY_HOME_RADIUS = 20;
   var ORDER_STRIDE = 13,
     ORDER_ARRIVAL_RADIUS = 8,
     ORDER_COHESION = 0.55,
@@ -156,6 +157,8 @@
     if (i <= 1) return 'command';
     if (i === 2 || i === 4 || i === 5) return 'alpha';
     if (i === 3 || i === 6 || i === 7) return 'bravo';
+    /* A re-formed squad can carry more than ten men: the extras are dealt round the three fireteams. */
+    if (i >= 10) return ['alpha', 'bravo', 'charlie'][(i - 10) % 3];
     return 'charlie';
   }
   function syncTasks(sq, plan) {
@@ -833,7 +836,49 @@
     var casualtyFrac = 1 - living / root.SquadAI.establishment(sq);
     if (casualtyFrac >= 0.6) sq.state = 'retreat';
     else sq.state = anyEngaged ? 'engaged' : 'advance';
+    if (battle) updateAssembly(sq, battle);
     fireAndMovement(sq, battle);
+  }
+  /* Reconstitution march. The General briefs a retreating squad to a rally point (intent `reconstitute`);
+     the Captain first brings it home, then - once home and out of contact - walks it to the rally point,
+     where the General merges it. `_assembly` is that march: created when the brief arrives, dropped when
+     the squad stops retreating or the brief ends. SquadAI.retreatGoal() reads it. */
+  function updateAssembly(sq, battle) {
+    var m = sq._macroMission,
+      a = sq._assembly;
+    if (
+      sq.state !== 'retreat' ||
+      !m ||
+      m.intent !== 'reconstitute' ||
+      (m.status !== 'issued' && m.status !== 'executing')
+    ) {
+      sq._assembly = null;
+      return;
+    }
+    if (!a || a.missionVersion !== m.version) {
+      a = sq._assembly = { missionVersion: m.version, phase: 'to-base', since: battle.time };
+      m.status = 'executing';
+      m.acceptedAt = battle.time;
+      telemetry(battle, 'decision-mission-accepted', {
+        faction: sq.faction,
+        squad: sq.id,
+        version: m.version,
+        intent: m.intent,
+        action: m.action,
+        objectiveId: null
+      });
+    }
+    if (a.phase !== 'to-base' || sq.inContact) return;
+    var p = average(sq);
+    if (!p || dist(p, sq.home) > ASSEMBLY_HOME_RADIUS) return;
+    a.phase = 'to-rally';
+    a.since = battle.time;
+    telemetry(battle, 'decision-assembly-rally', {
+      faction: sq.faction,
+      squad: sq.id,
+      version: m.version,
+      rally: copy(m.point)
+    });
   }
   /* The Captain is SquadAI's squadCommand owner: status, fire and movement, anchor, fireteam slots. */
   root.SquadAI.extend('squadCommand', 'captain', function (sq, battle) {
