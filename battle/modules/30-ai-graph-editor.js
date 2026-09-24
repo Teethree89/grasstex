@@ -15,7 +15,7 @@ var PARAM_GROUPS=[
 var CONDITION_HELP={
   objectiveNeutral:'The selected objective has no owner.',objectiveEnemy:'The enemy owns the selected objective.',objectiveOwned:'This faction owns the selected objective.',
   enemyNear:'An enemy is inside the configured contact distance.',outnumbered:'Local friendly/enemy strength is below the superiority target.',notOutnumbered:'Local strength meets or exceeds the superiority target.',
-  captainDead:'The squad captain has been killed.',supportRole:'The squad is currently reserve or support.',insideObjective:'The squad is inside the selected objective radius.',underPressure:'A friendly objective currently has enemy pressure.'
+  captainDead:'The squad leader has been killed.',supportRole:'The squad is currently reserve or support.',insideObjective:'The squad is inside the selected objective radius.',underPressure:'A friendly objective currently has enemy pressure.'
 };
 var ACTION_HELP={
   assault:'Close on and seize the selected objective.',flank:'Move around the strongpoint before closing.',defend:'Hold friendly ground while reacting to pressure.',hold:'Stop the advance and preserve the current position.',

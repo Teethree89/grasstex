@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 'use strict';
-/* Squad reconstitution (commander-ai.js reconstitute + the Captain's assembly march): retreated squads
+/* Squad reconstitution (commander-ai.js reconstitute + the Squad Leader's assembly march): retreated squads
    whose survivors reach a full squad are grouped with the fewest squads, marched home and then to the
    centre of their home points, merged under one leader and re-tasked by the General. Runs the shipping
-   squad, engagement, resolver, Captain and General code with no enemy on the field. */
+   squad, engagement, resolver, Squad Leader and General code with no enemy on the field. */
 const assert=require('node:assert/strict'),fs=require('fs'),path=require('path'),H=require('./harness');
 function load(r,p){new Function('window','globalThis','console',fs.readFileSync(path.join(H.REPO,p),'utf8'))(r,r,{log(){},warn(){}});}
 let n=0;function test(name,fn){fn();n++;console.log('PASS '+name);}
@@ -18,7 +18,7 @@ function world(opts){
   load(r,'battle/commander-doctrine.js');load(r,'battle/commander-routes.js');load(r,'battle/commander-ai.js');
   load(r,'battle/movement-resolver.js');load(r,'battle/modules/16-squad-plan-stability.js');
   const b=H.makeBattle(r);b.macroCommandEnabled=opts.macro!==false;b.scene={metadata:{}};
-  return{r,b,captain:systems['squad-command'],events,sq:[]};
+  return{r,b,leader:systems['squad-command'],events,sq:[]};
 }
 /* A squad spawned at its lane's home, walked `forward` metres out (default 150), then cut down to
    `alive` men. `keep` picks which roles survive (default: the leader first, then riflemen). */
@@ -26,14 +26,14 @@ function squad(w,lane,alive,keep,forward){
   const q=H.addSquad(w.r,w.b,{id:'us-'+lane,faction:'us',x:LANES[lane],z:HOME_Z,objective:{x:LANES[lane],z:0}});
   q.route=[];q.commandRole='center';
   q.members.forEach(s=>{s.root.position.z+=forward==null?FORWARD:forward;s.destination={x:s.root.position.x,z:s.root.position.z};});
-  const order=keep||['captain','rifleman','rifleman','rifleman','rifleman','rifleman','rifleman','scout','scout','gunner'];
+  const order=keep||['sergeant','rifleman','rifleman','rifleman','rifleman','rifleman','rifleman','scout','scout','gunner'];
   const survivors=[];order.forEach(role=>{const s=q.members.find(m=>m.role===role&&!survivors.includes(m));if(s&&survivors.length<alive)survivors.push(s);});
   q.members.forEach(s=>{if(!survivors.includes(s))w.b.killSoldier(s,null);});
   w.sq.push(q);return q;
 }
 function run(w,seconds,onTick){
   const C=w.r.BattleCommanderAI;let acc=0;
-  H.run(w.r,w.b,seconds,function(b){acc+=H.AI_TICK;if(acc>=C.commandTick-1e-9){acc=0;C.update(b,null,C.commandTick);w.captain.onCommanderTick(b,{town:null});}if(onTick)onTick(b);});
+  H.run(w.r,w.b,seconds,function(b){acc+=H.AI_TICK;if(acc>=C.commandTick-1e-9){acc=0;C.update(b,null,C.commandTick);w.leader.onCommanderTick(b,{town:null});}if(onTick)onTick(b);});
 }
 const living=q=>q.members.filter(s=>!s.dead);
 const recon=w=>w.r.BattleCommanderAI.missionState(w.b).reconstitution||{active:[],ended:[],merges:0,groupsFormed:0,groupsDissolved:0,promotions:0};
@@ -118,14 +118,15 @@ test('a pool of five threes groups the four strongest; the fifth keeps waiting',
 test('the leader of the strongest led squad takes command',()=>{
   const w=world(),noLead=['rifleman','rifleman','rifleman','scout','gunner'];
   squad(w,0,4,noLead);squad(w,1,4,noLead);const c=squad(w,2,3);run(w,420);
-  const q=merged(w),cap=c.members.find(s=>s.role==='captain');
+  const q=merged(w),cap=c.members.find(s=>s.role==='sergeant');
   assert.equal(q,c,'the squad with a living leader keeps its identity');assert.equal(q.leaderId,cap.id);
   assert.equal(recon(w).promotions,0);invariants(w,11);
 });
 test('with every leader dead the most senior survivor is promoted, never the gunner',()=>{
-  const w=world(),keep=['gunner','scout','rifleman','rifleman'];[0,1,2].forEach(l=>squad(w,l,4,keep));run(w,420);
+  const w=world(),keep=['gunner','scout','rifleman','rifleman'];[0,1,2].forEach(l=>squad(w,l,4,keep).accuracyMultiplier=.8);run(w,420);
   const q=merged(w),lead=q.members.find(s=>s.id===q.leaderId);
   assert.equal(lead.role,'rifleman');assert.equal(recon(w).promotions,1);
+  assert.equal(q.accuracyMultiplier,1,'the leaderless accuracy penalty ends once someone leads');
   assert.equal(lead.slotIndex,0);assert.equal(q.members.filter(s=>s.role==='gunner'&&!s.slotRole).length,1,'one gun keeps the gunner slot');
   assert.ok(q.members.filter(s=>s.role==='gunner').every(s=>s===q.members.find(m=>m.slotIndex===1)||s.slotRole==='rifleman'));
   assert.equal(w.events.filter(e=>e.type==='decision-leader-promoted').length,1);invariants(w,12);

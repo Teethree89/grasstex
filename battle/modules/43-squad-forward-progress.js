@@ -1,7 +1,7 @@
 /* Rolling squad forward-progress diagnostics.
    A squad can travel a long distance without making useful progress (circling, route churn,
    regroup yo-yos, local avoidance loops). Strategic movement is measured toward the stable
-   objective. An accepted regroup is different: moving backward to a captain's safe rally is
+   objective. An accepted regroup is different: moving backward to a squad leader's safe rally is
    intentional progress, so regroup windows are measured toward that fixed rally anchor instead. */
 (function(root){
 'use strict';

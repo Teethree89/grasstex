@@ -19,7 +19,7 @@
   };
   /* Heavier weapon/load roles bias toward the low side of each band; scouts bias high. */
   var ROLE={
-    captain:{walk:1.28,run:4.00,sprint:5.95,crouchWalk:.86,crouchRun:2.95,proneNormal:.22,proneFast:.62},
+    sergeant:{walk:1.28,run:4.00,sprint:5.95,crouchWalk:.86,crouchRun:2.95,proneNormal:.22,proneFast:.62},
     rifleman:{walk:1.24,run:3.90,sprint:5.90,crouchWalk:.84,crouchRun:2.90,proneNormal:.22,proneFast:.62},
     gunner:{walk:1.15,run:3.55,sprint:5.50,crouchWalk:.75,crouchRun:2.55,proneNormal:.18,proneFast:.52},
     scout:{walk:1.35,run:4.40,sprint:6.50,crouchWalk:.95,crouchRun:3.40,proneNormal:.28,proneFast:.75},
@@ -29,7 +29,10 @@
 
   function clamp(n,a,b){return Math.max(a,Math.min(b,n));}
   function hash(str){var h=2166136261>>>0;for(var i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
-  function unitRand(s,salt){var h=hash(String(s&&s.faction||'')+'|'+String(s&&s.id||0)+'|'+String(s&&s.role||'')+'|'+salt);h^=h<<13;h^=h>>>17;h^=h<<5;return(h>>>0)/4294967295;}
+  /* Trait seeds use the role names the seeds were recorded with: the squad leader role was renamed
+     captain -> sergeant, and re-rolling every leader's gait would make each existing seed a new battle. */
+  var SEED_ROLE={sergeant:'captain'};
+  function unitRand(s,salt){var role=String(s&&s.role||'');var h=hash(String(s&&s.faction||'')+'|'+String(s&&s.id||0)+'|'+(SEED_ROLE[role]||role)+'|'+salt);h^=h<<13;h^=h>>>17;h^=h<<5;return(h>>>0)/4294967295;}
   function gaitValue(base,factor,name){var lim=LIMITS[name],v=(+base[name]||lim[0])*factor;return+clamp(v,lim[0],lim[1]).toFixed(2);}
   function phenotype(s){
     if(!s)return null;if(s.phenotype&&s.phenotype.version==='68-gaits')return s.phenotype;

@@ -58,7 +58,7 @@ function squad(sq){
     objective:point(sq.objective),rally:point(sq.rally),routeIndex:finite(+sq.routeIndex),route:safePlain(sq.route,3),
     commandHoldUntil:finite(root.BattleLeases?root.BattleLeases.until(sq,'corner-hold'):0),accuracyMultiplier:finite(+sq.accuracyMultiplier),
     regroup:(function(){var L=root.BattleLeases,rg=L&&L.get(sq,'regroup');return{accepted:!!rg,anchor:point(rg&&rg.data&&rg.data.anchor),enteredAt:rg?finite(+rg.since):null,entries:finite(+(sq._regroupHysteresis&&sq._regroupHysteresis.entries)),bypassUntil:finite(L?L.until(sq,'regroup-bypass'):0)};})(),
-    /* Macro brief (General-owned) vs Captain execution (Meso-owned): the two halves of the mission contract. */
+    /* Macro brief (General-owned) vs Squad Leader execution (Meso-owned): the two halves of the mission contract. */
     mission:safePlain(sq._macroMission?Object.assign({},sq._macroMission,{key:undefined}):null,4),lastMission:safePlain(sq._lastMacroMission?Object.assign({},sq._lastMacroMission,{key:undefined}):null,4),
     captainRequest:safePlain(sq._macroMissionRequest,3),
     /* Owned commitments (BattleLeases): what is live, who owns it, why, what releases it, and which one holds the mission now. */

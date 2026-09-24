@@ -1,6 +1,6 @@
 /* M3C meso-level squad-command owner.
    The General's mission brief (`_macroMission`) says what the squad must achieve; this module is
-   the Captain layer that executes it. It is the only runtime writer of the squad's commandPhase,
+   the Squad Leader layer that executes it. It is the only runtime writer of the squad's commandPhase,
    objective point, route legs and routeIndex, and it owns:
 
      - mission execution: route legs, corner pauses, objective phase, doctrine holds,
@@ -77,7 +77,7 @@
       Math.round((+p.z || 0) / 4)
     ].join('|');
   }
-  function captainAlive(sq) {
+  function leaderAlive(sq) {
     return !!root.SquadAI.leaderOf(sq);
   }
   function alive(sq) {
@@ -112,7 +112,7 @@
     }
   }
   /* Battle setup (route assignment, garrison placement) states the starting phase through here, so the
-   Captain stays the only writer of commandPhase. No telemetry: nothing has been decided yet. */
+   Squad Leader stays the only writer of commandPhase. No telemetry: nothing has been decided yet. */
   function initialPhase(sq, phase) {
     if (sq) sq.commandPhase = phase;
   }
@@ -221,7 +221,7 @@
     L.grant(
       sq,
       'tactical-plan',
-      'captain',
+      'squad-leader',
       sim.time,
       sim.time + leaseSeconds(phase),
       phase + ' plan #' + serial,
@@ -245,8 +245,8 @@
   function missionVersion(sq) {
     return sq && sq._macroMission ? +sq._macroMission.version || 0 : 0;
   }
-  /* A doctrine hold/support/regroup is a bounded commitment, not a new objective. When the Captain's
-   plan for it ends (lease or contact closes) the Captain reports back once instead of the General
+  /* A doctrine hold/support/regroup is a bounded commitment, not a new objective. When the Squad Leader's
+   plan for it ends (lease or contact closes) the Squad Leader reports back once instead of the General
    re-evaluating doctrine on a timer. */
   var REVIEW_ACTIONS = { hold: 1, support: 1, regroup: 1 };
   function requestReview(sim, sq, why) {
@@ -288,7 +288,7 @@
         lease.data.quietSince = null;
         lease.until = Infinity;
         lease.reason = p.phase + ' plan #' + p.serial + ' in contact';
-        L.extend(sq, 'regroup-bypass', 'captain', sim.time, sim.time + 1.25, 'firefight in progress');
+        L.extend(sq, 'regroup-bypass', 'squad-leader', sim.time, sim.time + 1.25, 'firefight in progress');
       } else if (p.status === 'active' || p.status === 'quiet') {
         if (lease.data.quietSince == null) {
           lease.data.quietSince = sim.time;
@@ -301,7 +301,7 @@
           closePlan(sim, sq, 'contact clear');
           requestReview(sim, sq, 'contact clear');
           p = null;
-        } else L.extend(sq, 'regroup-bypass', 'captain', sim.time, sim.time + 1.25, 'firefight going quiet');
+        } else L.extend(sq, 'regroup-bypass', 'squad-leader', sim.time, sim.time + 1.25, 'firefight going quiet');
       }
       if (p && p.status === 'staged' && sig !== p.signature) {
         closePlan(sim, sq, 'intent replaced');
@@ -328,7 +328,7 @@
 
   /* Cohesion is directional. A lagging man may be temporarily excluded so nine men do not march
    backwards to fetch one casualty-delayed rifleman. A man who ran AHEAD is never an ignorable
-   straggler: he expands the core, forcing the Captain to restore cohesion instead of allowing two
+   straggler: he expands the core, forcing the Squad Leader to restore cohesion instead of allowing two
    scouts to sprint into the next fight alone. Lateral outliers are also non-trimmable. */
   function cohesionAssessment(sq, limit) {
     var m = alive(sq),
@@ -437,7 +437,7 @@
   function updateCohesion(sim, sq) {
     if (!sq || sq.state === 'retreat') return;
     var c = cfg(sim, sq),
-      limit = +(captainAlive(sq) ? c.cohesionRadius : c.captainlessCohesion) || 34,
+      limit = +(leaderAlive(sq) ? c.cohesionRadius : c.captainlessCohesion) || 34,
       release = limit * REGROUP_RELEASE,
       st = cohesionState(sq),
       t = sim.time,
@@ -456,12 +456,12 @@
       st.overSince = null;
       if (L.end(sq, 'regroup', t, 'contact')) {
         st.exits++;
-        L.grant(sq, 'regroup-cooldown', 'captain', t, t + REENTRY, 'regroup broken by contact');
+        L.grant(sq, 'regroup-cooldown', 'squad-leader', t, t + REENTRY, 'regroup broken by contact');
       }
-      L.extend(sq, 'regroup-bypass', 'captain', t, t + 1.25, 'firefight in progress');
+      L.extend(sq, 'regroup-bypass', 'squad-leader', t, t + 1.25, 'firefight in progress');
       return;
     }
-    /* Release hands the squad straight back to mission execution in the same Captain tick. */
+    /* Release hands the squad straight back to mission execution in the same Squad Leader tick. */
     var regroup = L.get(sq, 'regroup');
     if (regroup) {
       var age = t - regroup.since;
@@ -469,11 +469,11 @@
         var timedOut = age >= REGROUP_MAX;
         L.end(sq, 'regroup', t, timedOut ? 'maximum regroup time' : 'cohesion restored');
         st.exits++;
-        L.grant(sq, 'regroup-cooldown', 'captain', t, t + REENTRY, 'regroup just released');
+        L.grant(sq, 'regroup-cooldown', 'squad-leader', t, t + REENTRY, 'regroup just released');
         L.extend(
           sq,
           'regroup-bypass',
-          'captain',
+          'squad-leader',
           t,
           t + (timedOut ? REGROUP_BYPASS : REENTRY),
           timedOut ? 'regroup timed out' : 'regroup just released'
@@ -485,7 +485,7 @@
       sq.objective = copy(regroup.data.anchor || ca.center);
       return;
     }
-    /* The Captain, not the General, decides a squad is too scattered to keep executing. */
+    /* The Squad Leader, not the General, decides a squad is too scattered to keep executing. */
     var requested = !sq.inContact && !L.holds(sq, 'regroup-bypass', t) && ca.rawSpread > limit;
     if (!requested) {
       st.overSince = null;
@@ -496,7 +496,7 @@
       markCatchup(ca, t);
       st.stragglerSuppressions++;
       st.suppressed++;
-      L.grant(sq, 'regroup-bypass', 'captain', t, t + STRAGGLER_BYPASS, 'stragglers catching up');
+      L.grant(sq, 'regroup-bypass', 'squad-leader', t, t + STRAGGLER_BYPASS, 'stragglers catching up');
       return;
     }
     if (!ca.dispersed) {
@@ -512,7 +512,7 @@
     L.grant(
       sq,
       'regroup',
-      'captain',
+      'squad-leader',
       t,
       t + REGROUP_MAX,
       'squad dispersed',
@@ -527,7 +527,7 @@
     };
     sq._regroupRecoverySerial = sq._regroupRecovery.serial;
     sq.objective = copy(anchor);
-    /* The rally point is where the squad re-forms: move the Captain's order anchor there so the
+    /* The rally point is where the squad re-forms: move the Squad Leader's order anchor there so the
        fireteam slots (and so every man's movement order) are built around it. The anchor is frozen
        during a regroup; left where it was it had usually run ahead with the leading men, and the
        squad re-formed around that instead - or ran out the 18 s regroup lease walking to it. */
@@ -604,7 +604,7 @@
     }
     return { x: a.x + r.x * lat + f.x * fw, z: a.z + r.z * lat + f.z * fw };
   }
-  /* A defensive post belongs to the Captain's command intent, not to a contact serial. Once a man has
+  /* A defensive post belongs to the Squad Leader's command intent, not to a contact serial. Once a man has
    settled into his post, target acquisition/loss must not throw him back into formation and then
    recreate the same post a second later. It is released only when the defensive command signature
    materially changes. */
@@ -616,7 +616,7 @@
     return s._defensePost;
   }
   /* Fireteam commitment is a meso command signature. Its anchor AND formation frame are committed:
-   live command-ray jitter must not rotate individual slots underneath a still-valid Captain order.
+   live command-ray jitter must not rotate individual slots underneath a still-valid Squad Leader order.
    Engagement-plan serials are micro/contact state and deliberately do not belong here. */
   function fireteamSignature(sq) {
     var p = sq.objective || {};
@@ -638,7 +638,7 @@
     }
     return arrived / living.length >= ORDER_COHESION;
   }
-  /* The legacy SquadAI issueOrders() both advanced the Captain's anchor AND published an individual
+  /* The legacy SquadAI issueOrders() both advanced the Squad Leader's anchor AND published an individual
    formation point for every soldier every squad tick. M3C keeps the useful anchor cadence here and
    deletes that redundant individual producer entirely: only committed fireteam slots publish Meso
    locomotion. */
@@ -749,7 +749,7 @@
       }
     });
   }
-  /* Fire and movement. Engagement reports the squad's contact and base of fire; the Captain decides
+  /* Fire and movement. Engagement reports the squad's contact and base of fire; the Squad Leader decides
    whether the phase allows an assault and, every BOUND_CYCLE seconds, sends one fireteam forward
    for BOUND_DURATION while at least two men keep shooting. */
   function fireAndMovement(sq, battle) {
@@ -765,7 +765,7 @@
     if (!L.holds(sq, 'bound', t)) E.clearBoundOrders(sq);
     if (r.contactStarted) {
       L.end(sq, 'bound', t, 'contact started');
-      L.grant(sq, 'bound-cycle', 'captain', t, t + BOUND_CYCLE, 'contact started', 'cycle expiry');
+      L.grant(sq, 'bound-cycle', 'squad-leader', t, t + BOUND_CYCLE, 'contact started', 'cycle expiry');
     }
     if (!sq.inContact) {
       L.end(sq, 'bound', t, 'contact broken');
@@ -810,10 +810,10 @@
     if (!(movers.length && holding >= 2)) turn = first;
     sq._boundTurn = turn;
     if (movers.length && holding >= 2) {
-      L.grant(sq, 'bound', 'captain', t, t + BOUND_DURATION, 'fireteam ' + team + ' bounds', 'window expiry or contact broken', {
+      L.grant(sq, 'bound', 'squad-leader', t, t + BOUND_DURATION, 'fireteam ' + team + ' bounds', 'window expiry or contact broken', {
         team: team
       });
-      L.grant(sq, 'bound-cycle', 'captain', t, t + BOUND_CYCLE, 'after bound by ' + team, 'cycle expiry');
+      L.grant(sq, 'bound-cycle', 'squad-leader', t, t + BOUND_CYCLE, 'after bound by ' + team, 'cycle expiry');
       E.orderBound(movers);
       telemetry(battle, 'decision-bound', {
         faction: sq.faction,
@@ -891,8 +891,8 @@
       rally: copy(m.point)
     });
   }
-  /* The Captain is SquadAI's squadCommand owner: status, fire and movement, anchor, fireteam slots. */
-  root.SquadAI.extend('squadCommand', 'captain', function (sq, battle) {
+  /* The Squad Leader is SquadAI's squadCommand owner: status, fire and movement, anchor, fireteam slots. */
+  root.SquadAI.extend('squadCommand', 'squad-leader', function (sq, battle) {
     updateSquadState(sq, battle);
     if (!battle) return;
     advanceSquadAnchor(sq, battle);
@@ -920,8 +920,8 @@
     if (m.intent === 'defend') return m.requestKey || inside ? 'defend' : 'assault';
     return inside ? 'capture' : 'assault';
   }
-  /* Captain execution of the General's brief: the only runtime writer of phase, legs and the squad
-   objective point. Without a brief (Macro OFF) the Captain walks the assigned approach route. */
+  /* Squad Leader execution of the General's brief: the only runtime writer of phase, legs and the squad
+   objective point. Without a brief (Macro OFF) the Squad Leader walks the assigned approach route. */
   function executeMission(sim, sq, town) {
     if (!sim || !sq) return;
     /* Which lease, if any, is holding this squad's mission execution this tick (diagnostics). */
@@ -996,7 +996,7 @@
       return;
     }
     var axisEnd = m ? (m.route || []).length - 1 : last,
-      limit = +(captainAlive(sq) ? c.cohesionRadius : c.captainlessCohesion) || 34,
+      limit = +(leaderAlive(sq) ? c.cohesionRadius : c.captainlessCohesion) || 34,
       urban = inTown(town, wp);
     var arrival =
       idx === axisEnd
@@ -1020,9 +1020,9 @@
         L.grant(
           sq,
           'corner-hold',
-          'captain',
+          'squad-leader',
           t,
-          t + (+c.cornerHold || 0) + (captainAlive(sq) ? 0 : +c.cornerNoCaptainExtra || 0),
+          t + (+c.cornerHold || 0) + (leaderAlive(sq) ? 0 : +c.cornerNoCaptainExtra || 0),
           'urban corner after route leg ' + from,
           'expiry, new mission or regroup release'
         );
@@ -1148,7 +1148,7 @@
     onCommanderTick: commanderTick
   });
   root.BattleSquadStability = {
-    version: '1.6-m3c-captain-fire-and-movement',
+    version: '1.7-m3c-squad-leader-fire-and-movement',
     planSeconds: { assault: ASSAULT_LEASE, defense: DEFENSE_LEASE },
     teamOrderSeconds: TEAM_LEASE,
     boundCycle: BOUND_CYCLE,
@@ -1182,5 +1182,5 @@
         : null;
     }
   };
-  console.log('[M3C] meso squad-command owner: stable Captain plan + coalesced fireteam publishing');
+  console.log('[M3C] meso squad-command owner: stable Squad Leader plan + coalesced fireteam publishing');
 })(typeof window !== 'undefined' ? window : globalThis);

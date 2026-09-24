@@ -82,7 +82,7 @@
       m = Math.max(m, dist(a[i].root.position.x, a[i].root.position.z, p.x, p.z));
     return m;
   }
-  function captain(sq) {
+  function leader(sq) {
     return root.SquadAI.leaderOf(sq);
   }
 
@@ -244,7 +244,7 @@
       enemyNear: enemy.distance < policy(sim, sq.faction).contactDistance * 1.4,
       outnumbered: ratio < doc.localSuperiority,
       notOutnumbered: ratio >= doc.localSuperiority,
-      captainDead: !captain(sq),
+      captainDead: !leader(sq),
       supportRole: sq.commandRole === 'support' || sq.commandRole === 'reserve',
       insideObjective: !!(
         chosen && dist(p.x, p.z, chosen.point.x, chosen.point.z) < (+chosen.instance.def.radius || 30)
@@ -277,7 +277,7 @@
     aliveMembers: aliveMembers,
     avgPos: avgPos,
     maxSpread: maxSpread,
-    captain: captain,
+    leader: leader,
     forceUnits: forceUnits,
     forceScore: forceScore,
     nearbyStrength: nearbyStrength,

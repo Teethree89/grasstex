@@ -31,7 +31,7 @@ test('committed combat plan suppresses transient cohesion regroup',()=>{
   const {r,systems}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100}});
   q.commandPhase='assault';q.inContact=true;systems['squad-command'].onCommanderTick(b,{town:null});
   assert.ok(q._engagementPlan&&q._engagementPlan.status==='active');
-  // The Captain is the only regroup producer; a dispersed squad in a firefight is deployed, not scattered.
+  // The Squad Leader is the only regroup producer; a dispersed squad in a firefight is deployed, not scattered.
   q.members.forEach((s,i)=>{s.root.position.x=(i%2?-1:1)*60;});
   for(let i=0;i<10;i++){b.time+=.45;systems['squad-command'].onCommanderTick(b,{town:null});assert.equal(q.commandPhase,'assault');}
   assert.equal(systems['squad-command'].onSimulationStep,undefined,'no per-step phase revert should exist');

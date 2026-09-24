@@ -98,7 +98,7 @@ section('Force Command spreads squads over the objectives it has');
        every non-reserve squad: same position, so the scoring alone has to separate them. */
     for(const f of ['us','ge'])for(let i=0;i<5;i++){
       const members=[];
-      for(let m=0;m<10;m++)members.push({dead:false,role:m?'rifleman':'captain',root:{position:{x:c.x+(i-2)*3,y:0,z:c.z+(m-5)*1.5}}});
+      for(let m=0;m<10;m++)members.push({dead:false,role:m?'rifleman':'sergeant',root:{position:{x:c.x+(i-2)*3,y:0,z:c.z+(m-5)*1.5}}});
       sim.factions[f].squads.push({id:f+'-'+i,faction:f,members,aliveCount:10,state:'advance',rally:{x:c.x,z:c.z},targetObjective:null,commandRole:'center'});
     }
     for(let pass=0;pass<2;pass++)for(const f of ['us','ge'])for(const sq of sim.factions[f].squads){
@@ -154,12 +154,12 @@ function commandFixture(){
   const sq={id:'us-0',faction:'us',state:'advance',commandRole:'center',commandPhase:'assault',
     route:[{x:0,z:0},{x:0,z:0}],routeIndex:1,
     targetObjective:'outer',objective:{x:120,z:0},rally:{x:65,z:0},members:[],aliveCount:4};
-  for(let i=0;i<4;i++)sq.members.push({id:'m'+i,role:i?'rifleman':'captain',faction:'us',dead:false,root:{position:{x:65,z:i-1.5}}});
+  for(let i=0;i<4;i++)sq.members.push({id:'m'+i,role:i?'rifleman':'sergeant',faction:'us',dead:false,root:{position:{x:65,z:i-1.5}}});
   const sim={time:100,factions:{us:{squads:[sq]},ge:{squads:[]}},_units:sq.members,_roster:{us:sq.members,ge:[]},heightAt:()=>0,scene:{metadata:{}}};
   r.BattleObjectiveSystem.attach(sim,[{id:'outer',type:'capture-zone',x:120,z:0,radius:30,value:1}],{});
   return{r,sq,sim,town:{center:{x:0,z:0},radius:250}};
 }
-/* General issues the brief; the Captain hook executes it in the same command tick. */
+/* General issues the brief; the Squad Leader hook executes it in the same command tick. */
 function commandTick(r,sim,town){sim.time+=.45;r.BattleCommanderAI.update(sim,town,.45);r.BattleModules.getSystem('squad-command').onCommanderTick(sim,{town});}
 section('an assigned objective mission survives approach-route and lease boundaries');
 {
@@ -171,11 +171,11 @@ section('an assigned objective mission survives approach-route and lease boundar
   sq.routeIndex=0;commandTick(r,sim,town);
   check('a stale route index cannot resurrect an old approach waypoint',sq.objective.x===120&&sq.commandPhase==='assault');
   const lease=sq._stablePlan;
-  check('the Captain stages one plan for the brief it is executing',!!lease&&lease.missionVersion===mission.version);
+  check('the Squad Leader stages one plan for the brief it is executing',!!lease&&lease.missionVersion===mission.version);
   sim.time=lease.until+.1;commandTick(r,sim,town);commandTick(r,sim,town);
   check('lease expiry does not make Force Command reissue an unchanged assault',sq._macroMission===mission&&sq.objective.x===120&&r.BattleCommanderAI.missionState(sim).wakeCount===1);
   for(const m of sq.members)m.root.position.x=120;commandTick(r,sim,town);
-  check('the Captain transitions assault to capture inside the zone without a new mission',sq.commandPhase==='capture'&&sq._macroMission===mission);
+  check('the Squad Leader transitions assault to capture inside the zone without a new mission',sq.commandPhase==='capture'&&sq._macroMission===mission);
 }
 section('a single assigned squad can reach and capture an outer objective');
 {
@@ -203,7 +203,7 @@ section('a single assigned squad can reach and capture an outer objective');
   check('the formation supplies at least the two required capture weights',peakPresence>=2,'peak='+peakPresence);
   console.log('  probe: first capture '+(first===null?'none':first.toFixed(1)+'s')+', peak presence '+peakPresence+', obsolete-goal frames '+wrongGoal);
 }
-section('a stranded soldier cannot override the Captain regroup timeout');
+section('a stranded soldier cannot override the Squad Leader regroup timeout');
 {
   const {r,sq,sim,town}=commandFixture();
   r.BattleTelemetry={record(){}};
@@ -212,12 +212,12 @@ section('a stranded soldier cannot override the Captain regroup timeout');
   sq.members[3].root.position.x=-100;
   sq.commandPhase='regroup';sq.objective={x:20,z:0};
   sq._regroupHysteresis={overSince:sim.time-20,lastForward:null,entries:1,exits:0,suppressed:0,stragglerSuppressions:0,regroupRequests:1};
-  r.BattleLeases.grant(sq,'regroup','captain',sim.time-19,sim.time-1,'test','test',{anchor:{x:20,z:0}});
+  r.BattleLeases.grant(sq,'regroup','squad-leader',sim.time-19,sim.time-1,'test','test',{anchor:{x:20,z:0}});
   commandTick(r,sim,town);
-  check('the Captain releases a timed-out regroup straight back into its mission',sq.commandPhase!=='regroup'&&sq.objective.x===120);
+  check('the Squad Leader releases a timed-out regroup straight back into its mission',sq.commandPhase!=='regroup'&&sq.objective.x===120);
   let held=0;
   for(let i=0;i<25;i++){commandTick(r,sim,town);if(sq.commandPhase==='regroup'||sq.objective.x!==120)held++;}
-  check('the entire bypass survives subsequent commander and Captain ticks',held===0,'held ticks='+held);
+  check('the entire bypass survives subsequent commander and Squad Leader ticks',held===0,'held ticks='+held);
 }
 section('benchmark alerts distinguish approach intent from absent orders');
 {
@@ -385,7 +385,7 @@ section('physical wayfinding respects body clearance through hedgerows');
   const crossing={id:'crossing-man',slotIndex:4,root:{position:{x:0,z:-12},rotation:{y:0}},destination:{x:0,z:-12},orderDestination:null,_fireteamDestination:{x:0,z:0},squad:crossingSquad,speed:2.9,moveSpeed:0,fireCooldown:0};crossingSquad.members=[crossing];
   r.BattleMovementResolver.proposeOrder(crossing,crossing._fireteamDestination,crossingWorld,false);r.BattleMovementResolver.resolve(crossing,crossingWorld);
   check('a formation slot inside a transverse hedge resolves on the command-progress side',crossing.orderDestination.z>1.5,JSON.stringify(crossing.orderDestination));
-  check('physical endpoint resolution preserves the Captain fireteam intent',crossing._fireteamDestination.x===0&&crossing._fireteamDestination.z===0&&crossing._movementResolver.order.intentPoint.z===0);
+  check('physical endpoint resolution preserves the Squad Leader fireteam intent',crossing._fireteamDestination.x===0&&crossing._fireteamDestination.z===0&&crossing._movementResolver.order.intentPoint.z===0);
   check('the resolved formation endpoint itself has route-margin clearance',!P.shapeContains(crossing.orderDestination,crossingWorld.obstacles.__physicalFootprints[0],P.routeMargin),JSON.stringify(crossing.orderDestination));
   let crossingIllegal=0;
   for(let i=0;i<500&&Math.hypot(crossing.root.position.x-crossing.orderDestination.x,crossing.root.position.z-crossing.orderDestination.z)>.7;i++){

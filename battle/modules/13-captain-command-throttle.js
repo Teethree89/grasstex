@@ -4,8 +4,8 @@
   if(!root.BattleModules||!root.BattleVoiceScheduler||typeof root.BattleVoiceScheduler.enqueue!=='function')return;
 
   var baseEnqueue=root.BattleVoiceScheduler.enqueue.bind(root.BattleVoiceScheduler);
-  var lastCaptainCommandMs=0;
-  var CAPTAIN_GLOBAL_GAP_MS=2600;
+  var lastLeaderCommandMs=0;
+  var LEADER_GLOBAL_GAP_MS=2600;
   var COMMAND_EVENTS={advance:true,engage:true,retreat:true,hold:true,regroup:true,rallyHere:true,pushNow:true};
 
   /* opts is intentionally forwarded: contextual stories use the scheduler's real playback-ended
@@ -13,15 +13,15 @@
   root.BattleVoiceScheduler.enqueue=function(soldier,type,cam,opts){
     if(soldier&&root.SquadAI&&root.SquadAI.isLeader(soldier)&&COMMAND_EVENTS[type]){
       var now=performance.now();
-      if(now-lastCaptainCommandMs<CAPTAIN_GLOBAL_GAP_MS)return false;
-      lastCaptainCommandMs=now;
+      if(now-lastLeaderCommandMs<LEADER_GLOBAL_GAP_MS)return false;
+      lastLeaderCommandMs=now;
     }
     return baseEnqueue(soldier,type,cam,opts);
   };
 
   root.BattleModules.registerSystem('captain-command-throttle',{
     version:'24-playback-handles',
-    beforeBattleRestart:function(){lastCaptainCommandMs=0;}
+    beforeBattleRestart:function(){lastLeaderCommandMs=0;}
   });
-  console.log('[VOICE] captain command throttle active; global gap='+CAPTAIN_GLOBAL_GAP_MS+'ms');
+  console.log('[VOICE] squad leader command throttle active; global gap='+LEADER_GLOBAL_GAP_MS+'ms');
 })(typeof window!=='undefined'?window:globalThis);

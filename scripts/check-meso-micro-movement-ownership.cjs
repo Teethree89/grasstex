@@ -15,7 +15,7 @@ function fixture() {
   load(r, 'battle/modules/16-squad-plan-stability.js');
   load(r, 'battle/modules/44-combat-urgency.js');
   const b = H.makeBattle(r), q = H.addSquad(r, b, {id:'us-0', faction:'us', x:0, z:0,
-    objective:{x:0,z:100}, composition:['captain','rifleman','rifleman','rifleman','rifleman','rifleman']});
+    objective:{x:0,z:100}, composition:['sergeant','rifleman','rifleman','rifleman','rifleman','rifleman']});
   q.commandPhase = 'assault'; q.orderAnchor = {x:0,z:0};
   const s = q.members[2]; s.root.position.x=0; s.root.position.z=0; s.destination={x:0,z:0};
   r.SquadAI.updateSquad(q,b);
@@ -32,7 +32,7 @@ function combat(f, visible=true) {
 let failed=0;
 function test(name, fn) { try {fn(); console.log('PASS: '+name);} catch(error) {failed++; console.error('FAIL: '+name+'\n'+error.stack);} }
 
-test('Micro consumes Captain formation without republishing Meso intent',()=>{
+test('Micro consumes Squad Leader formation without republishing Meso intent',()=>{
   const {b,q,s,M,E}=fixture(), order=s._movementResolver.order;
   const before=b._movementGoalStats.bySource['squad-stability'].requests;
   for(let i=0;i<20;i++){b.time+=.15; E.updateSoldier(s,b); M.resolve(s,b);}
@@ -69,7 +69,7 @@ test('one authorized no-cover bound commits once through target loss and arrival
   assert.equal(s.destination.z,goal.z,'completion must hold at arrival instead of starting another push');
 });
 
-test('Captain never calls the moving fireteam its own base of fire',()=>{
+test('Squad Leader never calls the moving fireteam its own base of fire',()=>{
   const {r,q,b,E}=fixture(); q.members=q.members.filter(s=>[2,4,5].includes(s.slotIndex));
   for(const s of q.members){s._fireteamKey='alpha';s.target={id:99,root:{position:{x:0,y:0,z:100}}};E.stateOf(s).state='engage';}
   q.inContact=true;
@@ -78,7 +78,7 @@ test('Captain never calls the moving fireteam its own base of fire',()=>{
   assert.ok(q.members.every(s=>!E.stateOf(s).boundOrder));
 });
 
-test('a defensive Captain mission does not issue offensive bounds',()=>{
+test('a defensive Squad Leader mission does not issue offensive bounds',()=>{
   const {r,q,b,E}=fixture(); q.commandPhase='defend'; q.inContact=true;
   for(const s of q.members){s.target={id:99,root:{position:{x:0,y:0,z:100}}};E.stateOf(s).state='engage';}
   r.BattleSquadStability.fireAndMovement(q,b);

@@ -27,7 +27,7 @@ test('no module replaces the owner fire or update functions',()=>{
   assert.equal(r.SquadAI.tryFire,owner.tryFire);
   assert.equal(r.SquadAI.areaFire,owner.areaFire);
   assert.equal(r.SquadAI.updateSoldier,owner.updateSoldier);
-  assert.equal(r.SquadAI.updateSquad,owner.updateSquad,'the Captain attaches as squadCommand instead of replacing updateSquad');
+  assert.equal(r.SquadAI.updateSquad,owner.updateSquad,'the Squad Leader attaches as squadCommand instead of replacing updateSquad');
   assert.equal(r.BattleEngagement.updateSoldier,owner.engagement);
 });
 test('the declared fire order is ammunition, ballistics range, then trigger-time LOS',()=>{
@@ -48,9 +48,9 @@ test('a loaded weapon in range with a clear line fires through the ballistic sho
   assert.equal(s._lastBallisticShot&&s._lastBallisticShot.mode,'raycast');
   assert.equal(s.weapon.ammo,4,'afterShot spends the round');
 });
-test('the Captain is the declared squad command owner',()=>{
+test('the Squad Leader is the declared squad command owner',()=>{
   const {r}=root();
-  assert.deepEqual(r.SquadAI.extensionOrder.squadCommand,['captain']);
+  assert.deepEqual(r.SquadAI.extensionOrder.squadCommand,['squad-leader']);
 });
 test('an undeclared extension is refused instead of silently changing the pipeline',()=>{
   const {r}=root();

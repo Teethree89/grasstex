@@ -59,7 +59,7 @@
     sq.route = route;
     sq.routeIndex = 0;
     var phase = role === 'reserve' ? 'reserve' : 'approach';
-    /* The Captain owns commandPhase; route assignment only states where the squad starts. */
+    /* The Squad Leader owns commandPhase; route assignment only states where the squad starts. */
     if (root.BattleSquadStability) root.BattleSquadStability.initialPhase(sq, phase);
     else sq.commandPhase = phase;
     if (root.BattleLeases) root.BattleLeases.end(sq, 'corner-hold', +(sim && sim.time) || 0, 'route assigned');

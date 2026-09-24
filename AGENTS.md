@@ -130,13 +130,13 @@ Benchmark battles are 600 simulated seconds at a fixed 0.15 s step. Results go t
 stack cooldowns, blockers, retries or extra movement writers to make one counter improve. A fix is
 good if the system is easier to explain afterwards.
 
-`General (Macro) → Captain/Squad (Meso) → Engagement → Movement Resolver → Movement Execution → Navigation`.
+`General (Macro) → Squad Leader (Meso) → Engagement → Movement Resolver → Movement Execution → Navigation`.
 Intent flows down and status flows up. No layer rewrites another's state.
 
 | Layer | Owner (file) | Owns | Must not |
 | --- | --- | --- | --- |
 | Macro: Force Command | `commander-ai.js`, `commander-doctrine.js`, `commander-routes.js` | `_macroMission` brief {intent, action, objectiveId, point, flank leg, status}, `targetObjective`, `commandRole`, force allocation, reserves | write `commandPhase`/`objective`/route legs, cover, slots or soldier destinations |
-| Meso: Captain / Squad Command | `modules/16-squad-plan-stability.js` (`executeMission`, `fireAndMovement`; SquadAI's `squadCommand` owner) | stable squad plan: fireteams, formation, order anchor, fire and movement (assault authorisation, bound cycle and team), corner pauses, defensive posts, regroup, objective phase; the only writer of `commandPhase` (setup states it through `initialPhase`) | do obstacle avoidance; republish orders every tick |
+| Meso: Squad Leader / Squad Command | `modules/16-squad-plan-stability.js` (`executeMission`, `fireAndMovement`; SquadAI's `squadCommand` owner) | stable squad plan: fireteams, formation, order anchor, fire and movement (assault authorisation, bound cycle and team), corner pauses, defensive posts, regroup, objective phase; the only writer of `commandPhase` (setup states it through `initialPhase`) | do obstacle avoidance; republish orders every tick |
 | Micro: Engagement | `engagement.js` (+ `modules/44-combat-urgency.js` drills on its `afterDrill` slot) | per-soldier state machine, stance (`prone`/`crawling`/`tacticalCrouch`), permission to fire, combat proposals to the resolver, the squad contact report (`inContact`, base of fire, pinned) | write final destination; pick objectives; decide squad bounds |
 | Perception + shared primitives | `squad-ai.js` | who sees whom, shot resolution, shared `squad.contact`, `areaFire` suppression; hosts the declared extension points (`SquadAI.extend`) and `BattleLeases`; a status-only squad update when no `squadCommand` owner is loaded | set stance/destination in combat |
 | Tactical positions | `modules/20-building-hardpoints.js` (`BattleTacticalPositions`: `claim`/`current`/`station`/`release`) | window/hardpoint reservations `assigned→ingress→occupying→holding→released`, committed ingress route | |
@@ -149,10 +149,10 @@ Intent flows down and status flows up. No layer rewrites another's state.
 Brief lifecycle: `issued → executing → completed | invalid | failed | superseded`. The General
 wakes only on: initial brief, mission complete or invalid, reserve due, a defence request that
 changes the task, an objective vacated or changing control on a defend brief, a 120 s strategic
-stall, a Captain `doctrine-review` escalation, or a merge (`squad-reconstituted`). Wakes are
+stall, a Squad Leader `doctrine-review` escalation, or a merge (`squad-reconstituted`). Wakes are
 exported under `macroCommand`.
 
-**Reconstitution** (`commander-ai.js` `reconstitute`, Macro only). A retreating squad's Captain
+**Reconstitution** (`commander-ai.js` `reconstitute`, Macro only). A retreating squad's Squad Leader
 walks it home (`_assembly` `to-base`); home and out of contact it is `at-base`. Only `at-base` squads
 form the pool, so no group is planned for a squad still on its way. When the pool holds 10+ survivors
 the General groups the fewest squads that reach 10 (never splitting one), picks the objective it will
@@ -165,7 +165,21 @@ at the objective; after the merge the General sends the squad there unless it ch
 Once all are there the General merges them: the strongest squad with a living leader survives,
 otherwise the most senior survivor is promoted (ex-leader, rifleman, scout, gunner last). The re-formed
 squad has `leaderId`, `establishment` 10 and only living members; absorbed squads are `disbanded`.
-Command is `SquadAI.leaderOf`/`isLeader`, never `role === 'captain'` (that is the pistol role).
+Command is `SquadAI.leaderOf`/`isLeader`, never a role check.
+
+**Ranks.** The squad leader is the `sergeant` role (US Staff Sergeant, GE Unteroffizier); the Meso
+layer is the Squad Leader (`squad-leader`: `squadCommand` owner and lease owner). "Captain" is only
+the company echelon in `00-battle-sides.js`. Names that stay `captain*` on purpose, because stored or
+exported data uses them: the policy keys `captainlessCohesion`, `cornerNoCaptainExtra`,
+`captainDead` (server genomes, `battle_policy.php`), the telemetry and wake names
+`decision-captain-request` and `captain-request`, the export keys `captainAlive`, `captainRequest`,
+`captainWindowAssignments` and `captainlessSamples`, the module file and system id
+`13-captain-command-throttle`, and the trait seed in `11-soldier-individuality.js` (it still hashes
+`captain` so existing seeds replay the same battle).
+
+**Pending: sergeant weapons.** Squad leaders still carry the pistol (`ROLES.sergeant.weapon`). Real
+squad leaders carried a rifle or SMG (US M1 Garand or Thompson, GE MP40). Changing it changes
+gameplay (range, damage, fire rate), so do it as its own change with a paired benchmark.
 State and counters: `missionState(sim).reconstitution`.
 
 **Engagement states:** `advance → orient → (decide) → bound → engage`, then
@@ -174,7 +188,7 @@ State and counters: `missionState(sim).reconstitution`.
 `ALERT_HOLD`. Fire requires: a live target, not reloading, past `eng.fireReadyAt`, speed ≤12% and
 not crawling, within `AIM_CONE` (~12.6°), and gunner emplaced. `squad.inContact` is
 `contactCount>0 || suppressors>0`. Suppression deals no damage, only pins. There are at most
-`MAX_SUPPRESSORS` suppressors, the MG first. The Captain (`fireAndMovement`) sends one fireteam
+`MAX_SUPPRESSORS` suppressors, the MG first. The Squad Leader (`fireAndMovement`) sends one fireteam
 forward every `BOUND_CYCLE` if ≥2 are shooting, only in an assault phase, and the MG never moves.
 Engagement constants live at the top of `engagement.js` (`BattleEngagement.tuning`), bound timing in
 `16-squad-plan-stability.js`; both are deliberately outside the policy genome. Sight and cover are
@@ -189,7 +203,7 @@ on module file order (`14-z-ballistic-raycast.js` once silently discarded the LO
 **A command hold is a lease.** Commitments that block another layer's intent change live in
 `BattleLeases` (`squad-ai.js`, one table per squad: kind, owner, since, until, reason, release, plus
 an ended log): `tactical-plan`, `regroup`, `regroup-cooldown`, `regroup-bypass`, `corner-hold`,
-`bound`, `bound-cycle` (Captain) and `objective-security` (capture zone). `holds()` is `t < until`.
+`bound`, `bound-cycle` (Squad Leader) and `objective-security` (capture zone). `holds()` is `t < until`.
 The session export lists each squad's live and recently ended leases and `missionHeldBy`. Don't add
 a new `...Until` field for a hold. Deliberately not leases: fireteam order renewal (on the order
 record), the garrison request (a standing constraint), and execution timing inside one owner.
@@ -256,7 +270,7 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
 - Hot path is now navigation replans (~3.3 s) and `sightBlocked` (~3.5 s) per ~13.7 s battle.
 - Movement Progress ignores retreat by design; `movementStopReason` is the observable.
 - Next architecture steps: a versioned `SquadIntent` + one intent resolver (leases now exist; lease
-  priority, progress tests and a graph view do not), a real Captain local planner, then
+  priority, progress tests and a graph view do not), a real Squad Leader local planner, then
   platoon/company command, fallback/counterattack, succession and combined arms. Capture Zone and
   Prepared Defense already publish *requests* that Force Command accepts; follow that pattern.
 - Meeting engagements deliberately get no runtime engineer fortification (`engineerTick` exits early).

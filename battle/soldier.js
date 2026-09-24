@@ -9,7 +9,7 @@
   function c3(hex){hex=hex.replace('#','');return new BABYLON.Color3(parseInt(hex.slice(0,2),16)/255,parseInt(hex.slice(2,4),16)/255,parseInt(hex.slice(4,6),16)/255);}
   var FACTIONS={us:{uniform:c3('5b6236'),helmet:c3('47502f'),trim:c3('d9b53c')},ge:{uniform:c3('4c4f42'),helmet:c3('363829'),trim:c3('c8c8c8')}};
   var SKIN=c3('c9a066'),PACK=c3('4a3d2a');
-  var ROLE_BUILD={captain:{torsoW:.48,scale:1.04,cap:false},rifleman:{torsoW:.48,scale:1.0,cap:false},gunner:{torsoW:.56,scale:1.02,cap:false},scout:{torsoW:.43,scale:.98,cap:true}};
+  var ROLE_BUILD={sergeant:{torsoW:.48,scale:1.04,cap:false},rifleman:{torsoW:.48,scale:1.0,cap:false},gunner:{torsoW:.56,scale:1.02,cap:false},scout:{torsoW:.43,scale:.98,cap:true}};
   /* ww2fps treats the on-foot body as ~1.7 m tall. Keep the procedural test rig in that scale. */
   var BODY={heightM:1.70,pelvisY:.91,thigh:.40,shin:.39,upperArm:.31,forearm:.29};
 
@@ -71,7 +71,7 @@
       return{thigh:thigh,shin:shin,foot:foot,toe:toe};
     }
     var armR=arm(1),armL=arm(-1),legR=leg(1),legL=leg(-1);
-    if(role==='captain')box(scene,[.10,.05,.03],pal.trim,armR.upperArm,[0,-.09,.08]);
+    if(role==='sergeant')box(scene,[.10,.05,.03],pal.trim,armR.upperArm,[0,-.09,.08]);
 
     /* Weapon origin stays semantic and model-independent. It lives on the chest rather than the
        world root so crouch/lean follow the torso; prone counter-rotation keeps the barrel forward. */

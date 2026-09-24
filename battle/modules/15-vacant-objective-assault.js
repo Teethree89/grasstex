@@ -3,7 +3,7 @@
    strategic fact the General consumes when it wakes (`objective-vacated`) and when it chooses a
    doctrine action: an empty ownership flag is not a reason to hold or regroup 100 m away unless a
    live enemy is close enough to demand an immediate contact drill. This module never writes squad
-   state; the Captain executes whatever mission results. */
+   state; the Squad Leader executes whatever mission results. */
 (function (root) {
   'use strict';
   if (!root.BattleObjectiveSystem || root.BattleVacantObjectiveAssault) return;
