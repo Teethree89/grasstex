@@ -139,8 +139,8 @@ function recentForTarget(target,seconds,limit){
   var sim=root.__battle__,cut=now(sim)-(seconds==null?16:seconds),a=history(target,null,MAX_TARGET_EVENTS).filter(function(e){return e.time>=cut;});return a.slice(Math.max(0,a.length-(limit||10)));
 }
 
-/* Owner contexts: every module hook registered so far, and Engagement's per-soldier update. */
-function ownerForSystem(id){id=String(id||'').toLowerCase();if(id.indexOf('capture')>=0)return'capture-zone';if(id.indexOf('squad-plan')>=0||id.indexOf('stability')>=0)return'squad-stability';if(id.indexOf('building-hardpoint')>=0)return'building-hardpoints';if(id.indexOf('engineer')>=0)return'engineer';if(id.indexOf('defender')>=0||id.indexOf('defense')>=0)return'prepared-defense';if(id.indexOf('order-provenance')>=0)return'diagnostics';return'module:'+id;}
+/* Owner contexts: every registered module hook (wrapped at load and again at battle start), and Engagement's per-soldier update. */
+function ownerForSystem(id){id=String(id||'').toLowerCase();if(id.indexOf('capture')>=0)return'capture-zone';if(id==='squad-command'||id.indexOf('squad-plan')>=0||id.indexOf('stability')>=0)return'squad-stability';if(id.indexOf('building-hardpoint')>=0)return'building-hardpoints';if(id.indexOf('engineer')>=0)return'engineer';if(id.indexOf('defender')>=0||id.indexOf('defense')>=0)return'prepared-defense';if(id.indexOf('order-provenance')>=0)return'diagnostics';return'module:'+id;}
 function wrapSystemHooks(){
   var systems=root.BattleModules.listSystems?root.BattleModules.listSystems():[],hooks=['onBattleStart','onBattleRestart','onCommanderTick','beforeBattleRestart'];
   systems.forEach(function(system){
@@ -204,7 +204,8 @@ function installUi(){
 function refreshUi(){if(typeof document==='undefined')return;requestAnimationFrame(function(){renderPanel();decorateLoopCards();});}
 
 var nextSample=0;
-function installSim(sim){simStore(sim);instrumentAll(sim);sampleAll(sim);nextSample=0;refreshUi();}
+/* Modules that load after this one register their systems later; wrap again once all are registered. */
+function installSim(sim){wrapSystemHooks();simStore(sim);instrumentAll(sim);sampleAll(sim);nextSample=0;refreshUi();}
 function resetSim(sim){if(!sim)return;sim._orderProvenance={version:VERSION,events:[],conflicts:[],seq:0,installedAt:now(sim)};nextSample=0;}
 function tick(sim){
   instrumentAll(sim);
