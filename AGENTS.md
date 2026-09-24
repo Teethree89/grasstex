@@ -143,7 +143,7 @@ Intent flows down and status flows up. No layer rewrites another's state.
 | Tactical positions | `modules/20-building-hardpoints.js` (`BattleTacticalPositions`: `claim`/`current`/`station`/`release`) | window/hardpoint reservations `assigned→ingress→occupying→holding→released`, committed ingress route | |
 | Tactical routing | `modules/52-survival-tactical-route.js` | safe ingress, suppressed cover detours | resurrect an obsolete objective |
 | Movement Resolver | `movement-resolver.js` | **sole normal-runtime writer of `soldier.destination`**; coalesces Engagement's per-tick combat requests and arbitrates Meso vs Micro proposals | act as a garbage collector for redundant producers |
-| Diagnostics | `modules/36-order-provenance.js` (writer provenance, fast setters, 1.6 s in-place sampler), `32` Loop Watch, `43` forward progress, `99` session export | observe only: removing them leaves a battle identical (~4% wall time) | change gameplay |
+| Diagnostics | `modules/36-order-provenance.js` (writer provenance, fast setters, 1.6 s in-place sampler), `32` Loop Watch, `43` forward progress, `99` the one diagnostics exporter (full, loops and orders via `BattleDiagnosticsExport.snapshot(kind)`; `38` only adds its AI Graph buttons) | observe only: removing them leaves a battle identical (~4% wall time) | change gameplay |
 | Navigation | `battle-navigation.js`, `modules/39-navigation-physicality-debug.js` | doors, stations, pathfinding, 0.45 m body legality | assign or release tasks |
 | Personal space | `modules/51-soldier-personal-space.js` | local physical correction | own commands |
 
@@ -204,8 +204,13 @@ on module file order (`14-z-ballistic-raycast.js` once silently discarded the LO
 `BattleLeases` (`squad-ai.js`, one table per squad: kind, owner, since, until, reason, release, plus
 an ended log): `tactical-plan`, `regroup`, `regroup-cooldown`, `regroup-bypass`, `corner-hold`,
 `bound`, `bound-cycle`, `succession` (Squad Leader) and `objective-security` (capture zone). `holds()` is `t < until`.
-The session export lists each squad's live and recently ended leases and `missionHeldBy`. Don't add
-a new `...Until` field for a hold. Deliberately not leases: fireteam order renewal (on the order
+Each owner declares its kinds with `BattleLeases.define(kind, {priority, timer, progress})`: priority
+orders live leases (`active()`, `top()`); `timer: true` marks a pure clock that `prune()` ends as
+`expired` once its time is up (the Squad Leader prunes each command tick); kinds whose expired record
+still means something (`objective-security`, `succession`, `regroup`) are never timers; `progress` is
+a read-only "is this hold getting anywhere?" test. The session export lists each squad's live and
+recently ended leases and `missionHeldBy`, and the AI Graph **Leases** panel (`modules/37-lease-panel.js`)
+shows them live. Don't add a new `...Until` field for a hold. Deliberately not leases: fireteam order renewal (on the order
 record), the garrison request (a standing constraint), and execution timing inside one owner.
 
 **Presentation never touches the combat RNG.** Voice, FX and audio must not draw from
@@ -269,8 +274,7 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
 - Strategic-stall wakes mostly re-pick the same objective, because doctrine has no alternative.
 - Hot path is now navigation replans (~3.3 s) and `sightBlocked` (~3.5 s) per ~13.7 s battle.
 - Movement Progress ignores retreat by design; `movementStopReason` is the observable.
-- Next architecture steps: a versioned `SquadIntent` + one intent resolver (leases now exist; lease
-  priority, progress tests and a graph view do not), a real Squad Leader local planner, then
+- Next architecture steps: a versioned `SquadIntent` + one intent resolver (leases, with priority, progress tests and a graph view, now exist), a real Squad Leader local planner, then
   platoon/company command, fallback/counterattack and combined arms. Capture Zone and
   Prepared Defense already publish *requests* that Force Command accepts; follow that pattern.
 - Meeting engagements deliberately get no runtime engineer fortification (`engineerTick` exits early).

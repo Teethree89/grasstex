@@ -51,6 +51,16 @@ test('resolver keeps a hold point sticky under small body drift',()=>{
   b.time+=.6;M.proposeCombat(s,{x:2.7,z:3.4},b,'hold',.8,{source:'engagement',reason:'contact'});
   assert.deepEqual(s._movementResolver.combat.intentPoint,{x:2,z:3});
 });
+test('resolver coalesces the weapon cycle reload hold per source',()=>{
+  const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman']}),s=q.members[0],M=r.BattleMovementResolver;
+  for(let i=0;i<8;i++){M.proposeCombat(s,{x:2+i*.05,z:3},b,'reload-hold',null,{source:'weapon-cycle',reason:'reload pause'});b.time+=.05;}
+  const m=b._movementGoalStats;
+  assert.equal(m.bySource['weapon-cycle'].requests,1,'a reload pause is one decision, not one per AI tick');
+  assert.equal(m.combatIntentCoalesced,7);assert.deepEqual(s._movementResolver.combat.intentPoint,{x:2,z:3},'the reload spot is sticky under drift');
+  M.proposeCombat(s,{x:2,z:3},b,'reload-hold',null,{source:'engagement',reason:'reload'});
+  assert.equal(m.bySource.engagement.requests,1,'another source is never coalesced into the weapon cycle intent');
+  assert.equal(s._movementResolver.combat.owner,'engagement');
+});
 test('resolver publishes material combat intent changes immediately',()=>{
   const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman']}),s=q.members[0],M=r.BattleMovementResolver;
   M.proposeCombat(s,{x:2,z:3},b,'hold',.8,{source:'test',reason:'contact'});

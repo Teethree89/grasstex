@@ -261,13 +261,23 @@
      table per squad (sq._leases) says which commitments are live, who owns each, why it was taken,
      when it lapses and what releases it early, so no hold is an anonymous `...Until` field.
      `until` is an absolute sim time (Infinity while a condition, not the clock, holds it);
-     holds() is `t < until`, the same test every migrated timer used. */
-  var LEASE_LOG = 8;
+     holds() is `t < until`, the same test every migrated timer used.
+     Each kind is declared once by its owner (define): its priority (which hold matters most when
+     several are live), whether it is a pure timer (nothing reads it once expired, so prune() may end
+     it), and an optional read-only progress test answering "is this hold getting anywhere?". */
+  var LEASE_LOG = 8,
+    LEASE_KINDS = {};
   function leaseTable(sq) {
     if (!sq._leases) sq._leases = { live: {}, ended: [] };
     return sq._leases;
   }
   var Leases = {
+    define: function (kind, spec) {
+      LEASE_KINDS[kind] = { priority: +spec.priority || 0, timer: !!spec.timer, progress: spec.progress || null, label: spec.label || kind };
+    },
+    kinds: function () {
+      return LEASE_KINDS;
+    },
     grant: function (sq, kind, owner, since, until, reason, release, data) {
       var l = { kind: kind, owner: owner, since: since, until: until, reason: reason || kind, release: release || 'expiry' };
       if (data) l.data = data;
@@ -309,23 +319,58 @@
     clear: function (sq) {
       if (sq) sq._leases = { live: {}, ended: [] };
     },
-    /* Live leases at time t, for diagnostics and the operator view. */
+    /* End pure-timer leases whose time has run out, logged as 'expired' at their expiry time.
+       Leases whose expired record still means something (a used objective-security window, a
+       succession that is due, a regroup released by its own age test) are never pruned. */
+    prune: function (sq, t) {
+      var live = sq && sq._leases && sq._leases.live;
+      if (!live) return 0;
+      var n = 0;
+      Object.keys(live).forEach(function (kind) {
+        var def = LEASE_KINDS[kind],
+          l = live[kind];
+        if (def && def.timer && t >= l.until) {
+          Leases.end(sq, kind, l.until, 'expired');
+          n++;
+        }
+      });
+      return n;
+    },
+    /* Live leases at time t, highest priority first, for diagnostics and the operator view. */
     active: function (sq, t) {
       var live = (sq && sq._leases && sq._leases.live) || {},
         out = [];
       Object.keys(live).forEach(function (kind) {
-        var l = live[kind];
-        if (t < l.until)
-          out.push({
-            kind: l.kind,
-            owner: l.owner,
-            reason: l.reason,
-            release: l.release,
-            since: l.since,
-            remaining: isFinite(l.until) ? +(l.until - t).toFixed(2) : null
-          });
+        var l = live[kind],
+          def = LEASE_KINDS[kind] || {},
+          progress = null;
+        if (!(t < l.until)) return;
+        if (def.progress) {
+          try {
+            progress = def.progress(sq, l, t);
+          } catch (_) {
+            progress = null;
+          }
+        }
+        out.push({
+          kind: l.kind,
+          owner: l.owner,
+          priority: def.priority || 0,
+          reason: l.reason,
+          release: l.release,
+          since: l.since,
+          remaining: isFinite(l.until) ? +(l.until - t).toFixed(2) : null,
+          progress: progress
+        });
+      });
+      out.sort(function (a, b) {
+        return b.priority - a.priority || (a.kind < b.kind ? -1 : 1);
       });
       return out;
+    },
+    /* The live lease that matters most right now, or null. */
+    top: function (sq, t) {
+      return Leases.active(sq, t)[0] || null;
     }
   };
 

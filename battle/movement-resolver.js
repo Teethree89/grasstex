@@ -5,11 +5,12 @@
    resolver selects one winning intent, lets the tactical-route layer substitute a survival-aware
    waypoint when needed, and remains the sole writer of the physical destination.
 
-   Engagement re-requests its combat movement every AI tick. Those repeats are coalesced here, in
-   the same place that decides whether they win: a stable intent republishes at most every
-   INTENT_REFRESH seconds and lives at least INTENT_TTL, and a hold point is sticky within
-   HOLD_INTENT_EPS so body drift does not redefine where a man stopped to fight. Other producers
-   (weapon cycle, tests) propose once per decision and go straight to arbitration.
+   Engagement and the weapon cycle re-request their combat movement every AI tick. Those repeats are
+   coalesced here, per source, in the same place that decides whether they win: a stable intent
+   republishes at most every INTENT_REFRESH seconds, and a hold point is sticky within
+   HOLD_INTENT_EPS so body drift does not redefine where a man stopped (Engagement intents also live
+   at least INTENT_TTL). Other producers (tests) propose once per decision and go straight to
+   arbitration.
 */
 (function (root) {
   'use strict';
@@ -25,6 +26,7 @@
     INTENT_EPS = 0.18,
     HOLD_INTENT_EPS = 1.0,
     STICKY_HOLDS = { 'hold': 1, 'contact-reaction': 1, 'reload-hold': 1 };
+  var COALESCED_SOURCES = { engagement: 1, 'weapon-cycle': 1 };
   function point(v) {
     return v && isFinite(+v.x) && isFinite(+v.z) ? { x: +v.x, z: +v.z } : null;
   }
@@ -300,9 +302,11 @@
     var st = state(soldier),
       source = meta.source || 'engagement',
       reason = meta.reason || kind;
-    if (meta.source === 'engagement') {
-      var t = now(battle),
-        intent = st.intent,
+    if (COALESCED_SOURCES[meta.source]) {
+      var engagement = source === 'engagement',
+        intents = st.intents || (st.intents = {}),
+        t = now(battle),
+        intent = intents[source],
         live = st.combat;
       reason = String(reason || 'combat');
       count(battle, 'combatIntentRequests');
@@ -314,19 +318,26 @@
         intent.score === meta.score &&
         distance(intent.point, raw) <= (STICKY_HOLDS[kind] ? HOLD_INTENT_EPS : INTENT_EPS)
       );
-      if (same && t < intent.refreshAt && live && live.kind === kind) {
+      if (
+        same &&
+        t < intent.refreshAt &&
+        live &&
+        live.kind === kind &&
+        (engagement || live.owner === source)
+      ) {
         count(battle, 'combatIntentCoalesced');
         return live;
       }
       if (same) raw = { x: intent.point.x, z: intent.point.z };
-      st.intent = {
+      intents[source] = {
         point: { x: raw.x, z: raw.z },
         kind: kind,
         reason: reason,
         score: meta.score,
         refreshAt: t + INTENT_REFRESH
       };
-      ttl = Math.max(INTENT_TTL, ttl == null ? INTENT_TTL : Math.max(0.2, +ttl || INTENT_TTL));
+      if (engagement)
+        ttl = Math.max(INTENT_TTL, ttl == null ? INTENT_TTL : Math.max(0.2, +ttl || INTENT_TTL));
     }
     var p = proposal(source, raw, battle, kind || 'combat', true, ttl == null ? COMBAT_TTL : ttl);
     if (!p) return null;

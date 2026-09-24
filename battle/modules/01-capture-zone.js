@@ -358,6 +358,16 @@
     sq._captureZoneDefenseRequest = null;
     if (root.BattleLeases) root.BattleLeases.end(sq, 'objective-security', +(sim.time || 0), reason || 'released');
   }
+  /* Objective security is not a pure timer: its expired record marks the 18 s window as used, so a
+     squad already holding the zone is not granted a fresh one. It is never pruned. */
+  if (root.BattleLeases)
+    root.BattleLeases.define('objective-security', {
+      priority: 80,
+      progress: function (sq) {
+        var r = sq._captureZoneDefenseRequest;
+        return { ok: null, detail: r ? r.reason : 'no defense request' };
+      }
+    });
   function defendCaptureZones(sim) {
     var L = root.BattleLeases;
     ['us', 'ge'].forEach(function (faction) {
