@@ -59,6 +59,7 @@ for s in 12345 1 2 3 5 8 13 21; do HARNESS_SEED=$s node tools/ai-sim-harness/run
 | `extension-order-check.js` | No module replaces `SquadAI.tryFire`/`areaFire`/`updateSoldier`/`updateSquad` or `BattleEngagement.updateSoldier`; the declared fire order (ammunition → ballistics range → trigger-time LOS) holds; undeclared extensions throw |
 | `lease-check.js` | `BattleLeases` primitive, tactical-plan and regroup lease lifecycles, regroup re-forms on the rally point |
 | `reconstitution-check.js` | Retreated squads home and out of contact reaching 10 survivors group (fewest squads; none planned en route), march to the rally point, merge under one leader (promotion never picks the gunner), get re-tasked; below-strength groups dissolve; Macro OFF does nothing |
+| `succession-check.js` | A killed leader is replaced by the most senior survivor after the 6 s `succession` lease, never more than one leader, the gunner only as the last man, successors replaced in turn, no lease on a led or wiped-out squad, seniority order |
 | `voice-determinism-check.js` | Voice callouts never draw from the combat RNG: a battle is identical with and without voice |
 
 `harness.js` mirrors `stepMovement()` from `battle/battle-sim.js`. **If that function changes,
@@ -165,7 +166,11 @@ at the objective; after the merge the General sends the squad there unless it ch
 Once all are there the General merges them: the strongest squad with a living leader survives,
 otherwise the most senior survivor is promoted (ex-leader, rifleman, scout, gunner last). The re-formed
 squad has `leaderId`, `establishment` 10 and only living members; absorbed squads are `disbanded`.
-Command is `SquadAI.leaderOf`/`isLeader`, never a role check.
+Command is `SquadAI.leaderOf`/`isLeader`, never a role check. **Succession** (Squad Leader,
+`updateSuccession`): a squad whose leader is killed is leaderless for the 6 s `succession` lease
+(leaderless cohesion/corner rules, 0.8 accuracy), then `SquadAI.mostSenior` (sergeant, rifleman,
+scout, gunner last; lowest id breaks ties) takes command and slot 0 and the penalty ends. At a merge
+the most senior surviving leader commands.
 
 **Ranks.** The squad leader is the `sergeant` role (US Staff Sergeant, GE Unteroffizier); the Meso
 layer is the Squad Leader (`squad-leader`: `squadCommand` owner and lease owner). "Captain" is only
@@ -176,11 +181,6 @@ exported data uses them: the policy keys `captainlessCohesion`, `cornerNoCaptain
 `captainWindowAssignments` and `captainlessSamples`, the module file and system id
 `13-captain-command-throttle`, and the trait seed in `11-soldier-individuality.js` (it still hashes
 `captain` so existing seeds replay the same battle).
-
-**Pending: sergeant weapons.** Squad leaders still carry the pistol (`ROLES.sergeant.weapon`). Real
-squad leaders carried a rifle or SMG (US M1 Garand or Thompson, GE MP40). Changing it changes
-gameplay (range, damage, fire rate), so do it as its own change with a paired benchmark.
-State and counters: `missionState(sim).reconstitution`.
 
 **Engagement states:** `advance → orient → (decide) → bound → engage`, then
 `pinned`, `assault`, `alert`, `withdraw`, `station`. `orient` never fires (REACT 0.45 s scout to
@@ -203,7 +203,7 @@ on module file order (`14-z-ballistic-raycast.js` once silently discarded the LO
 **A command hold is a lease.** Commitments that block another layer's intent change live in
 `BattleLeases` (`squad-ai.js`, one table per squad: kind, owner, since, until, reason, release, plus
 an ended log): `tactical-plan`, `regroup`, `regroup-cooldown`, `regroup-bypass`, `corner-hold`,
-`bound`, `bound-cycle` (Squad Leader) and `objective-security` (capture zone). `holds()` is `t < until`.
+`bound`, `bound-cycle`, `succession` (Squad Leader) and `objective-security` (capture zone). `holds()` is `t < until`.
 The session export lists each squad's live and recently ended leases and `missionHeldBy`. Don't add
 a new `...Until` field for a hold. Deliberately not leases: fireteam order renewal (on the order
 record), the garrison request (a standing constraint), and execution timing inside one owner.
@@ -271,9 +271,17 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
 - Movement Progress ignores retreat by design; `movementStopReason` is the observable.
 - Next architecture steps: a versioned `SquadIntent` + one intent resolver (leases now exist; lease
   priority, progress tests and a graph view do not), a real Squad Leader local planner, then
-  platoon/company command, fallback/counterattack, succession and combined arms. Capture Zone and
+  platoon/company command, fallback/counterattack and combined arms. Capture Zone and
   Prepared Defense already publish *requests* that Force Command accepts; follow that pattern.
 - Meeting engagements deliberately get no runtime engineer fortification (`engineerTick` exits early).
+- **Sergeant weapons (pending).** Squad leaders still carry the pistol (`ROLES.sergeant.weapon`). Real
+  squad leaders carried a rifle or SMG (US M1 Garand or Thompson, GE MP40). It changes gameplay
+  (range, damage, fire rate), so make it its own change with a paired benchmark.
+- **General concentration of effort (pending).** Each side's 5 squads spread over ~2.8 of ~4.5
+  objectives. In the 2026-09-24 standard benchmark (meeting battles) a side spread over 3+ objectives
+  won 38% (n=26) vs 55% at 2-3 (n=84): suggestive, not significant. A main effort belongs to the
+  General's objective choice (`chooseObjective` saturation), not a new layer. A platoon layer is not
+  warranted at 5 squads per side (one reinforced platoon); revisit at ~9+ squads or combined arms.
 
 ## Soldiers, weapons, animation
 

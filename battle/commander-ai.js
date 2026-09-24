@@ -396,8 +396,7 @@
      missionState(sim).reconstitution. */
   var RECON_STRENGTH = 10, // one full rifle squad (SquadAI.COMPOSITION)
     RALLY_RADIUS = 20,
-    RALLY_FORWARD = 30,
-    PROMOTION_ORDER = { sergeant: 0, rifleman: 1, scout: 2, gunner: 9 };
+    RALLY_FORWARD = 30;
   function reconState(sim) {
     var st = missionState(sim);
     return (
@@ -515,18 +514,6 @@
     endGroup(st, g, 'dissolved', reason, +sim.time || 0);
     telemetry(sim, 'decision-reconstitute-dissolved', { faction: g.faction, group: g.id, reason: reason });
   }
-  /* Most senior survivor: a former squad leader, then a rifleman, then a scout; the gunner stays on the
-     gun unless nobody else is left. Ties go to the lowest soldier id, so replays promote the same man. */
-  function promote(men) {
-    var best = null;
-    for (var i = 0; i < men.length; i++) {
-      var s = men[i],
-        rank = s.role in PROMOTION_ORDER ? PROMOTION_ORDER[s.role] : 3;
-      if (!best || rank < best.rank || (rank === best.rank && s.id < best.soldier.id))
-        best = { soldier: s, rank: rank };
-    }
-    return best && best.soldier;
-  }
   /* Slot 0 is the leader, 1 the squad's gun, 2-3 its scouts; every other man - a second gunner, a third
      scout, a former leader - takes a rifleman slot from 4 up (`slotRole`, SquadAI.formationSlot). */
   function assignSlots(men, leader) {
@@ -553,9 +540,18 @@
     var st = reconState(sim),
       t = +sim.time || 0,
       order = squads.slice().sort(strongestFirst(sim, g.faction)),
-      led = order.filter(function (sq) {
-        return !!root.SquadAI.leaderOf(sq);
-      }),
+      /* The most senior surviving leader takes command (a sergeant outranks a rifleman who stepped up
+         in combat), the stronger squad first among equals; `order` is strongest first and sort is stable. */
+      led = order
+        .filter(function (sq) {
+          return !!root.SquadAI.leaderOf(sq);
+        })
+        .sort(function (a, b) {
+          return (
+            root.SquadAI.seniority(root.SquadAI.leaderOf(a)) -
+            root.SquadAI.seniority(root.SquadAI.leaderOf(b))
+          );
+        }),
       survivor = led[0] || order[0],
       men = [];
     [survivor]
@@ -571,7 +567,7 @@
       });
     var leader = root.SquadAI.leaderOf(survivor),
       promoted = !leader;
-    if (promoted) leader = promote(men);
+    if (promoted) leader = root.SquadAI.mostSenior(men);
     assignSlots(men, leader);
     men.forEach(function (s) {
       if (root.BattleTacticalPositions) root.BattleTacticalPositions.release(s, sim, 'reconstituted');

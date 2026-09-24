@@ -115,21 +115,22 @@ test('a pool of five threes groups the four strongest; the fifth keeps waiting',
   assert.equal(living(q).length,12);assert.equal(left.length,1);assert.equal(left[0].state,'retreat');assert.ok(!left[0]._reconGroup);
   invariants(w,15);
 });
-test('the leader of the strongest led squad takes command',()=>{
+test('the most senior leader takes command: a sergeant outranks a rifleman who stepped up',()=>{
   const w=world(),noLead=['rifleman','rifleman','rifleman','scout','gunner'];
   squad(w,0,4,noLead);squad(w,1,4,noLead);const c=squad(w,2,3);run(w,420);
   const q=merged(w),cap=c.members.find(s=>s.role==='sergeant');
   assert.equal(q,c,'the squad with a living leader keeps its identity');assert.equal(q.leaderId,cap.id);
   assert.equal(recon(w).promotions,0);invariants(w,11);
 });
-test('with every leader dead the most senior survivor is promoted, never the gunner',()=>{
+test('with every leader dead each squad\'s successor steps up and the merge keeps one of them',()=>{
   const w=world(),keep=['gunner','scout','rifleman','rifleman'];[0,1,2].forEach(l=>squad(w,l,4,keep).accuracyMultiplier=.8);run(w,420);
   const q=merged(w),lead=q.members.find(s=>s.id===q.leaderId);
-  assert.equal(lead.role,'rifleman');assert.equal(recon(w).promotions,1);
+  assert.equal(lead.role,'rifleman');assert.equal(recon(w).promotions,0,'successors already lead; the merge promotes nobody');
+  assert.equal(w.events.filter(e=>e.type==='decision-leader-succession').length,3);
   assert.equal(q.accuracyMultiplier,1,'the leaderless accuracy penalty ends once someone leads');
   assert.equal(lead.slotIndex,0);assert.equal(q.members.filter(s=>s.role==='gunner'&&!s.slotRole).length,1,'one gun keeps the gunner slot');
   assert.ok(q.members.filter(s=>s.role==='gunner').every(s=>s===q.members.find(m=>m.slotIndex===1)||s.slotRole==='rifleman'));
-  assert.equal(w.events.filter(e=>e.type==='decision-leader-promoted').length,1);invariants(w,12);
+  invariants(w,12);
 });
 test('a group that falls below strength dissolves back to the pool',()=>{
   const w=world();[0,1,2].forEach(l=>squad(w,l,4));untilGrouped(w,120);
