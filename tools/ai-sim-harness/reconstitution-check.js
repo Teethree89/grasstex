@@ -8,7 +8,7 @@ const assert=require('node:assert/strict'),fs=require('fs'),path=require('path')
 function load(r,p){new Function('window','globalThis','console',fs.readFileSync(path.join(H.REPO,p),'utf8'))(r,r,{log(){},warn(){}});}
 let n=0;function test(name,fn){fn();n++;console.log('PASS '+name);}
 
-const HOME_Z=-500,FORWARD=150,LANES=[-300,-100,100,300,500];
+const C_TICK=.45,HOME_Z=-500,FORWARD=150,LANES=[-300,-100,100,300,500];
 function world(opts){
   opts=opts||{};H.resetIds();
   const r=H.bootstrap({modules:false}),systems={},events=[];
@@ -20,12 +20,12 @@ function world(opts){
   const b=H.makeBattle(r);b.macroCommandEnabled=opts.macro!==false;b.scene={metadata:{}};
   return{r,b,captain:systems['squad-command'],events,sq:[]};
 }
-/* A squad spawned at its lane's home, walked forward, then cut down to `alive` men. `keep` picks
-   which roles survive (default: the leader first, then riflemen). */
-function squad(w,lane,alive,keep){
+/* A squad spawned at its lane's home, walked `forward` metres out (default 150), then cut down to
+   `alive` men. `keep` picks which roles survive (default: the leader first, then riflemen). */
+function squad(w,lane,alive,keep,forward){
   const q=H.addSquad(w.r,w.b,{id:'us-'+lane,faction:'us',x:LANES[lane],z:HOME_Z,objective:{x:LANES[lane],z:0}});
   q.route=[];q.commandRole='center';
-  q.members.forEach(s=>{s.root.position.z+=FORWARD;s.destination={x:s.root.position.x,z:s.root.position.z};});
+  q.members.forEach(s=>{s.root.position.z+=forward==null?FORWARD:forward;s.destination={x:s.root.position.x,z:s.root.position.z};});
   const order=keep||['captain','rifleman','rifleman','rifleman','rifleman','rifleman','rifleman','scout','scout','gunner'];
   const survivors=[];order.forEach(role=>{const s=q.members.find(m=>m.role===role&&!survivors.includes(m));if(s&&survivors.length<alive)survivors.push(s);});
   q.members.forEach(s=>{if(!survivors.includes(s))w.b.killSoldier(s,null);});
@@ -42,6 +42,13 @@ function invariants(w,expectAlive){
   w.b.factions.us.squads.forEach(q=>q.members.forEach(s=>{assert.ok(!seen.has(s.id)||s.dead,'soldier '+s.id+' is in two squads');seen.add(s.id);}));
   w.b._roster.us.filter(s=>!s.dead).forEach(s=>assert.ok(s.squad.members.includes(s),'living soldier '+s.id+' belongs to his own squad'));
   assert.equal(w.b.factions.us.alive,expectAlive,'merging never changes the side\'s alive count');
+}
+/* Run until the General has planned a group; returns it with every grouped squad's distance from home
+   at that moment. */
+function untilGrouped(w,limit){
+  let seen=null;
+  for(let t=0;t<limit&&!seen;t+=C_TICK)run(w,C_TICK,()=>{const g=recon(w).active[0];if(g&&!seen)seen={group:g,time:w.b.time,homeDist:g.squads.map(id=>{const q=w.sq.find(x=>x.id===id),p=w.r.BattleCommanderDoctrine.avgPos(q);return Math.hypot(p.x-q.home.x,p.z-q.home.z);}),atBase:g.squads.map(id=>w.sq.find(x=>x.id===id)._assembly.phase)};});
+  assert.ok(seen,'no group planned within '+limit+'s');return seen;
 }
 function merged(w){const m=w.b.factions.us.squads.filter(q=>q.reconstitutedFrom);assert.equal(m.length,1,'exactly one re-formed squad');return m[0];}
 
@@ -62,6 +69,15 @@ test('three squads of four merge into one squad of twelve under one leader',()=>
   invariants(w,12);
   const ev=w.events.map(e=>e.type);assert.ok(ev.includes('decision-reconstitute-group')&&ev.includes('decision-squad-merge'));
 });
+test('no group is planned until every squad in it is home and out of contact',()=>{
+  const w=world();squad(w,0,4,null,40);squad(w,1,4,null,150);squad(w,2,4,null,420);
+  const home=[];let grouped=null;
+  run(w,420,b=>{w.sq.forEach((q,i)=>{if(!home[i]&&q._assembly&&q._assembly.phase!=='to-base')home[i]=b.time;});if(!grouped&&recon(w).active.length)grouped=b.time;});
+  assert.ok(grouped,'a group was planned');
+  assert.ok(home.every(t=>t<=grouped),'planned at '+grouped+'s, squads home at '+home.map(t=>t.toFixed(1)).join('/'));
+  assert.ok(grouped-Math.min(...home)>60,'the near squads waited for the far one instead of being planned on the way');
+  assert.equal(recon(w).groupsDissolved,0);merged(w);
+});
 test('four squads of three merge into twelve',()=>{
   const w=world();[0,1,2,3].forEach(l=>squad(w,l,3));run(w,480);
   const q=merged(w);assert.equal(living(q).length,12);assert.equal(q.reconstitutedFrom.length,4);invariants(w,12);
@@ -74,8 +90,9 @@ test('eight survivors wait; a third retreating squad completes the group',()=>{
   const q=merged(w);assert.equal(living(q).length,10);invariants(w,10);
 });
 test('a pool of five threes groups the four strongest; the fifth keeps waiting',()=>{
-  const w=world();[0,1,2,3,4].forEach(l=>squad(w,l,3));run(w,30);
+  const w=world();[0,1,2,3,4].forEach(l=>squad(w,l,3));const seen=untilGrouped(w,120);
   const st=recon(w);assert.equal(st.groupsFormed,1);assert.equal(st.active[0].squads.length,4);
+  assert.ok(seen.homeDist.every(d=>d<=20)&&seen.atBase.every(p=>p==='at-base'||p==='to-rally'),'grouped at base: '+JSON.stringify(seen));
   assert.equal(st.active[0].rally.x,(LANES[0]+LANES[1]+LANES[2]+LANES[3])/4,'rally at the centre of the grouped home points');
   run(w,480);
   const q=merged(w),left=w.sq.filter(x=>!x.disbanded&&x!==q);
@@ -98,7 +115,7 @@ test('with every leader dead the most senior survivor is promoted, never the gun
   assert.equal(w.events.filter(e=>e.type==='decision-leader-promoted').length,1);invariants(w,12);
 });
 test('a group that falls below strength dissolves back to the pool',()=>{
-  const w=world();[0,1,2].forEach(l=>squad(w,l,4));run(w,20);
+  const w=world();[0,1,2].forEach(l=>squad(w,l,4));untilGrouped(w,120);
   assert.equal(recon(w).active.length,1);
   living(w.sq[2]).slice(0,3).forEach(s=>w.b.killSoldier(s,null));run(w,300);
   const st=recon(w);assert.equal(st.groupsDissolved,1);assert.equal(st.merges,0);assert.equal(st.active.length,0);

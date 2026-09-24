@@ -58,7 +58,7 @@ for s in 12345 1 2 3 5 8 13 21; do HARNESS_SEED=$s node tools/ai-sim-harness/run
 | `world-debug-check.js` | World Debug overlay UI handlers (DOM stub) |
 | `extension-order-check.js` | No module replaces `SquadAI.tryFire`/`areaFire`/`updateSoldier`/`updateSquad` or `BattleEngagement.updateSoldier`; the declared fire order (ammunition → ballistics range → trigger-time LOS) holds; undeclared extensions throw |
 | `lease-check.js` | `BattleLeases` primitive, tactical-plan and regroup lease lifecycles, regroup re-forms on the rally point |
-| `reconstitution-check.js` | Retreated squads reaching 10 survivors group (fewest squads), march home then to the rally point, merge under one leader (promotion never picks the gunner), get re-tasked; below-strength groups dissolve; Macro OFF does nothing |
+| `reconstitution-check.js` | Retreated squads home and out of contact reaching 10 survivors group (fewest squads; none planned en route), march to the rally point, merge under one leader (promotion never picks the gunner), get re-tasked; below-strength groups dissolve; Macro OFF does nothing |
 | `voice-determinism-check.js` | Voice callouts never draw from the combat RNG: a battle is identical with and without voice |
 
 `harness.js` mirrors `stepMovement()` from `battle/battle-sim.js`. **If that function changes,
@@ -152,10 +152,11 @@ changes the task, an objective vacated or changing control on a defend brief, a 
 stall, a Captain `doctrine-review` escalation, or a merge (`squad-reconstituted`). Wakes are
 exported under `macroCommand`.
 
-**Reconstitution** (`commander-ai.js` `reconstitute`, Macro only). A side's retreated squads form a
-pool. When it holds 10+ survivors the General groups the fewest squads that reach 10 (never splitting
-one) and gives each a `reconstitute` brief to the centre of their home points. The Captain's
-`_assembly` march takes the squad home, then, out of contact, to that point (`SquadAI.retreatGoal`).
+**Reconstitution** (`commander-ai.js` `reconstitute`, Macro only). A retreating squad's Captain
+walks it home (`_assembly` `to-base`); home and out of contact it is `at-base`. Only `at-base` squads
+form the pool, so no group is planned for a squad still on its way. When the pool holds 10+ survivors
+the General groups the fewest squads that reach 10 (never splitting one) and gives each a
+`reconstitute` brief to the centre of their home points (`to-rally`, `SquadAI.retreatGoal`).
 Once all are there the General merges them: the strongest squad with a living leader survives,
 otherwise the most senior survivor is promoted (ex-leader, rifleman, scout, gunner last). The re-formed
 squad has `leaderId`, `establishment` 10 and only living members; absorbed squads are `disbanded`.

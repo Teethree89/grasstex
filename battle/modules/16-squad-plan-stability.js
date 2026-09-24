@@ -839,40 +839,51 @@
     if (battle) updateAssembly(sq, battle);
     fireAndMovement(sq, battle);
   }
-  /* Reconstitution march. The General briefs a retreating squad to a rally point (intent `reconstitute`);
-     the Captain first brings it home, then - once home and out of contact - walks it to the rally point,
-     where the General merges it. `_assembly` is that march: created when the brief arrives, dropped when
-     the squad stops retreating or the brief ends. SquadAI.retreatGoal() reads it. */
+  /* Retreat and reconstitution march. A retreating squad heads home (`to-base`); once home and out of
+     contact it is `at-base`, the only state in which the General will group it. A `reconstitute` brief
+     then sends it to the rally point (`to-rally`), where the General merges it. If the brief ends without
+     a merge (the group dissolved) the squad is `at-base` again and walks home. `_assembly` is created on
+     retreat and dropped when the squad stops retreating. SquadAI.retreatGoal() reads it. */
   function updateAssembly(sq, battle) {
-    var m = sq._macroMission,
-      a = sq._assembly;
-    if (
-      sq.state !== 'retreat' ||
-      !m ||
-      m.intent !== 'reconstitute' ||
-      (m.status !== 'issued' && m.status !== 'executing')
-    ) {
+    if (sq.state !== 'retreat') {
       sq._assembly = null;
       return;
     }
-    if (!a || a.missionVersion !== m.version) {
-      a = sq._assembly = { missionVersion: m.version, phase: 'to-base', since: battle.time };
-      m.status = 'executing';
-      m.acceptedAt = battle.time;
-      telemetry(battle, 'decision-mission-accepted', {
-        faction: sq.faction,
-        squad: sq.id,
-        version: m.version,
-        intent: m.intent,
-        action: m.action,
-        objectiveId: null
-      });
+    var t = battle.time,
+      m = sq._macroMission,
+      briefed = !!(
+        m &&
+        m.intent === 'reconstitute' &&
+        (m.status === 'issued' || m.status === 'executing')
+      ),
+      a = sq._assembly || (sq._assembly = { phase: 'to-base', since: t, missionVersion: null });
+    if (a.phase === 'to-rally' && !(briefed && m.version === a.missionVersion)) {
+      a.phase = 'at-base';
+      a.since = t;
+      a.missionVersion = null;
     }
-    if (a.phase !== 'to-base' || sq.inContact) return;
-    var p = average(sq);
-    if (!p || dist(p, sq.home) > ASSEMBLY_HOME_RADIUS) return;
+    if (a.phase === 'to-base' && !sq.inContact) {
+      var p = average(sq);
+      if (p && dist(p, sq.home) <= ASSEMBLY_HOME_RADIUS) {
+        a.phase = 'at-base';
+        a.since = t;
+        telemetry(battle, 'decision-assembly-home', { faction: sq.faction, squad: sq.id });
+      }
+    }
+    if (a.phase !== 'at-base' || !briefed) return;
     a.phase = 'to-rally';
-    a.since = battle.time;
+    a.since = t;
+    a.missionVersion = m.version;
+    m.status = 'executing';
+    m.acceptedAt = t;
+    telemetry(battle, 'decision-mission-accepted', {
+      faction: sq.faction,
+      squad: sq.id,
+      version: m.version,
+      intent: m.intent,
+      action: m.action,
+      objectiveId: null
+    });
     telemetry(battle, 'decision-assembly-rally', {
       faction: sq.faction,
       squad: sq.id,

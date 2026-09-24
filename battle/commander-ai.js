@@ -382,13 +382,14 @@
     sq._macroMissionRequest = null;
   }
 
-  /* Reconstitution. A side's retreated squads are a pool of survivors. Whenever the pool holds a full
-     squad's worth, the General groups the fewest squads that reach it (squads are never split) and briefs
-     each to a rally point at the centre of their home points. Their Captains bring them home, then to the
-     rally point (`_assembly`, 16-squad-plan-stability.js). When every grouped squad is there out of
-     contact the General merges them into one squad under one leader and re-tasks it
-     (`squad-reconstituted`). A group that falls below full strength before merging is dissolved and its
-     squads return to the pool. State lives in missionState(sim).reconstitution. */
+  /* Reconstitution. Retreated squads that are home and out of contact (`_assembly` `at-base`,
+     16-squad-plan-stability.js) are a side's pool of survivors; no group is planned for a squad still on
+     its way home. Whenever the pool holds a full squad's worth, the General groups the fewest squads that
+     reach it (squads are never split) and briefs each to a rally point at the centre of their home
+     points. When every grouped squad is there out of contact the General merges them into one squad
+     under one leader and re-tasks it (`squad-reconstituted`). A group that falls below full strength
+     before merging is dissolved and its squads return to the pool. State lives in
+     missionState(sim).reconstitution. */
   var RECON_STRENGTH = 10, // one full rifle squad (SquadAI.COMPOSITION)
     RALLY_RADIUS = 20,
     PROMOTION_ORDER = { captain: 0, rifleman: 1, scout: 2, gunner: 9 };
@@ -619,7 +620,15 @@
       }),
       pool = sim.factions[faction].squads
         .filter(function (sq) {
-          return !sq.disbanded && sq.state === 'retreat' && !sq._reconGroup && D.aliveMembers(sq).length;
+          return (
+            !sq.disbanded &&
+            sq.state === 'retreat' &&
+            !sq._reconGroup &&
+            !sq.inContact &&
+            sq._assembly &&
+            sq._assembly.phase === 'at-base' &&
+            D.aliveMembers(sq).length
+          );
         })
         .sort(strongestFirst(sim, faction)),
       total = pool.reduce(function (n, sq) {
