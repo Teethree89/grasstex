@@ -45,7 +45,7 @@ for s in 12345 1 2 3 5 8 13 21; do HARNESS_SEED=$s node tools/ai-sim-harness/run
 | Check | Asserts |
 | --- | --- |
 | `run.js` | Engagement contract: orient before firing, cover used, get down in contact, a squad in contact stops marching, suppression pins, no stance churn, 10v10 resolves. `HARNESS_SEED=<n>` swaps the battle. |
-| `objective-nav-check.js` | Real worst-seed defects: never permanently refused a step at a building, no all-squads-one-objective, capture progress survives an interrupted hold, door/window routing, `stepMovement` aim smoothing |
+| `objective-nav-check.js` | Real worst-seed defects: never permanently refused a step at a building, no all-squads-one-objective, a side attacks at most 2 objectives at once yet every objective is attacked once the efforts before it fall, capture progress survives an interrupted hold, door/window routing, `stepMovement` aim smoothing |
 | `tactical-positions-check.js` | Window/hardpoint reservation ownership, ingress routes, release reasons, diagnostics |
 | `cover-positions-check.js` | Cover-slot selection against obstacles and physical footprints |
 | `personal-space-check.js` | Physical endpoint allocation and body separation |
@@ -152,6 +152,12 @@ wakes only on: initial brief, mission complete or invalid, reserve due, a defenc
 changes the task, an objective vacated or changing control on a defend brief, a 120 s strategic
 stall, a Squad Leader `doctrine-review` escalation, or a merge (`squad-reconstituted`). Wakes are
 exported under `macroCommand`.
+
+**Main effort** (`commander-doctrine.js` `chooseObjective`, Macro only). Saturation (55 per squad past
+an objective's allowance) stops a side piling onto one objective; the frontage limit stops it spreading
+over all of them. A side attacks at most `maxEfforts` (2) objectives it does not hold at once; opening
+another costs `frontageCost` (140), so the next squad reinforces an open effort. Taking an objective
+closes its effort. Defending owned objectives doesn't count. Both are scores, never vetoes.
 
 **Reconstitution** (`commander-ai.js` `reconstitute`, Macro only). A retreating squad's Squad Leader
 walks it home (`_assembly` `to-base`); home and out of contact it is `at-base`. Only `at-base` squads
