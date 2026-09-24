@@ -90,7 +90,7 @@ try {
         usAlive: +(sim.factions?.us?.alive || 0), geAlive: +(sim.factions?.ge?.alive || 0),
         personalSpace: sim._personalSpaceSummary || sim._personalSpaceStats || null,
         tacticalPositions: sim._tacticalPositionSummary || null,
-        combatMobility: sim._combatMobilityStats || null,
+        movementGoals: sim._movementGoalStats || null,
         squadCommand: sim._squadCommandStats || null
       };
     }

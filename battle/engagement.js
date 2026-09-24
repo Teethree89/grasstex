@@ -7,8 +7,8 @@
 
    This module owns combat STATE, stance and fire control. It decides whether a soldier is
    advancing, orienting, bounding, engaging, pinned, assaulting or alert. It does not own the
-   physical destination: combat movement requests go to BattleCombatMobility, the sole combat
-   locomotion owner, and squad movement remains owned by the squad-command path.
+   physical destination: combat movement requests go to BattleMovementResolver, which coalesces
+   them and alone writes soldier.destination; squad movement remains owned by the squad-command path.
 
    Sequence a soldier now runs on contact:
      advance -> orient (halt, turn, weapon up) -> react
@@ -356,12 +356,11 @@
     }
     e.until=battle.time+(seconds||0);
   }
-  /* Engagement describes combat movement; Combat Mobility is the only owner that may publish it. */
+  /* Engagement describes combat movement; the Movement Resolver decides whether it wins. */
   function move(s,battle,p,kind,ttl){
     var reason=state(s).moveReason||state(s).state;
-    if(root.BattleCombatMobility&&root.BattleCombatMobility.request)return root.BattleCombatMobility.request(s,p,battle,kind,ttl,{origin:'engagement',reason:reason});
-    /* Isolated unit harness fallback: production loads Combat Mobility before any AI tick. */
-    if(root.BattleMovementResolver)return root.BattleMovementResolver.proposeCombat(s,p,battle,kind,ttl,{source:'engagement-fallback',reason:reason});
+    if(root.BattleMovementResolver)return root.BattleMovementResolver.proposeCombat(s,p,battle,kind,ttl,{source:'engagement',reason:reason});
+    /* Isolated unit harness fallback: production loads the resolver before any AI tick. */
     s.destination={x:p.x,z:p.z};s._navCache=null;return null;
   }
   function holdPosition(s,battle){var p=posOf(s);move(s,battle,{x:p.x,z:p.z},'hold');}
@@ -737,5 +736,5 @@
     tuning:{REACT:REACT,AIM_CONE:AIM_CONE,ALERT_HOLD:ALERT_HOLD,COVER_RANGE:COVER_RANGE,BOUND_CYCLE:BOUND_CYCLE,BOUND_DURATION:BOUND_DURATION,USEFUL_COVER:USEFUL_COVER,OPEN_COVER:OPEN_COVER,
       MAX_SUPPRESSORS:MAX_SUPPRESSORS,SUPPRESS_BURST:SUPPRESS_BURST,SUPPRESS_PAUSE:SUPPRESS_PAUSE,PREWARNED_REACT:PREWARNED_REACT}
   };
-  if(typeof console!=='undefined')console.log('[ENGAGE] state/fire owner loaded; combat locomotion delegates to Combat Mobility');
+  if(typeof console!=='undefined')console.log('[ENGAGE] state/fire owner loaded; combat locomotion proposed to the Movement Resolver');
 })(typeof window!=='undefined'?window:globalThis);

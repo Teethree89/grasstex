@@ -25,7 +25,7 @@ example walking while aiming at a target off his path) plays the matching direct
 
 | Clip | Length | Travel | What it could depict | Gameplay signal that already exists / is needed | Value |
 | --- | --- | --- | --- | --- | --- |
-| `Prone Roll Right Fast` | 1.70 s | 1.0 m right | Rolling out of a fire lane | Micro/Combat Mobility lateral displacement while prone | High |
+| `Prone Roll Right Fast` | 1.70 s | 1.0 m right | Rolling out of a fire lane | Micro (Engagement) lateral displacement while prone | High |
 | `Prone Roll Right` | 3.27 s | 1.0 m right | Slower, deliberate roll | same | Medium |
 | `turn 90 left` / `turn 90 right` | 1.00 s | in place | Stepping round to a new facing | Standing, not moving, yaw change > ~45 deg (`turnToward`) | High |
 | `crouching turn 90 left` / `right` | 1.27 s | in place | Same, crouched | Crouched, not moving, large yaw change | High |
@@ -47,7 +47,7 @@ example walking while aiming at a target off his path) plays the matching direct
 
 ### Notes before wiring any of these
 
-- **Ownership.** Rolls and kneel/cover choices are Micro decisions (Combat Mobility / tactical
+- **Ownership.** Rolls and kneel/cover choices are Micro decisions (Engagement / tactical
   positions). The animation backend must only depict a displacement or stance that gameplay already
   chose; it must not start a roll or a turn on its own. Turns-in-place are the exception that fits
   the backend: they only depict a yaw change the sim is already making.
@@ -62,5 +62,5 @@ example walking while aiming at a target off his path) plays the matching direct
 1. Turn-in-place (standing, crouched, prone): purely visual, removes the foot-skate when soldiers
    pivot on the spot.
 2. Extra death variants: two lines in `CLIPS`, more variety immediately.
-3. Prone rolls, once Combat Mobility emits a lateral prone displacement (plus the mirrored left roll).
+3. Prone rolls, once Engagement emits a lateral prone displacement (plus the mirrored left roll).
 4. Kneel as a distinct cover/firing-station pose, with its stand/kneel/aim transitions.

@@ -4,12 +4,19 @@
    bound, assault rush, or firing station. Neither writes `soldier.destination` directly: this
    resolver selects one winning intent, lets the tactical-route layer substitute a survival-aware
    waypoint when needed, and remains the sole writer of the physical destination.
+
+   Engagement re-requests its combat movement every AI tick. Those repeats are coalesced here, in
+   the same place that decides whether they win: a stable intent republishes at most every
+   INTENT_REFRESH seconds and lives at least INTENT_TTL, and a hold point is sticky within
+   HOLD_INTENT_EPS so body drift does not redefine where a man stopped to fight. Other producers
+   (weapon cycle, tests) propose once per decision and go straight to arbitration.
 */
 (function(root){
   'use strict';
 
   var ORDER_COMMIT=1.35,COMBAT_TTL=.75,ORDER_EPS=2.4,ARRIVAL=1.8,ORDER_WRITE_EPS=.05;
   var PRECISE_GOALS={'firing-station':1,'reload-hold':1,'hold':1,'contact-reaction':1};
+  var INTENT_REFRESH=.55,INTENT_TTL=.8,INTENT_EPS=.18,HOLD_INTENT_EPS=1.0,STICKY_HOLDS={'hold':1,'contact-reaction':1,'reload-hold':1};
   function point(v){return v&&isFinite(+v.x)&&isFinite(+v.z)?{x:+v.x,z:+v.z}:null;}
   function distance(a,b){return!a||!b?Infinity:Math.hypot(a.x-b.x,a.z-b.z);}
   function now(battle){return battle&&isFinite(+battle.time)?+battle.time:0;}
@@ -17,7 +24,7 @@
   function signature(s){var q=s.squad||{};return[q.commandPhase||'',q.targetObjective||'',q._engagementPlan&&q._engagementPlan.serial||0,q.state==='retreat'?'retreat':''].join('|');}
   function priority(kind,s){return kind==='retreat'?100:kind==='regroup'?95:kind==='reload-hold'?90:kind==='firing-station'?80:kind==='assault-rush'?70:kind==='cover-bound'?60:kind==='contact-reaction'?55:kind==='hold'?(s.eng&&s.eng.state==='pinned'?85:50):20;}
   function tolerance(kind){return ['firing-station','hold','reload-hold','contact-reaction'].indexOf(kind)>=0?.1:ORDER_EPS;}
-  function metrics(b){return b._movementGoalStats||(b._movementGoalStats={requests:0,actualChanges:0,equivalentRequestsIgnored:0,hysteresisRetains:0,lowerPriorityRejected:0,emergencyOverrides:0,formationShadowsIgnored:0,goalLegalizations:0,formationEndpointResolutions:0,tacticalWaypointBacktracks:0,blockedGoalFallbacks:0,illegalGoalsUnresolved:0,overridesByPriority:{},bySource:{}});}
+  function metrics(b){return b._movementGoalStats||(b._movementGoalStats={combatIntentRequests:0,combatIntentCoalesced:0,requests:0,actualChanges:0,equivalentRequestsIgnored:0,hysteresisRetains:0,lowerPriorityRejected:0,emergencyOverrides:0,formationShadowsIgnored:0,goalLegalizations:0,formationEndpointResolutions:0,tacticalWaypointBacktracks:0,blockedGoalFallbacks:0,illegalGoalsUnresolved:0,overridesByPriority:{},bySource:{}});}
   function count(b,key,source){var m=metrics(b);m[key]=(m[key]||0)+1;if(source){var row=m.bySource[source]||(m.bySource[source]={requests:0,changes:0});if(key==='requests')row.requests++;if(key==='actualChanges')row.changes++;}}
   function valid(s,p,b){
     if(!p||p.signature!==signature(s))return false;
@@ -124,8 +131,17 @@
   }
   function proposeCombat(soldier,next,battle,kind,ttl,meta){
     if(!soldier)return null;meta=meta||{};var raw=point(next);if(!raw)return null;
-    var st=state(soldier),source=meta.source||'engagement',p=proposal(source,raw,battle,kind||'combat',true,ttl==null?COMBAT_TTL:ttl);if(!p)return null;
-    count(battle,'requests',source);st.requests=(st.requests||0)+1;p.signature=signature(soldier);p.reason=meta.reason||kind;p.score=meta.score;p.priority=priority(p.kind,soldier);p.intentPoint={x:raw.x,z:raw.z};
+    var st=state(soldier),source=meta.source||'engagement',reason=meta.reason||kind;
+    if(meta.source==='engagement'){
+      var t=now(battle),intent=st.intent,live=st.combat;reason=String(reason||'combat');count(battle,'combatIntentRequests');
+      var same=!!(intent&&!meta.material&&intent.kind===kind&&intent.reason===reason&&intent.score===meta.score&&distance(intent.point,raw)<=(STICKY_HOLDS[kind]?HOLD_INTENT_EPS:INTENT_EPS));
+      if(same&&t<intent.refreshAt&&live&&live.kind===kind){count(battle,'combatIntentCoalesced');return live;}
+      if(same)raw={x:intent.point.x,z:intent.point.z};
+      st.intent={point:{x:raw.x,z:raw.z},kind:kind,reason:reason,score:meta.score,refreshAt:t+INTENT_REFRESH};
+      ttl=Math.max(INTENT_TTL,ttl==null?INTENT_TTL:(Math.max(.2,+ttl||INTENT_TTL)));
+    }
+    var p=proposal(source,raw,battle,kind||'combat',true,ttl==null?COMBAT_TTL:ttl);if(!p)return null;
+    count(battle,'requests',source);st.requests=(st.requests||0)+1;p.signature=signature(soldier);p.reason=reason;p.score=meta.score;p.priority=priority(p.kind,soldier);p.intentPoint={x:raw.x,z:raw.z};
     var q=soldier.squad||{},old=st.combat;
     if(q.state==='retreat'||q.commandPhase==='retreat'){count(battle,'lowerPriorityRejected');return old;}
     var MP=root.BattleMovementProgress;
@@ -229,6 +245,6 @@
     out.averageChangesPerActiveSoldier=active?out.bySoldier.filter(function(r){return(roster[r.faction]||[]).some(function(s){return s.id===r.id&&!s.dead;});}).reduce(function(n,r){return n+r.changes;},0)/active:0;
     return JSON.parse(JSON.stringify(out));
   }
-  root.BattleMovementResolver={version:'2.0-goal-authority-v128-overlap-backtrack',signature:signature,priority:priority,tolerance:tolerance,orderCommit:ORDER_COMMIT,combatTTL:COMBAT_TTL,proposeOrder:proposeOrder,proposeCombat:proposeCombat,resolve:resolve,resetSoldier:resetSoldier,summary:summary};
-  console.log('[MOVE] v128 resolver: blocked endpoints backtrack toward the incoming path until clear');
+  root.BattleMovementResolver={version:'2.1-goal-authority-coalesced-combat',signature:signature,priority:priority,tolerance:tolerance,orderCommit:ORDER_COMMIT,combatTTL:COMBAT_TTL,intentRefresh:INTENT_REFRESH,proposeOrder:proposeOrder,proposeCombat:proposeCombat,resolve:resolve,resetSoldier:resetSoldier,summary:summary};
+  console.log('[MOVE] resolver: sole combat-request coalescer and destination writer');
 })(typeof window!=='undefined'?window:globalThis);

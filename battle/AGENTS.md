@@ -32,7 +32,7 @@ When benchmark runtime rises materially:
 - **Do not hide the regression** by increasing the fixed simulation step, shortening battles, disabling gameplay systems, weakening diagnostics, or reducing the battle count before the cause is understood.
 - Compare **per-battle wall seconds**, median/p95 wall time by scenario, and simulated-seconds-per-wall-second against an accepted baseline using the same seed/profile.
 - Treat roughly **>25% median slowdown on the same benchmark profile** as a stop-and-profile condition unless there is an understood intentional cost.
-- Profile in the **benchmark harness first**, preferably by wrapping existing hot functions without changing production behavior. Measure call count and inclusive wall time for at least: obstacle-field LOS/cover/nearby queries, navigation/path search, Movement Resolver, Squad Command, Combat Mobility, tactical-position ingress, personal-space correction, and Commander updates.
+- Profile in the **benchmark harness first**, preferably by wrapping existing hot functions without changing production behavior. Measure call count and inclusive wall time for at least: obstacle-field LOS/cover/nearby queries, navigation/path search, Movement Resolver (including combat-intent coalescing), Squad Command, tactical-position ingress, personal-space correction, and Commander updates.
 - If one subsystem dominates, fix its algorithm/data representation/caching at the owning layer. Do not add a new runtime module merely to make the profiler quieter.
 - Preserve determinism and gameplay semantics while optimizing. A faster benchmark that simulates different behavior is not a valid optimization.
 - Keep benchmark setup/install time separate from battle wall time; the benchmark already records each battle's `wallSeconds`, which is the primary simulation-performance measurement.
@@ -92,7 +92,7 @@ Owns the stable squad plan: fireteam organization, formation/tasks, defensive po
 Meso orders are commitments. Contact flicker must not continuously rewrite them.
 
 ### Micro — Soldier / Situation
-Owns perception, target state, stance, firing/reload/stoppage, local cover, suppression response, and combat displacement through Combat Mobility.
+Owns perception, target state, stance, firing/reload/stoppage, local cover, suppression response, and combat displacement proposed straight to the Movement Resolver.
 
 Micro may alter local execution but must not choose a new strategic objective or erase a still-valid Captain plan.
 
@@ -101,7 +101,7 @@ Movement Resolver chooses between legitimate Meso and Micro locomotion intents. 
 
 The desired chain is:
 
-`General -> Captain/Squad Plan -> Soldier Situation/Combat Mobility -> Movement Resolver -> Movement Execution -> Navigation`
+`General -> Captain/Squad Plan -> Soldier Situation/Engagement -> Movement Resolver -> Movement Execution -> Navigation`
 
 ## Current diagnostic lesson (v140)
 

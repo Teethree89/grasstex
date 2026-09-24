@@ -13,7 +13,7 @@ function fixture() {
   r.BattleCommanderAI = {policyFor(){return {};}};
   load(r, 'battle/movement-resolver.js');
   load(r, 'battle/modules/16-squad-plan-stability.js');
-  load(r, 'battle/modules/44-assault-forward-guard.js');
+  load(r, 'battle/modules/44-combat-urgency.js');
   const b = H.makeBattle(r), q = H.addSquad(r, b, {id:'us-0', faction:'us', x:0, z:0,
     objective:{x:0,z:100}, composition:['captain','rifleman','rifleman','rifleman','rifleman','rifleman']});
   q.commandPhase = 'assault'; q.orderAnchor = {x:0,z:0};

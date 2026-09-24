@@ -120,7 +120,6 @@
     wrapMany(root.BattleMovementResolver,'movement-resolver',['proposeOrder','proposeCombat','resolve']);
     wrapScoped(root.SquadAI,'updateSoldier','squad.updateSoldier');wrapScoped(root.SquadAI,'updateSquad','squad.updateSquad');
     wrapMany(root.SquadAI,'squad',['hasLineOfSight','findTarget','canSuppress','areaFire','resolveFire']);
-    wrapMany(root.BattleCombatMobility,'combat-mobility',['request']);
     wrapMany(root.BattleTacticalPositions,'tactical-position',['claim','release','update','waypoint','assign']);
     wrapMany(root.BattleCommanderRoutes,'commander-routes',['ensureAssignments','assignSquad','initForce','routeFor']);
     wrapMany(root.BattleCommanderDoctrine,'commander-doctrine',['chooseObjective','buildContext','nearestEnemyToSquad','objectiveValueScore','forceScore']);

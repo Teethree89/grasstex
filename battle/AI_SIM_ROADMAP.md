@@ -37,7 +37,7 @@ A Meso order is a commitment, not a point republished every AI tick. Contact/tar
 
 Owns immediate execution:
 - perception, target tracking, stance, fire/reload/stoppage;
-- local cover and combat displacement through Combat Mobility;
+- local cover and combat displacement, proposed to the Movement Resolver;
 - physical route/door/window/hedge avoidance through Movement Execution and Navigation;
 - personal space and legal body placement;
 - final physical execution of the currently winning Meso/Micro movement intent.
@@ -59,12 +59,12 @@ No layer should continuously rewrite another layer's state. In particular:
 - Meso does not perform obstacle avoidance.
 - Micro does not select objectives.
 - Engagement owns combat state, not an independent locomotion channel.
-- Combat Mobility is the sole Micro combat-locomotion publisher.
+- Engagement is the sole Micro combat-locomotion producer; the Movement Resolver coalesces its repeated requests.
 - Movement Resolver arbitrates legitimate Meso vs Micro locomotion; it is not a garbage collector for redundant producers.
 
 The desired runtime is conceptually:
 
-`General / Force Command -> Captain / Squad Command -> Engagement state -> Combat Mobility (when needed) -> Movement Resolver -> Movement Execution -> Physical Navigation`
+`General / Force Command -> Captain / Squad Command -> Engagement state -> Movement Resolver -> Movement Execution -> Physical Navigation`
 
 ## Mission command contract (sweep 2026-09-17)
 
@@ -192,7 +192,7 @@ This separation is important: prepared defense has repeatedly exposed failures t
 - [x] Tactical hardpoint/window reservation manager: unique reservation/ingress responsibility.
 - [x] Personal-space separation: physical local correction, not command ownership.
 - [x] Telemetry serialization: one request in flight, bounded batching/queue.
-- [x] Combat Mobility: sole Micro combat-locomotion publisher.
+- [x] Engagement: sole Micro combat-locomotion producer (Combat Mobility merged into the Movement Resolver, 2026-09-24).
 - [x] Movement Execution: physical execution/routing of the winning intent, not strategic decision making.
 
 ## Broader tactical-AI work after locomotion ownership stabilizes
@@ -219,6 +219,7 @@ This separation is important: prepared defense has repeatedly exposed failures t
 - [x] v135 reduced the overlapping tactical movement/control stack from roughly 10 modules to three primary owners.
 - [x] v135 benchmark run #17 salvaged eight healthy shards into an 80-battle baseline and exposed the null assault-target race.
 - [x] v136 made Combat Mobility the combat-locomotion publisher and added producer-side combat intent coalescing.
+- [x] 2026-09-24 merged Combat Mobility into the Movement Resolver: one combat-intent coalescing/hysteresis owner, same-seed replay unchanged. The suppressed-cover and shared-contact drills remain as `44-combat-urgency.js`.
 - [x] v137 introduced M3C authoritative hedge volumes and explicitly separated Macro/Meso/Micro responsibility.
 - [x] v139 coalesced terrain-following hedge chunks into practical runtime volumes and restored physical-world performance.
 

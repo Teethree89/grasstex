@@ -8,18 +8,19 @@ function root(){
   r.BattleModules={registerSystem(id,s){systems[id]=s;},getSystem(id){return systems[id];},unitsFor:b=>(b._roster.us||[]).concat(b._roster.ge||[])};
   r.BattleCommanderDoctrine={policyFor(){return{cohesionRadius:34,captainlessCohesion:26,routeArrivalRadius:8,captureCommitRatio:.82};}};
   load(r,'battle/obstacle-field.js');load(r,'battle/battle-navigation.js');load(r,'battle/movement-resolver.js');
-  load(r,'battle/modules/16-squad-plan-stability.js');load(r,'battle/modules/44-assault-forward-guard.js');load(r,'battle/modules/52-survival-tactical-route.js');
+  load(r,'battle/modules/16-squad-plan-stability.js');load(r,'battle/modules/44-combat-urgency.js');load(r,'battle/modules/52-survival-tactical-route.js');
   return{r,systems};
 }
 test('only one consolidated owner exists for each tactical layer',()=>{
   const {r,systems}=root();
-  assert.ok(systems['squad-command']);assert.ok(systems['combat-mobility']);assert.ok(systems['movement-execution']);
-  assert.ok(r.BattleSquadStability&&r.BattleCombatMobility&&r.BattleMovementExecution);
+  assert.ok(systems['squad-command']);assert.ok(systems['combat-urgency']);assert.ok(systems['movement-execution']);
+  assert.ok(r.BattleSquadStability&&r.BattleCombatUrgency&&r.BattleMovementExecution);
+  assert.equal(r.BattleCombatMobility,undefined,'no separate combat-locomotion stage between Engagement and the resolver');
 });
-test('engagement delegates combat locomotion to combat mobility',()=>{
+test('engagement proposes combat locomotion straight to the movement resolver',()=>{
   const src=fs.readFileSync(path.join(H.REPO,'battle/engagement.js'),'utf8');
-  assert.match(src,/BattleCombatMobility&&root\.BattleCombatMobility\.request/);
-  assert.doesNotMatch(src,/source:'engagement'/);
+  assert.match(src,/BattleMovementResolver\.proposeCombat\(s,p,battle,kind,ttl,\{source:'engagement'/);
+  assert.doesNotMatch(src,/BattleCombatMobility/);
 });
 test('fireteam slots are produced by the squad-command owner',()=>{
   const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100}});
@@ -35,19 +36,26 @@ test('committed combat plan suppresses transient cohesion regroup',()=>{
   for(let i=0;i<10;i++){b.time+=.45;systems['squad-command'].onCommanderTick(b,{town:null});assert.equal(q.commandPhase,'assault');}
   assert.equal(systems['squad-command'].onSimulationStep,undefined,'no per-step phase revert should exist');
 });
-test('combat mobility coalesces repeated combat intents before resolver publication',()=>{
-  const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman']}),s=q.members[0];
-  for(let i=0;i<8;i++)r.BattleCombatMobility.request(s,{x:2,z:3},b,'hold',.8,{origin:'engagement',reason:'contact'});
-  assert.equal(b._combatMobilityStats.intentRequests,8);assert.equal(b._combatMobilityStats.intentPublishes,1);assert.equal(b._combatMobilityStats.intentCoalesced,7);
-  assert.equal(s._movementResolver.combat.owner,'combat-mobility');assert.equal(s._movementResolver.combat.reason,'contact');
-  b.time+=.6;r.BattleCombatMobility.request(s,{x:2,z:3},b,'hold',.8,{origin:'engagement',reason:'contact'});
-  assert.equal(b._combatMobilityStats.intentPublishes,2);
+test('resolver coalesces repeated combat intents',()=>{
+  const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman']}),s=q.members[0],M=r.BattleMovementResolver;
+  for(let i=0;i<8;i++)M.proposeCombat(s,{x:2,z:3},b,'hold',.8,{source:'engagement',reason:'contact'});
+  const m=b._movementGoalStats;
+  assert.equal(m.combatIntentRequests,8);assert.equal(m.combatIntentCoalesced,7);assert.equal(m.bySource.engagement.requests,1);
+  assert.equal(s._movementResolver.combat.owner,'engagement');assert.equal(s._movementResolver.combat.reason,'contact');
+  b.time+=.6;M.proposeCombat(s,{x:2,z:3},b,'hold',.8,{source:'engagement',reason:'contact'});
+  assert.equal(m.bySource.engagement.requests,2,'a stable intent republishes after the refresh window');
 });
-test('combat mobility publishes material intent changes immediately',()=>{
-  const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman']}),s=q.members[0];
-  r.BattleCombatMobility.request(s,{x:2,z:3},b,'hold',.8,{origin:'test',reason:'contact'});
-  r.BattleCombatMobility.request(s,{x:8,z:3},b,'cover-bound',.8,{origin:'test',reason:'move cover'});
-  assert.equal(b._combatMobilityStats.intentPublishes,2);assert.equal(s._movementResolver.combat.kind,'cover-bound');
+test('resolver keeps a hold point sticky under small body drift',()=>{
+  const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman']}),s=q.members[0],M=r.BattleMovementResolver;
+  M.proposeCombat(s,{x:2,z:3},b,'hold',.8,{source:'engagement',reason:'contact'});
+  b.time+=.6;M.proposeCombat(s,{x:2.7,z:3.4},b,'hold',.8,{source:'engagement',reason:'contact'});
+  assert.deepEqual(s._movementResolver.combat.intentPoint,{x:2,z:3});
+});
+test('resolver publishes material combat intent changes immediately',()=>{
+  const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman']}),s=q.members[0],M=r.BattleMovementResolver;
+  M.proposeCombat(s,{x:2,z:3},b,'hold',.8,{source:'test',reason:'contact'});
+  M.proposeCombat(s,{x:8,z:3},b,'cover-bound',.8,{source:'test',reason:'move cover'});
+  assert.equal(b._movementGoalStats.combatIntentCoalesced,0);assert.equal(s._movementResolver.combat.kind,'cover-bound');
 });
 
 test('one hedge prism blocks prone and standing LOS even when the shooter is close to it',()=>{
@@ -95,7 +103,7 @@ test('retreat is never classified unreachable by movement progress',()=>{
 });
 test('combat bound still gets one conservative recovery then unreachable',()=>{
   const {r}=root(),b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman']}),s=q.members[0],P=r.BattleMovementProgress;
-  const pick={owner:'combat-mobility',kind:'cover-bound'};let rebuilds=0;
+  const pick={owner:'engagement',kind:'cover-bound'};let rebuilds=0;
   for(let i=0;i<70;i++){b.time+=.5;const a=P.observe(s,b,{x:0,z:20},pick);if(a&&a.rebuild)rebuilds++;}
   assert.ok(rebuilds>=1);assert.equal(s._movementGoalUnreachable,true);
 });
