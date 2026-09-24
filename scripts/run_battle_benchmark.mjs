@@ -349,6 +349,15 @@ try {
         const loopKinds = {}; for (const a of loops) addMap(loopKinds, a.kind || a.type || 'unknown');
         const objectiveCount = (sim._objectives || []).length, everOwnedIds = Object.keys(diag.everOwned);
         const meanSpread = f => diag.spreadSamples[f].length ? +(diag.spreadSamples[f].reduce((a, b) => a + b, 0) / diag.spreadSamples[f].length).toFixed(2) : 0;
+        /* Retreated-squad reconstitution (commander-ai.js); null on builds without it. */
+        const reconstitutionSummary = () => {
+          const r = root.BattleCommanderAI?.missionState?.(sim)?.reconstitution;
+          if (!r) return null;
+          const span = g => +((g.endedAt || 0) - (g.formedAt || 0)).toFixed(2);
+          return { groupsFormed: r.groupsFormed, groupsDissolved: r.groupsDissolved, merges: r.merges, promotions: r.promotions, assemblingAtEnd: r.active.length,
+            merged: r.ended.filter(g => g.status === 'merged').map(g => ({ faction: g.faction, formedAt: g.formedAt, mergedAt: g.endedAt, assemblySeconds: span(g), size: g.size, promoted: !!g.promoted, objectiveId: g.objectiveId || null })),
+            dissolvedLifetimes: r.ended.filter(g => g.status === 'dissolved').map(span) };
+        };
         const record = {
           index: index + 1, seed, scenarioId: scenario?.id || null, fingerprint: scenario?.fingerprint || null,
           winner: sim.winner || 'none', winReason: sim.winReason || null, simulatedSeconds: +(+sim.time || 0).toFixed(2), wallSeconds: +((performance.now() - wallStart) / 1000).toFixed(3), steps,
@@ -368,7 +377,7 @@ try {
           orderedMoveSamples: diag.orderedMoveSamples, idleOrderedSamples: diag.idleOrderedSamples, phaseSamples: diag.phaseSamples, engagementStateSamples: diag.engagementStateSamples,
           writerConflicts: conflicts.length, strategicWriterConflicts: strategicConflicts, writerConflictDetails: conflicts.slice(0, 20), loopAlerts: loops.slice(0, 20), loopKinds,
           movementResolver: movementResolverSummary(), losBlockedFireAttempts: losBlockedAttempts(), fire: activeCombat,
-          coordinationHealth: coordinationHealth(), objectiveRecovery: { us: +(recovery.us?.count || 0), ge: +(recovery.ge?.count || 0) }, finalObjectives: objectiveStates
+          reconstitution: reconstitutionSummary(), coordinationHealth: coordinationHealth(), objectiveRecovery: { us: +(recovery.us?.count || 0), ge: +(recovery.ge?.count || 0) }, finalObjectives: objectiveStates
         };
         battles.push(record);
         console.log(`[BENCH] ${index + 1}/${count} ${seed} winner=${record.winner} captures=${record.captures}/${record.objectiveCount} neverOwned=${record.objectivesNeverOwned} spread=${record.squadObjectiveSpread.us}/${record.squadObjectiveSpread.ge} vacant=${record.vacantObjectiveStalls.length} route=${record.routeStalls.length} move=${record.movementStalls.length} loops=${record.loopAlerts.length} conflicts=${record.writerConflicts} wall=${record.wallSeconds}s`);
