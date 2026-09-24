@@ -471,6 +471,24 @@
     for (i = 0; i < a.length; i++) if (a[i] && !a[i].dead && a[i].role === 'sergeant') return a[i];
     return null;
   }
+  /* Seniority when command has to pass to someone else: a sergeant (a former squad leader), then a
+     rifleman, then a scout; the gunner stays on the gun unless nobody else is left. Ties go to the lowest
+     soldier id, so a replay promotes the same man. Used by succession (16-squad-plan-stability.js) and
+     reconstitution (commander-ai.js). */
+  var SENIORITY = { sergeant: 0, rifleman: 1, scout: 2, gunner: 9 };
+  function seniority(soldier) {
+    return soldier.role in SENIORITY ? SENIORITY[soldier.role] : 3;
+  }
+  function mostSenior(men) {
+    var best = null;
+    for (var i = 0; i < men.length; i++) {
+      var s = men[i];
+      if (!s || s.dead) continue;
+      if (!best || seniority(s) < seniority(best) || (seniority(s) === seniority(best) && s.id < best.id))
+        best = s;
+    }
+    return best;
+  }
   function isLeader(soldier) {
     return !!(soldier && soldier.squad && leaderOf(soldier.squad) === soldier);
   }
@@ -789,6 +807,8 @@
     perceive: perceive,
     formationSlot: formationSlot,
     leaderOf: leaderOf,
+    seniority: seniority,
+    mostSenior: mostSenior,
     isLeader: isLeader,
     establishment: establishment,
     retreatGoal: retreatGoal,

@@ -36,7 +36,8 @@
     BOUND_DURATION = 3.6,
     BOUND_TEAMS = ['alpha', 'bravo', 'charlie'],
     ASSAULT_PHASES = { assault: 1, capture: 1, 'clear-town': 1 };
-  var ASSEMBLY_HOME_RADIUS = 20;
+  var ASSEMBLY_HOME_RADIUS = 20,
+    SUCCESSION_DELAY = 6;
   var ORDER_STRIDE = 13,
     ORDER_ARRIVAL_RADIUS = 8,
     ORDER_COHESION = 0.55,
@@ -836,8 +837,50 @@
     var casualtyFrac = 1 - living / root.SquadAI.establishment(sq);
     if (casualtyFrac >= 0.6) sq.state = 'retreat';
     else sq.state = anyEngaged ? 'engaged' : 'advance';
+    if (battle) updateSuccession(sq, battle);
     if (battle) updateAssembly(sq, battle);
     fireAndMovement(sq, battle);
+  }
+  /* Succession. When the squad leader is killed nobody commands for SUCCESSION_DELAY seconds (the
+     `succession` lease: the squad runs on its leaderless cohesion and corner rules and the accuracy
+     penalty applies); then the most senior survivor takes command (SquadAI.mostSenior), takes the
+     leader's slot and the penalty ends. A squad with a leader holds no lease. */
+  function updateSuccession(sq, battle) {
+    var t = battle.time,
+      held = L.get(sq, 'succession'),
+      men = alive(sq);
+    if (root.SquadAI.leaderOf(sq) || !men.length) {
+      if (held) L.end(sq, 'succession', t, men.length ? 'leader present' : 'squad destroyed');
+      return;
+    }
+    if (!held) {
+      L.grant(
+        sq,
+        'succession',
+        'squad-leader',
+        t,
+        t + SUCCESSION_DELAY,
+        'squad leader killed',
+        'successor takes command'
+      );
+      return;
+    }
+    if (L.holds(sq, 'succession', t)) return;
+    var next = root.SquadAI.mostSenior(men);
+    sq.leaderId = next.id;
+    next.slotIndex = 0;
+    next.slotRole = null;
+    next._fireteamKey = null;
+    sq.captainAlive = true;
+    sq.accuracyMultiplier = 1;
+    L.end(sq, 'succession', t, 'successor took command');
+    telemetry(battle, 'decision-leader-succession', {
+      faction: sq.faction,
+      squad: sq.id,
+      soldier: next.id,
+      role: next.role,
+      leaderlessSeconds: +(t - held.since).toFixed(2)
+    });
   }
   /* Retreat and reconstitution march. A retreating squad heads home (`to-base`); once home and out of
      contact it is `at-base`, the only state in which the General will group it. A `reconstitute` brief
