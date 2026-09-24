@@ -40,7 +40,6 @@
     ORDER_COHESION = 0.55,
     ORDER_PUBLISH_EPS = 0.05;
   var TACTICAL = {
-    contact: 1,
     assault: 1,
     flank: 1,
     capture: 1,
@@ -943,11 +942,10 @@
       sq.objective = copy(wp);
       return;
     }
-    var D = root.BattleCommanderDoctrine,
-      enemy = D && sim._roster ? D.nearestEnemyToSquad(sim, sq).distance : Infinity;
+    /* No separate distance-based contact phase: a firefight is Engagement's inContact, which the
+       plan lease and fire-and-movement already follow (2026-09-24 Macro-off benchmark: removing
+       it left 29 of 30 battles identical). */
     if (m && m.action === 'flank' && idx === axisEnd) setPhase(sim, sq, 'flank', 'doctrine flank');
-    else if (enemy < (+c.contactDistance || 28) && sq.commandRole !== 'support')
-      setPhase(sim, sq, 'contact', 'enemy ' + enemy.toFixed(1) + 'm');
     else if (inTown(town, pos)) setPhase(sim, sq, 'clear-town', 'inside objective area');
     else setPhase(sim, sq, 'approach', 'route advance');
     sq.objective = copy(wp);

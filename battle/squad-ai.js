@@ -413,7 +413,7 @@
       phase === 'regroup'
     )
       return 'column';
-    if (squad.state === 'engaged' || ['contact', 'assault', 'capture', 'defend'].indexOf(phase) >= 0)
+    if (squad.state === 'engaged' || ['assault', 'capture', 'defend'].indexOf(phase) >= 0)
       return 'line';
     var anchor = squad.orderAnchor || squad.rally,
       goal = squad.objective || squad.home;
