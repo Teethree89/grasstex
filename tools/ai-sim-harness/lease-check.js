@@ -58,6 +58,7 @@ test('a regroup is a Captain lease; contact ends it and starts the re-entry cool
   const rg=L.get(q,'regroup');
   assert.ok(rg,'a dispersed squad commits to a regroup');
   assert.equal(rg.owner,'captain');assert.ok(rg.data.anchor);assert.equal(q.commandPhase,'regroup');
+  assert.deepEqual(q.orderAnchor,rg.data.anchor,'the squad re-forms on the rally point: fireteam slots hang off the order anchor');
   tick(captain,b);assert.equal(q._missionHold,'regroup','the regroup lease holds mission execution');
   q.inContact=true;tick(captain,b);
   assert.equal(L.get(q,'regroup'),null);

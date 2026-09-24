@@ -526,6 +526,12 @@
     };
     sq._regroupRecoverySerial = sq._regroupRecovery.serial;
     sq.objective = copy(anchor);
+    /* The rally point is where the squad re-forms: move the Captain's order anchor there so the
+       fireteam slots (and so every man's movement order) are built around it. The anchor is frozen
+       during a regroup; left where it was it had usually run ahead with the leading men, and the
+       squad re-formed around that instead - or ran out the 18 s regroup lease walking to it. */
+    sq.orderAnchor = copy(anchor);
+    sq.rally = copy(anchor);
     sq.commandPhase = 'regroup';
     telemetry(sim, 'decision-regroup-commit', {
       faction: sq.faction,
