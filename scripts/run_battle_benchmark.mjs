@@ -165,7 +165,7 @@ try {
       return (sim._objectives || []).map(o => { const s = objectiveStatus(o); return `${o.id}:${s.owner || 'neutral'}:${s.active || '-'}:${Math.round(+s.progress || 0)}`; }).join('|');
     }
     function phaseAllowsAdvance(phase) { return ['approach','assault','capture','clear-town','flank','contact','corner-check'].includes(String(phase || '')); }
-    function captainAlive(sq) { return aliveMembers(sq).some(s => s.role === 'captain'); }
+    function captainAlive(sq) { return !!root.SquadAI.leaderOf(sq); }
     function cohesionLimit(sq) {
       try { const cfg = root.BattleCommanderAI.policyFor?.(sim, sq.faction); return cfg ? +(captainAlive(sq) ? cfg.cohesionRadius : cfg.captainlessCohesion) : null; }
       catch (_) { return null; }

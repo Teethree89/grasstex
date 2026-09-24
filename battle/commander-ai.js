@@ -586,6 +586,7 @@
     survivor.establishment = RECON_STRENGTH;
     survivor.aliveCount = men.length;
     survivor.captainAlive = true;
+    survivor.accuracyMultiplier = 1; // the leader-death penalty (BattleSim.killSoldier) ends with a leader
     survivor.orderAnchor = { x: g.rally.x, z: g.rally.z };
     survivor.rally = { x: g.rally.x, z: g.rally.z };
     survivor._reconGroup = null;

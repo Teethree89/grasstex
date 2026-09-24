@@ -123,9 +123,10 @@ test('the leader of the strongest led squad takes command',()=>{
   assert.equal(recon(w).promotions,0);invariants(w,11);
 });
 test('with every leader dead the most senior survivor is promoted, never the gunner',()=>{
-  const w=world(),keep=['gunner','scout','rifleman','rifleman'];[0,1,2].forEach(l=>squad(w,l,4,keep));run(w,420);
+  const w=world(),keep=['gunner','scout','rifleman','rifleman'];[0,1,2].forEach(l=>squad(w,l,4,keep).accuracyMultiplier=.8);run(w,420);
   const q=merged(w),lead=q.members.find(s=>s.id===q.leaderId);
   assert.equal(lead.role,'rifleman');assert.equal(recon(w).promotions,1);
+  assert.equal(q.accuracyMultiplier,1,'the leaderless accuracy penalty ends once someone leads');
   assert.equal(lead.slotIndex,0);assert.equal(q.members.filter(s=>s.role==='gunner'&&!s.slotRole).length,1,'one gun keeps the gunner slot');
   assert.ok(q.members.filter(s=>s.role==='gunner').every(s=>s===q.members.find(m=>m.slotIndex===1)||s.slotRole==='rifleman'));
   assert.equal(w.events.filter(e=>e.type==='decision-leader-promoted').length,1);invariants(w,12);
