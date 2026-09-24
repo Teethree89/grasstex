@@ -33,7 +33,7 @@ LOCAL_ELEVENLABS_API_KEY = ""
 MODEL_ID = "eleven_v3"
 OUTPUT_FORMAT = "mp3_44100_128"
 
-# Source: Assets/audio/VOICE_GENERATION.md
+# Source: the Audio section of AGENTS.md
 VOICE_IDS = {
     "us": "TxWZERZ5Hc6h9dGxVmXa",  # Jeffrey B.
     "ge": "Z2yQ1EdlDmcIgh9Pn4Lw",  # Commander Blake
@@ -133,7 +133,7 @@ def jobs_for(expansion: dict, faction: str | None, events: set[str] | None):
         if configured and configured != expected:
             raise SystemExit(
                 f"Voice ID mismatch for {fac}: expansion has {configured}, "
-                f"VOICE_GENERATION.md/local config expects {expected}"
+                f"AGENTS.md/local config expects {expected}"
             )
         for record in data.get("generation", []):
             event = record.get("event")
