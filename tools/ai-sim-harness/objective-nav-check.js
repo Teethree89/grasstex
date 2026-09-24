@@ -263,9 +263,9 @@ section('meeting engagements do not enter prepared-defender construction');
 section('provenance distinguishes real competing writers from sampling noise');
 {
   const {r,sq,sim}=commandFixture();
-  load(r,'battle/modules/36-order-provenance.js');load(r,'battle/modules/37-order-provenance-fastpath.js');
-  const p=r.BattleOrderProvenance,fast=r.BattleOrderProvenanceFastPath;
-  p.instrument(sim);fast.install(sim);
+  load(r,'battle/modules/36-order-provenance.js');
+  const p=r.BattleOrderProvenance,fast=p;
+  p.instrument(sim);
   for(let i=0;i<5;i++){
     sim.time+=.45;fast.withOwner('force-command','regroup centroid',()=>{sq.objective={x:120+i*.75,z:0};});p.sample(sim);
   }
