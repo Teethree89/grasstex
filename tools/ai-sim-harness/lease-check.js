@@ -66,4 +66,25 @@ test('a regroup is a Squad Leader lease; contact ends it and starts the re-entry
   assert.ok(L.holds(q,'regroup-cooldown',b.time),'re-entry cooldown is its own named lease');
   assert.ok(L.holds(q,'regroup-bypass',b.time));
 });
+test('prune ends only expired pure-timer leases; state-bearing leases survive expiry',()=>{
+  const {r}=root(),L=r.BattleLeases,q={};
+  L.grant(q,'bound','squad-leader',0,3,'t');L.grant(q,'regroup-bypass','squad-leader',0,2,'t');
+  L.grant(q,'objective-security','capture-zone',0,1,'t');L.grant(q,'succession','squad-leader',0,1,'t');L.grant(q,'regroup','squad-leader',0,1,'t');
+  assert.equal(L.prune(q,2.5),1,'only the expired timer (bypass) goes at t=2.5');
+  assert.equal(q._leases.ended.at(-1).kind,'regroup-bypass');assert.equal(q._leases.ended.at(-1).endReason,'expired');assert.equal(q._leases.ended.at(-1).endedAt,2);
+  assert.equal(L.prune(q,10),1,'then bound');
+  for(const k of ['objective-security','succession','regroup'])assert.ok(L.get(q,k),k+' keeps its expired record');
+});
+test('active leases are ordered by declared priority and carry progress',()=>{
+  const {r,leader}=root(),L=r.BattleLeases,{b,q}=squad(r);
+  q.commandPhase='approach';
+  q.members.forEach((s,i)=>{s.root.position.x=(i%2?-1:1)*(20+i*6);s.root.position.z=(i%3)*25;});
+  for(let i=0;i<8&&!L.get(q,'regroup');i++)tick(leader,b);
+  L.grant(q,'corner-hold','squad-leader',b.time,b.time+5,'t');
+  const act=L.active(q,b.time);
+  assert.ok(act.length>=2);
+  for(let i=1;i<act.length;i++)assert.ok(act[i-1].priority>=act[i].priority,'sorted by priority');
+  assert.equal(L.top(q,b.time).kind,'regroup');
+  assert.match(act[0].progress.detail,/core spread \d+ → \d+ m/);
+});
 console.log(n+' lease checks passed');

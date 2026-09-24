@@ -19,6 +19,45 @@
   'use strict';
   if (!root.BattleModules || !root.SquadAI || root.BattleSquadStability) return;
   var L = root.BattleLeases;
+  /* The Squad Leader's lease kinds. Priority orders them when several are live (what is holding the
+     squad most); timer kinds are pure clocks that prune() may end once expired; progress tests are
+     read-only answers to "is this hold getting anywhere?" for diagnostics and the AI Graph. */
+  function num(v) {
+    return isFinite(+v) ? Math.round(+v) : null;
+  }
+  L.define('succession', {
+    priority: 95,
+    progress: function (sq, l, t) {
+      return { ok: null, detail: 'leaderless ' + (t - l.since).toFixed(1) + ' s' };
+    }
+  });
+  L.define('regroup', {
+    priority: 90,
+    progress: function (sq, l) {
+      var now = sq._cohesionAssessment && sq._cohesionAssessment.coreSpread,
+        start = l.data && l.data.startSpread;
+      if (!isFinite(+now) || !isFinite(+start)) return null;
+      return { ok: +now < +start, detail: 'core spread ' + num(start) + ' → ' + num(now) + ' m' };
+    }
+  });
+  L.define('tactical-plan', {
+    priority: 70,
+    progress: function (sq) {
+      var p = sq._engagementPlan;
+      return p ? { ok: p.status === 'active' ? true : null, detail: p.phase + ' plan ' + p.status } : null;
+    }
+  });
+  L.define('bound', {
+    priority: 60,
+    timer: true,
+    progress: function (sq, l) {
+      return { ok: null, detail: 'fireteam ' + ((l.data && l.data.team) || '?') + ' moving' };
+    }
+  });
+  L.define('corner-hold', { priority: 30, timer: true });
+  L.define('regroup-cooldown', { priority: 20, timer: true });
+  L.define('bound-cycle', { priority: 15, timer: true });
+  L.define('regroup-bypass', { priority: 10, timer: true });
 
   var ASSAULT_LEASE = 26,
     DEFENSE_LEASE = 38,
@@ -518,7 +557,7 @@
       t + REGROUP_MAX,
       'squad dispersed',
       'core spread back inside ' + Math.round(release) + ' m after ' + REGROUP_MIN + ' s, contact, or ' + REGROUP_MAX + ' s',
-      { anchor: anchor }
+      { anchor: anchor, startSpread: ca.coreSpread }
     );
     st.entries++;
     sq._regroupRecovery = {
@@ -1178,6 +1217,7 @@
         updateCohesion(sim, q);
         executeMission(sim, q, town);
         updatePlan(sim, q);
+        L.prune(q, sim.time);
       }
     });
     summary(sim);
