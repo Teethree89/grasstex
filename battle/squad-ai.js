@@ -262,6 +262,78 @@
       return false;
     return true;
   }
+  /* Owned command leases. A lease is a commitment that holds a squad's intent for a while: one
+     table per squad (sq._leases) says which commitments are live, who owns each, why it was taken,
+     when it lapses and what releases it early, so no hold is an anonymous `...Until` field.
+     `until` is an absolute sim time (Infinity while a condition, not the clock, holds it);
+     holds() is `t < until`, the same test every migrated timer used. */
+  var LEASE_LOG = 8;
+  function leaseTable(sq) {
+    if (!sq._leases) sq._leases = { live: {}, ended: [] };
+    return sq._leases;
+  }
+  var Leases = {
+    grant: function (sq, kind, owner, since, until, reason, release, data) {
+      var l = { kind: kind, owner: owner, since: since, until: until, reason: reason || kind, release: release || 'expiry' };
+      if (data) l.data = data;
+      leaseTable(sq).live[kind] = l;
+      return l;
+    },
+    /* Push an existing lease's expiry out (never in); grants it if absent. */
+    extend: function (sq, kind, owner, since, until, reason, release) {
+      var l = sq && sq._leases && sq._leases.live[kind];
+      if (!l) return Leases.grant(sq, kind, owner, since, until, reason, release);
+      if (until > l.until) {
+        l.until = until;
+        if (reason) l.reason = reason;
+      }
+      return l;
+    },
+    get: function (sq, kind) {
+      return (sq && sq._leases && sq._leases.live[kind]) || null;
+    },
+    holds: function (sq, kind, t) {
+      var l = sq && sq._leases && sq._leases.live[kind];
+      return !!l && t < l.until;
+    },
+    until: function (sq, kind) {
+      var l = sq && sq._leases && sq._leases.live[kind];
+      return l ? l.until : 0;
+    },
+    end: function (sq, kind, t, why) {
+      var table = sq && sq._leases,
+        l = table && table.live[kind];
+      if (!l) return null;
+      delete table.live[kind];
+      l.endedAt = t;
+      l.endReason = why || 'released';
+      table.ended.push(l);
+      if (table.ended.length > LEASE_LOG) table.ended.shift();
+      return l;
+    },
+    clear: function (sq) {
+      if (sq) sq._leases = { live: {}, ended: [] };
+    },
+    /* Live leases at time t, for diagnostics and the operator view. */
+    active: function (sq, t) {
+      var live = (sq && sq._leases && sq._leases.live) || {},
+        out = [];
+      Object.keys(live).forEach(function (kind) {
+        var l = live[kind];
+        if (t < l.until)
+          out.push({
+            kind: l.kind,
+            owner: l.owner,
+            reason: l.reason,
+            release: l.release,
+            since: l.since,
+            remaining: isFinite(l.until) ? +(l.until - t).toFixed(2) : null
+          });
+      });
+      return out;
+    }
+  };
+
   /* Declared extension points. A module attaches to a named slot instead of replacing a SquadAI
      function, and the owner fixes the order each slot runs in, so the pipeline reads here rather
      than from whichever file happened to load last. */
@@ -566,7 +638,7 @@
     /* A squad in contact is a base of fire, not a marching column: the order anchor only creeps
        forward again during an authorized bound. This is the squad-level half of the fix - the
        commander used to keep walking everyone through a firefight. */
-    var bounding = battle.time < (squad._boundUntil || 0),
+    var bounding = Leases.holds(squad, 'bound', battle.time),
       held = !!squad.inContact && !bounding;
     var dx = goal.x - anchor.x,
       dz = goal.z - anchor.z,
@@ -734,6 +806,7 @@
   }
 
   root.BattleExtensionPoints = extensionPoints;
+  root.BattleLeases = Leases;
   root.SquadAI = {
     extend: EXT.attach,
     extensionOrder: EXT.order,

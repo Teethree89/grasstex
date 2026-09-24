@@ -18,6 +18,7 @@
 (function (root) {
   'use strict';
   if (!root.BattleModules || !root.SquadAI || root.BattleSquadStability) return;
+  var L = root.BattleLeases;
 
   var ASSAULT_LEASE = 26,
     DEFENSE_LEASE = 38,
@@ -460,7 +461,7 @@
           +sq._regroupBypassUntil || 0,
           t + (age >= REGROUP_MAX ? REGROUP_BYPASS : REENTRY)
         );
-        sq.commandHoldUntil = 0;
+        L.end(sq, 'corner-hold', t, 'regroup released');
         return;
       }
       sq.commandPhase = 'regroup';
@@ -627,7 +628,7 @@
       sq.formation = form;
       force = true;
     }
-    var bounding = battle.time < (sq._boundUntil || 0),
+    var bounding = L.holds(sq, 'bound', battle.time),
       held = !!sq.inContact && !bounding,
       dx = goal.x - anchor.x,
       dz = goal.z - anchor.z,
@@ -728,14 +729,15 @@
     var members = sq.members || [],
       i,
       s;
+    var t = battle.time;
     /* A bound order that was not taken up inside its window is stale, not pending. */
-    if (battle.time >= (sq._boundUntil || 0)) E.clearBoundOrders(sq);
+    if (!L.holds(sq, 'bound', t)) E.clearBoundOrders(sq);
     if (r.contactStarted) {
-      sq._boundUntil = 0;
-      sq._nextBoundAt = battle.time + BOUND_CYCLE;
+      L.end(sq, 'bound', t, 'contact started');
+      L.grant(sq, 'bound-cycle', 'captain', t, t + BOUND_CYCLE, 'contact started', 'cycle expiry');
     }
     if (!sq.inContact) {
-      sq._boundUntil = 0;
+      L.end(sq, 'bound', t, 'contact broken');
       sq._assaultAuthorized = false;
       return;
     }
@@ -743,8 +745,8 @@
     /* A bound needs a base of fire: somebody has to be shooting while somebody else moves. */
     if (
       !sq._assaultAuthorized ||
-      battle.time < (sq._nextBoundAt || 0) ||
-      battle.time < (sq._boundUntil || 0) ||
+      L.holds(sq, 'bound-cycle', t) ||
+      L.holds(sq, 'bound', t) ||
       r.effective < 2 ||
       r.pinned >= r.effective
     )
@@ -777,9 +779,10 @@
     if (!(movers.length && holding >= 2)) turn = first;
     sq._boundTurn = turn;
     if (movers.length && holding >= 2) {
-      sq._boundTeam = team;
-      sq._boundUntil = battle.time + BOUND_DURATION;
-      sq._nextBoundAt = battle.time + BOUND_CYCLE;
+      L.grant(sq, 'bound', 'captain', t, t + BOUND_DURATION, 'fireteam ' + team + ' bounds', 'window expiry or contact broken', {
+        team: team
+      });
+      L.grant(sq, 'bound-cycle', 'captain', t, t + BOUND_CYCLE, 'after bound by ' + team, 'cycle expiry');
       E.orderBound(movers);
       telemetry(battle, 'decision-bound', {
         faction: sq.faction,
@@ -848,7 +851,7 @@
       if (m) {
         sq.route = missionLegs(m);
         sq.routeIndex = 0;
-        sq.commandHoldUntil = 0;
+        L.end(sq, 'corner-hold', t, 'new mission');
       }
       if (m && m.status === 'issued') {
         m.status = 'executing';
@@ -894,7 +897,7 @@
       sq.objective = copy(legs[Math.min(1, last)]);
       return;
     }
-    if (t < (+sq.commandHoldUntil || 0)) {
+    if (L.holds(sq, 'corner-hold', t)) {
       sq.objective = copy(wp);
       return;
     }
@@ -920,8 +923,15 @@
         z: wp.z
       });
       if (urban) {
-        sq.commandHoldUntil =
-          t + (+c.cornerHold || 0) + (captainAlive(sq) ? 0 : +c.cornerNoCaptainExtra || 0);
+        L.grant(
+          sq,
+          'corner-hold',
+          'captain',
+          t,
+          t + (+c.cornerHold || 0) + (captainAlive(sq) ? 0 : +c.cornerNoCaptainExtra || 0),
+          'urban corner after route leg ' + from,
+          'expiry, new mission or regroup release'
+        );
         setPhase(sim, sq, 'corner-check', 'route ' + from);
         sq.objective = copy(wp);
         return;
@@ -1003,9 +1013,7 @@
         q._regroupRecoverySerial = 0;
         q._regroupBypassUntil = 0;
         q._fireteamOrders = {};
-        q._boundUntil = 0;
-        q._nextBoundAt = 0;
-        q._boundTeam = null;
+        L.clear(q);
         q._boundTurn = null;
         q._assaultAuthorized = false;
         (q.members || []).forEach(function (s) {

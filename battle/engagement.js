@@ -769,7 +769,8 @@
   function orderedBound(s, battle) {
     var e = state(s),
       sq = s.squad;
-    if (!e.boundOrder || !sq || !sq._assaultAuthorized || battle.time >= (sq._boundUntil || 0)) return false;
+    if (!e.boundOrder || !sq || !sq._assaultAuthorized || !root.BattleLeases.holds(sq, 'bound', battle.time))
+      return false;
     if (
       s.role === 'gunner' ||
       s.reloading ||
@@ -809,7 +810,13 @@
       next = { x: p.x + (dx / len) * step, z: p.z + (dz / len) * step };
     if (root.BattleMovementProgress && !root.BattleMovementProgress.candidateAllowed(s, battle, next))
       return false;
-    enter(s, battle, 'assault', Math.max(0, sq._boundUntil - battle.time), 'authorized fireteam bound');
+    enter(
+      s,
+      battle,
+      'assault',
+      Math.max(0, root.BattleLeases.until(sq, 'bound') - battle.time),
+      'authorized fireteam bound'
+    );
     e.assaultGoal = next;
     assault(s, battle);
     return true;
@@ -1175,7 +1182,7 @@
       if (!s.dead) state(s).suppressOrder = false;
     }
     if (contact) {
-      var bounding = battle.time < (sq._boundUntil || 0),
+      var bounding = root.BattleLeases.holds(sq, 'bound', battle.time),
         candidates = [];
       var point = { x: contact.x, z: contact.z },
         api = SA();

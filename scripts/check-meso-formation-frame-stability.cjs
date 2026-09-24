@@ -4,7 +4,10 @@ const vm = require('vm');
 const assert = require('assert');
 
 const proposals = [];
+// The real lease primitive (squad-ai.js); everything else the Captain touches is stubbed below.
+const { BattleLeases } = require('../tools/ai-sim-harness/harness').bootstrap({ modules: false });
 const context = {
+  BattleLeases,
   console,
   Math,
   JSON,

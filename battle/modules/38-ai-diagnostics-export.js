@@ -103,7 +103,7 @@ function factionSummary(sim,faction){
         commandPointDistance:rounded(distance(pos,point(sq.objective))),targetObjectiveState:objectiveTargetState(sim,sq,pos),
         rally:point(sq.rally),distanceToRally:rounded(distance(pos,point(sq.rally))),orderAnchor:point(sq.orderAnchor),distanceToOrderAnchor:rounded(distance(pos,point(sq.orderAnchor))),
         spread:rounded(spread),cohesionLimit:rounded(limit),overCohesionLimit:spread!=null&&limit!=null?spread>limit:null,captainAlive:captainAlive(sq),
-        commandHoldUntil:isFinite(+sq.commandHoldUntil)?+sq.commandHoldUntil:null,commandHoldRemaining:isFinite(+sq.commandHoldUntil)?rounded(Math.max(0,+sq.commandHoldUntil-simNow(sim))):null,
+        commandHoldUntil:root.BattleLeases?root.BattleLeases.until(sq,'corner-hold'):null,commandHoldRemaining:root.BattleLeases?rounded(Math.max(0,root.BattleLeases.until(sq,'corner-hold')-simNow(sim))):null,
         inContact:!!sq.inContact,aliveCount:isFinite(+sq.aliveCount)?+sq.aliveCount:null,lastDoctrineRule:sq._lastDoctrineRule||null,
         route:routeState(sq,pos),stablePlan:stablePlanState(sq,sim),regroupRecovery:regroupRecoveryState(sq,sim),fireteamOrders:fireteamOrdersState(sq,sim),movement:movementState(sq),
         objectiveRecovery:objectiveRecovery(sq),objectiveDefenseRequest:defenseRequest(sq),preparedDefenseRequest:preparedDefenseRequest(sq),

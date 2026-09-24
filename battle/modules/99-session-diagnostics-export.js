@@ -56,7 +56,7 @@ function squad(sq){
     id:sq.id,faction:sq.faction,state:sq.state||null,commandPhase:sq.commandPhase||null,commandRole:sq.commandRole||null,
     aliveCount:finite(+sq.aliveCount),captainAlive:sq.captainAlive!==false,inContact:!!sq.inContact,targetObjective:sq.targetObjective||null,
     objective:point(sq.objective),rally:point(sq.rally),routeIndex:finite(+sq.routeIndex),route:safePlain(sq.route,3),
-    commandHoldUntil:finite(+sq.commandHoldUntil),accuracyMultiplier:finite(+sq.accuracyMultiplier),
+    commandHoldUntil:finite(root.BattleLeases?root.BattleLeases.until(sq,'corner-hold'):0),accuracyMultiplier:finite(+sq.accuracyMultiplier),
     regroup:{accepted:!!(sq._regroupHysteresis&&sq._regroupHysteresis.accepted),anchor:point(sq._regroupHysteresis&&sq._regroupHysteresis.anchor),enteredAt:finite(+(sq._regroupHysteresis&&sq._regroupHysteresis.enteredAt)),entries:finite(+(sq._regroupHysteresis&&sq._regroupHysteresis.entries)),bypassUntil:finite(+sq._regroupBypassUntil)},
     /* Macro brief (General-owned) vs Captain execution (Meso-owned): the two halves of the mission contract. */
     mission:safePlain(sq._macroMission?Object.assign({},sq._macroMission,{key:undefined}):null,4),lastMission:safePlain(sq._lastMacroMission?Object.assign({},sq._lastMacroMission,{key:undefined}):null,4),
