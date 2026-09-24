@@ -50,6 +50,7 @@ A benchmark performance regression should end with the same root-cause chain as 
 - **Do not modify path clearance/body-width/hedgerow geometry to fix command churn.** Those systems are frozen unless a deterministic physical-navigation regression proves they are wrong.
 - **Do not optimize diagnostic scores directly.** Improve the underlying behavior; counters are evidence, not goals.
 - **Do not preserve compatibility code indefinitely if it still produces runtime work.** Compatibility views may expose old metric names, but dead ownership paths should be deleted.
+- **Extend AI behaviour through declared slots, never by replacing a function.** `SquadAI` (fire gates, shot model, after-shot, before/after soldier tick) and `BattleEngagement` (after-drill) declare their extension points and the order they run in; add a new id to that declared order and attach with `extend(stage,id,fn)`. Reassigning `SquadAI.tryFire`, `updateSoldier` and the like makes behaviour depend on module file order - `14-z-ballistic-raycast.js` once silently discarded the LOS gate that way. `tools/ai-sim-harness/extension-order-check.js` guards this.
 
 ## Stop-and-reassess triggers
 

@@ -5,11 +5,12 @@
 (function(root){
   'use strict';
   if(!root.BattleModules||!root.BattleSoldierModel||!root.SquadAI||!root.BattleSim)return;
-  var oldStart=root.BattleSim.start,oldUpdate=root.SquadAI.updateSoldier,T=root.BattleSoldierModel.TAGS;
+  var oldStart=root.BattleSim.start,T=root.BattleSoldierModel.TAGS;
   function finiteAmmo(){return!!root.BattleAmmunition;}
   function startLegacyReload(s,battle){if(finiteAmmo()||!s||s.dead||!s.weapon||s.reloading)return;var dur=s.weapon.stats.reloadTime||2.5;s.reloading=true;s.reloadStart=battle.time;s.reloadUntil=battle.time+dur;s.fireCooldown=Math.max(s.fireCooldown||0,dur);root.BattleSoldierModel.triggerAnimation(s,T.reload,{weapon:s.weapon.kind,duration:dur});if(root.BattleTelemetry)root.BattleTelemetry.record('decision-reload',{soldier:s.id,faction:s.faction,weapon:s.weapon.kind,duration:dur},battle);}
   function finishLegacyReload(s){if(finiteAmmo()||!s||!s.weapon)return;s.reloading=false;s.weapon.ammo=s.weapon.magSize||s.weapon.stats.magazine||8;s.reloadStart=0;s.reloadUntil=0;}
-  root.SquadAI.updateSoldier=function(s,battle){
+  /* SquadAI's beforeSoldier / afterSoldier slots bracket each soldier's AI tick. */
+  root.SquadAI.extend('beforeSoldier','weapon-cycle',function(s,battle){
     if(s&&!s.dead&&s.weapon){
       if(!finiteAmmo()){
         if(s.reloading&&battle.time>=s.reloadUntil)finishLegacyReload(s);
@@ -19,13 +20,14 @@
          interruption: the man does not keep a firing-station/base-of-fire pose while swapping it. */
       if(s.reloading)s.fireCooldown=Math.max(s.fireCooldown||0,Math.max(.16,(+s.reloadUntil||battle.time)-battle.time));
     }
-    oldUpdate(s,battle);
+  });
+  root.SquadAI.extend('afterSoldier','weapon-cycle',function(s,battle){
     if(s&&s.reloading){
       s.setUp=false;s.tacticalCrouch=true;
       if(s.target&&root.BattleMovementResolver){root.BattleMovementResolver.proposeCombat(s,{x:s.root.position.x,z:s.root.position.z},battle,'reload-hold',null,{source:'weapon-cycle',reason:'reload pause'});root.BattleMovementResolver.resolve(s,battle);}
       else if(s.target)s.destination={x:s.root.position.x,z:s.root.position.z};
     }
-  };
+  });
   root.BattleSim.start=function(scene,opts){var sim=oldStart(scene,opts),oldFire=sim.onFire;sim.onFire=function(soldier){
     if(soldier&&soldier.weapon){
       /* BattleAmmunition consumes the round after a successful trigger. Do not double-decrement it

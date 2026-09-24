@@ -148,7 +148,36 @@
     if(root.BattleNavigation&&root.BattleNavigation.lineOfSightBlocked({x:p.x,z:p.z},{x:point.x,z:point.z},eyeY,aimY))return false;
     return true;
   }
+  /* Declared extension points. A module attaches to a named slot instead of replacing a SquadAI
+     function, and the owner fixes the order each slot runs in, so the pipeline reads here rather
+     than from whichever file happened to load last. */
+  function extensionPoints(order){
+    var slots={};Object.keys(order).forEach(function(stage){slots[stage]=[];});
+    return{
+      order:order,
+      attach:function(stage,id,fn){
+        var ids=order[stage],at=ids?ids.indexOf(id):-1;
+        if(at<0)throw new Error('Extension '+id+' is not declared for '+stage);
+        slots[stage][at]=fn;
+      },
+      /* Gates: any extension returning false vetoes the action. */
+      pass:function(stage,a,b,c){var fns=slots[stage];for(var i=0;i<fns.length;i++)if(fns[i]&&fns[i](a,b,c)===false)return false;return true;},
+      run:function(stage,a,b,c){var fns=slots[stage];for(var i=0;i<fns.length;i++)if(fns[i])fns[i](a,b,c);},
+      /* Replaceable models: the first attached extension decides; otherwise the owner's default. */
+      first:function(stage,fallback){var fns=slots[stage];for(var i=0;i<fns.length;i++)if(fns[i])return fns[i];return fallback;}
+    };
+  }
+  var EXT=extensionPoints({
+    fireGate:['ammunition','ballistics','direct-fire-los'],  // before an aimed shot: weapon ready, target in range, trigger-time LOS
+    shotModel:['ballistics'],                   // where an aimed round goes (default: resolveFire accuracy roll)
+    areaFireGate:['ammunition'],                // before a suppressive shot
+    afterShot:['ammunition'],                   // a round left the weapon: ammo, heat, stoppages
+    beforeSoldier:['weapon-cycle'],             // each soldier AI tick, before perception
+    afterSoldier:['weapon-cycle']               // after engagement and movement resolution
+  });
+
   function areaFire(shooter,point,battle){
+    if(!EXT.pass('areaFireGate',shooter,battle,point))return 0;
     if(shooter.fireCooldown>0||!canSuppress(shooter,point,battle))return 0;
     var stats=shooter.weapon.stats,p=shooter.root.position,d=dist2(p.x,p.z,point.x,point.z);
     var spread=clamp(AREA_SPREAD_MIN+d*AREA_SPREAD_PER_M,AREA_SPREAD_MIN,AREA_SPREAD_MAX);
@@ -161,6 +190,7 @@
     shooter.fireCooldown=1/stats.rof*AREA_FIRE_RATE*(.85+rand(battle)*.3);
     battle.onFire&&battle.onFire(shooter);
     battle.onSuppressiveShot&&battle.onSuppressiveShot(shooter,point,hit);
+    EXT.run('afterShot',shooter,battle);
     return hit;
   }
 
@@ -297,11 +327,14 @@
   }
 
   function updateSoldier(soldier,battle){
-    if(soldier.dead)return;
-    var role=perceive(soldier,battle);
-    if(root.BattleEngagement)root.BattleEngagement.updateSoldier(soldier,battle);
-    else fallbackBehavior(soldier,battle,role);
-    if(root.BattleMovementResolver)root.BattleMovementResolver.resolve(soldier,battle);
+    EXT.run('beforeSoldier',soldier,battle);
+    if(!soldier.dead){
+      var role=perceive(soldier,battle);
+      if(root.BattleEngagement)root.BattleEngagement.updateSoldier(soldier,battle);
+      else fallbackBehavior(soldier,battle,role);
+      if(root.BattleMovementResolver)root.BattleMovementResolver.resolve(soldier,battle);
+    }
+    EXT.run('afterSoldier',soldier,battle);
   }
 
   /* Minimal stand-in used only when engagement.js failed to load, so a broken deployment still
@@ -327,7 +360,14 @@
     setDestination(soldier,soldier.orderDestination||formationSlot(soldier.squad,soldier,soldier.slotIndex),battle,false);
   }
 
-  function tryFire(soldier,battle){if(soldier.fireCooldown>0)return false;var stats=soldier.weapon.stats;resolveFire(soldier,soldier.target,battle);soldier.fireCooldown=1/stats.rof*(.85+rand(battle)*.3);battle.onFire&&battle.onFire(soldier);return true;}
+  function shot(shooter,target,battle){return EXT.first('shotModel',resolveFire)(shooter,target,battle);}
+  function tryFire(soldier,battle){
+    if(!EXT.pass('fireGate',soldier,battle))return false;
+    if(soldier.fireCooldown>0)return false;var stats=soldier.weapon.stats;shot(soldier,soldier.target,battle);soldier.fireCooldown=1/stats.rof*(.85+rand(battle)*.3);battle.onFire&&battle.onFire(soldier);
+    EXT.run('afterShot',soldier,battle);
+    return true;
+  }
 
-  root.SquadAI={ROLES:ROLES,COMPOSITION:COMPOSITION,createSquad:createSquad,createSoldier:createSoldier,updateSquad:updateSquad,updateSoldier:updateSoldier,perceive:perceive,issueOrders:issueOrders,formationSlot:formationSlot,formationFor:formationFor,setDestination:setDestination,hasLineOfSight:hasLineOfSight,detectionRange:detectionRange,findTarget:findTarget,tryFire:tryFire,resolveFire:resolveFire,areaFire:areaFire,canSuppress:canSuppress,shareContact:shareContact,squadContact:squadContact,CONTACT_MEMORY:CONTACT_MEMORY,CONTACT_REFRESH:CONTACT_REFRESH,coverMultiplierAt:coverMultiplierAt,coverPotentialAt:coverPotentialAt,stanceOf:stanceOf,eyeHeight:eyeHeight,dist2:dist2};
+  root.BattleExtensionPoints=extensionPoints;
+  root.SquadAI={extend:EXT.attach,extensionOrder:EXT.order,ROLES:ROLES,COMPOSITION:COMPOSITION,createSquad:createSquad,createSoldier:createSoldier,updateSquad:updateSquad,updateSoldier:updateSoldier,perceive:perceive,issueOrders:issueOrders,formationSlot:formationSlot,formationFor:formationFor,setDestination:setDestination,hasLineOfSight:hasLineOfSight,detectionRange:detectionRange,findTarget:findTarget,tryFire:tryFire,resolveFire:shot,areaFire:areaFire,canSuppress:canSuppress,shareContact:shareContact,squadContact:squadContact,CONTACT_MEMORY:CONTACT_MEMORY,CONTACT_REFRESH:CONTACT_REFRESH,coverMultiplierAt:coverMultiplierAt,coverPotentialAt:coverPotentialAt,stanceOf:stanceOf,eyeHeight:eyeHeight,dist2:dist2};
 })(typeof window!=='undefined'?window:globalThis);

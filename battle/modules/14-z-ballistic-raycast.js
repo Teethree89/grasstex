@@ -127,25 +127,16 @@
     shooter._lastBallisticShot=meta;
     return hit;
   }
-  function blocked(shooter,battle){
-    try{return !S.hasLineOfSight(shooter,shooter.target,battle.heightAt,battle.obstacles);}catch(_){return false;}
-  }
-  function tryFire(shooter,battle){
+  /* SquadAI fireGate slot, after the ammunition gate and before trigger-time LOS: a round is only
+     launched at a live target inside the weapon's range, and a weapon still cycling does not count. */
+  function inRange(shooter,battle){
     if(!shooter||!battle||!shooter.target||shooter.target.dead||shooter.fireCooldown>0)return false;
     var stats=shooter.weapon&&shooter.weapon.stats;if(!stats)return false;
     var p=shooter.root.position,t=shooter.target.root.position,d=S.dist2?S.dist2(p.x,p.z,t.x,t.z):Math.hypot(p.x-t.x,p.z-t.z);
-    if(d>stats.range)return false;
-    if(blocked(shooter,battle)){
-      shooter._losBlockedFire=(shooter._losBlockedFire||0)+1;shooter._losBlockedFireAt=+battle.time||0;return false;
-    }
-    resolveRay(shooter,shooter.target,battle);
-    shooter.fireCooldown=1/stats.rof*(.85+rand(battle)*.3);
-    battle.onFire&&battle.onFire(shooter);
-    return true;
+    return d<=stats.range;
   }
 
-  S.resolveFire=resolveRay;
-  S.tryFire=tryFire;
+  if(typeof S.extend==='function'){S.extend('fireGate','ballistics',inRange);S.extend('shotModel','ballistics',resolveRay);}
   root.BattleBallistics={version:'71-combat-group-calibration',resolve:resolveRay,dispersionSigma:dispersionSigma,groupDiameter90:groupDiameter90,bodyShape:bodyShape,rayEllipsoid:rayEllipsoid};
   if(typeof console!=='undefined')console.log('[BALLISTICS] direct fire uses combat-calibrated dispersed raycasts');
 })(typeof window!=='undefined'?window:globalThis);

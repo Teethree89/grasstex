@@ -404,7 +404,15 @@
 
   /* ---- per-soldier update ------------------------------------------------------------------ */
 
+  /* Declared extension point: drills layered on the state machine attach here (see squad-ai.js
+     extensionPoints) instead of replacing updateSoldier. */
+  var EXT=root.BattleExtensionPoints?root.BattleExtensionPoints({afterDrill:['combat-urgency']}):{attach:function(){},run:function(){},order:{}};
   function updateSoldier(s,battle){
+    var result=runDrill(s,battle);
+    if(s&&battle&&!s.dead)EXT.run('afterDrill',s,battle);
+    return result;
+  }
+  function runDrill(s,battle){
     var e=state(s),role=roleOf(s),now=battle.time;
     currentCover(s,battle);
 
@@ -702,7 +710,7 @@
   root.BattleCoverPositions={warm:function(battle){var c=coverRegistry(battle);if(!c.slots)buildCoverSlots(c);return c.slotCount;},candidates:coverCandidates,reserve:reserveCover,release:releaseCover,current:currentCover,snapshot:coverSnapshot,spacing:COVER_SPACING};
 
   root.BattleEngagement={
-    updateSoldier:updateSoldier,updateSquad:updateSquad,orderBound:orderBound,clearBoundOrders:clearBoundOrders,decide:decide,
+    extend:EXT.attach,extensionOrder:EXT.order,updateSoldier:updateSoldier,updateSquad:updateSquad,orderBound:orderBound,clearBoundOrders:clearBoundOrders,decide:decide,
     suppress:suppress,assignSuppressors:assignSuppressors,reactTime:reactTime,knownThreat:knownThreat,
     findCover:findCover,threatSector:threatSector,sectorDistance:sectorDistance,
     facingError:facingError,fireAllowed:fireAllowed,commitStance:commitStance,applyStance:applyStance,

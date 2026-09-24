@@ -17,7 +17,6 @@ var LOADOUT={
   lmg:    {total:180,low:60, baseStop:.0015, heatStop:.0035, heatPerShot:.070, cool:.13, clear:2.35},
   pistol: {total:32, low:8,  baseStop:.0010, heatStop:.0012, heatPerShot:.045, cool:.18, clear:1.50}
 };
-var oldTryFire=root.SquadAI.tryFire,oldAreaFire=root.SquadAI.areaFire;
 
 function cfg(s){return LOADOUT[s&&s.weapon&&s.weapon.kind]||LOADOUT.rifle;}
 function rand(b){return b&&typeof b.random==='function'?b.random():Math.random();}
@@ -77,15 +76,12 @@ function afterShot(s,battle){
   if(rand(battle)<stopChance)startStoppage(s,battle);
 }
 
-root.SquadAI.tryFire=function(s,battle){
-  if(unavailable(s,battle))return false;
-  var fired=oldTryFire.apply(this,arguments);if(fired)afterShot(s,battle);return fired;
-};
-root.SquadAI.areaFire=function(s,point,battle){
-  if(unavailable(s,battle))return 0;
-  var before=+s.fireCooldown||0,result=oldAreaFire.apply(this,arguments),after=+s.fireCooldown||0;
-  if(after>before+1e-6)afterShot(s,battle);return result;
-};
+/* SquadAI slots: the weapon must be able to discharge before any shot, and every round that leaves
+   it (aimed or suppressive) costs ammunition and heat. */
+function ready(s,battle){return!unavailable(s,battle);}
+root.SquadAI.extend('fireGate','ammunition',ready);
+root.SquadAI.extend('areaFireGate','ammunition',ready);
+root.SquadAI.extend('afterShot','ammunition',afterShot);
 
 function tick(sim,payload){
   var dt=Math.max(0,payload&&isFinite(+payload.dt)?+payload.dt:0),t=+sim.time||0,a=units(sim);
