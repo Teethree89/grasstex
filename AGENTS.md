@@ -269,10 +269,11 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
 
 ### Open issues (as of v160 / 2026-09-24)
 
-- Regroups (2026-09-24): half used to time out at 18 s because the order anchor stayed with the
-  leading men instead of moving to the rally point; fixed (timeouts 76 → 6 over 30 seeds, time
-  regrouping halved, outcomes unchanged). Regroup entry frequency in defend scenarios is still
-  worth measuring against the old 6-9× release rise.
+- Regroups: half used to time out at 18 s because the order anchor stayed with the leading men;
+  fixed (timeouts 76 → 6 over 30 seeds). Measured 2026-09-24 on main (20 battles per type, benchmark
+  `regroups`): 8.2 regroups per battle in meeting, 7.1 in US-defend and 7.5 in GE-defend, with 11, 5 and
+  1 timeouts. Defend scenarios regroup no more often than meetings, so there is no defend-specific
+  rise left to chase.
 - Window/ingress crowding: claim collisions swing 23 to 3,838 on the same seed. Reservation
   and physical occupancy haven't been separated yet.
 - Personal-space corrections rose slightly (15.7k → 17.4k per battle). Find the converging
@@ -284,14 +285,14 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
   platoon/company command, fallback/counterattack and combined arms. Capture Zone and
   Prepared Defense already publish *requests* that Force Command accepts; follow that pattern.
 - Meeting engagements deliberately get no runtime engineer fortification (`engineerTick` exits early).
-- **Sergeant weapons (pending).** Squad leaders still carry the pistol (`ROLES.sergeant.weapon`). Real
-  squad leaders carried a rifle or SMG (US M1 Garand or Thompson, GE MP40). It changes gameplay
-  (range, damage, fire rate), so make it its own change with a paired benchmark.
-- **General concentration of effort (pending).** Each side's 5 squads spread over ~2.8 of ~4.5
-  objectives. In the 2026-09-24 standard benchmark (meeting battles) a side spread over 3+ objectives
-  won 38% (n=26) vs 55% at 2-3 (n=84): suggestive, not significant. A main effort belongs to the
-  General's objective choice (`chooseObjective` saturation), not a new layer. A platoon layer is not
-  warranted at 5 squads per side (one reinforced platoon); revisit at ~9+ squads or combined arms.
+- **Sergeant weapons.** Squad leaders carry the rifle (US M1 Garand, GE Kar98k). A GE MP40 (and a
+  US Thompson option) needs an `smg` weapon kind with a model, sound, flash and grip first.
+- **General concentration of effort.** Done as a frontage limit in `chooseObjective` (see Main effort):
+  spread fell from ~2.7 to ~2.3 objectives per side in meeting battles and captures rose 3.7 → 4.3
+  (20 paired seeds). A one-sided test (30 meeting seeds, only one side concentrating) showed no
+  measurable win effect: US 8 → 12 wins when US concentrates (Fisher p=0.41), GE 22 → 20 when GE
+  does (p=0.78). Tune `maxEfforts`/`frontageCost` only with ~200+ runs per arm. A platoon layer is
+  not warranted at 5 squads per side; revisit at ~9+ squads or combined arms.
 
 ## Soldiers, weapons, animation
 
