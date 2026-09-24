@@ -462,6 +462,8 @@
         lastForward: null,
         entries: 0,
         exits: 0,
+        timeouts: 0,
+        contactExits: 0,
         suppressed: 0,
         stragglerSuppressions: 0,
         regroupRequests: 0
@@ -496,6 +498,7 @@
       st.overSince = null;
       if (L.end(sq, 'regroup', t, 'contact')) {
         st.exits++;
+        st.contactExits++;
         L.grant(sq, 'regroup-cooldown', 'squad-leader', t, t + REENTRY, 'regroup broken by contact');
       }
       L.extend(sq, 'regroup-bypass', 'squad-leader', t, t + 1.25, 'firefight in progress');
@@ -509,6 +512,7 @@
         var timedOut = age >= REGROUP_MAX;
         L.end(sq, 'regroup', t, timedOut ? 'maximum regroup time' : 'cohesion restored');
         st.exits++;
+        if (timedOut) st.timeouts++;
         L.grant(sq, 'regroup-cooldown', 'squad-leader', t, t + REENTRY, 'regroup just released');
         L.extend(
           sq,
