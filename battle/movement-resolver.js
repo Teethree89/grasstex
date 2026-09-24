@@ -93,7 +93,6 @@
         hysteresisRetains: 0,
         lowerPriorityRejected: 0,
         emergencyOverrides: 0,
-        formationShadowsIgnored: 0,
         goalLegalizations: 0,
         formationEndpointResolutions: 0,
         tacticalWaypointBacktracks: 0,
@@ -268,15 +267,6 @@
       source = team ? 'squad-stability' : 'squad-orders';
     count(battle, 'requests', source);
     st.requests = (st.requests || 0) + 1;
-    /* Squad Stability owns the soldier's formation intent once it has published a fireteam slot.
-       The wrapped legacy issueOrders pass still computes an individual formation slot before the
-       fireteam layer refreshes. That intermediate point is not a second order: ignore it instead
-       of briefly overwriting orderDestination and forcing engagement to restore the real intent.
-       Retreat/forced orders remain immediate; the fireteam writer runs later in the same squad tick. */
-    if (team && !urgent && distance(raw, team) > ORDER_WRITE_EPS) {
-      count(battle, 'formationShadowsIgnored');
-      return st.order;
-    }
     var sig = signature(soldier),
       old = st.order,
       cur = point(soldier.orderDestination),

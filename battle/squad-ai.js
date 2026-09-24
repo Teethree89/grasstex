@@ -30,13 +30,8 @@
     GUNNER_SETUP_TIME = 1.4,
     SUPPRESSION_TIME = 1.3,
     LOS_SAMPLES = 8;
-  /* A captain issues a destination for the squad, not a constantly-moving point for
-     every man to chase.  These modest bounds leave room for each man to navigate
-     around a building and settle into his own slot before the next order. */
-  var ORDER_STRIDE = 13,
-    ORDER_ARRIVAL_RADIUS = 8,
-    ORDER_COHESION = 0.55,
-    DESTINATION_COMMIT = 1.35;
+  /* Fallback movement only (no Movement Resolver): hold a destination briefly before re-pathing. */
+  var DESTINATION_COMMIT = 1.35;
   var EYE_HEIGHT = 1.55,
     EYE_HEIGHT_CROUCH = 1.05,
     EYE_HEIGHT_PRONE = 0.42;
@@ -373,6 +368,7 @@
     shotModel: ['ballistics'], // where an aimed round goes (default: resolveFire accuracy roll)
     areaFireGate: ['ammunition'], // before a suppressive shot
     afterShot: ['ammunition'], // a round left the weapon: ammo, heat, stoppages
+    squadCommand: ['captain'], // the squad's command owner; without one a squad only reports status
     beforeSoldier: ['weapon-cycle'], // each soldier AI tick, before perception
     afterSoldier: ['weapon-cycle'] // after engagement and movement resolution
   });
@@ -603,85 +599,23 @@
       soldier._destinationCommitUntil = battle.time + DESTINATION_COMMIT + (soldier.slotIndex % 3) * 0.22;
     }
   }
-  function orderCanAdvance(squad) {
+  /* Squad status only: alive count, retreat/engaged/advance state and the Engagement contact report.
+     Orders, fire and movement belong to the squad's command owner (the Captain in
+     16-squad-plan-stability.js), which attaches to the squadCommand slot and runs instead. */
+  function squadStatus(squad, battle) {
     var alive = 0,
-      arrived = 0;
+      anyEngaged = false;
     for (var i = 0; i < squad.members.length; i++) {
-      var s = squad.members[i];
-      if (s.dead) continue;
-      alive++;
-      if (
-        s.orderDestination &&
-        dist2(s.root.position.x, s.root.position.z, s.orderDestination.x, s.orderDestination.z) <=
-          ORDER_ARRIVAL_RADIUS
-      )
-        arrived++;
+      if (!squad.members[i].dead) alive++;
+      if (squad.members[i].target) anyEngaged = true;
     }
-    return !alive || arrived / alive >= ORDER_COHESION;
-  }
-  function issueOrders(squad, battle, force) {
-    var anchor = squad.orderAnchor || (squad.orderAnchor = { x: squad.rally.x, z: squad.rally.z }),
-      goal = squad.state === 'retreat' ? squad.home : squad.objective || squad.home,
-      goalChanged = !squad._orderGoal || dist2(goal.x, goal.z, squad._orderGoal.x, squad._orderGoal.z) > 3;
-    var form = formationFor(squad),
-      formChanged = form !== squad.formation,
-      phase = squad.commandPhase || '',
-      hold = ['regroup', 'support-hold', 'hold', 'reserve', 'defend', 'corner-check'].indexOf(phase) >= 0;
-    if (goalChanged) {
-      squad._orderGoal = { x: goal.x, z: goal.z };
-      force = true;
-    }
-    if (formChanged) {
-      squad.formation = form;
-      force = true;
-    }
-    /* A squad in contact is a base of fire, not a marching column: the order anchor only creeps
-       forward again during an authorized bound. This is the squad-level half of the fix - the
-       commander used to keep walking everyone through a firefight. */
-    var bounding = Leases.holds(squad, 'bound', battle.time),
-      held = !!squad.inContact && !bounding;
-    var dx = goal.x - anchor.x,
-      dz = goal.z - anchor.z,
-      len = Math.hypot(dx, dz),
-      mayAdvance = !hold && !held && (squad.state === 'advance' || squad.state === 'engaged');
-    if ((force || orderCanAdvance(squad)) && mayAdvance && len > 2) {
-      var stride = bounding
-        ? ORDER_STRIDE * 0.5
-        : squad.state === 'engaged'
-          ? ORDER_STRIDE * 0.62
-          : ORDER_STRIDE;
-      anchor.x += (dx / len) * Math.min(stride, len);
-      anchor.z += (dz / len) * Math.min(stride, len);
-      squad._orderVersion++;
-    } else if (squad.state === 'retreat' && len > 2) {
-      anchor.x += (dx / len) * Math.min(ORDER_STRIDE, len);
-      anchor.z += (dz / len) * Math.min(ORDER_STRIDE, len);
-      squad._orderVersion++;
-    }
-    squad.rally = { x: anchor.x, z: anchor.z };
-    for (var i = 0; i < squad.members.length; i++) {
-      var soldier = squad.members[i];
-      if (!soldier.dead)
-        setDestination(
-          soldier,
-          formationSlot(squad, soldier, soldier.slotIndex),
-          battle,
-          force || squad.state === 'retreat'
-        );
-    }
+    squad.aliveCount = alive;
+    if (1 - alive / squad.members.length >= RETREAT_CASUALTY_FRAC) squad.state = 'retreat';
+    else squad.state = anyEngaged ? 'engaged' : 'advance';
+    if (battle && root.BattleEngagement) root.BattleEngagement.updateSquad(squad, battle);
   }
   function updateSquad(squad, battle) {
-    var alive = 0;
-    for (var i = 0; i < squad.members.length; i++) if (!squad.members[i].dead) alive++;
-    squad.aliveCount = alive;
-    var casualtyFrac = 1 - alive / squad.members.length,
-      anyEngaged = false;
-    for (i = 0; i < squad.members.length; i++) if (squad.members[i].target) anyEngaged = true;
-    if (casualtyFrac >= RETREAT_CASUALTY_FRAC) squad.state = 'retreat';
-    else squad.state = anyEngaged ? 'engaged' : 'advance';
-    if (!battle) return;
-    if (root.BattleEngagement) root.BattleEngagement.updateSquad(squad, battle);
-    issueOrders(squad, battle, false);
+    return EXT.first('squadCommand', squadStatus)(squad, battle);
   }
 
   function callout(soldier, battle, type) {
@@ -817,7 +751,6 @@
     updateSquad: updateSquad,
     updateSoldier: updateSoldier,
     perceive: perceive,
-    issueOrders: issueOrders,
     formationSlot: formationSlot,
     formationFor: formationFor,
     setDestination: setDestination,

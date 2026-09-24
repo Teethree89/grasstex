@@ -149,7 +149,7 @@ section('capture progress survives a lapse in presence');
    implementation of their decisions. */
 function commandFixture(){
   const r=bootstrap();r.BattleSim={start(){}};
-  r.SquadAI={updateSquad(){},ROLES:{},COMPOSITION:['rifleman']};r.BattleLeases=require('./harness.js').bootstrap({modules:false}).BattleLeases;
+  r.SquadAI={updateSquad(){},extend(stage,id,fn){if(stage==='squadCommand')this.updateSquad=fn;},ROLES:{},COMPOSITION:['rifleman']};r.BattleLeases=require('./harness.js').bootstrap({modules:false}).BattleLeases;
   load(r,'battle/commander-routes.js');load(r,'battle/commander-ai.js');
   const sq={id:'us-0',faction:'us',state:'advance',commandRole:'center',commandPhase:'assault',
     route:[{x:0,z:0},{x:0,z:0}],routeIndex:1,

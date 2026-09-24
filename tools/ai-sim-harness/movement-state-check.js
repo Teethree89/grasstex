@@ -97,15 +97,4 @@ test('a suppressed bound goal yields to an alternate cover proposal',()=>{
   M.proposeCombat(s,{x:8,z:9},b,'cover-bound');M.resolve(s,b);
   assert.deepEqual(s.destination,{x:8,z:9});
 });
-test('committed fireteam slot ignores the legacy individual formation shadow',()=>{
-  const {b,s,M}=fixture();
-  s._fireteamDestination={x:0,z:30};
-  M.proposeOrder(s,{x:0,z:30},b,false);
-  assert.deepEqual(s.orderDestination,{x:0,z:30});
-  M.proposeOrder(s,{x:18,z:6},b,false);
-  assert.deepEqual(s.orderDestination,{x:0,z:30});
-  assert.equal(b._movementGoalStats.formationShadowsIgnored,1);
-  M.proposeOrder(s,{x:40,z:0},b,true);
-  assert.deepEqual(s.orderDestination,{x:40,z:0});
-});
 console.log('All '+checks+' movement-state checks passed.');

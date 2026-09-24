@@ -831,12 +831,13 @@
     else sq.state = anyEngaged ? 'engaged' : 'advance';
     fireAndMovement(sq, battle);
   }
-  root.SquadAI.updateSquad = function (sq, battle) {
+  /* The Captain is SquadAI's squadCommand owner: status, fire and movement, anchor, fireteam slots. */
+  root.SquadAI.extend('squadCommand', 'captain', function (sq, battle) {
     updateSquadState(sq, battle);
     if (!battle) return;
     advanceSquadAnchor(sq, battle);
     updateFireteams(sq, battle);
-  };
+  });
 
   function inTown(town, p) {
     return !!(town && town.center && p && dist(p, town.center) < (+town.radius || 250));

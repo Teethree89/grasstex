@@ -113,7 +113,7 @@ Do not assume the latest Meso cleanup solved every symptom. The current German-d
 - tactical-position **reassignments are already 0**, yet reservation collisions and visible window/ingress crowding remain high — reservation ownership and physical stacking are different problems;
 - personal-space diagnostics recorded exact overlaps, so visible multi-stacks require physical/ingress analysis rather than another hardpoint ownership rule;
 - multiple retreating soldiers had distant, legal `squad-command/retreat` destinations while `moving=false` / `moveSpeed=0`, but Movement Progress reported no active stuck state — find the exact movement gate before changing retreat command logic;
-- `formationShadowsIgnored` has collapsed to 0, proving one redundant producer was removed, but `squad-stability` still accounts for a large request stream — trace what still calls the resolver rather than adding another suppression counter.
+- `formationShadowsIgnored` collapsed to 0, proving one redundant producer was removed (the legacy `SquadAI.issueOrders` producer and the resolver's shadow guard were deleted on 2026-09-24), but `squad-stability` still accounts for a large request stream — trace what still calls the resolver rather than adding another suppression counter.
 
 These are measurements to investigate, not invitations to add four patches.
 

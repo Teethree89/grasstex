@@ -97,7 +97,7 @@ section('a squad in contact stops marching (base of fire)');
   const L=root.BattleLeases,boundUntil=()=>L.until(us,'bound'),bounding=()=>L.holds(us,'bound',battle.time);
   let boundSeconds=0,contactSeconds=0,missedBounds=0,creepInContact=0,last={x:us.orderAnchor.x,z:us.orderAnchor.z,contact:us.inContact,bound:bounding()};
   H.run(root,battle,40,()=>{
-    /* In contact the anchor advances only during an authorised bound (squad-ai.js issueOrders);
+    /* In contact the anchor advances only during an authorised bound (Captain advanceSquadAnchor);
        once contact breaks it may march. Total distance is the dice, creeping outside a bound is not. */
     if(last.contact&&us.inContact&&!last.bound&&!bounding()&&us.state!=='retreat')creepInContact+=Math.hypot(us.orderAnchor.x-last.x,us.orderAnchor.z-last.z);
     last={x:us.orderAnchor.x,z:us.orderAnchor.z,contact:us.inContact,bound:bounding()};

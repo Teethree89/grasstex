@@ -28,6 +28,8 @@ const context = {
     }
   },
   SquadAI: {
+    // The Captain attaches as the squad's command owner; this stub simply installs it.
+    extend(stage, id, fn) { if (stage === 'squadCommand') this.updateSquad = fn; },
     SLOT_SPACING: 1.25,
     formationFor() { return 'line'; },
     // A deterministic formation around the Captain-owned squad anchor. This keeps the test about
