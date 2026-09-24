@@ -628,7 +628,8 @@
       forward = opts.forward || null,
       candidates = coverCandidates(s, battle, target, opts.maxRange || COVER_RANGE),
       best = null,
-      bestScore = -Infinity;
+      bestScore = -Infinity,
+      leads = SA().isLeader(s);
     for (var i = 0; i < candidates.length; i++) {
       var pt = candidates[i],
         moveD = pt.distance;
@@ -637,7 +638,7 @@
       if (root.BattleMovementProgress && !root.BattleMovementProgress.candidateAllowed(s, battle, pt))
         continue;
       var anchor = s.orderDestination || (s.squad && s.squad.orderAnchor);
-      if (s.role === 'captain' && anchor && dist(pt.x, pt.z, anchor.x, anchor.z) > 18) continue;
+      if (leads && anchor && dist(pt.x, pt.z, anchor.x, anchor.z) > 18) continue;
       if (dist(pt.x, pt.z, posOf(target).x, posOf(target).z) < (opts.minEnemyDistance || 12)) continue;
       var score = (1 - pt.quality) * 40 - moveD;
       if (forward) score += ((pt.x - p.x) * forward.x + (pt.z - p.z) * forward.z) * 0.9;

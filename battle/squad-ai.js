@@ -459,9 +459,38 @@
       _orderVersion: 0
     };
   }
+  /* Command belongs to one man, not to a weapon role. `leaderId` names him once a squad has been
+     re-formed; until then the squad is led by its living `captain` role, as it was spawned. */
+  function leaderOf(squad) {
+    var a = (squad && squad.members) || [],
+      i;
+    if (squad && squad.leaderId != null) {
+      for (i = 0; i < a.length; i++) if (a[i] && a[i].id === squad.leaderId && !a[i].dead) return a[i];
+      return null;
+    }
+    for (i = 0; i < a.length; i++) if (a[i] && !a[i].dead && a[i].role === 'captain') return a[i];
+    return null;
+  }
+  function isLeader(soldier) {
+    return !!(soldier && soldier.squad && leaderOf(soldier.squad) === soldier);
+  }
+  /* Casualties are measured against the squad's full strength, not its member list: a re-formed squad
+     carries only its living men. */
+  function establishment(squad) {
+    return +squad.establishment || squad.members.length;
+  }
+  /* Where a retreating squad walks: home, or the rally point of the reconstitution brief once its
+     Captain has brought it home safely (`_assembly`, 16-squad-plan-stability.js). */
+  function retreatGoal(squad) {
+    var a = squad._assembly,
+      m = squad._macroMission;
+    return a && a.phase === 'to-rally' && m && m.version === a.missionVersion && m.point
+      ? m.point
+      : squad.home;
+  }
   function formationDirection(squad) {
     var anchor = squad.orderAnchor || squad.rally,
-      goal = squad.state === 'retreat' ? squad.home : squad.objective || squad.home,
+      goal = squad.state === 'retreat' ? retreatGoal(squad) : squad.objective || squad.home,
       dx = goal.x - anchor.x,
       dz = goal.z - anchor.z,
       len = Math.hypot(dx, dz);
@@ -499,18 +528,21 @@
       rz = fx,
       anchor = squad.orderAnchor || squad.rally,
       form = squad.formation || formationFor(squad),
+      role = isLeader(soldier)
+        ? 'captain'
+        : soldier.slotRole || (soldier.role === 'captain' ? 'rifleman' : soldier.role),
       side = slotIndex % 2 === 0 ? 1 : -1,
       lateral = slotJitter(soldier, 0),
       depth = slotJitter(soldier, 1),
       forward = 0;
     if (form === 'column') {
-      if (soldier.role === 'captain') {
+      if (role === 'captain') {
         forward = -1;
         lateral = 0;
-      } else if (soldier.role === 'scout') {
+      } else if (role === 'scout') {
         forward = 5 + (slotIndex % 2) * 3;
         lateral = side * 2.4 + lateral;
-      } else if (soldier.role === 'gunner') {
+      } else if (role === 'gunner') {
         forward = -5;
         lateral = 1.5 + lateral;
       } else {
@@ -518,13 +550,13 @@
         lateral = side * (1.8 + (slotIndex % 3) * 0.8) + lateral;
       }
     } else if (form === 'line') {
-      if (soldier.role === 'captain') {
+      if (role === 'captain') {
         forward = -7;
         lateral = 0;
-      } else if (soldier.role === 'gunner') {
+      } else if (role === 'gunner') {
         forward = -9;
         lateral = 2 + lateral;
-      } else if (soldier.role === 'scout') {
+      } else if (role === 'scout') {
         forward = 2;
         lateral = side * 14 + lateral;
       } else {
@@ -533,13 +565,13 @@
         lateral = lane * 5.3 + lateral;
       }
     } else {
-      if (soldier.role === 'captain') {
+      if (role === 'captain') {
         forward = -4;
         lateral = 0;
-      } else if (soldier.role === 'gunner') {
+      } else if (role === 'gunner') {
         forward = -10;
         lateral = 1.5 + lateral;
-      } else if (soldier.role === 'scout') {
+      } else if (role === 'scout') {
         forward = 9;
         lateral = side * 10 + lateral;
       } else {
@@ -610,7 +642,7 @@
       if (squad.members[i].target) anyEngaged = true;
     }
     squad.aliveCount = alive;
-    if (1 - alive / squad.members.length >= RETREAT_CASUALTY_FRAC) squad.state = 'retreat';
+    if (1 - alive / establishment(squad) >= RETREAT_CASUALTY_FRAC) squad.state = 'retreat';
     else squad.state = anyEngaged ? 'engaged' : 'advance';
     if (battle && root.BattleEngagement) root.BattleEngagement.updateSquad(squad, battle);
   }
@@ -647,7 +679,7 @@
     if (soldier.target) shareContact(soldier, battle);
     if (!had && soldier.target) callout(soldier, battle, 'contact');
     if (soldier.lastSquadState !== soldier.squad.state) {
-      if (soldier.role === 'captain')
+      if (isLeader(soldier))
         callout(
           soldier,
           battle,
@@ -756,6 +788,10 @@
     updateSoldier: updateSoldier,
     perceive: perceive,
     formationSlot: formationSlot,
+    leaderOf: leaderOf,
+    isLeader: isLeader,
+    establishment: establishment,
+    retreatGoal: retreatGoal,
     formationFor: formationFor,
     setDestination: setDestination,
     hasLineOfSight: hasLineOfSight,

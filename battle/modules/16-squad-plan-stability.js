@@ -77,9 +77,7 @@
     ].join('|');
   }
   function captainAlive(sq) {
-    var a = (sq && sq.members) || [];
-    for (var i = 0; i < a.length; i++) if (a[i] && !a[i].dead && a[i].role === 'captain') return true;
-    return false;
+    return !!root.SquadAI.leaderOf(sq);
   }
   function alive(sq) {
     return ((sq && sq.members) || []).filter(function (s) {
@@ -597,7 +595,7 @@
         fw = -0.85;
       }
     }
-    if (key === 'command' && s.role === 'captain') {
+    if (key === 'command' && root.SquadAI.isLeader(s)) {
       lat = 0;
       fw = 0.5;
     }
@@ -643,7 +641,7 @@
    locomotion. */
   function advanceSquadAnchor(sq, battle) {
     var anchor = sq.orderAnchor || (sq.orderAnchor = { x: sq.rally.x, z: sq.rally.z }),
-      goal = sq.state === 'retreat' ? sq.home : sq.objective || sq.home,
+      goal = sq.state === 'retreat' ? root.SquadAI.retreatGoal(sq) : sq.objective || sq.home,
       goalChanged = !sq._orderGoal || dist(goal, sq._orderGoal) > 3;
     var form = root.SquadAI.formationFor(sq),
       formChanged = form !== sq.formation,
@@ -832,7 +830,7 @@
       if (s.target) anyEngaged = true;
     }
     sq.aliveCount = living;
-    var casualtyFrac = 1 - living / sq.members.length;
+    var casualtyFrac = 1 - living / root.SquadAI.establishment(sq);
     if (casualtyFrac >= 0.6) sq.state = 'retreat';
     else sq.state = anyEngaged ? 'engaged' : 'advance';
     fireAndMovement(sq, battle);

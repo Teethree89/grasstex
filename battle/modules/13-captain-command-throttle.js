@@ -11,7 +11,7 @@
   /* opts is intentionally forwarded: contextual stories use the scheduler's real playback-ended
      signal, and wrappers must not accidentally strip that callback. */
   root.BattleVoiceScheduler.enqueue=function(soldier,type,cam,opts){
-    if(soldier&&soldier.role==='captain'&&COMMAND_EVENTS[type]){
+    if(soldier&&root.SquadAI&&root.SquadAI.isLeader(soldier)&&COMMAND_EVENTS[type]){
       var now=performance.now();
       if(now-lastCaptainCommandMs<CAPTAIN_GLOBAL_GAP_MS)return false;
       lastCaptainCommandMs=now;
