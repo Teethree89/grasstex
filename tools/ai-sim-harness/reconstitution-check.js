@@ -78,6 +78,22 @@ test('no group is planned until every squad in it is home and out of contact',()
   assert.ok(grouped-Math.min(...home)>60,'the near squads waited for the far one instead of being planned on the way');
   assert.equal(recon(w).groupsDissolved,0);merged(w);
 });
+test('the General rallies the group on the approach to its next objective and sends it there',()=>{
+  const w=world();w.b._objectives=[{id:'church',def:{x:-40,z:0,radius:30,value:1},state:{owner:'ge'}}];
+  [0,1,2].forEach(l=>squad(w,l,4));const seen=untilGrouped(w,120),g=seen.group;
+  assert.equal(g.objectiveId,'church');
+  assert.deepEqual(g.rally,{x:-40,z:HOME_Z+30},'on the spawn line, straight back from the objective, 30 m ahead');
+  w.sq.forEach(q=>{assert.equal(q._macroMission.plannedObjectiveId,'church');assert.equal(q.targetObjective,null,'a retreating squad is never counted at the objective');});
+  run(w,300);
+  const q=merged(w),mergeAt=w.events.findIndex(e=>e.type==='decision-squad-merge'),next=w.events.slice(mergeAt).find(e=>e.type==='decision-mission-issued'&&e.data.squad===q.id);
+  assert.equal(next.data.objectiveId,'church','the merged squad goes for the objective it rallied for');
+  assert.equal(next.data.intent,'capture');
+});
+test('a rally point for a distant objective stays inside the side\'s lanes',()=>{
+  const w=world();w.b._objectives=[{id:'far',def:{x:900,z:0,radius:30,value:1},state:{owner:'ge'}}];
+  [0,1,2].forEach(l=>squad(w,l,4));const g=untilGrouped(w,120).group;
+  assert.deepEqual(g.rally,{x:LANES[2],z:HOME_Z+30});
+});
 test('four squads of three merge into twelve',()=>{
   const w=world();[0,1,2,3].forEach(l=>squad(w,l,3));run(w,480);
   const q=merged(w);assert.equal(living(q).length,12);assert.equal(q.reconstitutedFrom.length,4);invariants(w,12);

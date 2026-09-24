@@ -155,8 +155,13 @@ exported under `macroCommand`.
 **Reconstitution** (`commander-ai.js` `reconstitute`, Macro only). A retreating squad's Captain
 walks it home (`_assembly` `to-base`); home and out of contact it is `at-base`. Only `at-base` squads
 form the pool, so no group is planned for a squad still on its way. When the pool holds 10+ survivors
-the General groups the fewest squads that reach 10 (never splitting one) and gives each a
-`reconstitute` brief to the centre of their home points (`to-rally`, `SquadAI.retreatGoal`).
+the General groups the fewest squads that reach 10 (never splitting one), picks the objective it will
+send them to next (`chooseObjective`, strongest squad as reference) and gives each a `reconstitute`
+brief to a rally point on the approach to it: on the spawn line 30 m forward, in line with the
+objective, clamped to the side's lanes (centre of the home points if there is no objective). The
+brief carries it as `plannedObjectiveId`, never `targetObjective`, so a retreating squad is not counted
+at the objective; after the merge the General sends the squad there unless it changed hands
+(`to-rally`, `SquadAI.retreatGoal`).
 Once all are there the General merges them: the strongest squad with a living leader survives,
 otherwise the most senior survivor is promoted (ex-leader, rifleman, scout, gunner last). The re-formed
 squad has `leaderId`, `establishment` 10 and only living members; absorbed squads are `disbanded`.

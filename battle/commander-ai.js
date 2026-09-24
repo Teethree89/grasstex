@@ -149,7 +149,8 @@
       spec.point,
       spec.role,
       spec.route,
-      spec.requestKey
+      spec.requestKey,
+      spec.plannedObjectiveId
     ]);
   }
   function issueMission(sim, sq, spec, reason) {
@@ -172,6 +173,7 @@
       route: (spec.route || []).map(point),
       role: spec.role,
       requestKey: spec.requestKey || null,
+      plannedObjectiveId: spec.plannedObjectiveId || null,
       issuedAt: +sim.time || 0,
       acceptedAt: null,
       status: 'issued',
@@ -308,7 +310,9 @@
         },
         reason
       );
-    var previous = (old && old.objectiveId) || sq.targetObjective,
+    /* A reconstitution brief names the objective its rally point was chosen for (`plannedObjectiveId`,
+       never `targetObjective`: a retreating squad must not be counted at an objective). */
+    var previous = (old && (old.objectiveId || old.plannedObjectiveId)) || sq.targetObjective,
       assigned = previous && root.BattleObjectiveSystem && root.BattleObjectiveSystem.get(sim, previous),
       chosen = null;
     if (assigned && reason !== 'strategic-stall' && reason !== 'mission-complete') {
@@ -392,6 +396,7 @@
      missionState(sim).reconstitution. */
   var RECON_STRENGTH = 10, // one full rifle squad (SquadAI.COMPOSITION)
     RALLY_RADIUS = 20,
+    RALLY_FORWARD = 30,
     PROMOTION_ORDER = { captain: 0, rifleman: 1, scout: 2, gunner: 9 };
   function reconState(sim) {
     var st = missionState(sim);
@@ -428,21 +433,41 @@
       return D.aliveMembers(b).length - D.aliveMembers(a).length || order.indexOf(a) - order.indexOf(b);
     };
   }
-  function formGroup(sim, faction, squads) {
-    var st = reconState(sim),
-      x = 0,
+  /* The rally point is where the re-formed squad starts its next approach: on the spawn line, RALLY_FORWARD
+     ahead of it, straight back from the objective the General expects to send it to, and inside the
+     side's lanes. With no objective to plan for it is the centre of the grouped squads' home points. */
+  function rallyPoint(sim, faction, squads, plan) {
+    var x = 0,
       z = 0;
     for (var i = 0; i < squads.length; i++) {
       x += +squads[i].home.x || 0;
       z += +squads[i].home.z || 0;
     }
+    x /= squads.length;
+    z /= squads.length;
+    if (!plan) return { x: x, z: z };
+    var homes = sim.factions[faction].squads.map(function (sq) {
+        return +sq.home.x || 0;
+      }),
+      toward = plan.point.z >= z ? 1 : -1;
+    return {
+      x: Math.max(Math.min.apply(null, homes), Math.min(Math.max.apply(null, homes), plan.point.x)),
+      z: z + toward * RALLY_FORWARD
+    };
+  }
+  function formGroup(sim, faction, squads) {
+    /* The strongest grouped squad stands in for the re-formed squad: all of them are at base. */
+    var st = reconState(sim),
+      plan = D.chooseObjective(sim, squads[0], false) || D.chooseObjective(sim, squads[0], true),
+      rally = rallyPoint(sim, faction, squads, plan);
     var g = {
       id: faction + '-reconstitution-' + ++st.serial,
       faction: faction,
       squads: squads.map(function (sq) {
         return sq.id;
       }),
-      rally: { x: x / squads.length, z: z / squads.length },
+      rally: rally,
+      objectiveId: plan ? plan.instance.id : null,
       survivors: squads.reduce(function (n, sq) {
         return n + D.aliveMembers(sq).length;
       }, 0),
@@ -464,7 +489,8 @@
           objectiveId: null,
           point: g.rally,
           role: sq.commandRole || 'center',
-          route: []
+          route: [],
+          plannedObjectiveId: g.objectiveId
         },
         'reconstitute-group'
       );
@@ -474,7 +500,8 @@
       group: g.id,
       squads: g.squads,
       survivors: g.survivors,
-      rally: g.rally
+      rally: g.rally,
+      objectiveId: g.objectiveId
     });
     return g;
   }
