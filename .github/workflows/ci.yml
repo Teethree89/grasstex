@@ -190,11 +190,6 @@ jobs:
       - name: Every runtime the page loads is covered
         run: python3 scripts/check_deploy_coverage.py
 
-      # Sidecar JSON, the FBX soldier-animation lab and anything else the repo does not manage live
-      # only on the server; a deploy must never delete or overwrite them.
-      - name: Deploy never touches unmanaged server files
-        run: python3 scripts/check_deploy_safety.py
-
       # prepare_incremental_deploy.py fails on any managed file that is missing or empty,
       # so building the plan is itself the check: it proves a real deploy would find
       # everything it intends to upload, including the audio the manifest points at.
@@ -207,3 +202,8 @@ jobs:
             --audio-manifest Assets/audio/manifest.json \
             --output "$RUNNER_TEMP/deploy-plan"
           cat "$RUNNER_TEMP/deploy-plan/summary.json"
+
+      # Sidecar JSON, the FBX soldier-animation lab and anything else the repo does not manage live
+      # only on the server; a deploy must never delete or overwrite them. Needs the stamp above.
+      - name: Deploy never touches unmanaged server files
+        run: python3 scripts/check_deploy_safety.py

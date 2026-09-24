@@ -37,6 +37,9 @@ def plan(entries: list[str], extra_env: dict[str, str] | None = None) -> tuple[i
 
 
 def main() -> int:
+    if not Path("battle/build-version.json").is_file():
+        print("DEPLOY SAFETY FAIL\n  battle/build-version.json is missing: run `python3 scripts/build_version.py stamp` first")
+        return 1
     failures = []
     # Stale retired module + protected server files in the recorded state.
     code, deletes, out = plan(PROTECTED_REMOTE + ["battle/modules/37-retired-module.js"])
