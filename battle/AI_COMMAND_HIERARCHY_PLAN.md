@@ -17,7 +17,7 @@ No two live systems should own the same decision class.
 | 1. Truthful hierarchy graph | **DONE** | Force Command, Captain Leadership, Squad Orders and Engagement ownership are represented in the AI graph. |
 | 2. Order provenance | **DONE** | Strategic/movement writes are traceable; Loop Watch and Order Trace expose writer churn and diagnostics can be exported. |
 | 3. Versioned `SquadIntent` | **PARTIAL / NEXT** | Capture Zone and Prepared Defense now publish constraints consumed by Force Command, but the general versioned intent contract and central constraint resolver do not yet exist. Other systems still use mutable compatibility fields. |
-| 4. Owned leases | **PARTIAL** | Most durations already exist, but they remain separate raw timers/`until` fields rather than one named lease system with owner/priority/release/progress semantics. |
+| 4. Owned leases | **DONE for squad command holds** | `BattleLeases` (squad-ai.js) holds every Captain/objective-security commitment as a named lease with owner, reason, expiry and release path; exports show live leases and which one holds each squad's mission. Not built: graph rendering, priority and progress tests. |
 | 5. Captain local planner | **NOT DONE** | Captain is still primarily a leadership/status/voice influence, not a tactical planning agent. |
 | 6. Final movement ownership | **DONE / SUPERSEDED ORIGINAL DESIGN** | `BattleMovementResolver` is now the sole normal-runtime writer of `soldier.destination`; Squad Orders and Engagement submit proposals. Preserve this architecture rather than moving final destination ownership back into Engagement. |
 | 7. Causal loop prevention/trace | **PARTIAL** | Loop Watch, provenance, writer-conflict detection, exports, destination churn detection, a no-progress formation-renewal guard, and Force Command's targetless-route recovery now exist. Missing: full Force Intent -> Captain Plan -> Squad Plan -> Engagement -> Resolver causal chain and lease-aware causes. |
@@ -133,7 +133,43 @@ Definition of done: there is one authoritative versioned strategic intent per sq
 
 ## Step 4 - Convert overlapping timers into owned leases
 
-Status: **PARTIAL - behavior exists, lease architecture does not.**
+Status: **DONE for squad command holds (2026-09-24). Graph rendering, lease priority and progress tests are not built.**
+
+### What exists
+
+`root.BattleLeases` in `squad-ai.js` keeps one table per squad (`sq._leases`): each live lease has `kind`, `owner`,
+`since`, `until` (absolute sim time, `Infinity` while a condition rather than the clock holds it), `reason`, `release`
+(what ends it) and optional `data`; ended leases keep `endedAt`/`endReason` in a short log. `holds(sq,kind,t)` is
+`t < until`, the exact test the old timers used, so the migration kept every timing unchanged (same-seed replays
+identical, Macro on and off).
+
+| Lease | Owner | Replaces | Released by |
+| --- | --- | --- | --- |
+| `tactical-plan` | captain | `_engagementPlan.until` / `quietSince` | 26 s / 38 s expiry while staged; held open by contact; 9 s quiet; intent replaced; retreat |
+| `regroup` | captain | `_regroupHysteresis.accepted` / `enteredAt` / `anchor` | cohesion restored after 2.4 s, contact, or 18 s |
+| `regroup-cooldown` | captain | `_regroupHysteresis.cooldownUntil` | 4 s expiry |
+| `regroup-bypass` | captain | `_regroupBypassUntil` | expiry (firefight 1.25 s, stragglers 2.8 s, after release 4 s / 14 s) |
+| `corner-hold` | captain | `commandHoldUntil` | expiry, new mission, regroup release, route assignment |
+| `bound` / `bound-cycle` | captain | `_boundUntil` / `_nextBoundAt` / `_boundTeam` | 3.6 s window or contact broken / 9 s cycle |
+| `objective-security` | capture-zone | `_captureZoneSecureUntil` | 18 s with no enemy present, leaving or losing the zone, retreat |
+
+The Captain records which lease is holding each squad's mission execution this tick (`sq._missionHold`:
+`regroup`, `tactical-plan` or `corner-hold`), and the session export lists every squad's live leases, recently
+ended leases and `missionHeldBy`. `tools/ai-sim-harness/lease-check.js` covers the primitive and the plan and
+regroup lifecycles.
+
+### Deliberately not leases
+
+- ~12 s fireteam order renewal stays on the fireteam order record (`_fireteamOrders[team].until`): the anchor,
+  frame, signature and renewal time are one Captain-only record and splitting it would add indirection.
+- Persistent garrison (`_preparedDefenseRequest`) is a standing constraint with no timer; it belongs to Step 3's
+  intent/constraint contract.
+- The ~45 s defensive-post commitment no longer exists as a timer: a settled post is released only when the
+  defensive command signature changes.
+- Engagement state durations, engineer build time, Movement Resolver commit/TTL and firing-station grace are
+  execution timing inside one owner, not command commitments that can block another layer's intent.
+
+### Original brief
 
 Do **not** invent new timings first. Preserve and migrate the timings already governing the simulation, including:
 

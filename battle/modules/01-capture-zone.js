@@ -356,9 +356,10 @@
         sim
       );
     sq._captureZoneDefenseRequest = null;
-    sq._captureZoneSecureUntil = 0;
+    if (root.BattleLeases) root.BattleLeases.end(sq, 'objective-security', +(sim.time || 0), reason || 'released');
   }
   function defendCaptureZones(sim) {
+    var L = root.BattleLeases;
     ['us', 'ge'].forEach(function (faction) {
       var squads = (sim.factions && sim.factions[faction] && sim.factions[faction].squads) || [];
       squads.forEach(function (sq) {
@@ -387,17 +388,33 @@
           ours = st.owner === faction,
           taking = !ours && inside && (friendlyWeight > 0 || st.active === faction),
           contested = inside && friendlyWeight > 0 && enemyPresent;
+        /* Taking or holding a contested zone keeps the squad on it for POST_CAPTURE_HOLD seconds after
+           the last pressure; Force Command reads the defense request this lease keeps alive. */
         if (taking || contested) {
-          sq._captureZoneSecureUntil = Math.max(
-            sq._captureZoneSecureUntil || 0,
-            (sim.time || 0) + POST_CAPTURE_HOLD
+          L.extend(
+            sq,
+            'objective-security',
+            'capture-zone',
+            sim.time || 0,
+            (sim.time || 0) + POST_CAPTURE_HOLD,
+            'securing ' + obj.id,
+            'expiry with no enemy present, leaving the zone, losing it, or retreat'
           );
           requestDefense(sim, sq, obj, p, contested ? 'contested objective' : 'capturing objective');
           return;
         }
         if (ours && inside) {
-          if (!sq._captureZoneSecureUntil) sq._captureZoneSecureUntil = (sim.time || 0) + POST_CAPTURE_HOLD;
-          if (enemyPresent || (already && (sim.time || 0) < sq._captureZoneSecureUntil)) {
+          if (!L.get(sq, 'objective-security'))
+            L.grant(
+              sq,
+              'objective-security',
+              'capture-zone',
+              sim.time || 0,
+              (sim.time || 0) + POST_CAPTURE_HOLD,
+              'securing captured ' + obj.id,
+              'expiry with no enemy present, leaving the zone, losing it, or retreat'
+            );
+          if (enemyPresent || (already && L.holds(sq, 'objective-security', sim.time || 0))) {
             requestDefense(
               sim,
               sq,
@@ -430,7 +447,7 @@
       ['us', 'ge'].forEach(function (f) {
         ((sim.factions && sim.factions[f] && sim.factions[f].squads) || []).forEach(function (sq) {
           sq._captureZoneDefenseRequest = null;
-          sq._captureZoneSecureUntil = 0;
+          if (root.BattleLeases) root.BattleLeases.end(sq, 'objective-security', +(sim.time || 0), 'battle restart');
         });
       });
       updateMarkers(sim, payload);

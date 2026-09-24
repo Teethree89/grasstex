@@ -59,9 +59,10 @@ function objectiveTargetState(sim,sq,pos){
   var d=distance(pos,p);
   return{id:String(obj.id),point:p,radius:radius,distance:rounded(d),insideRadius:d!=null&&radius!=null?d<=radius:null,owner:st&&st.owner||null,active:st&&st.active||null,phase:st&&st.phase||null,progress:st&&isFinite(+st.progress)?+st.progress:null};
 }
+function planUntil(sq){var L=root.BattleLeases,u=L?L.until(sq,'tactical-plan'):0;return isFinite(u)&&u>0?u:null;}
 function stablePlanState(sq,sim){
   var p=sq&&sq._stablePlan;if(!p)return null;var t=simNow(sim);
-  return{phase:p.phase||null,targetObjective:p.targetObjective!=null?String(p.targetObjective):null,objective:point(p.objective),signature:p.signature||null,serial:isFinite(+p.serial)?+p.serial:null,until:isFinite(+p.until)?+p.until:null,remaining:isFinite(+p.until)?rounded(Math.max(0,+p.until-t)):null};
+  return{phase:p.phase||null,targetObjective:p.targetObjective!=null?String(p.targetObjective):null,objective:point(p.objective),signature:p.signature||null,serial:isFinite(+p.serial)?+p.serial:null,until:planUntil(sq),remaining:planUntil(sq)!=null?rounded(Math.max(0,planUntil(sq)-t)):null};
 }
 function regroupRecoveryState(sq,sim){
   var r=sq&&sq._regroupRecovery;if(!r)return null;var t=simNow(sim);
@@ -157,7 +158,7 @@ function tacticalMetrics(sim,conflicts){
     var sq=squads[i],id=f+'/'+sq.id;out.squads++;
     if(sq.commandPhase==='regroup')out.regrouping.push(id);if(sq.state==='retreat')out.retreating.push(id);
     if(sq.targetObjective==null&&sq.commandRole!=='support'&&sq.commandRole!=='reserve'&&sq.commandRole!=='garrison')out.targetless.push(id);
-    if(sq._stablePlan)out.activeStablePlans.push({squad:id,phase:sq._stablePlan.phase||null,targetObjective:sq._stablePlan.targetObjective||null,remaining:isFinite(+sq._stablePlan.until)?rounded(Math.max(0,+sq._stablePlan.until-simNow(sim))):null});
+    if(sq._stablePlan)out.activeStablePlans.push({squad:id,phase:sq._stablePlan.phase||null,targetObjective:sq._stablePlan.targetObjective||null,remaining:planUntil(sq)!=null?rounded(Math.max(0,planUntil(sq)-simNow(sim))):null});
     var orders=sq._fireteamOrders||{};Object.keys(orders).forEach(function(key){if(orders[key]&&orders[key].blocked)out.blockedFireteams.push(id+'/'+key);});
     if(sq._captureZoneDefenseRequest||sq._preparedDefenseRequest)out.activeDefenseRequests.push({squad:id,objectiveSecurity:!!sq._captureZoneDefenseRequest,preparedDefense:!!sq._preparedDefenseRequest});
   }});

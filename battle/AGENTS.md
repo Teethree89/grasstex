@@ -44,6 +44,7 @@ A benchmark performance regression should end with the same root-cause chain as 
 - **One owner per responsibility.** Never introduce a second normal writer for a field or movement intent already owned elsewhere.
 - **No new module for a one-off symptom** unless the new responsibility is genuinely unique and cannot live at an existing M3C owner.
 - **No new blocker/interceptor** merely to suppress a producer that can be removed or corrected upstream.
+- **A command hold is a lease.** A new commitment that blocks another layer's intent change (hold, wait, cooldown, commitment window) is granted through `BattleLeases` with an owner, reason and release path, not stored as a new `...Until` field. See Step 4 in `AI_COMMAND_HIERARCHY_PLAN.md`.
 - **No silent state machines.** Any new persistent state must have a clearly named lifecycle: who creates it, who owns it, what invalidates it, and how it is observed in diagnostics.
 - **No broad cooldown/hysteresis fix without evidence.** A timing gate must correspond to a real doctrinal/physical commitment, not mask oscillation.
 - **No duplicate recovery systems.** Physical recovery remains a bounded execution concern; it must not become another command layer.

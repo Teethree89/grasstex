@@ -17,7 +17,7 @@ function objectiveById(sim,id){var a=sim&&sim._objectives||[];for(var i=0;i<a.le
 function strategicGoal(sim,sq){return objectiveById(sim,sq&&sq.targetObjective)||clonePoint(sq&&sq._routeFinalObjective)||clonePoint(sq&&sq.objective);}
 function measuredGoal(sim,sq,ph){
   if(ph==='regroup'){
-    var rh=sq&&sq._regroupHysteresis,a=rh&&rh.accepted&&clonePoint(rh.anchor);
+    var rg=root.BattleLeases&&root.BattleLeases.get(sq,'regroup'),a=rg&&rg.data&&clonePoint(rg.data.anchor);
     /* The commander may briefly propose regroup before hysteresis accepts it. Do not diagnose that
        transient against the strategic objective; there is no fixed regroup destination yet. */
     return a?{point:a,kind:'rally'}:null;

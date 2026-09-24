@@ -182,8 +182,6 @@
           createdAt: p.createdAt,
           activatedAt: p.activatedAt,
           lastContactAt: p.lastContactAt,
-          quietSince: p.quietSince,
-          until: p.until,
           tasks: p.tasks
         }
       : null;
@@ -194,6 +192,7 @@
     sq._lastEngagementPlan = planSnapshot(p);
     sq._lastEngagementPlan.closedAt = sim.time;
     sq._lastEngagementPlan.closeReason = reason || 'closed';
+    L.end(sq, 'tactical-plan', sim.time, reason || 'closed');
     sq._engagementPlan = null;
     sq._stablePlan = null;
     syncTasks(sq, null);
@@ -214,10 +213,20 @@
         createdAt: sim.time,
         activatedAt: sq.inContact ? sim.time : null,
         lastContactAt: sq.inContact ? sim.time : null,
-        quietSince: null,
-        until: sim.time + leaseSeconds(phase),
         tasks: tasksFor(phase)
       };
+    /* A staged plan lapses on the clock; contact holds it open; once contact stops it closes after
+       QUIET_CLOSE quiet seconds. */
+    L.grant(
+      sq,
+      'tactical-plan',
+      'captain',
+      sim.time,
+      sim.time + leaseSeconds(phase),
+      phase + ' plan #' + serial,
+      'lease expiry, intent replaced, retreat, or ' + QUIET_CLOSE + ' s without contact',
+      { quietSince: null }
+    );
     sq._engagementPlanSerial = serial;
     sq._engagementPlan = p;
     sq._stablePlan = p;
@@ -268,29 +277,36 @@
       return;
     }
     if (sq._planDormantSignature && sq._planDormantSignature !== sig) sq._planDormantSignature = null;
+    var lease = p && L.get(sq, 'tactical-plan');
     if (p) {
       if (sq.inContact) {
         sq._planDormantSignature = null;
         if (p.status !== 'active' && p.activatedAt == null) p.activatedAt = sim.time;
         p.status = 'active';
         p.lastContactAt = sim.time;
-        p.quietSince = null;
-        sq._regroupBypassUntil = Math.max(+sq._regroupBypassUntil || 0, sim.time + 1.25);
+        lease.data.quietSince = null;
+        lease.until = Infinity;
+        lease.reason = p.phase + ' plan #' + p.serial + ' in contact';
+        L.extend(sq, 'regroup-bypass', 'captain', sim.time, sim.time + 1.25, 'firefight in progress');
       } else if (p.status === 'active' || p.status === 'quiet') {
-        if (p.quietSince == null) p.quietSince = sim.time;
+        if (lease.data.quietSince == null) {
+          lease.data.quietSince = sim.time;
+          lease.until = sim.time + QUIET_CLOSE;
+          lease.reason = p.phase + ' plan #' + p.serial + ' going quiet';
+        }
         p.status = 'quiet';
-        if (sim.time - p.quietSince >= QUIET_CLOSE) {
+        if (sim.time - lease.data.quietSince >= QUIET_CLOSE) {
           sq._planDormantSignature = p.signature;
           closePlan(sim, sq, 'contact clear');
           requestReview(sim, sq, 'contact clear');
           p = null;
-        } else sq._regroupBypassUntil = Math.max(+sq._regroupBypassUntil || 0, sim.time + 1.25);
+        } else L.extend(sq, 'regroup-bypass', 'captain', sim.time, sim.time + 1.25, 'firefight going quiet');
       }
       if (p && p.status === 'staged' && sig !== p.signature) {
         closePlan(sim, sq, 'intent replaced');
         p = null;
       }
-      if (p && p.status === 'staged' && sim.time >= p.until) {
+      if (p && p.status === 'staged' && !L.holds(sq, 'tactical-plan', sim.time)) {
         closePlan(sim, sq, 'lease expired');
         requestReview(sim, sq, 'lease expired');
         p = null;
@@ -402,10 +418,6 @@
       sq._regroupHysteresis ||
       (sq._regroupHysteresis = {
         overSince: null,
-        accepted: false,
-        enteredAt: 0,
-        cooldownUntil: 0,
-        anchor: null,
         lastForward: null,
         entries: 0,
         exits: 0,
@@ -418,7 +430,6 @@
   function markCatchup(ca, t) {
     for (var i = 0; i < ca.members.length; i++) {
       var s = ca.members[i];
-      s._cohesionCatchupUntil = t + 4;
       s._destinationCommitUntil = 0;
     }
   }
@@ -442,34 +453,39 @@
       combatPlan = p && (p.status === 'active' || p.status === 'quiet');
     if (sq.inContact || combatPlan) {
       st.overSince = null;
-      if (st.accepted) {
-        st.accepted = false;
+      if (L.end(sq, 'regroup', t, 'contact')) {
         st.exits++;
-        st.cooldownUntil = t + REENTRY;
+        L.grant(sq, 'regroup-cooldown', 'captain', t, t + REENTRY, 'regroup broken by contact');
       }
-      sq._regroupBypassUntil = Math.max(+sq._regroupBypassUntil || 0, t + 1.25);
+      L.extend(sq, 'regroup-bypass', 'captain', t, t + 1.25, 'firefight in progress');
       return;
     }
     /* Release hands the squad straight back to mission execution in the same Captain tick. */
-    if (st.accepted) {
-      var age = t - st.enteredAt;
+    var regroup = L.get(sq, 'regroup');
+    if (regroup) {
+      var age = t - regroup.since;
       if ((age >= REGROUP_MIN && ca.coreSpread <= release) || age >= REGROUP_MAX) {
-        st.accepted = false;
+        var timedOut = age >= REGROUP_MAX;
+        L.end(sq, 'regroup', t, timedOut ? 'maximum regroup time' : 'cohesion restored');
         st.exits++;
-        st.cooldownUntil = t + REENTRY;
-        sq._regroupBypassUntil = Math.max(
-          +sq._regroupBypassUntil || 0,
-          t + (age >= REGROUP_MAX ? REGROUP_BYPASS : REENTRY)
+        L.grant(sq, 'regroup-cooldown', 'captain', t, t + REENTRY, 'regroup just released');
+        L.extend(
+          sq,
+          'regroup-bypass',
+          'captain',
+          t,
+          t + (timedOut ? REGROUP_BYPASS : REENTRY),
+          timedOut ? 'regroup timed out' : 'regroup just released'
         );
         L.end(sq, 'corner-hold', t, 'regroup released');
         return;
       }
       sq.commandPhase = 'regroup';
-      sq.objective = copy(st.anchor || ca.center);
+      sq.objective = copy(regroup.data.anchor || ca.center);
       return;
     }
     /* The Captain, not the General, decides a squad is too scattered to keep executing. */
-    var requested = !sq.inContact && t >= (+sq._regroupBypassUntil || 0) && ca.rawSpread > limit;
+    var requested = !sq.inContact && !L.holds(sq, 'regroup-bypass', t) && ca.rawSpread > limit;
     if (!requested) {
       st.overSince = null;
       return;
@@ -479,7 +495,7 @@
       markCatchup(ca, t);
       st.stragglerSuppressions++;
       st.suppressed++;
-      sq._regroupBypassUntil = t + STRAGGLER_BYPASS;
+      L.grant(sq, 'regroup-bypass', 'captain', t, t + STRAGGLER_BYPASS, 'stragglers catching up');
       return;
     }
     if (!ca.dispersed) {
@@ -487,27 +503,35 @@
       return;
     }
     if (st.overSince == null) st.overSince = t;
-    if (t < st.cooldownUntil || t - st.overSince < REGROUP_ENTER) {
+    if (L.holds(sq, 'regroup-cooldown', t) || t - st.overSince < REGROUP_ENTER) {
       st.suppressed++;
       return;
     }
-    st.accepted = true;
-    st.enteredAt = t;
-    st.anchor = copy(ca.center);
+    var anchor = copy(ca.center);
+    L.grant(
+      sq,
+      'regroup',
+      'captain',
+      t,
+      t + REGROUP_MAX,
+      'squad dispersed',
+      'core spread back inside ' + Math.round(release) + ' m after ' + REGROUP_MIN + ' s, contact, or ' + REGROUP_MAX + ' s',
+      { anchor: anchor }
+    );
     st.entries++;
     sq._regroupRecovery = {
       serial: (+sq._regroupRecoverySerial || 0) + 1,
       startedAt: t,
-      anchor: copy(st.anchor)
+      anchor: copy(anchor)
     };
     sq._regroupRecoverySerial = sq._regroupRecovery.serial;
-    sq.objective = copy(st.anchor);
+    sq.objective = copy(anchor);
     sq.commandPhase = 'regroup';
     telemetry(sim, 'decision-regroup-commit', {
       faction: sq.faction,
       squad: sq.id,
       serial: sq._regroupRecovery.serial,
-      anchor: copy(st.anchor)
+      anchor: copy(anchor)
     });
   }
 
@@ -838,9 +862,14 @@
   /* Captain execution of the General's brief: the only runtime writer of phase, legs and the squad
    objective point. Without a brief (Macro OFF) the Captain walks the assigned approach route. */
   function executeMission(sim, sq, town) {
-    if (!sim || !sq || sq.state === 'retreat' || !alive(sq).length) return;
-    var st = sq._regroupHysteresis;
-    if (st && st.accepted) return;
+    if (!sim || !sq) return;
+    /* Which lease, if any, is holding this squad's mission execution this tick (diagnostics). */
+    sq._missionHold = null;
+    if (sq.state === 'retreat' || !alive(sq).length) return;
+    if (L.get(sq, 'regroup')) {
+      sq._missionHold = 'regroup';
+      return;
+    }
     var m = sq._macroMission || null,
       ex = sq._missionExecution,
       t = sim.time,
@@ -869,7 +898,10 @@
     /* A firefight under this brief is a commitment: contact never advances legs or rewrites phase. */
     var plan = sq._engagementPlan;
     if (plan && (plan.status === 'active' || plan.status === 'quiet')) {
-      if (plan.missionVersion === missionVersion(sq)) return;
+      if (plan.missionVersion === missionVersion(sq)) {
+        sq._missionHold = 'tactical-plan';
+        return;
+      }
       closePlan(sim, sq, 'mission superseded');
     }
     var legs = sq.route || [];
@@ -898,6 +930,7 @@
       return;
     }
     if (L.holds(sq, 'corner-hold', t)) {
+      sq._missionHold = 'corner-hold';
       sq.objective = copy(wp);
       return;
     }
@@ -968,6 +1001,8 @@
       quiet: 0,
       regroups: 0,
       fireteams: 0,
+      leases: {},
+      missionHeldBy: {},
       orderPublishing: Object.assign(
         {},
         sim._squadCommandPublishStats || { intentChecks: 0, intentPublishes: 0, intentCoalesced: 0 }
@@ -983,8 +1018,12 @@
           if (p.status === 'active') out.active++;
           if (p.status === 'quiet') out.quiet++;
         }
-        if (q._regroupHysteresis && q._regroupHysteresis.accepted) out.regroups++;
+        if (L.get(q, 'regroup')) out.regroups++;
         out.fireteams += Object.keys(q._fireteamOrders || {}).length;
+        L.active(q, sim.time).forEach(function (l) {
+          out.leases[l.kind] = (out.leases[l.kind] || 0) + 1;
+        });
+        if (q._missionHold) out.missionHeldBy[q._missionHold] = (out.missionHeldBy[q._missionHold] || 0) + 1;
       }
     });
     sim._squadCommandSummary = out;
@@ -1011,7 +1050,6 @@
         q._regroupHysteresis = null;
         q._regroupRecovery = null;
         q._regroupRecoverySerial = 0;
-        q._regroupBypassUntil = 0;
         q._fireteamOrders = {};
         L.clear(q);
         q._boundTurn = null;
