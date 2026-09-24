@@ -19,7 +19,7 @@ test('only one consolidated owner exists for each tactical layer',()=>{
 });
 test('engagement proposes combat locomotion straight to the movement resolver',()=>{
   const src=fs.readFileSync(path.join(H.REPO,'battle/engagement.js'),'utf8');
-  assert.match(src,/BattleMovementResolver\.proposeCombat\(s,p,battle,kind,ttl,\{source:'engagement'/);
+  assert.match(src,/BattleMovementResolver\.proposeCombat\(\s*s,\s*p,\s*battle,\s*kind,\s*ttl,\s*\{\s*source:\s*'engagement'/);
   assert.doesNotMatch(src,/BattleCombatMobility/);
 });
 test('fireteam slots are produced by the squad-command owner',()=>{
