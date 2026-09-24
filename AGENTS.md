@@ -56,6 +56,9 @@ for s in 12345 1 2 3 5 8 13 21; do HARNESS_SEED=$s node tools/ai-sim-harness/run
 | `map-pipeline-check.js` | Scenario regeneration publishes the same geometry as a page load (benchmarks once ran 10-70x slow on 4x the hedges) |
 | `impact-fx-check.js` | Impact materials, blood placement, FX budgets, restart cleanup (render stub) |
 | `world-debug-check.js` | World Debug overlay UI handlers (DOM stub) |
+| `extension-order-check.js` | No module replaces `SquadAI.tryFire`/`areaFire`/`updateSoldier`/`updateSquad` or `BattleEngagement.updateSoldier`; the declared fire order (ammunition → ballistics range → trigger-time LOS) holds; undeclared extensions throw |
+| `lease-check.js` | `BattleLeases` primitive, tactical-plan and regroup lease lifecycles, regroup re-forms on the rally point |
+| `voice-determinism-check.js` | Voice callouts never draw from the combat RNG: a battle is identical with and without voice |
 
 `harness.js` mirrors `stepMovement()` from `battle/battle-sim.js`. **If that function changes,
 change the mirror too.** `bootstrap()` returns the loaded globals for throwaway probes. Write
@@ -125,19 +128,18 @@ Benchmark battles are 600 simulated seconds at a fixed 0.15 s step. Results go t
 stack cooldowns, blockers, retries or extra movement writers to make one counter improve. A fix is
 good if the system is easier to explain afterwards.
 
-`General (Macro) → Captain/Squad (Meso) → Engagement → Combat Mobility → Movement Resolver → Movement Execution → Navigation`.
+`General (Macro) → Captain/Squad (Meso) → Engagement → Movement Resolver → Movement Execution → Navigation`.
 Intent flows down and status flows up. No layer rewrites another's state.
 
 | Layer | Owner (file) | Owns | Must not |
 | --- | --- | --- | --- |
 | Macro: Force Command | `commander-ai.js`, `commander-doctrine.js`, `commander-routes.js` | `_macroMission` brief {intent, action, objectiveId, point, flank leg, status}, `targetObjective`, `commandRole`, force allocation, reserves | write `commandPhase`/`objective`/route legs, cover, slots or soldier destinations |
-| Meso: Captain / Squad Command | `modules/16-squad-plan-stability.js` (`executeMission`) | stable squad plan: fireteams, formation, bounds, corner pauses, defensive posts, regroup, objective phase | do obstacle avoidance; republish orders every tick |
-| Micro: Engagement | `engagement.js` | per-soldier state machine, stance (`prone`/`crawling`/`tacticalCrouch`), permission to fire, combat proposals | write final destination; pick objectives |
-| Micro: Combat Mobility | engagement + resolver | sole combat-locomotion publisher | |
+| Meso: Captain / Squad Command | `modules/16-squad-plan-stability.js` (`executeMission`, `fireAndMovement`; SquadAI's `squadCommand` owner) | stable squad plan: fireteams, formation, order anchor, fire and movement (assault authorisation, bound cycle and team), corner pauses, defensive posts, regroup, objective phase; the only writer of `commandPhase` (setup states it through `initialPhase`) | do obstacle avoidance; republish orders every tick |
+| Micro: Engagement | `engagement.js` (+ `modules/44-combat-urgency.js` drills on its `afterDrill` slot) | per-soldier state machine, stance (`prone`/`crawling`/`tacticalCrouch`), permission to fire, combat proposals to the resolver, the squad contact report (`inContact`, base of fire, pinned) | write final destination; pick objectives; decide squad bounds |
 | Perception | `squad-ai.js` | who sees whom, shot resolution, shared `squad.contact`, `areaFire` suppression | set stance/destination in combat |
 | Tactical positions | `modules/20-building-hardpoints.js` (`BattleTacticalPositions`: `claim`/`current`/`station`/`release`) | window/hardpoint reservations `assigned→ingress→occupying→holding→released`, committed ingress route | |
 | Tactical routing | `modules/52-survival-tactical-route.js` | safe ingress, suppressed cover detours | resurrect an obsolete objective |
-| Movement Resolver | `movement-resolver.js` | **sole normal-runtime writer of `soldier.destination`**; arbitrates Meso vs Micro proposals | act as a garbage collector for redundant producers |
+| Movement Resolver | `movement-resolver.js` | **sole normal-runtime writer of `soldier.destination`**; coalesces Engagement's per-tick combat requests and arbitrates Meso vs Micro proposals | act as a garbage collector for redundant producers |
 | Navigation | `battle-navigation.js`, `modules/39-navigation-physicality-debug.js` | doors, stations, pathfinding, 0.45 m body legality | assign or release tasks |
 | Personal space | `modules/51-soldier-personal-space.js` | local physical correction | own commands |
 
@@ -152,10 +154,33 @@ stall, or a Captain `doctrine-review` escalation. Wakes are exported under `macr
 `ALERT_HOLD`. Fire requires: a live target, not reloading, past `eng.fireReadyAt`, speed ≤12% and
 not crawling, within `AIM_CONE` (~12.6°), and gunner emplaced. `squad.inContact` is
 `contactCount>0 || suppressors>0`. Suppression deals no damage, only pins. There are at most
-`MAX_SUPPRESSORS` suppressors, the MG first. Every `BOUND_CYCLE` one fireteam bounds if ≥2 are
-shooting, and the MG never moves. Constants live at the top of `engagement.js`
-(`BattleEngagement.tuning`) and are deliberately outside the policy genome. Sight and cover are
+`MAX_SUPPRESSORS` suppressors, the MG first. The Captain (`fireAndMovement`) sends one fireteam
+forward every `BOUND_CYCLE` if ≥2 are shooting, only in an assault phase, and the MG never moves.
+Engagement constants live at the top of `engagement.js` (`BattleEngagement.tuning`), bound timing in
+`16-squad-plan-stability.js`; both are deliberately outside the policy genome. Sight and cover are
 per stance (`obstacle-field.js`), so going prone genuinely helps.
+
+**Extend through declared slots, never by replacing a function.** `SquadAI` declares `fireGate`,
+`shotModel`, `areaFireGate`, `afterShot`, `squadCommand`, `beforeSoldier`, `afterSoldier`;
+`BattleEngagement` declares `afterDrill`. Add the id to the declared order and attach with
+`extend(stage, id, fn)`; reassigning `tryFire`/`updateSoldier`/`updateSquad` makes behaviour depend
+on module file order (`14-z-ballistic-raycast.js` once silently discarded the LOS gate that way).
+
+**A command hold is a lease.** Commitments that block another layer's intent change live in
+`BattleLeases` (`squad-ai.js`, one table per squad: kind, owner, since, until, reason, release, plus
+an ended log): `tactical-plan`, `regroup`, `regroup-cooldown`, `regroup-bypass`, `corner-hold`,
+`bound`, `bound-cycle` (Captain) and `objective-security` (capture zone). `holds()` is `t < until`.
+The session export lists each squad's live and recently ended leases and `missionHeldBy`. Don't add
+a new `...Until` field for a hold. Deliberately not leases: fireteam order renewal (on the order
+record), the garrison request (a standing constraint), and execution timing inside one owner.
+
+**Presentation never touches the combat RNG.** Voice, FX and audio must not draw from
+`battle.random`; the same seed must simulate the same battle with or without assets
+(`voice-determinism-check.js`).
+
+**Formatting:** the M3C behaviour files (command, squad, engagement, movement, weapon rules) are
+Prettier-formatted with `.prettierrc.json` (`npx prettier@3 --write <file>`). Don't hand-compress
+them back into long single lines.
 
 **Frozen:** path clearance, body width and hedgerow geometry. Hedges are one authoritative 3D
 volume (2.2 m wide and tall) for rendering, nav, LOS and ballistics. Change it only on a
@@ -194,12 +219,15 @@ Small root-caused fixes may go straight to main.
 **Statistics:** win splits are underpowered. Telling 10% from 3.3% needs ~216 runs per arm, and a
 30-run arm can't carry a claim. Report Fisher p-values and don't read mechanism into a
 four-run swing. Live-browser runs at `timeScale` 8 aren't deterministic, so use the replay script
-for controlled pairs.
+for controlled pairs, and serve both arms the same way: `battle_sim_local.php` in preview mode (a
+`preview.json` beside it) reads `state/` and the audio manifest two directories up.
 
 ### Open issues (as of v153 / 2026-09-17 sweep)
 
-- Regroup churn: position releases due to regroup rose 6-9× in defend scenarios, with squads
-  entering regroup constantly and leaving quickly. Root-cause the entry condition.
+- Regroups (2026-09-24): half used to time out at 18 s because the order anchor stayed with the
+  leading men instead of moving to the rally point; fixed (timeouts 76 → 6 over 30 seeds, time
+  regrouping halved, outcomes unchanged). Regroup entry frequency in defend scenarios is still
+  worth measuring against the old 6-9× release rise.
 - Window/ingress crowding: claim collisions swing 23 to 3,838 on the same seed. Reservation
   and physical occupancy haven't been separated yet.
 - Personal-space corrections rose slightly (15.7k → 17.4k per battle). Find the converging
@@ -207,8 +235,8 @@ for controlled pairs.
 - Strategic-stall wakes mostly re-pick the same objective, because doctrine has no alternative.
 - Hot path is now navigation replans (~3.3 s) and `sightBlocked` (~3.5 s) per ~13.7 s battle.
 - Movement Progress ignores retreat by design; `movementStopReason` is the observable.
-- Next architecture steps: a versioned `SquadIntent` + one intent resolver, named leases
-  (owner/priority/release/progress) replacing raw timers, a real Captain local planner, then
+- Next architecture steps: a versioned `SquadIntent` + one intent resolver (leases now exist; lease
+  priority, progress tests and a graph view do not), a real Captain local planner, then
   platoon/company command, fallback/counterattack, succession and combined arms. Capture Zone and
   Prepared Defense already publish *requests* that Force Command accepts; follow that pattern.
 - Meeting engagements deliberately get no runtime engineer fortification (`engineerTick` exits early).

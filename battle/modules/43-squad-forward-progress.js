@@ -8,7 +8,7 @@
 if(!root.BattleModules||root.BattleSquadForwardProgress)return;
 
 var WINDOW=15,MIN_TRAVEL=12,MIN_NET=2.5,MIN_EFF=.15,ALERT_COOLDOWN=20,MAX_ALERTS=160;
-var ADVANCE={approach:1,assault:1,capture:1,'clear-town':1,flank:1,contact:1,'corner-check':1,regroup:1};
+var ADVANCE={approach:1,assault:1,capture:1,'clear-town':1,flank:1,'corner-check':1,regroup:1};
 
 function clonePoint(p){return p&&isFinite(+p.x)&&isFinite(+p.z)?{x:+p.x,z:+p.z}:null;}
 function dist(a,b){return !a||!b?Infinity:Math.hypot(a.x-b.x,a.z-b.z);}
@@ -17,7 +17,7 @@ function objectiveById(sim,id){var a=sim&&sim._objectives||[];for(var i=0;i<a.le
 function strategicGoal(sim,sq){return objectiveById(sim,sq&&sq.targetObjective)||clonePoint(sq&&sq._routeFinalObjective)||clonePoint(sq&&sq.objective);}
 function measuredGoal(sim,sq,ph){
   if(ph==='regroup'){
-    var rh=sq&&sq._regroupHysteresis,a=rh&&rh.accepted&&clonePoint(rh.anchor);
+    var rg=root.BattleLeases&&root.BattleLeases.get(sq,'regroup'),a=rg&&rg.data&&clonePoint(rg.data.anchor);
     /* The commander may briefly propose regroup before hysteresis accepts it. Do not diagnose that
        transient against the strategic objective; there is no fixed regroup destination yet. */
     return a?{point:a,kind:'rally'}:null;

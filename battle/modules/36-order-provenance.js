@@ -1,4 +1,4 @@
-/* Step 2: order provenance + writer-conflict diagnostics.
+/* Order provenance + writer-conflict diagnostics (formerly split with a 37-order-provenance-fastpath hotfix).
    Observational only. It does not choose orders or movement; it instruments the mutable fields
    already used by Force Command, Capture Zone, Squad Stability, Prepared Defense, Squad Orders
    and Engagement so Loop Watch can say WHO requested each change and WHO finally moved the man. */
@@ -6,9 +6,13 @@
 'use strict';
 if(!root.BattleModules||root.BattleOrderProvenance)return;
 
-var VERSION='step2-v1';
-var MAX_TARGET_EVENTS=40,MAX_GLOBAL_EVENTS=700,MAX_CONFLICTS=100;
-var HANDOFF_WINDOW=2.5,PINGPONG_WINDOW=8,POINT_EPS=.65;
+var VERSION='step2-v2-fast';
+/* Tracked fields get cheap property setters. The writer is the innermost owner context
+   (withOwner, or the module hook / Engagement wrappers installed below); outside any context the
+   field's normal owner is inferred from the field itself. No stack inspection: `destination` is a
+   hot combat field. A throttled sampler catches in-place mutations that bypass the setter. */
+var MAX_TARGET_EVENTS=32,MAX_GLOBAL_EVENTS=420,MAX_CONFLICTS=80;
+var SAMPLE_SECONDS=1.6,POINT_EPS=.9,PINGPONG_WINDOW=8;
 var activeContext=[];
 var ui={panel:null,button:null,list:null,loopList:null,loopObserver:null,tries:0};
 
@@ -19,18 +23,6 @@ var SOLDIER_FIELDS={
   _fireteamDestination:'point',_preparedDefensePost:'point',_defensePost:'point',
   orderDestination:'point',destination:'point'
 };
-
-var SOURCE_MAP=[
-  [/commander-ai\.js/i,'force-command','system:commander'],
-  [/commander-routes\.js/i,'force-command','system:commander'],
-  [/01-capture-zone\.js/i,'capture-zone','system:objective'],
-  [/16-squad-plan-stability\.js/i,'squad-stability','system:squad'],
-  [/21-defender-engineers\.js/i,'prepared-defense','defense:defense'],
-  [/20-building-hardpoints\.js/i,'building-hardpoints','system:engagement'],
-  [/engagement\.js/i,'engagement','system:engagement'],
-  [/squad-ai\.js/i,'squad-orders','system:squad'],
-  [/battle-sim\.js/i,'simulation','system:soldier']
-];
 var OWNER_KEYS={
   'force-command':'system:commander','capture-zone':'system:objective','squad-stability':'system:squad',
   'prepared-defense':'defense:defense','building-hardpoints':'system:engagement','engagement':'system:engagement','movement-resolver':'system:resolver',
@@ -44,15 +36,10 @@ var OWNER_LABELS={
 
 function now(sim){return sim&&isFinite(sim.time)?+sim.time:0;}
 function clonePoint(v){return v&&isFinite(+v.x)&&isFinite(+v.z)?{x:+v.x,z:+v.z}:null;}
-function snap(v,type){
-  if(type==='point')return clonePoint(v);
-  if(v==null)return null;
-  if(typeof v==='string'||typeof v==='number'||typeof v==='boolean')return v;
-  if(v&&v.id!=null)return String(v.id);
-  try{return JSON.parse(JSON.stringify(v));}catch(_){return String(v);}
-}
+function snap(v,type){if(type==='point')return clonePoint(v);if(v==null)return null;if(typeof v==='string'||typeof v==='number'||typeof v==='boolean')return v;if(v&&v.id!=null)return String(v.id);return String(v);}
 function pointDist(a,b){if(!a&&!b)return 0;if(!a||!b)return Infinity;return Math.hypot(a.x-b.x,a.z-b.z);}
-function same(a,b,type){return type==='point'?pointDist(a,b)<=POINT_EPS:a===b;}
+function eps(field){return field==='destination'||field==='orderDestination'?1.25:field==='_fireteamDestination'?1.0:POINT_EPS;}
+function same(a,b,type,field){return type==='point'?pointDist(a,b)<=eps(field):a===b;}
 function fmt(v){
   if(v==null)return'—';
   if(v&&isFinite(v.x)&&isFinite(v.z))return Math.round(v.x)+','+Math.round(v.z);
@@ -79,74 +66,67 @@ function simStore(sim){
   if(!sim._orderProvenance)sim._orderProvenance={version:VERSION,events:[],conflicts:[],seq:0,installedAt:now(sim)};
   return sim._orderProvenance;
 }
-function functionName(line){
-  var m=String(line||'').match(/\bat\s+([^\s(]+)\s*(?:\(|$)/);return m?m[1].replace(/^Object\./,''):'';
+function withOwner(owner,reason,fn,key){activeContext.push({owner:owner,reason:reason,key:key||graphKey(owner)});try{return fn();}finally{activeContext.pop();}}
+function source(target,kind,field){
+  if(activeContext.length){var c=activeContext[activeContext.length-1];return{owner:c.owner,key:c.key||graphKey(c.owner),site:c.reason||'execution context'};}
+  var owner='unknown';
+  if(kind==='squad')owner=(field==='orderAnchor'||field==='rally')?'squad-orders':'force-command';
+  else if(field==='_preparedDefensePost')owner='prepared-defense';
+  else if(field==='_defensePost')owner='squad-stability';
+  else if(field==='_fireteamDestination')owner=target._preparedDefensePost?'prepared-defense':'squad-stability';
+  else if(field==='orderDestination')owner=target._preparedDefensePost?'prepared-defense':(target._fireteamDestination?'squad-stability':'squad-orders');
+  else if(field==='destination')owner=target._movementResolvedOwner||'squad-orders';
+  return{owner:owner,key:graphKey(owner),proposalOwner:field==='destination'?(target._movementProposalOwner||null):null,site:'fast field ownership'};
 }
-function inferSource(){
-  if(activeContext.length){var c=activeContext[activeContext.length-1];return{owner:c.owner||'unknown',key:c.key||graphKey(c.owner),site:c.reason||'explicit context'};}
-  var stack='';try{stack=(new Error()).stack||'';}catch(_){}
-  var lines=String(stack).split('\n');
-  for(var i=1;i<lines.length;i++){
-    var line=lines[i];if(/36-order-provenance\.js/i.test(line))continue;
-    for(var j=0;j<SOURCE_MAP.length;j++)if(SOURCE_MAP[j][0].test(line))return{owner:SOURCE_MAP[j][1],key:SOURCE_MAP[j][2],site:functionName(line)||SOURCE_MAP[j][1]};
-    var mm=line.match(/\/battle\/modules\/[^/]*?([a-z0-9-]+)\.js/i);if(mm)return{owner:'module:'+mm[1],key:null,site:functionName(line)||mm[1]};
-  }
-  return{owner:'unknown',key:null,site:'unattributed assignment'};
-}
-function withOwner(owner,reason,fn,key){activeContext.push({owner:owner,reason:reason,key:key});try{return fn();}finally{activeContext.pop();}}
 
 function telemetry(sim,type,data){if(root.BattleTelemetry)root.BattleTelemetry.record(type,data,sim);}
-function recentFieldEvents(store,field){var out=[];for(var i=store.events.length-1;i>=0&&out.length<8;i--)if(store.events[i].field===field)out.unshift(store.events[i]);return out;}
+function recentFieldEvents(store,field){var out=[];for(var i=store.events.length-1;i>=0&&out.length<7;i--)if(store.events[i].field===field)out.unshift(store.events[i]);return out;}
 function conflictKind(events,t){
   /* Unknown is missing attribution, not evidence of an independent competing writer. */
   function competing(owner){return owner&&owner!=='unknown'&&owner!=='in-place/unknown'&&owner!=='diagnostics';}
   if(events.length>=3){var a=events[events.length-3],b=events[events.length-2],c=events[events.length-1];if(competing(a.owner)&&competing(b.owner)&&competing(c.owner)&&a.owner===c.owner&&a.owner!==b.owner&&c.time-a.time<=PINGPONG_WINDOW)return'writer-ping-pong';}
   var start=Math.max(0,events.length-5),owners=[],switches=0,last=null,firstTime=null;
   for(var i=start;i<events.length;i++){var e=events[i];if(!competing(e.owner))continue;if(firstTime==null)firstTime=e.time;if(e.owner!==last){if(last!=null)switches++;last=e.owner;if(owners.indexOf(e.owner)<0)owners.push(e.owner);}}
-  if(owners.length>=3&&switches>=3&&t-firstTime<=PINGPONG_WINDOW)return'writer-churn';
-  return null;
+  return owners.length>=3&&switches>=3&&t-firstTime<=PINGPONG_WINDOW?'writer-churn':null;
 }
-function addConflict(sim,target,event,kind){
-  var ss=simStore(sim);if(!ss)return;var meta=targetMeta(target,event.targetKind),fieldEvents=recentFieldEvents(targetStore(target),event.field);
+function addConflict(sim,target,event,kind,ts){
+  var ss=simStore(sim),meta=targetMeta(target,event.targetKind),fieldEvents=recentFieldEvents(ts,event.field);
   var sig=[kind,meta.faction,meta.squad,meta.soldier,event.field,fieldEvents.slice(-3).map(function(e){return e.owner;}).join('>')].join('|');
-  var last=ss.conflicts.length?ss.conflicts[0]:null;if(last&&last.signature===sig&&event.time-last.time<4)return;
+  var last=ss.conflicts[0];if(last&&last.signature===sig&&event.time-last.time<4)return;
   var c={signature:sig,kind:kind,time:event.time,field:event.field,faction:meta.faction,squad:meta.squad,soldier:meta.soldier,owners:fieldEvents.slice(-5).map(function(e){return e.owner;}),events:fieldEvents.slice(-5)};
   ss.conflicts.unshift(c);if(ss.conflicts.length>MAX_CONFLICTS)ss.conflicts.length=MAX_CONFLICTS;
   telemetry(sim,'order-writer-conflict',{kind:kind,field:event.field,faction:meta.faction,squad:meta.squad,soldier:meta.soldier,owners:c.owners});
   refreshUi();
 }
-function record(sim,target,kind,field,type,from,to,source,reason){
-  var ts=targetStore(target),ss=simStore(sim);if(!ts||!ss)return null;
-  var prev=ts.fields[field]&&ts.fields[field].lastEvent||null,meta=targetMeta(target,kind),event={
+function record(sim,target,kind,field,from,to,src,st,reason){
+  var ts=targetStore(target);if(!ts)return;var ss=simStore(sim),prev=st.lastEvent||null,meta=targetMeta(target,kind),event={
     id:++ss.seq,time:+now(sim).toFixed(3),targetKind:kind,field:field,from:from,to:to,
-    owner:source.owner||'unknown',ownerKey:source.key||graphKey(source.owner),site:source.site||'',reason:reason||source.site||'',
+    owner:src.owner||'unknown',ownerKey:src.key||graphKey(src.owner),proposalOwner:src.proposalOwner||null,site:src.site||'',reason:reason||src.site||'',
     previousOwner:prev&&prev.owner||null,faction:meta.faction,squad:meta.squad,soldier:meta.soldier,
     phase:(kind==='squad'?target.commandPhase:target.squad&&target.squad.commandPhase)||null,
     rule:(kind==='squad'?target._lastDoctrineRule:target.squad&&target.squad._lastDoctrineRule)||null,
     inContact:!!(kind==='squad'?target.inContact:target.squad&&target.squad.inContact)
   };
-  ts.events.push(event);if(ts.events.length>MAX_TARGET_EVENTS)ts.events.splice(0,ts.events.length-MAX_TARGET_EVENTS);
-  ts.fields[field]=ts.fields[field]||{};ts.fields[field].lastEvent=event;ts.fields[field].last=to;
-  ss.events.push(event);if(ss.events.length>MAX_GLOBAL_EVENTS)ss.events.splice(0,ss.events.length-MAX_GLOBAL_EVENTS);
-  var fieldEvents=recentFieldEvents(ts,field),ck=conflictKind(fieldEvents,event.time);if(ck)addConflict(sim,target,event,ck);
-  return event;
+  ts.events.push(event);if(ts.events.length>MAX_TARGET_EVENTS)ts.events.shift();st.lastEvent=event;st.last=to;
+  ss.events.push(event);if(ss.events.length>MAX_GLOBAL_EVENTS)ss.events.shift();
+  var ck=conflictKind(recentFieldEvents(ts,field),event.time);if(ck)addConflict(sim,target,event,ck,ts);
 }
 
 function instrumentField(sim,target,kind,field,type){
-  if(!target)return;var ts=targetStore(target);if(!ts)return;var existing=ts.fields[field];if(existing&&existing.instrumented)return;
-  var desc;try{desc=Object.getOwnPropertyDescriptor(target,field);}catch(_){}
-  if(desc&&desc.configurable===false)return;
-  var value=target[field],last=snap(value,type),state=existing||{};state.instrumented=true;state.type=type;state.last=last;ts.fields[field]=state;
-  try{Object.defineProperty(target,field,{enumerable:desc?desc.enumerable!==false:true,configurable:true,get:function(){return value;},set:function(next){var before=state.last;value=next;var after=snap(next,type);if(!same(before,after,type)){var src=inferSource();record(sim,target,kind,field,type,before,after,src,src.site);state.last=after;}}});}
-  catch(_){state.instrumented=false;}
+  var ts=targetStore(target);if(!ts)return;var st=ts.fields[field]||(ts.fields[field]={});if(st.instrumented)return;
+  var desc;try{desc=Object.getOwnPropertyDescriptor(target,field);}catch(_){}if(desc&&desc.configurable===false)return;
+  var value=target[field];st.observed=snap(value,type);st.instrumented=true;st.type=type;st.last=snap(value,type);
+  try{Object.defineProperty(target,field,{enumerable:desc?desc.enumerable!==false:true,configurable:true,get:function(){return value;},set:function(next){var before=st.last;value=next;var after=snap(next,type);st.observed=after;if(!same(before,after,type,field)){record(sim,target,kind,field,before,after,source(target,kind,field),st);st.last=after;}}});}
+  catch(_){st.instrumented=false;}
 }
 function instrumentSquad(sim,sq){Object.keys(SQUAD_FIELDS).forEach(function(f){instrumentField(sim,sq,'squad',f,SQUAD_FIELDS[f]);});}
 function instrumentSoldier(sim,s){Object.keys(SOLDIER_FIELDS).forEach(function(f){instrumentField(sim,s,'soldier',f,SOLDIER_FIELDS[f]);});}
 function instrumentAll(sim){
   if(!sim)return;['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++){instrumentSquad(sim,squads[i]);var m=squads[i].members||[];for(var j=0;j<m.length;j++)instrumentSoldier(sim,m[j]);}});
 }
+/* In-place mutation (p.x+=...) never reaches a setter; compare the live value with the last one the setter saw. */
 function sampleTarget(sim,target,kind,fields){
-  var ts=targetStore(target);if(!ts)return;Object.keys(fields).forEach(function(field){var st=ts.fields[field];if(!st||!st.instrumented)return;var cur=snap(target[field],fields[field]);var observed=st.fastPath?st.observed:st.last;if(!same(observed,cur,fields[field])){record(sim,target,kind,field,fields[field],st.last,cur,{owner:'in-place/unknown',key:null,site:'mutated without property assignment'},'in-place mutation detected by sampler');st.last=cur;if(st.fastPath)st.observed=cur;}});
+  var ts=targetStore(target);if(!ts)return;Object.keys(fields).forEach(function(field){var st=ts.fields[field];if(!st||!st.instrumented)return;var type=fields[field],cur=snap(target[field],type);if(!same(st.observed,cur,type,field)){record(sim,target,kind,field,st.last,cur,{owner:'in-place/unknown',key:null,site:'mutated without property assignment'},st,'in-place mutation detected by sampler');st.observed=cur;}});
 }
 function sampleAll(sim){
   if(!sim)return;['us','ge'].forEach(function(f){var squads=sim.factions&&sim.factions[f]&&sim.factions[f].squads||[];for(var i=0;i<squads.length;i++){sampleTarget(sim,squads[i],'squad',SQUAD_FIELDS);var m=squads[i].members||[];for(var j=0;j<m.length;j++)sampleTarget(sim,m[j],'soldier',SOLDIER_FIELDS);}});
@@ -159,6 +139,17 @@ function recentForTarget(target,seconds,limit){
   var sim=root.__battle__,cut=now(sim)-(seconds==null?16:seconds),a=history(target,null,MAX_TARGET_EVENTS).filter(function(e){return e.time>=cut;});return a.slice(Math.max(0,a.length-(limit||10)));
 }
 
+/* Owner contexts: every registered module hook (wrapped at load and again at battle start), and Engagement's per-soldier update. */
+function ownerForSystem(id){id=String(id||'').toLowerCase();if(id.indexOf('capture')>=0)return'capture-zone';if(id==='squad-command'||id.indexOf('squad-plan')>=0||id.indexOf('stability')>=0)return'squad-stability';if(id.indexOf('building-hardpoint')>=0)return'building-hardpoints';if(id.indexOf('engineer')>=0)return'engineer';if(id.indexOf('defender')>=0||id.indexOf('defense')>=0)return'prepared-defense';if(id.indexOf('order-provenance')>=0)return'diagnostics';return'module:'+id;}
+function wrapSystemHooks(){
+  var systems=root.BattleModules.listSystems?root.BattleModules.listSystems():[],hooks=['onBattleStart','onBattleRestart','onCommanderTick','beforeBattleRestart'];
+  systems.forEach(function(system){
+    var owner=ownerForSystem(system.id),key=graphKey(owner);
+    hooks.forEach(function(name){var old=system[name];if(typeof old!=='function'||old.__provenanceContext)return;var wrapped=function(sim,payload){return withOwner(owner,'module '+system.id+'.'+name,function(){return old(sim,payload);},key);};wrapped.__provenanceContext=true;system[name]=wrapped;});
+  });
+}
+function wrapEngagement(){if(!root.BattleEngagement||root.BattleEngagement.__provenanceContext)return;var old=root.BattleEngagement.updateSoldier;if(typeof old==='function')root.BattleEngagement.updateSoldier=function(s,b){return withOwner('engagement','updateSoldier',function(){return old(s,b);},'system:engagement');};root.BattleEngagement.__provenanceContext=true;}
+
 /* ----------------------- Loop Watch integration -------------------------------------------- */
 function parseCard(card){
   var text=card&&card.textContent||'',m=text.match(/\b(US|GE)\s+([a-z0-9_-]+)\s*[·•]\s*Soldier\s+([a-z0-9_-]+)/i);if(m)return{faction:m[1].toLowerCase(),squad:m[2],soldier:m[3]};
@@ -167,6 +158,7 @@ function parseCard(card){
 function ownerSequence(events){var out=[],last=null;events.forEach(function(e){if(e.owner!==last){out.push(e.owner);last=e.owner;}});return out;}
 function traceKeys(events){var keys=[];events.forEach(function(e){var k=e.ownerKey||graphKey(e.owner);if(k&&keys.indexOf(k)<0)keys.push(k);});return keys;}
 function decorateLoopCards(){
+  if(typeof document==='undefined')return;
   var sim=root.__battle__,list=document.getElementById('lwList');if(!sim||!list)return;var cards=list.querySelectorAll('.lw-card');
   for(var i=0;i<cards.length;i++){
     var card=cards[i],id=parseCard(card);if(!id)continue;var target=id.soldier?findSoldier(sim,id.faction,id.squad,id.soldier):findSquad(sim,id.faction,id.squad);if(!target)continue;
@@ -211,14 +203,22 @@ function installUi(){
 }
 function refreshUi(){if(typeof document==='undefined')return;requestAnimationFrame(function(){renderPanel();decorateLoopCards();});}
 
-function installSim(sim){simStore(sim);instrumentAll(sim);sampleAll(sim);refreshUi();}
-function resetSim(sim){if(!sim)return;sim._orderProvenance={version:VERSION,events:[],conflicts:[],seq:0,installedAt:now(sim)};}
+var nextSample=0;
+/* Modules that load after this one register their systems later; wrap again once all are registered. */
+function installSim(sim){wrapSystemHooks();simStore(sim);instrumentAll(sim);sampleAll(sim);nextSample=0;refreshUi();}
+function resetSim(sim){if(!sim)return;sim._orderProvenance={version:VERSION,events:[],conflicts:[],seq:0,installedAt:now(sim)};nextSample=0;}
+function tick(sim){
+  instrumentAll(sim);
+  if(now(sim)+1e-6<nextSample)return;
+  nextSample=now(sim)+SAMPLE_SECONDS;sampleAll(sim);decorateLoopCards();
+}
+wrapSystemHooks();wrapEngagement();
 root.BattleModules.registerSystem('zz-order-provenance',{
   version:VERSION,
   onBattleStart:function(sim){installSim(sim);},
   beforeBattleRestart:function(sim){resetSim(sim);},
   onBattleRestart:function(sim){installSim(sim);},
-  onCommanderTick:function(sim){instrumentAll(sim);sampleAll(sim);decorateLoopCards();}
+  onCommanderTick:tick
 });
 if(typeof document!=='undefined'){if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installUi,{once:true});else installUi();}
 
@@ -229,5 +229,5 @@ root.BattleOrderProvenance={
   findSoldier:findSoldier,findSquad:findSquad,graphKey:graphKey,ownerLabel:ownerLabel,
   withOwner:withOwner,write:explicitWrite,decorateLoopCards:decorateLoopCards
 };
-console.log('[ORDER-PROVENANCE] Step 2 writer tracing active; battle behavior unchanged');
+console.log('[ORDER-PROVENANCE] writer tracing active (fast setters, '+SAMPLE_SECONDS.toFixed(1)+'s in-place sampler); battle behavior unchanged');
 })(typeof window!=='undefined'?window:globalThis);

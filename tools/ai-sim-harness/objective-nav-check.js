@@ -149,10 +149,10 @@ section('capture progress survives a lapse in presence');
    implementation of their decisions. */
 function commandFixture(){
   const r=bootstrap();r.BattleSim={start(){}};
-  r.SquadAI={updateSquad(){},ROLES:{},COMPOSITION:['rifleman']};
+  r.SquadAI={updateSquad(){},extend(stage,id,fn){if(stage==='squadCommand')this.updateSquad=fn;},ROLES:{},COMPOSITION:['rifleman']};r.BattleLeases=require('./harness.js').bootstrap({modules:false}).BattleLeases;
   load(r,'battle/commander-routes.js');load(r,'battle/commander-ai.js');
   const sq={id:'us-0',faction:'us',state:'advance',commandRole:'center',commandPhase:'assault',
-    route:[{x:0,z:0},{x:0,z:0}],routeIndex:1,commandHoldUntil:0,
+    route:[{x:0,z:0},{x:0,z:0}],routeIndex:1,
     targetObjective:'outer',objective:{x:120,z:0},rally:{x:65,z:0},members:[],aliveCount:4};
   for(let i=0;i<4;i++)sq.members.push({id:'m'+i,role:i?'rifleman':'captain',faction:'us',dead:false,root:{position:{x:65,z:i-1.5}}});
   const sim={time:100,factions:{us:{squads:[sq]},ge:{squads:[]}},_units:sq.members,_roster:{us:sq.members,ge:[]},heightAt:()=>0,scene:{metadata:{}}};
@@ -189,7 +189,7 @@ section('a single assigned squad can reach and capture an outer objective');
     'battle/modules/16-squad-plan-stability.js'])load(r,f);
   const sim=H.makeBattle(r,{seed:12345});sim.scene={metadata:{}};
   const sq=H.addSquad(r,sim,{id:'us-0',faction:'us',x:65,z:0,objective:{x:180,z:0},seed:12345});
-  Object.assign(sq,{route:[{x:0,z:0},{x:0,z:0}],routeIndex:1,targetObjective:'outer',commandRole:'center',commandPhase:'assault',commandHoldUntil:0});
+  Object.assign(sq,{route:[{x:0,z:0},{x:0,z:0}],routeIndex:1,targetObjective:'outer',commandRole:'center',commandPhase:'assault'});
   r.BattleObjectiveSystem.attach(sim,[{id:'outer',type:'capture-zone',x:180,z:0,radius:28,value:1}],{});
   const town={center:{x:0,z:0},radius:250};let first=null,peakPresence=0,wrongGoal=0,step=0;
   H.run(r,sim,180,()=>{
@@ -211,7 +211,8 @@ section('a stranded soldier cannot override the Captain regroup timeout');
   commandTick(r,sim,town);
   sq.members[3].root.position.x=-100;
   sq.commandPhase='regroup';sq.objective={x:20,z:0};
-  sq._regroupHysteresis={overSince:sim.time-20,accepted:true,enteredAt:sim.time-19,cooldownUntil:0,anchor:{x:20,z:0},entries:1,exits:0,suppressed:0,stragglerSuppressions:0,regroupRequests:1};
+  sq._regroupHysteresis={overSince:sim.time-20,lastForward:null,entries:1,exits:0,suppressed:0,stragglerSuppressions:0,regroupRequests:1};
+  r.BattleLeases.grant(sq,'regroup','captain',sim.time-19,sim.time-1,'test','test',{anchor:{x:20,z:0}});
   commandTick(r,sim,town);
   check('the Captain releases a timed-out regroup straight back into its mission',sq.commandPhase!=='regroup'&&sq.objective.x===120);
   let held=0;
@@ -263,9 +264,9 @@ section('meeting engagements do not enter prepared-defender construction');
 section('provenance distinguishes real competing writers from sampling noise');
 {
   const {r,sq,sim}=commandFixture();
-  load(r,'battle/modules/36-order-provenance.js');load(r,'battle/modules/37-order-provenance-fastpath.js');
-  const p=r.BattleOrderProvenance,fast=r.BattleOrderProvenanceFastPath;
-  p.instrument(sim);fast.install(sim);
+  load(r,'battle/modules/36-order-provenance.js');
+  const p=r.BattleOrderProvenance,fast=p;
+  p.instrument(sim);
   for(let i=0;i<5;i++){
     sim.time+=.45;fast.withOwner('force-command','regroup centroid',()=>{sq.objective={x:120+i*.75,z:0};});p.sample(sim);
   }

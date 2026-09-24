@@ -6,7 +6,7 @@ const r=H.bootstrap({modules:false}),systems={};
 r.BattleModules={registerSystem(id,s){systems[id]=s;},unitsFor:b=>(b._roster.us||[]).concat(b._roster.ge||[])};
 load(r,'battle/battle-navigation.js');
 load(r,'battle/movement-resolver.js');
-load(r,'battle/modules/44-assault-forward-guard.js');
+load(r,'battle/modules/44-combat-urgency.js');
 load(r,'battle/modules/52-survival-tactical-route.js');
 const b=H.makeBattle(r),q=H.addSquad(r,b,{id:'us-0',faction:'us',x:0,z:0,objective:{x:0,z:100},composition:['rifleman','rifleman']});
 q.state='engaged';q.commandPhase='assault';q.inContact=false;q.orderAnchor={x:0,z:0};

@@ -13,7 +13,7 @@ function fixture() {
   r.BattleCommanderAI = {policyFor(){return {};}};
   load(r, 'battle/movement-resolver.js');
   load(r, 'battle/modules/16-squad-plan-stability.js');
-  load(r, 'battle/modules/44-assault-forward-guard.js');
+  load(r, 'battle/modules/44-combat-urgency.js');
   const b = H.makeBattle(r), q = H.addSquad(r, b, {id:'us-0', faction:'us', x:0, z:0,
     objective:{x:0,z:100}, composition:['captain','rifleman','rifleman','rifleman','rifleman','rifleman']});
   q.commandPhase = 'assault'; q.orderAnchor = {x:0,z:0};
@@ -22,8 +22,8 @@ function fixture() {
   return {r,b,q,s,M:r.BattleMovementResolver,E:r.BattleEngagement};
 }
 function combat(f, visible=true) {
-  const {b,q,s,E}=f;
-  q.inContact=true; q._assaultAuthorized=true; q._boundTeam='alpha'; q._boundUntil=10;
+  const {r,b,q,s,E}=f;
+  q.inContact=true; q._assaultAuthorized=true; r.BattleLeases.grant(q,'bound','test',0,10,'test','test',{team:'alpha'});
   s._fireteamKey='alpha';
   s.target=visible?{id:99,dead:false,root:{position:{x:0,y:0,z:40}}}:null;
   const e=E.stateOf(s); e.state=visible?'engage':'alert'; e.until=10; e.reviewAt=100; e.boundOrder=true;
@@ -45,7 +45,7 @@ test('Micro consumes Captain formation without republishing Meso intent',()=>{
 
 test('assault mission alone does not authorize an individual rush',()=>{
   const f=fixture(),e=combat(f); e.boundOrder=false;
-  f.q._boundUntil=0; f.E.decide(f.s,f.b,'test no cover'); f.M.resolve(f.s,f.b);
+  f.r.BattleLeases.end(f.q,'bound',f.b.time,'test'); f.E.decide(f.s,f.b,'test no cover'); f.M.resolve(f.s,f.b);
   assert.equal(e.state,'engage'); assert.equal(f.s._movementResolver.last.kind,'hold');
 });
 
@@ -70,18 +70,18 @@ test('one authorized no-cover bound commits once through target loss and arrival
 });
 
 test('Captain never calls the moving fireteam its own base of fire',()=>{
-  const {q,b,E}=fixture(); q.members=q.members.filter(s=>[2,4,5].includes(s.slotIndex));
+  const {r,q,b,E}=fixture(); q.members=q.members.filter(s=>[2,4,5].includes(s.slotIndex));
   for(const s of q.members){s._fireteamKey='alpha';s.target={id:99,root:{position:{x:0,y:0,z:100}}};E.stateOf(s).state='engage';}
-  q.inContact=true; q._nextBoundAt=0; q._boundUntil=0;
-  E.updateSquad(q,b);
-  assert.equal(q._boundUntil,0,'a fireteam cannot move when that leaves no base of fire');
+  q.inContact=true;
+  r.BattleSquadStability.fireAndMovement(q,b);
+  assert.equal(r.BattleLeases.holds(q,'bound',b.time),false,'a fireteam cannot move when that leaves no base of fire');
   assert.ok(q.members.every(s=>!E.stateOf(s).boundOrder));
 });
 
 test('a defensive Captain mission does not issue offensive bounds',()=>{
-  const {q,b,E}=fixture(); q.commandPhase='defend'; q.inContact=true; q._nextBoundAt=0;
+  const {r,q,b,E}=fixture(); q.commandPhase='defend'; q.inContact=true;
   for(const s of q.members){s.target={id:99,root:{position:{x:0,y:0,z:100}}};E.stateOf(s).state='engage';}
-  E.updateSquad(q,b);
-  assert.equal(q._boundUntil||0,0); assert.ok(q.members.every(s=>!E.stateOf(s).boundOrder));
+  r.BattleSquadStability.fireAndMovement(q,b);
+  assert.equal(r.BattleLeases.holds(q,'bound',b.time),false); assert.ok(q.members.every(s=>!E.stateOf(s).boundOrder));
 });
 if(failed)process.exitCode=1;

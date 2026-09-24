@@ -56,11 +56,14 @@ function squad(sq){
     id:sq.id,faction:sq.faction,state:sq.state||null,commandPhase:sq.commandPhase||null,commandRole:sq.commandRole||null,
     aliveCount:finite(+sq.aliveCount),captainAlive:sq.captainAlive!==false,inContact:!!sq.inContact,targetObjective:sq.targetObjective||null,
     objective:point(sq.objective),rally:point(sq.rally),routeIndex:finite(+sq.routeIndex),route:safePlain(sq.route,3),
-    commandHoldUntil:finite(+sq.commandHoldUntil),accuracyMultiplier:finite(+sq.accuracyMultiplier),
-    regroup:{accepted:!!(sq._regroupHysteresis&&sq._regroupHysteresis.accepted),anchor:point(sq._regroupHysteresis&&sq._regroupHysteresis.anchor),enteredAt:finite(+(sq._regroupHysteresis&&sq._regroupHysteresis.enteredAt)),entries:finite(+(sq._regroupHysteresis&&sq._regroupHysteresis.entries)),bypassUntil:finite(+sq._regroupBypassUntil)},
+    commandHoldUntil:finite(root.BattleLeases?root.BattleLeases.until(sq,'corner-hold'):0),accuracyMultiplier:finite(+sq.accuracyMultiplier),
+    regroup:(function(){var L=root.BattleLeases,rg=L&&L.get(sq,'regroup');return{accepted:!!rg,anchor:point(rg&&rg.data&&rg.data.anchor),enteredAt:rg?finite(+rg.since):null,entries:finite(+(sq._regroupHysteresis&&sq._regroupHysteresis.entries)),bypassUntil:finite(L?L.until(sq,'regroup-bypass'):0)};})(),
     /* Macro brief (General-owned) vs Captain execution (Meso-owned): the two halves of the mission contract. */
     mission:safePlain(sq._macroMission?Object.assign({},sq._macroMission,{key:undefined}):null,4),lastMission:safePlain(sq._lastMacroMission?Object.assign({},sq._lastMacroMission,{key:undefined}):null,4),
     captainRequest:safePlain(sq._macroMissionRequest,3),
+    /* Owned commitments (BattleLeases): what is live, who owns it, why, what releases it, and which one holds the mission now. */
+    leases:root.BattleLeases?safePlain(root.BattleLeases.active(sq,sq._battleSim?+sq._battleSim.time||0:0),4):null,
+    recentLeases:safePlain(sq._leases&&sq._leases.ended,4),missionHeldBy:sq._missionHold||null,
     missionExecution:sq._missionExecution?{version:sq._missionExecution.mission?sq._missionExecution.mission.version:null,acceptedAt:finite(+sq._missionExecution.acceptedAt),holdPoint:point(sq._missionExecution.holdPoint)}:null,
     contact:safePlain(sq._contact,4),members:(sq.members||[]).map(soldier)
   };

@@ -1,4 +1,8 @@
-/* Deterministic browser replay of the shipping runtime. No gameplay replacements. */
+/* Deterministic browser replay of the shipping runtime. No gameplay replacements.
+   Compare arms served the same way. battle_sim_local.php in preview mode (a preview.json next to it)
+   reads the audio manifest and state/ two directories up, so a copy served that way can run with a
+   different asset/state set than the main checkout. Voice no longer draws from the combat RNG
+   (tools/ai-sim-harness/voice-determinism-check.js), but policy/memory state still changes battles. */
 const { chromium } = require('playwright');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -96,7 +100,7 @@ const path = require('node:path');
           const alive = q.members.filter(m => !m.dead); if (!alive.length) continue;
           const cx = alive.reduce((a, m) => a + m.root.position.x, 0) / alive.length, cz = alive.reduce((a, m) => a + m.root.position.z, 0) / alive.length, m = q._macroMission;
           const obj = q.targetObjective && window.BattleObjectiveSystem ? BattleObjectiveSystem.get(sim, q.targetObjective) : null;
-          squadRows.push([q.id, q.state, q.commandPhase, q.targetObjective, obj ? Math.round(Math.hypot(cx - obj.def.x, cz - obj.def.z)) : null, obj ? Math.round(+obj.def.radius || 0) : null, !!q.inContact, q._engagementPlan ? q._engagementPlan.status : null, q.routeIndex + '/' + (q.route || []).length, Math.round(Math.hypot(cx - (q.objective?.x || 0), cz - (q.objective?.z || 0))), m ? m.version + ':' + m.action : null, q._regroupHysteresis?.accepted ? 'RG' : '']);
+          squadRows.push([q.id, q.state, q.commandPhase, q.targetObjective, obj ? Math.round(Math.hypot(cx - obj.def.x, cz - obj.def.z)) : null, obj ? Math.round(+obj.def.radius || 0) : null, !!q.inContact, q._engagementPlan ? q._engagementPlan.status : null, q.routeIndex + '/' + (q.route || []).length, Math.round(Math.hypot(cx - (q.objective?.x || 0), cz - (q.objective?.z || 0))), m ? m.version + ':' + m.action : null, (window.BattleLeases && BattleLeases.get(q, 'regroup')) ? 'RG' : '']);
         }
         st.samples.push({ squads: squadRows, time:sim.time, us:sim.factions.us.alive, ge:sim.factions.ge.alive, captures:sim.objectiveStats?.captures, stationary });
         return { time:sim.time,winner:sim.winner,shots:st.shots,changes:st.destinationChanges };

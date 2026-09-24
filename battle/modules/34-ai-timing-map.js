@@ -38,7 +38,7 @@ function values(){
     commandTick:n(cmd.commandTick,.45),objectiveVictory:n(cmd.objectiveHoldWin,35),replanAfter:n(root.BattleAICoordinationHealth&&root.BattleAICoordinationHealth.replanAfter,12),
     supportDelay:n(p.supportDelay,20),regroupHold:n(p.regroupHold,.40),cornerHold:n(p.cornerHold,.80),snapshot:n(p.decisionSnapshotSeconds,5),
     assaultPlan:n(st.planSeconds&&st.planSeconds.assault,26),defensePlan:n(st.planSeconds&&st.planSeconds.defense,38),teamOrder:n(st.teamOrderSeconds,12),defensePost:n(st.defensePostSeconds,45),
-    alertHold:n(eng.ALERT_HOLD,4.5),boundCycle:n(eng.BOUND_CYCLE,9),boundDuration:n(eng.BOUND_DURATION,3.6),suppressPause:n(eng.SUPPRESS_PAUSE,2.6),resolverCommit:n(root.BattleMovementResolver&&root.BattleMovementResolver.orderCommit,1.35),combatOverride:n(root.BattleMovementResolver&&root.BattleMovementResolver.combatTTL,.75),
+    alertHold:n(eng.ALERT_HOLD,4.5),boundCycle:n(st.boundCycle,9),boundDuration:n(st.boundDuration,3.6),suppressPause:n(eng.SUPPRESS_PAUSE,2.6),resolverCommit:n(root.BattleMovementResolver&&root.BattleMovementResolver.orderCommit,1.35),combatOverride:n(root.BattleMovementResolver&&root.BattleMovementResolver.combatTTL,.75),
     engageReview:FIXED.engageReview,stanceHold:FIXED.stanceHold,proneHold:FIXED.proneHold,gunnerSetup:FIXED.gunnerSetup,aimSettle:FIXED.aimSettle,coverClaim:FIXED.coverClaim,
     capture:captureSeconds(),postCaptureSecure:FIXED.postCaptureSecure,engineerBuild:FIXED.engineerBuild,engineerMax:FIXED.engineerMax,garrisonHold:FIXED.garrisonHold
   };

@@ -4,9 +4,11 @@ const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('ass
 const repo=process.env.GRASSTEX_SOURCE_ROOT||path.resolve(__dirname,'..');
 let failed=0,passed=0;
 function test(name,fn){try{fn();passed++;console.log('PASS '+name);}catch(e){failed++;console.error('FAIL '+name+': '+e.message);}}
+// The real lease primitive from squad-ai.js; the rest of SquadAI is stubbed.
+const LEASES=require(path.join(repo,'tools/ai-sim-harness/harness')).bootstrap({modules:false}).BattleLeases;
 function fixture(){
   const events=[],systems={},r={console:{log(){},warn(){}},Math,JSON,isFinite};r.window=r;
-  r.BattleSim={start(){}};r.SquadAI={updateSquad(){},formationSlot(){return null;},formationFor(){return'wedge';}};
+  r.BattleLeases=LEASES;r.BattleSim={start(){}};r.SquadAI={updateSquad(){},extend(stage,id,fn){if(stage==='squadCommand')this.updateSquad=fn;},formationSlot(){return null;},formationFor(){return'wedge';}};
   r.BattleTelemetry={record(type,data){events.push({type,data});}};
   r.BattleModules={registerSystem(id,h){systems[id]=h;},unitsFor(sim){return sim._roster.us.concat(sim._roster.ge);},runHook(name,sim,payload){for(const h of Object.values(systems))if(h[name])h[name](sim,payload);}};
   r.BattleObjectiveSystem={get(sim,id){return sim._objectives.find(o=>o.id===id);},status(sim,id){return this.get(sim,id)?.state||{};},tick(){}};
@@ -14,7 +16,7 @@ function fixture(){
   let decisions=0,action='assault';
   r.BattleAIPolicy={genomeFor(){return{parameters:r.BattleCommanderDoctrine.FALLBACK,doctrine:r.BattleCommanderDoctrine.FALLBACK_DOCTRINE};},decide(){decisions++;return{id:'probe',action,when:[]};}};
   const soldier={id:'captain',role:'captain',dead:false,faction:'us',root:{position:{x:0,z:0}}};
-  const sq={id:'us-0',faction:'us',state:'advance',commandRole:'center',commandPhase:'assault',targetObjective:'a',objective:{x:100,z:0},rally:{x:0,z:0},home:{x:0,z:0},route:[{x:0,z:0},{x:50,z:0}],routeIndex:1,commandHoldUntil:0,members:[soldier],aliveCount:1};
+  const sq={id:'us-0',faction:'us',state:'advance',commandRole:'center',commandPhase:'assault',targetObjective:'a',objective:{x:100,z:0},rally:{x:0,z:0},home:{x:0,z:0},route:[{x:0,z:0},{x:50,z:0}],routeIndex:1,members:[soldier],aliveCount:1};
   const sim={time:0,factions:{us:{squads:[sq]},ge:{squads:[]}},_roster:{us:[soldier],ge:[]},_objectives:[{id:'a',def:{x:100,z:0,radius:20,value:1},state:{owner:'neutral'}},{id:'b',def:{x:200,z:0,radius:20,value:1},state:{owner:'neutral'}}],objectiveControl:{counts:{us:0,ge:0}},objectiveHold:{us:0,ge:0}};
   const town={center:{x:50,z:0},radius:80};
   function tick(){sim.time+=.45;r.BattleCommanderAI.update(sim,town,.45);} // Captain executes from its own onCommanderTick hook

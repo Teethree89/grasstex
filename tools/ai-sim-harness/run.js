@@ -91,25 +91,25 @@ section('a squad in contact stops marching (base of fire)');
   for(let x=-40;x<=40;x+=7)obstacles.push(cover(x,-46,'hedge'));
   for(let x=-40;x<=40;x+=7)obstacles.push(cover(x,46,'hedge'));
   const {root,battle,us}=duel({gap:130,obstacles});
-  /* Only an assault-authorized Captain phase may bound (engagement.js updateSquad). */
+  /* Only an assault-authorized Captain phase may bound (16-squad-plan-stability.js fireAndMovement). */
   us.commandPhase='assault';
   H.run(root,battle,3);
-  const bounding=()=>battle.time<(us._boundUntil||0);
+  const L=root.BattleLeases,boundUntil=()=>L.until(us,'bound'),bounding=()=>L.holds(us,'bound',battle.time);
   let boundSeconds=0,contactSeconds=0,missedBounds=0,creepInContact=0,last={x:us.orderAnchor.x,z:us.orderAnchor.z,contact:us.inContact,bound:bounding()};
   H.run(root,battle,40,()=>{
-    /* In contact the anchor advances only during an authorised bound (squad-ai.js issueOrders);
+    /* In contact the anchor advances only during an authorised bound (Captain advanceSquadAnchor);
        once contact breaks it may march. Total distance is the dice, creeping outside a bound is not. */
     if(last.contact&&us.inContact&&!last.bound&&!bounding()&&us.state!=='retreat')creepInContact+=Math.hypot(us.orderAnchor.x-last.x,us.orderAnchor.z-last.z);
     last={x:us.orderAnchor.x,z:us.orderAnchor.z,contact:us.inContact,bound:bounding()};
     if(us.inContact)contactSeconds+=H.AI_TICK;
-    if(battle.time<(us._boundUntil||0))boundSeconds+=H.AI_TICK;
+    if(bounding())boundSeconds+=H.AI_TICK;
     /* Whether a bound actually happens in any given 40 seconds depends on whether the squad spent
        them pinned, which is the dice talking. What must always hold is that a squad which COULD
        bound did: every precondition satisfied and still no bound is the regression that stopped
-       squads advancing. updateSquad authorises on the same tick the conditions are met, so from
+       squads advancing. fireAndMovement authorises on the same tick the conditions are met, so from
        out here this should never be observable. */
     if(us.inContact&&us._assaultAuthorized&&(us.effectiveCount||0)>=2&&(us.pinnedCount||0)<(us.effectiveCount||0)&&
-       battle.time>=(us._nextBoundAt||0)&&battle.time>=(us._boundUntil||0))missedBounds++;
+       !L.holds(us,'bound-cycle',battle.time)&&!bounding())missedBounds++;
   });
   check('the squad spends the fight in contact',contactSeconds>10,'contact seconds='+contactSeconds.toFixed(1));
   check('a squad that could bound, did',missedBounds===0,missedBounds+' ticks with a base of fire and no bound');
@@ -125,17 +125,17 @@ section('bound authorisation needs a base of fire');
   H.run(root,battle,3);
   /* Everybody pinned: nobody is left shooting, so nobody is sent forward. */
   us.members.forEach(s=>{s.suppressedUntil=battle.time+30;});
-  us._nextBoundAt=battle.time;us._boundUntil=0;
-  root.BattleEngagement.updateSquad(us,battle);
-  check('a wholly pinned squad is not sent forward',(us._boundUntil||0)<=battle.time,'boundUntil='+us._boundUntil);
+  root.BattleLeases.end(us,'bound-cycle',battle.time,'test');root.BattleLeases.end(us,'bound',battle.time,'test');
+  root.BattleSquadStability.fireAndMovement(us,battle);
+  check('a wholly pinned squad is not sent forward',!root.BattleLeases.holds(us,'bound',battle.time),'boundUntil='+root.BattleLeases.until(us,'bound'));
   us.members.forEach(s=>{s.suppressedUntil=0;});
   H.run(root,battle,1);
-  us._nextBoundAt=battle.time;us._boundUntil=0;
-  root.BattleEngagement.updateSquad(us,battle);
+  root.BattleLeases.end(us,'bound-cycle',battle.time,'test');root.BattleLeases.end(us,'bound',battle.time,'test');
+  root.BattleSquadStability.fireAndMovement(us,battle);
   const ordered=us.members.filter(s=>!s.dead&&root.BattleEngagement.stateOf(s).boundOrder).length;
   const holding=us.members.filter(s=>!s.dead&&!root.BattleEngagement.stateOf(s).boundOrder).length;
-  check('an unpinned squad bounds one team and holds the rest',(us._boundUntil||0)>battle.time&&ordered>0&&holding>0,
-    'boundUntil='+us._boundUntil+' movers='+ordered+' holding='+holding);
+  check('an unpinned squad bounds one team and holds the rest',root.BattleLeases.holds(us,'bound',battle.time)&&ordered>0&&holding>0,
+    'boundUntil='+root.BattleLeases.until(us,'bound')+' movers='+ordered+' holding='+holding);
   check('the machine gunner is never a mover',us.members.every(s=>s.role!=='gunner'||!root.BattleEngagement.stateOf(s).boundOrder),
     'gunner was ordered to bound');
 }
