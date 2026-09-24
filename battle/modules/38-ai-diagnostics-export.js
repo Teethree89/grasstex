@@ -36,7 +36,7 @@ function squadSpread(sq,p){
   for(var i=0;i<m.length;i++)best=Math.max(best,Math.hypot((+m[i].root.position.x||0)-p.x,(+m[i].root.position.z||0)-p.z));
   return best;
 }
-function captainAlive(sq){var m=aliveMembers(sq);for(var i=0;i<m.length;i++)if(m[i].role==='captain')return true;return false;}
+function captainAlive(sq){return!!(root.SquadAI&&root.SquadAI.leaderOf(sq));}
 function cohesionLimit(sim,sq){
   try{
     var cfg=root.BattleCommanderAI&&root.BattleCommanderAI.policyFor?root.BattleCommanderAI.policyFor(sim,sq.faction):null;

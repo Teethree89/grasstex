@@ -83,9 +83,7 @@
     return m;
   }
   function captain(sq) {
-    for (var i = 0; i < sq.members.length; i++)
-      if (sq.members[i].role === 'captain' && !sq.members[i].dead) return sq.members[i];
-    return null;
+    return root.SquadAI.leaderOf(sq);
   }
 
   /* Capability-oriented force accounting: modules register units, so nothing here knows about

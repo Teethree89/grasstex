@@ -58,6 +58,7 @@ for s in 12345 1 2 3 5 8 13 21; do HARNESS_SEED=$s node tools/ai-sim-harness/run
 | `world-debug-check.js` | World Debug overlay UI handlers (DOM stub) |
 | `extension-order-check.js` | No module replaces `SquadAI.tryFire`/`areaFire`/`updateSoldier`/`updateSquad` or `BattleEngagement.updateSoldier`; the declared fire order (ammunition → ballistics range → trigger-time LOS) holds; undeclared extensions throw |
 | `lease-check.js` | `BattleLeases` primitive, tactical-plan and regroup lease lifecycles, regroup re-forms on the rally point |
+| `reconstitution-check.js` | Retreated squads home and out of contact reaching 10 survivors group (fewest squads; none planned en route), march to the rally point, merge under one leader (promotion never picks the gunner), get re-tasked; below-strength groups dissolve; Macro OFF does nothing |
 | `voice-determinism-check.js` | Voice callouts never draw from the combat RNG: a battle is identical with and without voice |
 
 `harness.js` mirrors `stepMovement()` from `battle/battle-sim.js`. **If that function changes,
@@ -148,7 +149,24 @@ Intent flows down and status flows up. No layer rewrites another's state.
 Brief lifecycle: `issued → executing → completed | invalid | failed | superseded`. The General
 wakes only on: initial brief, mission complete or invalid, reserve due, a defence request that
 changes the task, an objective vacated or changing control on a defend brief, a 120 s strategic
-stall, or a Captain `doctrine-review` escalation. Wakes are exported under `macroCommand`.
+stall, a Captain `doctrine-review` escalation, or a merge (`squad-reconstituted`). Wakes are
+exported under `macroCommand`.
+
+**Reconstitution** (`commander-ai.js` `reconstitute`, Macro only). A retreating squad's Captain
+walks it home (`_assembly` `to-base`); home and out of contact it is `at-base`. Only `at-base` squads
+form the pool, so no group is planned for a squad still on its way. When the pool holds 10+ survivors
+the General groups the fewest squads that reach 10 (never splitting one), picks the objective it will
+send them to next (`chooseObjective`, strongest squad as reference) and gives each a `reconstitute`
+brief to a rally point on the approach to it: on the spawn line 30 m forward, in line with the
+objective, clamped to the side's lanes (centre of the home points if there is no objective). The
+brief carries it as `plannedObjectiveId`, never `targetObjective`, so a retreating squad is not counted
+at the objective; after the merge the General sends the squad there unless it changed hands
+(`to-rally`, `SquadAI.retreatGoal`).
+Once all are there the General merges them: the strongest squad with a living leader survives,
+otherwise the most senior survivor is promoted (ex-leader, rifleman, scout, gunner last). The re-formed
+squad has `leaderId`, `establishment` 10 and only living members; absorbed squads are `disbanded`.
+Command is `SquadAI.leaderOf`/`isLeader`, never `role === 'captain'` (that is the pistol role).
+State and counters: `missionState(sim).reconstitution`.
 
 **Engagement states:** `advance → orient → (decide) → bound → engage`, then
 `pinned`, `assault`, `alert`, `withdraw`, `station`. `orient` never fires (REACT 0.45 s scout to

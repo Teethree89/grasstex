@@ -19,7 +19,7 @@ function chance(sim,key,p){var sc=sim&&sim.scene&&sim.scene.metadata&&sim.scene.
 function dist(a,b){return a&&b?Math.hypot((+a.x||0)-(+b.x||0),(+a.z||0)-(+b.z||0)):Infinity;}
 function point(v){return v&&isFinite(+v.x)&&isFinite(+v.z)?{x:+v.x,z:+v.z}:null;}
 function alive(sq){return(sq&&sq.members||[]).filter(function(s){return s&&!s.dead&&s.root;});}
-function captain(sq){var a=alive(sq);for(var i=0;i<a.length;i++)if(a[i].role==='captain')return a[i];return a[0]||null;}
+function captain(sq){var a=alive(sq),lead=root.SquadAI&&root.SquadAI.leaderOf(sq);return lead&&lead.root?lead:a[0]||null;}
 function memberById(sq,id){var a=alive(sq);for(var i=0;i<a.length;i++)if(String(a[i].id)===String(id))return a[i];return null;}
 function average(sq){var a=alive(sq),x=0,z=0;if(!a.length)return null;for(var i=0;i<a.length;i++){x+=+a[i].root.position.x||0;z+=+a[i].root.position.z||0;}return{x:x/a.length,z:z/a.length};}
 function key(sq){return String(sq&&sq.faction||'?')+':'+String(sq&&sq.id||'?');}
@@ -29,7 +29,7 @@ function manifest(){return root.BATTLE_AUDIO_MANIFEST||null;}
 function voiceReady(sim){var m=manifest();return!!(sim&&typeof sim.onCallout==='function'&&m&&m.callouts);}
 function hasEvent(s,event){var m=manifest(),side=m&&m.callouts&&m.callouts[s&&s.faction];return!!(side&&side.events&&side.events[event]&&side.events[event].length);}
 function sequence(name){var m=manifest();return m&&m.voiceSequences&&m.voiceSequences[name]||{};}
-function pick(sq,seed,preferNonCaptain,exclude){var a=alive(sq),pool=a.filter(function(s){return (!preferNonCaptain||s.role!=='captain')&&(!exclude||exclude.indexOf(String(s.id))<0);});if(!pool.length)pool=a.filter(function(s){return !exclude||exclude.indexOf(String(s.id))<0;});if(!pool.length)return null;return pool[hash(key(sq)+'|'+seed)%pool.length];}
+function pick(sq,seed,preferNonCaptain,exclude){var a=alive(sq),pool=a.filter(function(s){return (!preferNonCaptain||!(root.SquadAI&&root.SquadAI.isLeader(s)))&&(!exclude||exclude.indexOf(String(s.id))<0);});if(!pool.length)pool=a.filter(function(s){return !exclude||exclude.indexOf(String(s.id))<0;});if(!pool.length)return null;return pool[hash(key(sq)+'|'+seed)%pool.length];}
 function eventGap(event){if(event==='idleLaugh'||event==='idleGroan')return .5;if(event==='orderAck')return 2;return 3.5;}
 function say(sim,soldier,event,opts){
   opts=opts||{};if(!voiceReady(sim)||!soldier||soldier.dead||!hasEvent(soldier,event))return false;

@@ -149,7 +149,8 @@
       spec.point,
       spec.role,
       spec.route,
-      spec.requestKey
+      spec.requestKey,
+      spec.plannedObjectiveId
     ]);
   }
   function issueMission(sim, sq, spec, reason) {
@@ -172,6 +173,7 @@
       route: (spec.route || []).map(point),
       role: spec.role,
       requestKey: spec.requestKey || null,
+      plannedObjectiveId: spec.plannedObjectiveId || null,
       issuedAt: +sim.time || 0,
       acceptedAt: null,
       status: 'issued',
@@ -228,9 +230,14 @@
       : null;
   }
   function wakeReason(sim, sq, stallKey) {
-    var m = sq._macroMission;
-    if (sq.state === 'retreat' || !D.aliveMembers(sq).length) {
-      if (m) finishMission(sim, sq, 'failed', sq.state === 'retreat' ? 'squad-retreat' : 'squad-destroyed');
+    var m = sq._macroMission,
+      living = D.aliveMembers(sq).length;
+    if (living && m && m.status === 'completed' && m.endReason === 'reconstituted')
+      return 'squad-reconstituted';
+    if (sq.state === 'retreat' || !living) {
+      var assembling = sq.state === 'retreat' && sq._reconGroup && m && m.intent === 'reconstitute';
+      if (m && !assembling)
+        finishMission(sim, sq, 'failed', sq.state === 'retreat' ? 'squad-retreat' : 'squad-destroyed');
       return null;
     }
     if (!m) return 'initial-mission';
@@ -303,7 +310,9 @@
         },
         reason
       );
-    var previous = (old && old.objectiveId) || sq.targetObjective,
+    /* A reconstitution brief names the objective its rally point was chosen for (`plannedObjectiveId`,
+       never `targetObjective`: a retreating squad must not be counted at an objective). */
+    var previous = (old && (old.objectiveId || old.plannedObjectiveId)) || sq.targetObjective,
       assigned = previous && root.BattleObjectiveSystem && root.BattleObjectiveSystem.get(sim, previous),
       chosen = null;
     if (assigned && reason !== 'strategic-stall' && reason !== 'mission-complete') {
@@ -377,6 +386,315 @@
     sq._macroMissionRequest = null;
   }
 
+  /* Reconstitution. Retreated squads that are home and out of contact (`_assembly` `at-base`,
+     16-squad-plan-stability.js) are a side's pool of survivors; no group is planned for a squad still on
+     its way home. Whenever the pool holds a full squad's worth, the General groups the fewest squads that
+     reach it (squads are never split) and briefs each to a rally point at the centre of their home
+     points. When every grouped squad is there out of contact the General merges them into one squad
+     under one leader and re-tasks it (`squad-reconstituted`). A group that falls below full strength
+     before merging is dissolved and its squads return to the pool. State lives in
+     missionState(sim).reconstitution. */
+  var RECON_STRENGTH = 10, // one full rifle squad (SquadAI.COMPOSITION)
+    RALLY_RADIUS = 20,
+    RALLY_FORWARD = 30,
+    PROMOTION_ORDER = { captain: 0, rifleman: 1, scout: 2, gunner: 9 };
+  function reconState(sim) {
+    var st = missionState(sim);
+    return (
+      st.reconstitution ||
+      (st.reconstitution = {
+        strength: RECON_STRENGTH,
+        serial: 0,
+        groupsFormed: 0,
+        groupsDissolved: 0,
+        merges: 0,
+        promotions: 0,
+        active: [],
+        ended: []
+      })
+    );
+  }
+  function squadById(sim, faction, id) {
+    var a = sim.factions[faction].squads;
+    for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    return null;
+  }
+  function endGroup(st, g, status, reason, t) {
+    g.status = status;
+    g.endReason = reason;
+    g.endedAt = t;
+    st.active.splice(st.active.indexOf(g), 1);
+    st.ended.push(g);
+    if (st.ended.length > 20) st.ended.shift();
+  }
+  function strongestFirst(sim, faction) {
+    var order = sim.factions[faction].squads;
+    return function (a, b) {
+      return D.aliveMembers(b).length - D.aliveMembers(a).length || order.indexOf(a) - order.indexOf(b);
+    };
+  }
+  /* The rally point is where the re-formed squad starts its next approach: on the spawn line, RALLY_FORWARD
+     ahead of it, straight back from the objective the General expects to send it to, and inside the
+     side's lanes. With no objective to plan for it is the centre of the grouped squads' home points. */
+  function rallyPoint(sim, faction, squads, plan) {
+    var x = 0,
+      z = 0;
+    for (var i = 0; i < squads.length; i++) {
+      x += +squads[i].home.x || 0;
+      z += +squads[i].home.z || 0;
+    }
+    x /= squads.length;
+    z /= squads.length;
+    if (!plan) return { x: x, z: z };
+    var homes = sim.factions[faction].squads.map(function (sq) {
+        return +sq.home.x || 0;
+      }),
+      toward = plan.point.z >= z ? 1 : -1;
+    return {
+      x: Math.max(Math.min.apply(null, homes), Math.min(Math.max.apply(null, homes), plan.point.x)),
+      z: z + toward * RALLY_FORWARD
+    };
+  }
+  function formGroup(sim, faction, squads) {
+    /* The strongest grouped squad stands in for the re-formed squad: all of them are at base. */
+    var st = reconState(sim),
+      plan = D.chooseObjective(sim, squads[0], false) || D.chooseObjective(sim, squads[0], true),
+      rally = rallyPoint(sim, faction, squads, plan);
+    var g = {
+      id: faction + '-reconstitution-' + ++st.serial,
+      faction: faction,
+      squads: squads.map(function (sq) {
+        return sq.id;
+      }),
+      rally: rally,
+      objectiveId: plan ? plan.instance.id : null,
+      survivors: squads.reduce(function (n, sq) {
+        return n + D.aliveMembers(sq).length;
+      }, 0),
+      formedAt: +sim.time || 0,
+      status: 'assembling'
+    };
+    st.active.push(g);
+    st.groupsFormed++;
+    squads.forEach(function (sq) {
+      finishMission(sim, sq, 'failed', 'squad-retreat');
+      recordMacroWake(sim, sq, 'reconstitute-group');
+      sq._reconGroup = g.id;
+      issueMission(
+        sim,
+        sq,
+        {
+          intent: 'reconstitute',
+          action: 'assemble',
+          objectiveId: null,
+          point: g.rally,
+          role: sq.commandRole || 'center',
+          route: [],
+          plannedObjectiveId: g.objectiveId
+        },
+        'reconstitute-group'
+      );
+    });
+    telemetry(sim, 'decision-reconstitute-group', {
+      faction: faction,
+      group: g.id,
+      squads: g.squads,
+      survivors: g.survivors,
+      rally: g.rally,
+      objectiveId: g.objectiveId
+    });
+    return g;
+  }
+  function dissolveGroup(sim, g, squads, reason) {
+    squads.forEach(function (sq) {
+      sq._reconGroup = null;
+      finishMission(sim, sq, 'failed', reason);
+    });
+    var st = reconState(sim);
+    st.groupsDissolved++;
+    endGroup(st, g, 'dissolved', reason, +sim.time || 0);
+    telemetry(sim, 'decision-reconstitute-dissolved', { faction: g.faction, group: g.id, reason: reason });
+  }
+  /* Most senior survivor: a former squad leader, then a rifleman, then a scout; the gunner stays on the
+     gun unless nobody else is left. Ties go to the lowest soldier id, so replays promote the same man. */
+  function promote(men) {
+    var best = null;
+    for (var i = 0; i < men.length; i++) {
+      var s = men[i],
+        rank = s.role in PROMOTION_ORDER ? PROMOTION_ORDER[s.role] : 3;
+      if (!best || rank < best.rank || (rank === best.rank && s.id < best.soldier.id))
+        best = { soldier: s, rank: rank };
+    }
+    return best && best.soldier;
+  }
+  /* Slot 0 is the leader, 1 the squad's gun, 2-3 its scouts; every other man - a second gunner, a third
+     scout, a former leader - takes a rifleman slot from 4 up (`slotRole`, SquadAI.formationSlot). */
+  function assignSlots(men, leader) {
+    var gun = false,
+      scouts = 0,
+      next = 4;
+    leader.slotIndex = 0;
+    leader.slotRole = null;
+    for (var i = 0; i < men.length; i++) {
+      var s = men[i];
+      if (s === leader) continue;
+      s.slotRole = null;
+      if (s.role === 'gunner' && !gun) {
+        gun = true;
+        s.slotIndex = 1;
+      } else if (s.role === 'scout' && scouts < 2) s.slotIndex = 2 + scouts++;
+      else {
+        s.slotIndex = next++;
+        if (s.role !== 'rifleman') s.slotRole = 'rifleman';
+      }
+    }
+  }
+  function mergeGroup(sim, g, squads) {
+    var st = reconState(sim),
+      t = +sim.time || 0,
+      order = squads.slice().sort(strongestFirst(sim, g.faction)),
+      led = order.filter(function (sq) {
+        return !!root.SquadAI.leaderOf(sq);
+      }),
+      survivor = led[0] || order[0],
+      men = [];
+    [survivor]
+      .concat(
+        order.filter(function (sq) {
+          return sq !== survivor;
+        })
+      )
+      .forEach(function (sq) {
+        D.aliveMembers(sq).forEach(function (s) {
+          men.push(s);
+        });
+      });
+    var leader = root.SquadAI.leaderOf(survivor),
+      promoted = !leader;
+    if (promoted) leader = promote(men);
+    assignSlots(men, leader);
+    men.forEach(function (s) {
+      if (root.BattleTacticalPositions) root.BattleTacticalPositions.release(s, sim, 'reconstituted');
+      s.squad = survivor;
+      s._fireteamKey = null;
+      s._defensePost = null;
+      s._engagementTask = null;
+      s._engagementPlanSerial = null;
+    });
+    survivor.members = men;
+    survivor.leaderId = leader.id;
+    survivor.establishment = RECON_STRENGTH;
+    survivor.aliveCount = men.length;
+    survivor.captainAlive = true;
+    survivor.orderAnchor = { x: g.rally.x, z: g.rally.z };
+    survivor.rally = { x: g.rally.x, z: g.rally.z };
+    survivor._reconGroup = null;
+    survivor.reconstitutedFrom = g.squads.slice();
+    finishMission(sim, survivor, 'completed', 'reconstituted');
+    order.forEach(function (sq) {
+      if (sq === survivor) return;
+      /* An absorbed squad reads like a destroyed one: no living men, full strength missing. */
+      sq.members = [];
+      sq.establishment = RECON_STRENGTH;
+      sq.aliveCount = 0;
+      sq.leaderId = null;
+      sq.disbanded = true;
+      sq.mergedInto = survivor.id;
+      sq._reconGroup = null;
+      finishMission(sim, sq, 'completed', 'merged');
+    });
+    st.merges++;
+    if (promoted) st.promotions++;
+    g.survivor = survivor.id;
+    g.size = men.length;
+    g.leader = leader.id;
+    g.promoted = promoted;
+    endGroup(st, g, 'merged', 'reconstituted', t);
+    telemetry(sim, 'decision-squad-merge', {
+      faction: g.faction,
+      group: g.id,
+      survivor: survivor.id,
+      absorbed: g.squads.filter(function (id) {
+        return id !== survivor.id;
+      }),
+      size: men.length,
+      leader: leader.id
+    });
+    if (promoted)
+      telemetry(sim, 'decision-leader-promoted', {
+        faction: g.faction,
+        squad: survivor.id,
+        soldier: leader.id,
+        role: leader.role
+      });
+  }
+  function atRally(sq, g) {
+    var a = sq._assembly,
+      p = D.avgPos(sq);
+    return !!(
+      a &&
+      a.phase === 'to-rally' &&
+      !sq.inContact &&
+      D.dist(p.x, p.z, g.rally.x, g.rally.z) <= RALLY_RADIUS
+    );
+  }
+  /* Pool first, then advance groups: a squad merged this tick still reads `retreat` until its Captain
+     recomputes its status, so it must not be pooled in the same pass. */
+  function reconstitute(sim, faction) {
+    var st = reconState(sim),
+      groups = st.active.filter(function (g) {
+        return g.faction === faction;
+      }),
+      pool = sim.factions[faction].squads
+        .filter(function (sq) {
+          return (
+            !sq.disbanded &&
+            sq.state === 'retreat' &&
+            !sq._reconGroup &&
+            !sq.inContact &&
+            sq._assembly &&
+            sq._assembly.phase === 'at-base' &&
+            D.aliveMembers(sq).length
+          );
+        })
+        .sort(strongestFirst(sim, faction)),
+      total = pool.reduce(function (n, sq) {
+        return n + D.aliveMembers(sq).length;
+      }, 0);
+    /* Strongest first reaches full strength with the fewest squads. */
+    while (total >= RECON_STRENGTH) {
+      var take = [],
+        n = 0;
+      while (n < RECON_STRENGTH) {
+        var next = pool.shift();
+        take.push(next);
+        n += D.aliveMembers(next).length;
+      }
+      total -= n;
+      formGroup(sim, faction, take);
+    }
+    for (var i = 0; i < groups.length; i++) {
+      var g = groups[i],
+        squads = g.squads
+          .map(function (id) {
+            return squadById(sim, faction, id);
+          })
+          .filter(function (sq) {
+            return sq && !sq.disbanded && D.aliveMembers(sq).length;
+          }),
+        survivors = squads.reduce(function (n, sq) {
+          return n + D.aliveMembers(sq).length;
+        }, 0);
+      if (survivors < RECON_STRENGTH) dissolveGroup(sim, g, squads, 'below-strength');
+      else if (
+        squads.every(function (sq) {
+          return atRally(sq, g);
+        })
+      )
+        mergeGroup(sim, g, squads);
+    }
+  }
+
   function updateCommander(sim, town, dt) {
     dt = dt || COMMAND_TICK;
     var macro = macroEnabled(sim),
@@ -390,6 +708,7 @@
           stats = missionState(sim),
           key = strategicStallKey(sim, f),
           stall = key && stats.stallByFaction[f] !== key ? key : null;
+        reconstitute(sim, f);
         for (var i = 0; i < squads.length; i++) {
           var sq = squads[i],
             reason = wakeReason(sim, sq, stall);
@@ -549,6 +868,8 @@
     objectiveHoldWin: OBJECTIVE_HOLD_WIN,
     strategicStallReplan: STRATEGIC_STALL_REPLAN,
     missionState: missionState,
+    reconstitute: reconstitute,
+    reconstitutionStrength: RECON_STRENGTH,
     policyFor: policy,
     genomeFor: genome,
     doctrineFor: doctrine,

@@ -5,7 +5,7 @@ const assert = require('assert');
 
 const proposals = [];
 // The real lease primitive (squad-ai.js); everything else the Captain touches is stubbed below.
-const { BattleLeases } = require('../tools/ai-sim-harness/harness').bootstrap({ modules: false });
+const { BattleLeases, SquadAI: real } = require('../tools/ai-sim-harness/harness').bootstrap({ modules: false });
 const context = {
   BattleLeases,
   console,
@@ -31,6 +31,10 @@ const context = {
     // The Captain attaches as the squad's command owner; this stub simply installs it.
     extend(stage, id, fn) { if (stage === 'squadCommand') this.updateSquad = fn; },
     SLOT_SPACING: 1.25,
+    leaderOf: real.leaderOf,
+    isLeader: real.isLeader,
+    establishment: real.establishment,
+    retreatGoal: real.retreatGoal,
     formationFor() { return 'line'; },
     // A deterministic formation around the Captain-owned squad anchor. This keeps the test about
     // Meso commitment lifecycle rather than production formation geometry.
