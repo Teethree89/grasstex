@@ -276,10 +276,10 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
 ### Open issues (as of v160 / 2026-09-24)
 
 - Regroups: half used to time out at 18 s because the order anchor stayed with the leading men;
-  fixed (timeouts 76 → 6 over 30 seeds). Measured 2026-09-24 on main (20 battles per type, benchmark
-  `regroups`): 8.2 regroups per battle in meeting, 7.1 in US-defend and 7.5 in GE-defend, with 11, 5 and
-  1 timeouts. Defend scenarios regroup no more often than meetings, so there is no defend-specific
-  rise left to chase.
+  fixed (timeouts 76 → 6 over 30 seeds). GitHub standard benchmark run 11 (PR #37, 2026-09-25,
+  benchmark `regroups`): 9.4 regroups per battle in meeting, 7.3 in US-defend and 5.9 in GE-defend,
+  with 15, 2 and 4 timeouts over 60/20/20 battles. Defend scenarios regroup no more often than
+  meetings, so there is no defend-specific rise left to chase.
 - Window/ingress crowding: claim collisions swing 23 to 3,838 on the same seed. Reservation
   and physical occupancy haven't been separated yet.
 - Personal-space corrections rose slightly (15.7k → 17.4k per battle). Find the converging
@@ -300,12 +300,13 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
   needs an Engagement rule for when to switch: primary empty or jammed with a target inside pistol
   range. The pistol hold, the `m1911a1`/`p38` models and the pistol clips already exist. Presentation
   stays off the combat RNG.
-- **General concentration of effort.** Done as a frontage limit in `chooseObjective` (see Main effort):
-  spread fell from ~2.7 to ~2.3 objectives per side in meeting battles and captures rose 3.7 → 4.3
-  (20 paired seeds). A one-sided test (30 meeting seeds, only one side concentrating) showed no
-  measurable win effect: US 8 → 12 wins when US concentrates (Fisher p=0.41), GE 22 → 20 when GE
-  does (p=0.78). Tune `maxEfforts`/`frontageCost` only with ~200+ runs per arm. A platoon layer is
-  not warranted at 5 squads per side; revisit at ~9+ squads or combined arms.
+- **General concentration of effort.** Done as a frontage limit in `chooseObjective` (see Main effort).
+  GitHub standard benchmark, main run 12 vs PR #37 run 11 (same seeds, live policy rev 14): meeting
+  spread fell 2.75/2.60 → 2.33/2.33 objectives per side with captures unchanged (4.53). Wins were
+  unchanged too (US/GE 32/28 → 31/29 meeting, 19/1 → 18/2 US-defend, 2/18 → 0/20 GE-defend; median
+  wall time 27.9 → 26.5 s). The win effect of concentrating is unmeasured; both sides concentrate, so
+  it needs a one-sided arm of ~200+ battles. A platoon layer is not warranted at 5 squads per side;
+  revisit at ~9+ squads or combined arms.
 
 ## Soldiers, weapons, animation
 
