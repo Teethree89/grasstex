@@ -162,6 +162,7 @@
       <label class="control" style="margin-top:9px">Weapon slot <select id="sidecarWeapon"><option value="">No sidecar yet</option></select></label>
       <div class="row" style="margin-top:9px"><button id="sidecarStore">Store current → slot</button><button id="sidecarApply">Apply slot</button></div>
       <div class="row" style="margin-top:9px"><button id="sidecarDownload">Download sidecar</button><button id="sidecarSaveServer">Save sidecar to server</button></div>
+      <p class="hint" style="margin-top:6px">Saving asks for the lab password once per browser. <a href="#" id="sidecarForgetKey">Forget password</a></p>
       <div class="row" style="margin-top:9px"><button id="sidecarLoadServer">Load sidecar from server</button></div>
       <p class="hint" id="sidecarStatus" style="margin-top:8px">No sidecar loaded.</p>
 
@@ -2469,6 +2470,8 @@
         };
       }
     }
+    // Pistols are a one-hand hold: fore points carried over from a long gun never ship with them.
+    Object.keys(weapons).forEach(k => { if (labIsPistol(k)) { weapons[k].foreNear = null; weapons[k].foreFar = null; } });
     return {
       model, version: 1,
       contacts: { right: arr(labCalib.contacts.right), left: arr(labCalib.contacts.left) },
@@ -2586,15 +2589,33 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     setStatus('Downloaded sidecar '+a.download+' — place it in Assets/soldiers/ or Save to server.');
   };
+  /* The lab password (checked by save-calibration.php) is asked for once and remembered in this
+     browser; a rejected one is forgotten and asked for again. */
+  const LAB_SAVE_KEY = 'fbxLabSaveKey.v1';
+  function labSaveKey(ask){
+    let key = null;
+    try { key = localStorage.getItem(LAB_SAVE_KEY); } catch (error) {}
+    if (key || !ask) return key;
+    key = window.prompt('Lab password (saving sidecars to the server):') || '';
+    if (key) { try { localStorage.setItem(LAB_SAVE_KEY, key); } catch (error) {} }
+    return key || null;
+  }
+  function labForgetSaveKey(){ try { localStorage.removeItem(LAB_SAVE_KEY); } catch (error) {} }
+  $('sidecarForgetKey').onclick = event => { event.preventDefault(); labForgetSaveKey(); setStatus('Lab password forgotten in this browser.'); };
   $('sidecarSaveServer').onclick = async () => {
     const data = labCollectSidecar();
     if (!data.model) { setStatus('Load a model first.', true); return; }
     try {
       setStatus('Saving sidecar for '+data.model+'…');
-      const res = await fetch('save-calibration.php', {
-        method:'POST', headers:{ 'Content-Type':'application/json' },
+      const post = key => fetch('save-calibration.php', {
+        method:'POST', headers:{ 'Content-Type':'application/json', 'X-Lab-Key':key },
         body: JSON.stringify({ model:data.model, data })
       });
+      let key = labSaveKey(true);
+      if (!key) { setStatus('Save cancelled: no lab password entered.', true); return; }
+      let res = await post(key);
+      if (res.status === 401) { labForgetSaveKey(); key = labSaveKey(true); if (!key) { setStatus('Save cancelled: wrong lab password.', true); return; } res = await post(key); }
+      if (res.status === 401) labForgetSaveKey();
       const out = await res.json().catch(() => ({}));
       if (!res.ok || !out.ok) throw new Error(out.error || ('HTTP '+res.status));
       labSidecar = { model: data.model, contacts: data.contacts, weapons: data.weapons };

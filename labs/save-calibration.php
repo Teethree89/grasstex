@@ -14,6 +14,24 @@ function fail($code, $msg) {
     exit;
 }
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') fail(405, 'POST only');
+
+/* Saving needs the lab password (X-Lab-Key header). Only its hash lives on the server, in
+   state/lab-key.php, placed by hand and never deployed: `<?php return '<hash>';` where <hash> is
+   the SHA-256 hex of the password (`printf '%s' 'password' | shasum -a 256`) or a
+   password_hash() bcrypt string. PHP runs the file, so fetching it over HTTP shows nothing. It is
+   found the way battle_sim_local.php finds state/ (a preview reads the main site's). No key file
+   means saving is off, never open. */
+$siteRoot = dirname(__DIR__);
+$stateRoot = is_file($siteRoot . '/preview.json') ? dirname(dirname($siteRoot)) : $siteRoot;
+$keyFile = $stateRoot . '/state/lab-key.php';
+$keyHash = is_file($keyFile) ? (include $keyFile) : null;
+if (!is_string($keyHash) || $keyHash === '') fail(503, 'Saving is disabled: no lab password is set on the server (state/lab-key.php)');
+$given = $_SERVER['HTTP_X_LAB_KEY'] ?? '';
+$keyHash = trim($keyHash);
+$match = strlen($keyHash) === 64 && ctype_xdigit($keyHash)
+    ? hash_equals(strtolower($keyHash), hash('sha256', (string)$given))
+    : password_verify((string)$given, $keyHash);
+if (!is_string($given) || $given === '' || !$match) fail(401, 'Wrong lab password');
 $raw = file_get_contents('php://input');
 $body = json_decode($raw, true);
 if (!is_array($body)) fail(400, 'Invalid JSON body');
