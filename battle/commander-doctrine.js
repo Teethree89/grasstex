@@ -180,7 +180,15 @@
     return n;
   }
 
-  function chooseObjective(sim, sq, wantOwned) {
+  /* Stalled efforts.
+     The General's strategic-stall wake (commander-ai.js) used to re-pick the objective the side had
+     just spent 120 s failing to take: the squad sits beside it, so distance alone keeps it the best
+     score (seed 1 replay: 5 stall wakes, 5 repeats). The wake passes the objectives its stalled
+     capture briefs were attacking; each costs STALL_COST, enough to move the effort to another
+     objective the side does not hold. Like saturation it is a score, never a veto: when every
+     remaining objective is stalled, the relative order is unchanged and the squad keeps its effort. */
+  var STALL_COST = 150;
+  function chooseObjective(sim, sq, wantOwned, stalled) {
     var objectives = sim._objectives || [],
       p = avgPos(sq),
       cfg = policy(sim, sq.faction),
@@ -212,6 +220,8 @@
       var assigned = squadsTargeting(sim, sq, obj.id),
         crowd = Math.max(0, assigned - (saturationAllowance(status, owner) - 1));
       score -= crowd * SATURATION_COST;
+      var stall = stalled && stalled[obj.id] ? STALL_COST : 0;
+      score -= stall;
       if (score > bestScore) {
         bestScore = score;
         best = {
@@ -220,7 +230,8 @@
           status: status,
           score: score,
           assignedSquads: assigned,
-          crowdPenalty: crowd * SATURATION_COST
+          crowdPenalty: crowd * SATURATION_COST,
+          stallPenalty: stall
         };
       }
     }
@@ -290,7 +301,8 @@
     buildContext: buildContext,
     flankPoint: flankPoint,
     squadsTargeting: squadsTargeting,
-    saturationCost: SATURATION_COST
+    saturationCost: SATURATION_COST,
+    stallCost: STALL_COST
   };
   console.log('[COMMAND] doctrine + objective scoring loaded');
 })(typeof window !== 'undefined' ? window : globalThis);

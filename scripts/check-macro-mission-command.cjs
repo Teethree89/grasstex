@@ -110,6 +110,17 @@ test('a stall never re-tasks a mission younger than the stall window',()=>{
   f.sim._coordinationHealth.sides.us.objectiveStallSeconds=241;f.sim.time=241;f.tick();
   assert.equal(stalls(),1,'a mission older than the stall window must be reassessed');
 });
+test('a stall wake moves the stalled effort to another objective, and keeps it when there is none',()=>{
+  const f=fixture();f.tick();assert.equal(f.sq._macroMission.objectiveId,'a','the nearer objective is the first effort');
+  f.sim._coordinationHealth={lastObjectiveProgressAt:0,sides:{us:{objectiveStallSeconds:121,replanDue:true}}};f.sim.time=121;f.tick();
+  assert.equal(f.sq._macroMission.objectiveId,'b','the stall wake re-picked the objective the side just failed to take');
+  f.sim._coordinationHealth.sides.us.objectiveStallSeconds=241;f.sim.time=241;f.tick();
+  assert.equal(f.sq._macroMission.objectiveId,'a','a stalled switch is itself a stalled effort at the next stall');
+  const out=f.r.BattleCommanderAI.missionState(f.sim).stallOutcomes;assert.deepEqual([out.wakes,out.switches,out.repeats],[2,2,0]);
+  const g=fixture();g.sim._objectives.pop();g.tick();
+  g.sim._coordinationHealth={lastObjectiveProgressAt:0,sides:{us:{objectiveStallSeconds:121,replanDue:true}}};g.sim.time=121;g.tick();
+  assert.equal(g.sq._macroMission.objectiveId,'a','with no other objective the stall cost is not a veto');
+});
 test('pressure flicker on an objective already being defended is not a new brief',()=>{
   const f=fixture();f.sim._objectives.forEach(o=>o.state.owner='us');f.tick();const mission=f.sq._macroMission;assert.equal(mission.intent,'defend');
   for(let i=0;i<10;i++){f.sq._captureZoneDefenseRequest=i%2?{objectiveId:'a',point:{x:100,z:0}}:null;f.tick();}

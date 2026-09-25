@@ -229,6 +229,26 @@
       ? String(+health.lastObjectiveProgressAt || 0) + ':' + Math.floor(age / STRATEGIC_STALL_REPLAN)
       : null;
   }
+  /* A faction-wide stall is only evidence against a capture brief that has had the whole stall window to
+     work. A brief issued at one stall wake is due at the next, one window later to within a command tick. */
+  function stallEligible(sim, m) {
+    return !!(
+      m &&
+      m.intent === 'capture' &&
+      (+sim.time || 0) - (+m.issuedAt || 0) >= STRATEGIC_STALL_REPLAN - COMMAND_TICK / 2
+    );
+  }
+  /* The objectives the side's stalled capture briefs are attacking: the efforts a stall wake moves off. */
+  function stalledEfforts(sim, squads) {
+    var ids = {};
+    for (var i = 0; i < squads.length; i++) {
+      var sq = squads[i],
+        m = sq._macroMission;
+      if (sq.state !== 'retreat' && D.aliveMembers(sq).length && stallEligible(sim, m) && m.objectiveId)
+        ids[m.objectiveId] = true;
+    }
+    return ids;
+  }
   function wakeReason(sim, sq, stallKey) {
     var m = sq._macroMission,
       living = D.aliveMembers(sq).length;
@@ -260,14 +280,9 @@
     if (m.intent === 'defend' && st.owner !== obs.owner) return 'objective-control-changed';
     if (m.intent === 'capture' && !!st.vacantOwner !== obs.vacant && st.vacantOwner)
       return 'objective-vacated';
-    /* A faction-wide stall is only evidence against a mission that has had the whole stall window to work. */
-    return m.intent === 'capture' &&
-      stallKey &&
-      (+sim.time || 0) - (+m.issuedAt || 0) >= STRATEGIC_STALL_REPLAN
-      ? 'strategic-stall'
-      : null;
+    return stallKey && stallEligible(sim, m) ? 'strategic-stall' : null;
   }
-  function selectMission(sim, sq, town, reason) {
+  function selectMission(sim, sq, town, reason, stalled) {
     var request = defenseRequest(sim, sq),
       old = sq._macroMission,
       role = sq.commandRole || 'center';
@@ -320,7 +335,7 @@
       if (status.owner !== sq.faction)
         chosen = { instance: assigned, point: D.objectivePoint(assigned, sim, sq), status: status };
     }
-    if (!chosen) chosen = D.chooseObjective(sim, sq, false) || D.chooseObjective(sim, sq, true);
+    if (!chosen) chosen = D.chooseObjective(sim, sq, false, stalled) || D.chooseObjective(sim, sq, true);
     if (!chosen)
       return issueMission(
         sim,
@@ -378,12 +393,12 @@
       reason
     );
   }
-  function reconsiderMission(sim, sq, town, reason) {
+  function reconsiderMission(sim, sq, town, reason, stalled) {
     var before = sq._macroMission && sq._macroMission.objectiveId;
     recordMacroWake(sim, sq, reason);
     if (reason === 'mission-complete') finishMission(sim, sq, 'completed', reason);
     else if (reason === 'mission-invalid') finishMission(sim, sq, 'invalid', reason);
-    selectMission(sim, sq, town, reason);
+    selectMission(sim, sq, town, reason, reason === 'strategic-stall' ? stalled : null);
     sq._macroMissionRequest = null;
     if (reason === 'strategic-stall') recordStallOutcome(sim, before, sq._macroMission);
   }
@@ -716,7 +731,14 @@
         var squads = sim.factions[f].squads,
           stats = missionState(sim),
           key = strategicStallKey(sim, f),
-          stall = key && stats.stallByFaction[f] !== key ? key : null;
+          stall = key && stats.stallByFaction[f] !== key ? key : null,
+          stalled = stall ? stalledEfforts(sim, squads) : null;
+        if (stalled)
+          stats.lastStall = {
+            faction: f,
+            time: +(+sim.time || 0).toFixed(2),
+            objectives: Object.keys(stalled)
+          };
         reconstitute(sim, f);
         for (var i = 0; i < squads.length; i++) {
           var sq = squads[i],
@@ -724,7 +746,7 @@
           if (!reason) continue;
           macroWake = true;
           wakeReasons[sq.id] = reason;
-          reconsiderMission(sim, sq, town, reason);
+          reconsiderMission(sim, sq, town, reason, stalled);
         }
         if (key) stats.stallByFaction[f] = key;
       });
