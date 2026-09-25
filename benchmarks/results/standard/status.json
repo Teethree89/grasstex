@@ -6,10 +6,10 @@
     "ge-defend": 20
   },
   "status": "complete",
-  "runNumber": 15,
-  "runId": 36137950133,
+  "runNumber": 17,
+  "runId": 36138425027,
   "sourceSha": "13b7264b0cf39cca1cf557e5e769eb90e98352a7",
-  "completedAt": "2026-09-25T13:11:30.581Z",
+  "completedAt": "2026-09-25T13:17:24.495Z",
   "expectedBattles": 100,
   "completedBattles": 100,
   "missingBattles": 0,
@@ -178,9 +178,9 @@
   "writerConflicts": 77,
   "loopAlerts": 1464,
   "runtimeErrors": 0,
-  "actionsUrl": "https://github.com/Teethree89/grasstex/actions/runs/36137950133",
+  "actionsUrl": "https://github.com/Teethree89/grasstex/actions/runs/36138425027",
   "markdownPath": "benchmarks/results/standard/latest/battle-benchmark.md",
   "csvPath": "benchmarks/results/standard/latest/battle-benchmark.csv",
   "summaryPath": "benchmarks/results/standard/latest/battle-benchmark-summary.json",
-  "historyPath": "benchmarks/results/standard/runs/15/"
+  "historyPath": "benchmarks/results/standard/runs/17/"
 }
