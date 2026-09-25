@@ -4,7 +4,7 @@
    heat/fouling pressure and a short stoppage-clearing action.
 
    Combat loads are deliberately conservative abstractions rather than claims about one exact
-   historical unit's issue: rifle 80 rds, carbine 75, generic LMG 180, sidearm 32. The current
+   historical unit's issue: rifle 80 rds, carbine 75, SMG 180, generic LMG 180, sidearm 32. The current
    shared weapon set is not faction-specific, so reliability values describe weapon classes rather
    than pretending the same generic mesh is a particular US or German model. */
 (function (root) {
@@ -27,6 +27,16 @@
       baseStop: 0.001,
       heatStop: 0.0015,
       heatPerShot: 0.05,
+      cool: 0.16,
+      clear: 1.65
+    },
+    /* Thompson 30-round and MP40 32-round magazines, six carried. */
+    smg: {
+      total: 180,
+      low: 60,
+      baseStop: 0.001,
+      heatStop: 0.0015,
+      heatPerShot: 0.03,
       cool: 0.16,
       clear: 1.65
     },
@@ -73,7 +83,7 @@
       ranDry: 0,
       lowAmmoCalls: 0,
       roundsLoaded: 0,
-      byWeapon: { rifle: freshBucket(), carbine: freshBucket(), lmg: freshBucket(), pistol: freshBucket() }
+      byWeapon: { rifle: freshBucket(), carbine: freshBucket(), smg: freshBucket(), lmg: freshBucket(), pistol: freshBucket() }
     };
   }
   function stats(sim) {

@@ -44,8 +44,8 @@ var MODELS=MODEL_SETS[MODEL_SET];
    layout puts the butt plate WEAPON_BUTT metres behind the grip origin (pistols: the back of the
    frame, PISTOL_BUTT), barrel along +Z, so the hand calibration holds. */
 var WEAPON_MODELS={
-  us:{rifle:'m1-garand.fbx',carbine:['m1-carbine.fbx','thompson.fbx'],lmg:'m1919a6.fbx',pistol:'m1911a1.fbx'},
-  ge:{rifle:'kar98k.fbx',carbine:['fg42.fbx','mp40.fbx'],lmg:'mg42.fbx',pistol:'p38.fbx'}
+  us:{rifle:'m1-garand.fbx',carbine:['m1-carbine.fbx','thompson.fbx'],smg:'thompson.fbx',lmg:'m1919a6.fbx',pistol:'m1911a1.fbx'},
+  ge:{rifle:'kar98k.fbx',carbine:['fg42.fbx','mp40.fbx'],smg:'mp40.fbx',lmg:'mg42.fbx',pistol:'p38.fbx'}
 },WEAPON_BUTT=.40,PISTOL_BUTT=.06;
 function weaponFiles(f,kind){var v=WEAPON_MODELS[f]&&WEAPON_MODELS[f][kind];return v?[].concat(v):[];}
 /* Machine guns also come with the bipod deployed; that copy replaces the folded one while the gunner
@@ -63,7 +63,7 @@ var DEATH_POOLS={
 };
 
 /* Right-hand grip point in each weapon mesh's local space (metres), as in soldier.js GRIPS. */
-var GRIP={rifle:[0,-.055,-.12],carbine:[0,-.055,-.09],lmg:[0,-.07,-.02],pistol:[.02,-.07,0]};
+var GRIP={rifle:[0,-.055,-.12],carbine:[0,-.055,-.09],smg:[0,-.055,-.09],lmg:[0,-.07,-.02],pistol:[.02,-.07,0]};
 /* Weapon reference points in local metres after prepareWeapon (barrel +Z). `trigger` is the
    centre of the visible trigger/guard, measured from the prepared mesh's side profile. The
    right palm sits behind it at `grip`, over the stock wrist or pistol grip, not on the trigger
@@ -80,7 +80,7 @@ var WEAPON_POINTS={
   /* Pistol frame sits deeper into the sergeant's right palm: back, toward body centre, lower. */
   'm1911a1.fbx':{trigger:[0,-.07,.04],grip:[.035,0,.015],fore:null},
   'p38.fbx':{trigger:[0,-.07,.03],grip:[.035,-.005,.01],fore:null},
-  rifle:{grip:GRIP.rifle,fore:[0,-.05,.05,.35]},carbine:{grip:GRIP.carbine,fore:[0,-.05,.04,.28]},
+  rifle:{grip:GRIP.rifle,fore:[0,-.05,.05,.35]},carbine:{grip:GRIP.carbine,fore:[0,-.05,.04,.28]},smg:{grip:GRIP.smg,fore:[0,-.05,.04,.28]},
   lmg:{grip:GRIP.lmg,fore:[0,-.075,.15,.45]},pistol:{grip:GRIP.pistol,fore:null}
 };
 /* Per-model grip overrides for measured exceptions. Every model first uses its own hand-web
@@ -788,7 +788,7 @@ function update(soldier,state,dt){
 
   var over=null,orate=1,restart=false;
   fx.fireHold=Math.max(0,fx.fireHold-dt);fx.hitHold=Math.max(0,(fx.hitHold||0)-dt);
-  if(fx.fireShot!==fx.fireSeen){fx.fireSeen=fx.fireShot;fx.fireHold=.9;restart=fx.weaponKind!=='lmg'&&!pistol;}
+  if(fx.fireShot!==fx.fireSeen){fx.fireSeen=fx.fireShot;fx.fireHold=.9;restart=fx.weaponKind!=='lmg'&&fx.weaponKind!=='smg'&&!pistol;}
   if(fx.reloadShot!==fx.reloadSeen){fx.reloadSeen=fx.reloadShot;restart=true;}
   var hitKey=stance==='prone'?'hitProne':(stance==='crouch'?'hitCrouch':(pistol?'pistolHit':(fx.speed>2.4?'hitRun':'hit')));
   var HIT_RATE={hit:1,hitCrouch:1.6,hitProne:1.2,hitRun:1,pistolHit:2.2};
@@ -808,7 +808,7 @@ function update(soldier,state,dt){
     over=stance==='prone'?'reloadProne':(stance==='crouch'?'reloadCrouch':'reload');
     orate=clips[over].duration/Math.max(.5,fx.reloadDuration);
   }else if(fx.fireHold>0){
-    var auto=fx.weaponKind==='lmg';
+    var auto=fx.weaponKind==='lmg'||fx.weaponKind==='smg';
     if(pistol&&stance!=='prone'){over=stance==='crouch'?'pistolKneel':'pistolIdle';restart=false;}
     else{over=stance==='prone'?(auto?'fireAutoProne':'fireProne'):(auto?'fireAuto':(stance==='crouch'?'fireCrouch':'fire'));orate=auto?1:1.3;}
   }else if(soldier.target&&stance!=='prone'){over=pistol?(stance==='crouch'?'pistolKneel':'pistolIdle'):(stance==='crouch'?'crouchAim':'aim');restart=false;}

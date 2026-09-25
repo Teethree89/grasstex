@@ -79,7 +79,8 @@ const startedWall = Date.now();
 const browser = await chromium.launch({ headless: true, args: ['--disable-dev-shm-usage', '--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'] });
 
 try {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  // ignoreHTTPSErrors: sandboxed environments proxy the CDN with their own CA (as the smoke test does).
+  const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 1280, height: 720 } });
   page.setDefaultTimeout(120_000);
   page.on('pageerror', error => browserErrors.push(String(error?.stack || error)));
   page.on('console', msg => {
@@ -358,6 +359,20 @@ try {
             merged: r.ended.filter(g => g.status === 'merged').map(g => ({ faction: g.faction, formedAt: g.formedAt, mergedAt: g.endedAt, assemblySeconds: span(g), size: g.size, promoted: !!g.promoted, objectiveId: g.objectiveId || null })),
             dissolvedLifetimes: r.ended.filter(g => g.status === 'dissolved').map(span) };
         };
+        /* Squad Leader regroups (16-squad-plan-stability.js cohesion counters): how often squads stop
+           to re-form, and how each regroup ended. Counters are observe-only. */
+        const regroupSummary = () => {
+          const out = { entries: 0, timeouts: 0, contactExits: 0, byFaction: {} };
+          for (const f of ['us', 'ge']) {
+            const side = out.byFaction[f] = { entries: 0, timeouts: 0, contactExits: 0 };
+            for (const sq of sim.factions?.[f]?.squads || []) {
+              const h = sq?._regroupHysteresis; if (!h) continue;
+              side.entries += +h.entries || 0; side.timeouts += +h.timeouts || 0; side.contactExits += +h.contactExits || 0;
+            }
+            out.entries += side.entries; out.timeouts += side.timeouts; out.contactExits += side.contactExits;
+          }
+          return out;
+        };
         const record = {
           index: index + 1, seed, scenarioId: scenario?.id || null, fingerprint: scenario?.fingerprint || null,
           winner: sim.winner || 'none', winReason: sim.winReason || null, simulatedSeconds: +(+sim.time || 0).toFixed(2), wallSeconds: +((performance.now() - wallStart) / 1000).toFixed(3), steps,
@@ -377,10 +392,10 @@ try {
           orderedMoveSamples: diag.orderedMoveSamples, idleOrderedSamples: diag.idleOrderedSamples, phaseSamples: diag.phaseSamples, engagementStateSamples: diag.engagementStateSamples,
           writerConflicts: conflicts.length, strategicWriterConflicts: strategicConflicts, writerConflictDetails: conflicts.slice(0, 20), loopAlerts: loops.slice(0, 20), loopKinds,
           movementResolver: movementResolverSummary(), losBlockedFireAttempts: losBlockedAttempts(), fire: activeCombat,
-          reconstitution: reconstitutionSummary(), coordinationHealth: coordinationHealth(), objectiveRecovery: { us: +(recovery.us?.count || 0), ge: +(recovery.ge?.count || 0) }, finalObjectives: objectiveStates
+          reconstitution: reconstitutionSummary(), regroups: regroupSummary(), coordinationHealth: coordinationHealth(), objectiveRecovery: { us: +(recovery.us?.count || 0), ge: +(recovery.ge?.count || 0) }, finalObjectives: objectiveStates
         };
         battles.push(record);
-        console.log(`[BENCH] ${index + 1}/${count} ${seed} winner=${record.winner} captures=${record.captures}/${record.objectiveCount} neverOwned=${record.objectivesNeverOwned} spread=${record.squadObjectiveSpread.us}/${record.squadObjectiveSpread.ge} vacant=${record.vacantObjectiveStalls.length} route=${record.routeStalls.length} move=${record.movementStalls.length} loops=${record.loopAlerts.length} conflicts=${record.writerConflicts} wall=${record.wallSeconds}s`);
+        console.log(`[BENCH] ${index + 1}/${count} ${seed} winner=${record.winner} captures=${record.captures}/${record.objectiveCount} neverOwned=${record.objectivesNeverOwned} spread=${record.squadObjectiveSpread.us}/${record.squadObjectiveSpread.ge} vacant=${record.vacantObjectiveStalls.length} route=${record.routeStalls.length} move=${record.movementStalls.length} loops=${record.loopAlerts.length} conflicts=${record.writerConflicts} regroups=${record.regroups.entries}/${record.regroups.timeouts} wall=${record.wallSeconds}s`);
         activeCombat = null; cleanup(); if ((index + 1) % 5 === 0) await new Promise(resolve => setTimeout(resolve, 0));
       }
     } finally {
@@ -427,6 +442,7 @@ try {
     maxNoObjectiveProgressSeconds: +Math.max(0, ...battles.map(b => b.maxNoObjectiveProgressSeconds || 0)).toFixed(1),
     avgNoObjectiveProgressSeconds: +mean(battles.map(b => b.maxNoObjectiveProgressSeconds || 0)).toFixed(1),
     avgObjectivesPerBattle: +mean(battles.map(b => b.objectiveCount || 0)).toFixed(2),
+    avgRegroupEntries: +mean(battles.map(b => b.regroups?.entries || 0)).toFixed(2), regroupTimeouts: sum(battles, b => b.regroups?.timeouts), regroupContactExits: sum(battles, b => b.regroups?.contactExits),
     objectivesNeverOwned: sum(battles, b => b.objectivesNeverOwned),
     objectivesNeverOwnedRate: pct(sum(battles, b => b.objectivesNeverOwned), sum(battles, b => b.objectiveCount)),
     objectivesNeverContested: sum(battles, b => b.objectivesNeverContested),

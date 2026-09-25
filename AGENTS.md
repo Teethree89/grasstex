@@ -47,7 +47,7 @@ for s in 12345 1 2 3 5 8 13 21; do HARNESS_SEED=$s node tools/ai-sim-harness/run
 | Check | Asserts |
 | --- | --- |
 | `run.js` | Engagement contract: orient before firing, cover used, get down in contact, a squad in contact stops marching, suppression pins, no stance churn, 10v10 resolves. `HARNESS_SEED=<n>` swaps the battle. |
-| `objective-nav-check.js` | Real worst-seed defects: never permanently refused a step at a building, no all-squads-one-objective, capture progress survives an interrupted hold, door/window routing, `stepMovement` aim smoothing |
+| `objective-nav-check.js` | Real worst-seed defects: never permanently refused a step at a building, no all-squads-one-objective, a side attacks at most 2 objectives at once yet every objective is attacked once the efforts before it fall, capture progress survives an interrupted hold, door/window routing, `stepMovement` aim smoothing |
 | `tactical-positions-check.js` | Window/hardpoint reservation ownership, ingress routes, release reasons, diagnostics |
 | `cover-positions-check.js` | Cover-slot selection against obstacles and physical footprints |
 | `personal-space-check.js` | Physical endpoint allocation and body separation |
@@ -127,6 +127,10 @@ bash scripts/normalize_audio.sh Assets/audio && git diff --quiet -- Assets/audio
 Benchmark battles are 600 simulated seconds at a fixed 0.15 s step. Results go to the
 `benchmark-results` branch.
 
+**Benchmarks run on GitHub, never locally.** Dispatch `battle-benchmark-standard.yml` on the branch
+and on `main` with the same `seed` input for a paired comparison. A branch run publishes only an
+artifact and the run summary. Local Playwright runs are for probes and single-seed replays only.
+
 ## Battle Sim architecture: M3C (Macro / Meso / Micro Combat)
 
 **Prime rule: one owner per responsibility.** Fix a bad behaviour at the layer that owns it. Don't
@@ -154,6 +158,12 @@ wakes only on: initial brief, mission complete or invalid, reserve due, a defenc
 changes the task, an objective vacated or changing control on a defend brief, a 120 s strategic
 stall, a Squad Leader `doctrine-review` escalation, or a merge (`squad-reconstituted`). Wakes are
 exported under `macroCommand`.
+
+**Main effort** (`commander-doctrine.js` `chooseObjective`, Macro only). Saturation (55 per squad past
+an objective's allowance) stops a side piling onto one objective; the frontage limit stops it spreading
+over all of them. A side attacks at most `maxEfforts` (2) objectives it does not hold at once; opening
+another costs `frontageCost` (140), so the next squad reinforces an open effort. Taking an objective
+closes its effort. Defending owned objectives doesn't count. Both are scores, never vetoes.
 
 **Reconstitution** (`commander-ai.js` `reconstitute`, Macro only). A retreating squad's Squad Leader
 walks it home (`_assembly` `to-base`); home and out of contact it is `at-base`. Only `at-base` squads
@@ -265,10 +275,11 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
 
 ### Open issues (as of v160 / 2026-09-24)
 
-- Regroups (2026-09-24): half used to time out at 18 s because the order anchor stayed with the
-  leading men instead of moving to the rally point; fixed (timeouts 76 → 6 over 30 seeds, time
-  regrouping halved, outcomes unchanged). Regroup entry frequency in defend scenarios is still
-  worth measuring against the old 6-9× release rise.
+- Regroups: half used to time out at 18 s because the order anchor stayed with the leading men;
+  fixed (timeouts 76 → 6 over 30 seeds). GitHub standard benchmark run 11 (PR #37, 2026-09-25,
+  benchmark `regroups`): 9.4 regroups per battle in meeting, 7.3 in US-defend and 5.9 in GE-defend,
+  with 15, 2 and 4 timeouts over 60/20/20 battles. Defend scenarios regroup no more often than
+  meetings, so there is no defend-specific rise left to chase.
 - Window/ingress crowding: claim collisions swing 23 to 3,838 on the same seed. Reservation
   and physical occupancy haven't been separated yet.
 - Personal-space corrections rose slightly (15.7k → 17.4k per battle). Find the converging
@@ -280,14 +291,22 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
   platoon/company command, fallback/counterattack and combined arms. Capture Zone and
   Prepared Defense already publish *requests* that Force Command accepts; follow that pattern.
 - Meeting engagements deliberately get no runtime engineer fortification (`engineerTick` exits early).
-- **Sergeant weapons (pending).** Squad leaders still carry the pistol (`ROLES.sergeant.weapon`). Real
-  squad leaders carried a rifle or SMG (US M1 Garand or Thompson, GE MP40). It changes gameplay
-  (range, damage, fire rate), so make it its own change with a paired benchmark.
-- **General concentration of effort (pending).** Each side's 5 squads spread over ~2.8 of ~4.5
-  objectives. In the 2026-09-24 standard benchmark (meeting battles) a side spread over 3+ objectives
-  won 38% (n=26) vs 55% at 2-3 (n=84): suggestive, not significant. A main effort belongs to the
-  General's objective choice (`chooseObjective` saturation), not a new layer. A platoon layer is not
-  warranted at 5 squads per side (one reinforced platoon); revisit at ~9+ squads or combined arms.
+- **Sergeant weapons.** Squad leaders carry the `smg` kind: US Thompson, GE MP40 (`WEAPON_MODELS`).
+  Their grips use the generic `WEAPON_POINTS`; set per-model sidecars in the Motion Lab.
+- **Secondary weapons (pending).** A soldier carries a sidearm only where it was historically
+  issued. In a German squad the MG gunner (Schütze 1, P38/P08) did. In the US squad the M1919 gunner
+  (M1911A1) did, and so did paratroopers more widely. Riflemen generally didn't. It needs a
+  `secondary` weapon slot on the soldier (model, ammo and stats kept apart from the primary). It also
+  needs an Engagement rule for when to switch: primary empty or jammed with a target inside pistol
+  range. The pistol hold, the `m1911a1`/`p38` models and the pistol clips already exist. Presentation
+  stays off the combat RNG.
+- **General concentration of effort.** Done as a frontage limit in `chooseObjective` (see Main effort).
+  GitHub standard benchmark, main run 12 vs PR #37 run 11 (same seeds, live policy rev 14): meeting
+  spread fell 2.75/2.60 → 2.33/2.33 objectives per side with captures unchanged (4.53). Wins were
+  unchanged too (US/GE 32/28 → 31/29 meeting, 19/1 → 18/2 US-defend, 2/18 → 0/20 GE-defend; median
+  wall time 27.9 → 26.5 s). The win effect of concentrating is unmeasured; both sides concentrate, so
+  it needs a one-sided arm of ~200+ battles. A platoon layer is not warranted at 5 squads per side;
+  revisit at ~9+ squads or combined arms.
 
 ## Soldiers, weapons, animation
 
