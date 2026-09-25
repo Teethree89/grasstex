@@ -16,7 +16,7 @@
   function spawnMuzzleFlash(scene,pos){fx(scene);var m=BABYLON.MeshBuilder.CreateSphere('flash',{diameter:.22,segments:4},scene);m.position.copyFrom(pos);m.material=flashMat;m.isPickable=false;setTimeout(function(){m.dispose();},60);}
   function spawnTracer(scene,from,to){fx(scene);var l=BABYLON.MeshBuilder.CreateLines('tracer',{points:[from,to]},scene);l.color=new BABYLON.Color3(1,.95,.7);l.isPickable=false;setTimeout(function(){l.dispose();},90);}
   function muzzleWorld(soldier){var w=soldier.weapon,local=BABYLON.Vector3.FromArray(w.muzzleLocal);return BABYLON.Vector3.TransformCoordinates(local,w.mesh.getWorldMatrix());}
-  var POOL_SIZE=6,SFX_FILES={rifle:'rifle.mp3',carbine:'carbine.mp3',lmg:'lmg.mp3',pistol:'pistol.mp3'};
+  var POOL_SIZE=6,SFX_FILES={rifle:'rifle.mp3',carbine:'carbine.mp3',smg:'carbine.mp3',lmg:'lmg.mp3',pistol:'pistol.mp3'};
   /* The manifest lists several real recordings per weapon kind; SFX_FILES is the single-file
      fallback for a page that loaded without one. One voice per variation, so the round-robin
      below hands out a different take each shot instead of retriggering one sample. */

@@ -21,7 +21,7 @@ var EFFECTIVE={
   grenade:{range:35,falloffStart:35}
 };
 var ROLE={
-  sergeant:{visionRange:450,engageRange:450},
+  sergeant:{visionRange:450,engageRange:150},
   rifleman:{visionRange:500,engageRange:450},
   gunner:{visionRange:525,engageRange:500},
   scout:{visionRange:575,engageRange:250}

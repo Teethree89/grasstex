@@ -178,14 +178,16 @@ section('stance does not churn');
     });
     if(man.dead)return;
     const stance=stanceOf();
-    if(stance!==last){last=stance;changeTimes.push({t:battle.time,stance:stance});}
+    if(stance!==last){last=stance;changeTimes.push({t:battle.time,stance:stance,state:root.BattleEngagement.stateOf(man).state});}
   });
   /* Churn is oscillation - going somewhere and immediately coming back - not simply changing
      often. A man who commits to a crouch and then eats a burst is supposed to drop prone straight
      away; suppression is the deliberate escape hatch from a stance commitment. What he must never
-     do is A -> B -> A in under a second. */
+     do is A -> B -> A in under a second. A squad retreat is the other escape hatch: a withdrawing
+     man stands up to run whatever stance he had just chosen, so that change is an order, not churn. */
   let bounce=null;
   for(let i=2;i<changeTimes.length;i++){
+    if(changeTimes[i].state==='withdraw')continue;
     if(changeTimes[i].stance===changeTimes[i-2].stance&&changeTimes[i].t-changeTimes[i-2].t<1)
       bounce=changeTimes[i-2].stance+'->'+changeTimes[i-1].stance+'->'+changeTimes[i].stance+
         ' in '+(changeTimes[i].t-changeTimes[i-2].t).toFixed(2)+'s';
