@@ -1061,7 +1061,9 @@ function holdWeapon(fx,grip,points){
   grip.multiplyToRef(fx.chain[fx.chain.length-1],socketWorld);
   var palms=fx.lib.palms,f=points&&points.fore,g=points&&points.grip;fx.twoHand=0;fx.supportErrorCm=null;
   fx.supportHandM=fx.supportNearM=fx.supportFarM=null;
-  if(!f||!g||!palms||!fx.chainL.length){fx.supportReason='one-hand';return;}
+  /* Pistols are a one-hand hold, as in the Motion Lab: fore points a sidecar pistol slot may still
+     carry (copied from a long gun) would swing the barrel onto the left hand. */
+  if(fx.weaponKind==='pistol'||!f||!g||!palms||!fx.chainL.length){fx.supportReason='one-hand';return;}
   if(fx.death||fx.transition||fx.supportReleased){fx.supportReason='released';return;}
   V3.TransformCoordinatesToRef(palms[BONE.rightHand],fx.chain[fx.chain.length-1],hR);
   V3.TransformCoordinatesToRef(palms[BONE.leftHand],fx.chainL[fx.chainL.length-1],hL);
