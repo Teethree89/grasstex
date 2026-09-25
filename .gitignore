@@ -19,3 +19,6 @@ __pycache__/
 # (see AGENTS.md, Asset pipeline). The weapon .zip sources predate this rule and remain tracked.
 Assets/soldiers/new/*.zip
 /new US models/
+
+# Lab save password hash (placed by hand on the server; see labs/save-calibration.php)
+state/lab-key.php

@@ -313,8 +313,11 @@ never decides tactics, ammo, hits or paths.
   them; the backend fetches it on load (`BattleFbxSoldier.sidecars()` lists what loaded). Measure in
   `labs/fbx-animation-lab.html` (pick model, clip and weapon, click the contact vertices, **Seat
   weapon**, then **Per-model sidecar** → Save), which posts to `labs/save-calibration.php` (validated
-  numbers, existing soldier FBX names only). Sidecars are server-owned: never committed, never
-  deployed or deleted.
+  numbers, existing soldier FBX names only). Saving needs the lab password, asked once per browser;
+  its hash lives only on the host in `state/lab-key.php` (`<?php return '<sha256 hex>';`, from
+  `printf '%s' 'password' | shasum -a 256`), and without that file saving is off. Pistol slots
+  never carry fore points (one-hand hold, in the lab and the game). Sidecars are server-owned:
+  never committed, never deployed or deleted.
 - Clips are retargeted at load (rest pose, units, hip height). Looping clips have hip drift removed,
   and that drift becomes their natural ground speed. Playback rate is ground speed ÷ clip speed.
   The upper-body overlay (aim/fire/reload) sits on the lower locomotion layer. The weapon grip snaps
