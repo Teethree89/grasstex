@@ -300,6 +300,16 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
   needs an Engagement rule for when to switch: primary empty or jammed with a target inside pistol
   range. The pistol hold, the `m1911a1`/`p38` models and the pistol clips already exist. Presentation
   stays off the combat RNG.
+- **Any soldier, any weapon (pending).** Weapons are still dealt by role: `ROLES.<role>.weapon`
+  sets the kind and its rules, and `WEAPON_MODELS` picks the model per faction. The goal is a
+  per-soldier loadout, a primary plus the secondary above, where any class can carry any weapon.
+  Shot stats and ammunition already follow `soldier.weapon`. Two things are still tied to the role:
+  `battle-sim.js` deals the weapon from `ROLES[role].weapon`, and Engagement ties the MG behaviour
+  (emplacement, never bounding) and reaction times to `role === 'gunner'`. Both would move to the
+  weapon kind.
+  The art side is mostly there: every model's sidecar can hold a seat for each weapon
+  (`us-captain.fbx.json` already has all 12), but other models need their seats measured in the
+  Motion Lab. Loadout changes range, damage and fire rate, so ship it with a paired benchmark.
 - **General concentration of effort.** Done as a frontage limit in `chooseObjective` (see Main effort).
   GitHub standard benchmark, main run 12 vs PR #37 run 11 (same seeds, live policy rev 14): meeting
   spread fell 2.75/2.60 → 2.33/2.33 objectives per side with captures unchanged (4.53). Wins were
