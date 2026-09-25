@@ -127,6 +127,10 @@ bash scripts/normalize_audio.sh Assets/audio && git diff --quiet -- Assets/audio
 Benchmark battles are 600 simulated seconds at a fixed 0.15 s step. Results go to the
 `benchmark-results` branch.
 
+**Benchmarks run on GitHub, never locally.** Dispatch `battle-benchmark-standard.yml` on the branch
+and on `main` with the same `seed` input for a paired comparison. A branch run publishes only an
+artifact and the run summary. Local Playwright runs are for probes and single-seed replays only.
+
 ## Battle Sim architecture: M3C (Macro / Meso / Micro Combat)
 
 **Prime rule: one owner per responsibility.** Fix a bad behaviour at the layer that owns it. Don't
