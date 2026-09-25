@@ -8,7 +8,9 @@
   'use strict';
 
   var ROLES = {
-    sergeant: { weapon: 'pistol', speed: 3.0, visionRange: 150, engageRange: 55, hp: 110 },
+    /* Squad leaders carried a submachine gun (US Thompson, GE MP40), not a pistol: a sidearm left
+       the leader out of every fight past 25 m. */
+    sergeant: { weapon: 'smg', speed: 3.0, visionRange: 150, engageRange: 90, hp: 110 },
     rifleman: { weapon: 'rifle', speed: 2.9, visionRange: 140, engageRange: 135, hp: 100 },
     gunner: { weapon: 'lmg', speed: 2.2, visionRange: 150, engageRange: 160, hp: 100 },
     scout: { weapon: 'carbine', speed: 3.8, visionRange: 175, engageRange: 105, hp: 90 }

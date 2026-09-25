@@ -154,6 +154,34 @@ jobs:
             echo "No usable remote deployment hash state. This run will bootstrap it with one full managed-runtime upload."
           fi
 
+      # The hash state records what was uploaded, not what is still there: re-upload any soldier,
+      # animation or weapon FBX that was removed from the host (e.g. a folder dropped to clean it).
+      # A missing directory lists as empty; __LISTED__ is printed only once the listing ran.
+      - name: Re-upload FBX assets missing on the server
+        shell: bash
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASS }}
+        run: |
+          set -u
+          [[ -f .deploy-remote.sha256.tsv ]] || { echo "No remote state: this run uploads everything anyway."; exit 0; }
+          lftp -u "$FTP_USER","$FTP_PASSWORD" "$FTP_HOST" <<'LFTP' > .fbx-remote-files.txt || true
+          set cmd:fail-exit yes
+          set net:max-retries 2
+          set net:timeout 15
+          set ftp:ssl-allow no
+          set ftp:passive-mode true
+          cd grasstex/Assets
+          set cmd:fail-exit no
+          find soldiers
+          find animations
+          find weapons
+          echo __LISTED__
+          bye
+          LFTP
+          python3 scripts/prune_missing_remote_assets.py .deploy-remote.sha256.tsv .fbx-remote-files.txt
+
       - name: Inventory deployed voice files
         shell: bash
         env:

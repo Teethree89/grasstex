@@ -86,13 +86,14 @@ function walk(start,dest,seconds){
 }
 
 /* ------------------------------------------------------------------------------------------- */
-section('Force Command spreads squads over the objectives it has');
+section('Force Command masses on a main effort without orphaning objectives');
 {
-  let single=0,scenarios=0,coveredTotal=0,objectiveTotal=0,lateSwitches=0;
+  const D=root.BattleCommanderDoctrine,OS=root.BattleObjectiveSystem,MAX_EFFORTS=D.maxEfforts||2;
+  let single=0,scenarios=0,frontageBreaches=0,lateSwitches=0,orphaned=0,objectiveTotal=0,worst=null;
   for(const seed of SEEDS){
     const s=root.BattleScenarioGenerator.create(seed,{benchmark:true});
     const sim={time:0,factions:{us:{squads:[]},ge:{squads:[]}},_units:[],heightAt:()=>0,scene:{metadata:{}}};
-    root.BattleObjectiveSystem.attach(sim,s.objectives,{town:s});
+    OS.attach(sim,s.objectives,{town:s});
     const c=s.center;
     /* Five squads a side sitting on the shared route terminus, which is where advanceRoute leaves
        every non-reserve squad: same position, so the scoring alone has to separate them. */
@@ -101,23 +102,37 @@ section('Force Command spreads squads over the objectives it has');
       for(let m=0;m<10;m++)members.push({dead:false,role:m?'rifleman':'sergeant',root:{position:{x:c.x+(i-2)*3,y:0,z:c.z+(m-5)*1.5}}});
       sim.factions[f].squads.push({id:f+'-'+i,faction:f,members,aliveCount:10,state:'advance',rally:{x:c.x,z:c.z},targetObjective:null,commandRole:'center'});
     }
-    for(let pass=0;pass<2;pass++)for(const f of ['us','ge'])for(const sq of sim.factions[f].squads){
-      const ch=root.BattleCommanderDoctrine.chooseObjective(sim,sq,false);
-      if(ch)sq.targetObjective=ch.instance.id;
-    }
+    const choose=sq=>{const ch=D.chooseObjective(sim,sq,false);if(ch)sq.targetObjective=ch.instance.id;return ch;};
+    for(let pass=0;pass<2;pass++)for(const f of ['us','ge'])for(const sq of sim.factions[f].squads)choose(sq);
     // Static equal-position assignments should settle, not ping-pong solely as counts change.
     for(let pass=0;pass<30;pass++)for(const f of ['us','ge'])for(const sq of sim.factions[f].squads){
-      const ch=root.BattleCommanderDoctrine.chooseObjective(sim,sq,false);
-      if(ch){if(pass>=5&&sq.targetObjective!==ch.instance.id)lateSwitches++;sq.targetObjective=ch.instance.id;}
+      const before=sq.targetObjective,ch=choose(sq);
+      if(ch&&pass>=5&&before!==ch.instance.id)lateSwitches++;
     }
     const covered=new Set(sim.factions.us.squads.map(sq=>sq.targetObjective)).size;
-    scenarios++;coveredTotal+=covered;objectiveTotal+=s.objectives.length;
-    if(covered<=1)single++;
+    scenarios++;objectiveTotal+=s.objectives.length;
+    if(covered<=1&&s.objectives.length>1)single++;
+    if(covered>MAX_EFFORTS)frontageBreaches++;
+    /* Efforts close as objectives fall: take whatever the US side is attacking, re-task every squad
+       whose objective fell (the General's mission-complete wake), and repeat. Every objective must be
+       attacked at some point; concentration must never leave one orphaned for good. */
+    const attacked=new Set(sim.factions.us.squads.map(sq=>sq.targetObjective));
+    for(let round=0;round<s.objectives.length*2;round++){
+      for(const id of new Set(sim.factions.us.squads.map(sq=>sq.targetObjective)))if(id)OS.get(sim,id).state.owner='us';
+      for(const sq of sim.factions.us.squads){
+        const obj=sq.targetObjective&&OS.get(sim,sq.targetObjective);
+        if(!obj||obj.state.owner==='us'){sq.targetObjective=null;choose(sq);}
+      }
+      for(const sq of sim.factions.us.squads)if(sq.targetObjective)attacked.add(sq.targetObjective);
+      if(s.objectives.every(o=>OS.get(sim,o.id).state.owner==='us'))break;
+    }
+    const never=s.objectives.filter(o=>!attacked.has(o.id)).length;
+    orphaned+=never;if(never&&!worst)worst=seed;
   }
   check('saturation alone does not oscillate settled neutral assignments',lateSwitches===0,'late switches='+lateSwitches);
   check('no scenario sends every squad to one objective',single===0,single+'/'+scenarios+' monopolised');
-  check('most objectives get an assigned squad',coveredTotal/objectiveTotal>=.7,
-    coveredTotal+' of '+objectiveTotal+' objectives assigned ('+(100*coveredTotal/objectiveTotal).toFixed(0)+'%)');
+  check('a side attacks at most '+MAX_EFFORTS+' objectives at once',frontageBreaches===0,frontageBreaches+'/'+scenarios+' scenarios over the frontage');
+  check('every objective is attacked once the efforts before it close',orphaned===0,orphaned+' of '+objectiveTotal+' objectives never assigned, first in '+worst);
 }
 
 /* ------------------------------------------------------------------------------------------- */

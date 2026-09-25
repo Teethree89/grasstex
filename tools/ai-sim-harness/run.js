@@ -55,9 +55,15 @@ section('contact is recognised before it is shot at');
 section('a soldier in the open goes to ground rather than standing');
 {
   const {root,battle,us}=duel({gap:120});
-  H.run(root,battle,14);
-  /* A withdrawing man is upright on purpose, so he is not evidence about taking cover. */
-  const fighting=us.members.filter(s=>!s.dead&&s.target&&s.squad.state!=='retreat');
+  /* Read the squad at the last moment it is still fighting (by 14 s at the latest): a squad that
+     has already won the firefight has nobody in contact left to judge. */
+  let fighting=[];
+  H.run(root,battle,14,()=>{
+    /* A withdrawing man is upright on purpose, and a man still in orient has not chosen a stance
+       yet, so neither is evidence about taking cover. */
+    const now=us.members.filter(s=>!s.dead&&s.target&&s.squad.state!=='retreat'&&root.BattleEngagement.stateOf(s).state!=='orient');
+    if(now.length&&battle.time>=6)fighting=now.map(s=>({prone:!!s.prone,crouching:!!s.crouching}));
+  });
   const down=fighting.filter(s=>s.prone||s.crouching).length;
   const engaged=fighting.length;
   const standing=fighting.filter(s=>!s.prone&&!s.crouching).length;
@@ -172,14 +178,16 @@ section('stance does not churn');
     });
     if(man.dead)return;
     const stance=stanceOf();
-    if(stance!==last){last=stance;changeTimes.push({t:battle.time,stance:stance});}
+    if(stance!==last){last=stance;changeTimes.push({t:battle.time,stance:stance,state:root.BattleEngagement.stateOf(man).state});}
   });
   /* Churn is oscillation - going somewhere and immediately coming back - not simply changing
      often. A man who commits to a crouch and then eats a burst is supposed to drop prone straight
      away; suppression is the deliberate escape hatch from a stance commitment. What he must never
-     do is A -> B -> A in under a second. */
+     do is A -> B -> A in under a second. A squad retreat is the other escape hatch: a withdrawing
+     man stands up to run whatever stance he had just chosen, so that change is an order, not churn. */
   let bounce=null;
   for(let i=2;i<changeTimes.length;i++){
+    if(changeTimes[i].state==='withdraw')continue;
     if(changeTimes[i].stance===changeTimes[i-2].stance&&changeTimes[i].t-changeTimes[i-2].t<1)
       bounce=changeTimes[i-2].stance+'->'+changeTimes[i-1].stance+'->'+changeTimes[i].stance+
         ' in '+(changeTimes[i].t-changeTimes[i-2].t).toFixed(2)+'s';
