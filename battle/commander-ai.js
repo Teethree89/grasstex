@@ -379,11 +379,23 @@
     );
   }
   function reconsiderMission(sim, sq, town, reason) {
+    var before = sq._macroMission && sq._macroMission.objectiveId;
     recordMacroWake(sim, sq, reason);
     if (reason === 'mission-complete') finishMission(sim, sq, 'completed', reason);
     else if (reason === 'mission-invalid') finishMission(sim, sq, 'invalid', reason);
     selectMission(sim, sq, town, reason);
     sq._macroMissionRequest = null;
+    if (reason === 'strategic-stall') recordStallOutcome(sim, before, sq._macroMission);
+  }
+  /* Did a strategic-stall wake change the effort? `repeats` re-picked the stalled objective. */
+  function recordStallOutcome(sim, before, m) {
+    var st = missionState(sim),
+      out = st.stallOutcomes || (st.stallOutcomes = { wakes: 0, repeats: 0, switches: 0, other: 0 }),
+      after = m && m.objectiveId;
+    out.wakes++;
+    if (after && after === before) out.repeats++;
+    else if (after && m.intent === 'capture') out.switches++;
+    else out.other++;
   }
 
   /* Reconstitution. Retreated squads that are home and out of contact (`_assembly` `at-base`,
