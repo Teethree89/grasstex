@@ -289,11 +289,21 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
 - Personal-space corrections rose slightly (15.7k → 17.4k per battle). Find the converging
   producer first.
 - Strategic-stall wakes used to re-pick the same objective (77% of 111 wakes over 10 local replays);
-  a stall now closes the stalled efforts (see Main effort), which cut repeats to 46%. Measure the rest
-  before tuning `stallCost`: some repeats are sides with no other objective left.
+  a stall now closes the stalled efforts (see Main effort), which cut repeats to 46% (local, before
+  the merge with the frontage limit). GitHub standard benchmark, main run 15 vs branch run 14 (same
+  100 seeds): no measurable outcome effect. Wins US/GE 31/29 → 33/27 meeting (Fisher p=0.85), 18/2 →
+  20/0 US-defend and 0/20 → 2/18 GE-defend (p=0.49), captures 2.99 → 2.92, mean longest no-progress
+  283 → 277 s, meeting spread 2.33 → 2.46 objectives per side, same winner on 88/100 seeds. Open:
+  the benchmark doesn't export `stallOutcomes`, so the post-merge repeat rate is unmeasured. Add it
+  to the benchmark export, find what the remaining repeats are (no other objective left, or
+  `stallCost` too low against distance), and only claim a win effect from a 300-battle run.
 - Hot path: `sightBlocked` and navigation replans were ~half a battle's wall time; exact pruning
-  halved the median battle (standard benchmark 27.9 → 13.6 s, same seeds and outcomes within noise).
-  `engagement.updateSoldier` and the movement resolver now lead the profile.
+  (crossed-cell first-hit LOS, wall bounding boxes, lazy `planLocal` edges) halved it. Standard
+  benchmark median wall time per battle 29.1 → 13.5 s (meeting 29.1 → 13.2, US-defend 31.3 → 16.3,
+  GE-defend 33.1 → 13.9), main run 15 vs branch run 14. Hot-path profile on
+  `standard-benchmark-meeting-s1-b0001-0001` (300 s): `sightBlocked` 7.3 → 2.1 µs/call, physical
+  replan 360 → 42 µs, `findPath` 564 → 83 µs, `movementClear` 5.5 → 1.75 µs. `engagement.updateSoldier`
+  and the movement resolver now lead the profile; they are the next optimisation target.
 - Movement Progress ignores retreat by design; `movementStopReason` is the observable.
 - Next architecture steps: a versioned `SquadIntent` + one intent resolver (leases, with priority, progress tests and a graph view, now exist), a real Squad Leader local planner, then
   platoon/company command, fallback/counterattack and combined arms. Capture Zone and
