@@ -164,7 +164,10 @@ exported under `macroCommand`.
 an objective's allowance) stops a side piling onto one objective; the frontage limit stops it spreading
 over all of them. A side attacks at most `maxEfforts` (2) objectives it does not hold at once; opening
 another costs `frontageCost` (140), so the next squad reinforces an open effort. Taking an objective
-closes its effort. Defending owned objectives doesn't count. Both are scores, never vetoes.
+closes its effort. Defending owned objectives doesn't count. A strategic-stall wake closes the
+efforts its stalled capture briefs were on: each costs `stallCost` (150) and no longer fills the
+frontage, so the side masses on new objectives (`commander-ai.js` `stalledEfforts`; outcomes under
+`macroCommand.state.stallOutcomes`). All three are scores, never vetoes.
 
 **Reconstitution** (`commander-ai.js` `reconstitute`, Macro only). A retreating squad's Squad Leader
 walks it home (`_assembly` `to-base`); home and out of contact it is `at-base`. Only `at-base` squads
@@ -285,8 +288,12 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
   and physical occupancy haven't been separated yet.
 - Personal-space corrections rose slightly (15.7k → 17.4k per battle). Find the converging
   producer first.
-- Strategic-stall wakes mostly re-pick the same objective, because doctrine has no alternative.
-- Hot path is now navigation replans (~3.3 s) and `sightBlocked` (~3.5 s) per ~13.7 s battle.
+- Strategic-stall wakes used to re-pick the same objective (77% of 111 wakes over 10 local replays);
+  a stall now closes the stalled efforts (see Main effort), which cut repeats to 46%. Measure the rest
+  before tuning `stallCost`: some repeats are sides with no other objective left.
+- Hot path: `sightBlocked` and navigation replans were ~half a battle's wall time; exact pruning
+  halved the median battle (standard benchmark 27.9 → 13.6 s, same seeds and outcomes within noise).
+  `engagement.updateSoldier` and the movement resolver now lead the profile.
 - Movement Progress ignores retreat by design; `movementStopReason` is the observable.
 - Next architecture steps: a versioned `SquadIntent` + one intent resolver (leases, with priority, progress tests and a graph view, now exist), a real Squad Leader local planner, then
   platoon/company command, fallback/counterattack and combined arms. Capture Zone and

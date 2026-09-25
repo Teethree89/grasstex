@@ -121,6 +121,16 @@ test('a stall wake moves the stalled effort to another objective, and keeps it w
   g.sim._coordinationHealth={lastObjectiveProgressAt:0,sides:{us:{objectiveStallSeconds:121,replanDue:true}}};g.sim.time=121;g.tick();
   assert.equal(g.sq._macroMission.objectiveId,'a','with no other objective the stall cost is not a veto');
 });
+test('a stall closes the stalled efforts, so the frontage limit does not hold the side on them',()=>{
+  const f=fixture(),D=f.r.BattleCommanderDoctrine;f.sim._objectives.push({id:'c',def:{x:400,z:0,radius:20,value:1},state:{owner:'neutral'}});
+  const mate=(id,target)=>{const s={id:id+'-s',role:'sergeant',dead:false,faction:'us',root:{position:{x:0,z:0}}};const q={id,faction:'us',state:'advance',targetObjective:target,members:[s],aliveCount:1};f.sim.factions.us.squads.push(q);return q;};
+  f.sq.targetObjective='a';mate('us-1','a');mate('us-2','b');
+  assert.equal(D.openEfforts(f.sim,f.sq).count,2,'a and b are the side\'s two open efforts');
+  const pick=D.chooseObjective(f.sim,f.sq,false,{a:true,b:true});
+  assert.equal(pick.instance.id,'c','the frontage cost of the only unstalled objective kept the squad on a stalled effort');
+  assert.equal(pick.frontagePenalty,0,'stalled efforts must not count against the frontage');
+  assert.equal(D.chooseObjective(f.sim,f.sq,false).instance.id,'a','without a stall the frontage limit still masses on open efforts');
+});
 test('pressure flicker on an objective already being defended is not a new brief',()=>{
   const f=fixture();f.sim._objectives.forEach(o=>o.state.owner='us');f.tick();const mission=f.sq._macroMission;assert.equal(mission.intent,'defend');
   for(let i=0;i<10;i++){f.sq._captureZoneDefenseRequest=i%2?{objectiveId:'a',point:{x:100,z:0}}:null;f.tick();}

@@ -193,14 +193,14 @@
      opens a new effort. */
   var MAX_EFFORTS = 2,
     FRONTAGE_COST = 140;
-  function openEfforts(sim, sq) {
+  function openEfforts(sim, sq, stalled) {
     var squads = (sim && sim.factions && sim.factions[sq.faction] && sim.factions[sq.faction].squads) || [],
       open = {},
       n = 0;
     for (var i = 0; i < squads.length; i++) {
       var other = squads[i],
         id = other && other.targetObjective;
-      if (!id || other === sq || other.state === 'retreat' || open[id]) continue;
+      if (!id || other === sq || other.state === 'retreat' || open[id] || (stalled && stalled[id])) continue;
       if ((other.aliveCount != null ? +other.aliveCount : aliveMembers(other).length) <= 0) continue;
       var obj = root.BattleObjectiveSystem && root.BattleObjectiveSystem.get(sim, id),
         status = obj ? objectiveStatus(sim, obj) || {} : {};
@@ -216,8 +216,11 @@
      just spent 120 s failing to take: the squad sits beside it, so distance alone keeps it the best
      score (seed 1 replay: 5 stall wakes, 5 repeats). The wake passes the objectives its stalled
      capture briefs were attacking; each costs STALL_COST, enough to move the effort to another
-     objective the side does not hold. Like saturation it is a score, never a veto: when every
-     remaining objective is stalled, the relative order is unchanged and the squad keeps its effort. */
+     objective the side does not hold. A stall wake closes those efforts, so they no longer fill the
+     frontage (openEfforts): the side masses again on at most MAX_EFFORTS new objectives instead of
+     paying FRONTAGE_COST to leave a stalled one. Like saturation it is a score, never a veto: when
+     every remaining objective is stalled, the relative order is unchanged and the squad keeps its
+     effort. */
   var STALL_COST = 150;
   function chooseObjective(sim, sq, wantOwned, stalled) {
     var objectives = sim._objectives || [],
@@ -226,7 +229,7 @@
       doc = doctrine(sim, sq.faction),
       best = null,
       bestScore = -Infinity,
-      efforts = wantOwned ? null : openEfforts(sim, sq);
+      efforts = wantOwned ? null : openEfforts(sim, sq, stalled);
     var ordered = objectives.slice();
     if (doc.objectiveStrategy === 'sequential' && sq.faction === 'ge') ordered.reverse();
     for (var i = 0; i < ordered.length; i++) {
