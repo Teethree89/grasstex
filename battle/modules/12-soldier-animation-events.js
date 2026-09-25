@@ -84,6 +84,15 @@
       }
       if (oldFire) oldFire.apply(sim, arguments);
     };
+    /* A hit the target survives: present it (combat.hit). Lethal hits are presented by kill(). */
+    var oldShot = sim.onShot;
+    sim.onShot = function (shooter, target, hit, d, shot) {
+      if (oldShot) oldShot.apply(sim, arguments);
+      /* Ballistic shots report who was actually struck, which need not be the intended target. */
+      var victim = shot && shot.mode === 'raycast' ? shot.victim : target;
+      if (hit && victim && !victim.dead)
+        root.BattleSoldierModel.triggerAnimation(victim, T.hit, { from: shooter && shooter.id });
+    };
     return sim;
   };
   root.BattleModules.registerSystem('soldier-combat-animation', {

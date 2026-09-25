@@ -14,3 +14,8 @@ __pycache__/
 .runtime/fetch*.log
 .runtime/freesound-cc0/
 .runtime/garand-scan/
+
+# Raw generator packs for soldiers/weapons stay local; only prepared models are tracked
+# (see AGENTS.md, Asset pipeline). The weapon .zip sources predate this rule and remain tracked.
+Assets/soldiers/new/*.zip
+/new US models/

@@ -54,6 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           php -l battle_sim_local.php
+          php -l labs/asset-list.php
           # A loader without preview support would silently serve production scripts and write production logs.
           grep -q 'BATTLE_PREVIEW' battle_sim_local.php
           grep -q 'BATTLE_PREVIEW' battle/battle-telemetry.js
@@ -77,6 +78,8 @@ jobs:
             if [ -d "Assets/$d" ]; then mkdir -p ".preview/Assets/$d" && cp "Assets/$d"/*.fbx ".preview/Assets/$d/"; fi
           done
           if [ -d Assets/effects/muzzle-flash ]; then mkdir -p .preview/Assets/effects/muzzle-flash && cp Assets/effects/muzzle-flash/*.png .preview/Assets/effects/muzzle-flash/; fi
+          # The Motion Lab workbench with its asset inventory + sidecar-save endpoints.
+          if [ -d labs ]; then mkdir -p .preview/labs && cp labs/fbx-animation-lab.html labs/fbx-animation-*.js labs/asset-list.php labs/save-calibration.php .preview/labs/; fi
           python3 - <<'PY'
           import json, os, datetime
           json.dump({"ref": os.environ["PREVIEW_REF"], "sha": os.environ["PREVIEW_SHA"],
@@ -98,8 +101,12 @@ jobs:
           : "${FTP_USER:?Missing repository secret FTP_USER}"
           : "${FTP_PASSWORD:?Missing repository secret FTP_PASS}"
           sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+          # Code is re-uploaded on any change; bulk assets (~850 MB of FBX) are compared by size only
+          # (--ignore-time), since every run re-checks-out and mtimes are always "now".
           # mirror --delete is confined to this preview's own directory, and never removes JSON
-          # (sidecar metadata) or lab files placed there by hand; preview.json is put explicitly.
+          # (sidecar metadata, including calibrations saved from the Motion Lab) or lab files
+          # placed there by hand. The repo's labs/ files upload without --delete for the same
+          # reason; preview.json is put last, so a cancelled run never advertises its sha.
           lftp -u "$FTP_USER","$FTP_PASSWORD" "$FTP_HOST" <<LFTP
           set cmd:fail-exit yes
           set net:max-retries 2
@@ -108,8 +115,13 @@ jobs:
           set ftp:passive-mode true
           cd grasstex
           mkdir -f -p preview/$SLUG
-          mirror -R --delete --verbose=1 --exclude '\.json\$' --exclude '[Ll][Aa][Bb]' --exclude '[Ss][Ii][Dd][Ee][Cc][Aa][Rr]' .preview preview/$SLUG
-          put .preview/preview.json -o preview/$SLUG/preview.json
+          cd preview/$SLUG
+          lcd .preview
+          mirror -R --delete --verbose=1 --exclude '\.json\$' --exclude '[Ll][Aa][Bb]' --exclude '[Ss][Ii][Dd][Ee][Cc][Aa][Rr]' battle battle
+          mirror -R --verbose=1 labs labs
+          mirror -R --delete --verbose=1 --ignore-time --exclude '\.json\$' --exclude '[Ll][Aa][Bb]' --exclude '[Ss][Ii][Dd][Ee][Cc][Aa][Rr]' Assets Assets
+          put battle_sim.php
+          put preview.json
           bye
           LFTP
 

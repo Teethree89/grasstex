@@ -18,7 +18,7 @@
      shot. Two thinner quads along the barrel (vertical and horizontal) carry the same image, so the
      flash still reads from the side and from the high battle camera, where the end-on quad is seen
      edge-on. Sized per weapon; quads are pooled because machine guns fire faster than they fade. */
-  var FLASH_COUNT=13,FLASH_SIZE={pistol:.16,carbine:.26,rifle:.30,lmg:.46},FLASH_MODEL_SIZE={'mg42.fbx':.52},FLASH_LIFE=.055,POOL=32;
+  var FLASH_COUNT=13,FLASH_SIZE={pistol:.16,carbine:.26,rifle:.30,lmg:.46},FLASH_MODEL_SIZE={'mg42.fbx':.52,'fg42.fbx':.34,'thompson.fbx':.22,'mp40.fbx':.20},FLASH_LIFE=.055,POOL=32;
   var flashState=typeof WeakMap!=='undefined'?new WeakMap():null,FZ=new BABYLON.Vector3(0,0,1);
   function flashAssets(scene){
     var st=flashState?flashState.get(scene):scene._battleMuzzleFlash;if(st)return st;
@@ -84,8 +84,11 @@
     /* The muzzle flash itself is drawn by the core onFire through BattleMuzzleFlash.show. */
     sim.onShot=function(shooter,target,hit,d,shot){
       var from=muzzleWorld(shooter);
+      /* Ballistic shots get their tracer here; the shot is marked so the core's legacy tracer
+         skips it, but the event still travels down the chain (hit reactions listen there). */
       if(shot&&shot.mode==='raycast'&&shot.impact&&from){
-        var impact=vec3(shot.impact);if(hit)hitTracer(sim.scene,from,impact);else missTracer(sim.scene,from,impact);return;
+        var impact=vec3(shot.impact);if(hit)hitTracer(sim.scene,from,impact);else missTracer(sim.scene,from,impact);
+        shot.tracerDrawn=true;if(oldShot)oldShot.apply(sim,arguments);return;
       }
       if(oldShot)oldShot.apply(sim,arguments);
       if(hit||!shooter||!target||!target.root||!from)return;
