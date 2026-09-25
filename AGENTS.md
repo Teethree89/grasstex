@@ -287,8 +287,15 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
   platoon/company command, fallback/counterattack and combined arms. Capture Zone and
   Prepared Defense already publish *requests* that Force Command accepts; follow that pattern.
 - Meeting engagements deliberately get no runtime engineer fortification (`engineerTick` exits early).
-- **Sergeant weapons.** Squad leaders carry the rifle (US M1 Garand, GE Kar98k). A GE MP40 (and a
-  US Thompson option) needs an `smg` weapon kind with a model, sound, flash and grip first.
+- **Sergeant weapons.** Squad leaders carry the `smg` kind: US Thompson, GE MP40 (`WEAPON_MODELS`).
+  Their grips use the generic `WEAPON_POINTS`; set per-model sidecars in the Motion Lab.
+- **Secondary weapons (pending).** A soldier carries a sidearm only where it was historically
+  issued. In a German squad the MG gunner (Schütze 1, P38/P08) did. In the US squad the M1919 gunner
+  (M1911A1) did, and so did paratroopers more widely. Riflemen generally didn't. It needs a
+  `secondary` weapon slot on the soldier (model, ammo and stats kept apart from the primary). It also
+  needs an Engagement rule for when to switch: primary empty or jammed with a target inside pistol
+  range. The pistol hold, the `m1911a1`/`p38` models and the pistol clips already exist. Presentation
+  stays off the combat RNG.
 - **General concentration of effort.** Done as a frontage limit in `chooseObjective` (see Main effort):
   spread fell from ~2.7 to ~2.3 objectives per side in meeting battles and captures rose 3.7 → 4.3
   (20 paired seeds). A one-sided test (30 meeting seeds, only one side concentrating) showed no
