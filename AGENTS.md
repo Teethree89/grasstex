@@ -51,6 +51,7 @@ for s in 12345 1 2 3 5 8 13 21; do HARNESS_SEED=$s node tools/ai-sim-harness/run
 | `tactical-positions-check.js` | Window/hardpoint reservation ownership, ingress routes, release reasons, diagnostics |
 | `cover-positions-check.js` | Cover-slot selection against obstacles and physical footprints |
 | `personal-space-check.js` | Physical endpoint allocation and body separation |
+| `fireteam-frontage-check.js` | Each fireteam holds its own ground: published fireteam anchors stay ≥5 m apart while squads march, deploy and fight |
 | `movement-recovery-check.js` | Recovery episode state machine, goal resets, unreachable criteria, retreat override |
 | `movement-state-check.js` | Resolver/movement-progress state for bounds and assault |
 | `lean-runtime-check.js` | Squad-plan stability + resolver + tactical route with no extra modules |

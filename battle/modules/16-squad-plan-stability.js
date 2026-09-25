@@ -595,19 +595,32 @@
         return (+a.slotIndex || 0) - (+b.slotIndex || 0);
       });
   }
-  function desiredAnchor(sq, m) {
-    var x = 0,
-      z = 0,
-      n = 0;
-    for (var i = 0; i < m.length; i++) {
-      var p = root.SquadAI.formationSlot(sq, m[i], m[i].slotIndex);
-      if (p) {
-        x += p.x;
-        z += p.z;
-        n++;
-      }
-    }
-    return n ? { x: x / n, z: z / n } : null;
+  /* Each fireteam holds its own ground: [lateral, forward] metres from the order anchor in the squad's
+   frame. Team anchors used to be the average of the men's individual formation slots, but those
+   alternate sides by slotIndex while fireteam membership is also dealt by slotIndex, so every team
+   averaged to the middle (alpha and bravo 1.2 m apart in line) and the teams walked through each
+   other: three quarters of formation-on-formation body contacts were between different teams. */
+  var TEAM_OFFSETS = {
+    line: { command: [0, -3], alpha: [-8, 0], bravo: [8, 0], charlie: [0, -9] },
+    wedge: { command: [0, -2], alpha: [-7, 2], bravo: [7, 2], charlie: [0, -9] },
+    column: { command: [0, 0], alpha: [0, 7], bravo: [0, -6], charlie: [0, -12] }
+  };
+  function teamFrame(sq) {
+    var a = sq.orderAnchor || sq.rally || { x: 0, z: 0 },
+      g = sq.state === 'retreat' ? root.SquadAI.retreatGoal(sq) : sq.objective || sq.home || a,
+      dx = (+g.x || 0) - (+a.x || 0),
+      dz = (+g.z || 0) - (+a.z || 0),
+      l = Math.hypot(dx, dz);
+    return l < 0.1 ? commandForward(sq) : { x: dx / l, z: dz / l };
+  }
+  function desiredAnchor(sq, key) {
+    var a = sq.orderAnchor || sq.rally;
+    if (!a) return null;
+    var form = TEAM_OFFSETS[sq.formation || root.SquadAI.formationFor(sq)] || TEAM_OFFSETS.wedge,
+      o = form[key] || [0, 0],
+      f = teamFrame(sq),
+      r = { x: -f.z, z: f.x };
+    return { x: a.x + r.x * o[0] + f.x * o[1], z: a.z + r.z * o[0] + f.z * o[1] };
   }
   function averageMembers(m) {
     var x = 0,
@@ -734,7 +747,7 @@
     ['command', 'alpha', 'bravo', 'charlie'].forEach(function (key) {
       var m = aliveTeam(sq, key);
       if (!m.length) return;
-      var desired = desiredAnchor(sq, m);
+      var desired = desiredAnchor(sq, key);
       if (!desired) return;
       var live = averageMembers(m),
         sig = fireteamSignature(sq),
