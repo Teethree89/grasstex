@@ -111,6 +111,7 @@
       <label class="control" style="margin-top:9px">Weapon <select id="libWeapon"><option value="">None</option></select></label>
       <div class="row" style="margin-top:9px"><button id="libLoad" class="primary">Load selection</button></div>
       <label class="check"><input id="keepPoints" type="checkbox" checked> Keep points when switching model / weapon</label>
+      <label class="check"><input id="showAllClips" type="checkbox" checked> Show all animation clips (off: only clips the game uses)</label>
       <p class="hint" id="libStatus" style="margin-top:8px">Fetching deployed asset list…</p>
 
       <h2>4 — Contact calibration</h2>
@@ -199,6 +200,8 @@
        valid in the game if both import through the same FBX loader. -->
   <script src="https://cdn.jsdelivr.net/npm/babylonjs@9.27.1/babylon.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/babylonjs-loaders@9.27.1/babylonjs.loaders.min.js"></script>
+  <!-- The battle's clip table (BattleFbxClips): which library clips the game plays. -->
+  <script src="../battle/modules/53-fbx-clip-table.js"></script>
   <script>
     const TARGET_MODEL_HEIGHT = 1.80;
     const $ = id => document.getElementById(id);
@@ -876,7 +879,11 @@
     if ([...wsel.options].some(o => o.value === wv)) wsel.value = wv;
     if ([...csel.options].some(o => o.value === cv)) csel.value = cv;
   }
+  /* Clips the battle plays (53-fbx-clip-table.js); the "Show all animation clips" toggle
+     hides everything else. Empty if the table failed to load, which disables the filter. */
+  const labGameClips = new Set(((window.BattleFbxClips && BattleFbxClips.files) || []).map(f => f + '.fbx'));
   function labClipMatches(entry, weapon, cat, q){
+    if (labGameClips.size && !$('showAllClips').checked && !labGameClips.has(entry.file)) return false;
     if (weapon && entry.weapon !== weapon) return false;
     if (cat && !entry.acts.includes(cat)) return false;
     if (q) {
@@ -915,7 +922,8 @@
       const label = e.weapon + ' — ' + e.primary;
       if (label !== group) { group = label; const g = document.createElement('optgroup'); g.label = label; sel.append(g); }
       const opt = document.createElement('option');
-      opt.value = e.file; opt.textContent = e.file;
+      opt.value = e.file;
+      opt.textContent = ($('showAllClips').checked && labGameClips.has(e.file) ? '● ' : '') + e.file;
       sel.lastChild.append(opt);
     });
     if (prev && hits.some(e => e.file === prev)) sel.value = prev;
@@ -929,6 +937,7 @@
   $('animWeapon').onchange = labRefreshAnimOptions;
   $('animCat').onchange = labRefreshAnimOptions;
   $('animSearch').oninput = labRefreshAnimOptions;
+  $('showAllClips').addEventListener('change', labRefreshAnimOptions);
   $('animRebuild').onclick = () => {
     try { localStorage.removeItem(LAB_ANIM_KEY); } catch (error) {}
     if (labAnimFiles.length) {
@@ -2688,6 +2697,7 @@
   const LAB_SVG_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
   const LAB_TOOLS = [
     { id:'__last', tip:'Load last session', icon:'<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>' },
+    { id:'showAllClips', tip:'Show all animation clips (off: only clips the game uses; ● marks them)', icon:'<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>' },
     { id:'loop', tip:'Loop active clip', icon:'<path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>' },
     { id:'keepPoints', tip:'Keep points when switching model / weapon', icon:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>' },
     { id:'trackHands', tip:'Weapon follows hands during playback', icon:'<path d="M7 3v6a5 5 0 0 0 10 0V3"/><path d="M7 3h4v5H7zM13 3h4v5h-4z"/>' },
@@ -2732,7 +2742,7 @@
     bar.id = 'toolBar';
     const defs = {};
     LAB_TOOLS.forEach(t => { defs[t.id] = t; });
-    [['__last'],['loop'],['keepPoints'],['trackHands'],['aimAtTarget'],
+    [['__last'],['showAllClips'],['loop'],['keepPoints'],['trackHands'],['aimAtTarget'],
      ['skeleton','animationBounds','horizontalRootLock','bottomRootLock']].forEach((group, gi) => {
       if (gi) { const sep = document.createElement('div'); sep.className = 'tsep'; bar.append(sep); }
       group.forEach(id => {

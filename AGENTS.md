@@ -26,7 +26,9 @@ original docs (roadmaps, lab notes, measurements) are in git history at `1a5b0cf
 | Learning/telemetry backend | `battle_learning.php`, `battle_policy.php`, `battle_log*.php`, `battle_metrics.php` ("What We Learned" page) | Active. |
 | FBX Motion Lab | `labs/fbx-animation-lab.html` (calibration workbench), in-page **Motion Lab** button | Previews clips; measures hand/weapon contacts and saves per-model sidecars the game loads. |
 
-In the page: **Start Battle** unpauses and unlocks audio (iOS needs the gesture).
+In the page: a load overlay (`BattleLoading`, in `battle_sim.html`) shows each boot phase (runtime
+scripts, scenario, terrain, soldiers/weapons/clips, cover, navigation and squads); the FBX backend
+reports per-file progress to it. **Start Battle** unpauses and unlocks audio (iOS needs the gesture).
 `window.__battle__` is the live `BattleSim`. HUD buttons: World Debug, AI Graph, Motion Lab.
 URL flags: `?seed=`, `?defender=us|ge`, `?soldiers=rifleman`, `?smooth=0`.
 
@@ -298,8 +300,10 @@ never decides tactics, ammo, hits or paths.
   (sergeant; the file keeps its old name), `-scout`, `-gunner`, `-engineer`, and `-paratrooper` for
   riflemen and any role without a model. `?soldiers=rifleman` shows the older `-rifleman-rigged.fbx`.
 - Clips: `Assets/animations/*.fbx` (Mixamo rig with fingers, named `<description> - <clip name>`),
-  keyed in `CLIPS`, `FAMILIES` (8-way) and `FOUR_WAY`; bone names are canonicalised at load, so
-  `mixamorig:` and older rigs bind the same clips.
+  keyed in `CLIPS`, `FAMILIES` (8-way) and `FOUR_WAY` in `modules/53-fbx-clip-table.js`
+  (`BattleFbxClips`, data only). The battle fetches only those files, and the lab loads the same table
+  for its **Show all animation clips** toggle (off: only in-game clips; on: all, in-game marked ●).
+  Bone names are canonicalised at load, so `mixamorig:` and older rigs bind the same clips.
 - Weapons (`WEAPON_MODELS`, dealt per role, a list in turn): rifle Garand / Kar98k, LMG M1919A6 /
   MG42 (folded-bipod carry variants), scouts M1 Carbine + Thompson / FG42 + MP40, sergeants
   M1911A1 / P38. Babylon is pinned to `babylonjs@9.27.1`.

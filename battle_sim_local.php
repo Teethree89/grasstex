@@ -89,5 +89,7 @@ $defenderValue=$requestedDefender!==''?$requestedDefender:null;
 $extras.='<script>(function(){var d='.json_encode($defenderValue).';window.BATTLE_DEFENDER=d;var u=document.getElementById("usDefenderToggle"),g=document.getElementById("geDefenderToggle");if(u)u.checked=d==="us";if(g)g.checked=d==="ge";})();</script>'."\n";
 foreach(array('ai-trainer.js','battle-control.js') as $file)$extras.='<script src="'.$runtimeBase.'battle/'.$file.'?v='.$deployId.'&c='.rawurlencode($cacheEpoch).'"></script>'."\n";
 $pattern='#<script>\s*/\* Extra runtimes[\s\S]*?</script>#';$body=preg_replace($pattern,$extras,$body,1,$count);if($count!==1){http_response_code(500);echo '<!doctype html><html><body><h1>Battle sim deployment mismatch</h1><p>Extra-runtime block was not found.</p></body></html>';exit;}
+/* The page's load bar counts runtime scripts as they arrive; give it the total. */
+$body=str_replace($cdnTag,'<script>window.BATTLE_RUNTIME_SCRIPTS='.substr_count($body,'<script src=').';</script>'."\n".$cdnTag,$body);
 header('X-Grasstex-Deploy-Id: '.$deployId);header('X-Grasstex-Build: '.$build);header('X-Grasstex-Build-Source: '.$buildSource);header('X-Grasstex-Cache-Epoch: '.$cacheEpoch);header('X-Grasstex-Modules: '.count($moduleFiles));echo $body;
 ?>
