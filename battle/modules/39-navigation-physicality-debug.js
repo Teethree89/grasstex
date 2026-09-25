@@ -159,19 +159,21 @@ function planLocal(sim,soldier,start,goal,expanded){
     var candidates=routeNodes(shapes[i],ROUTE_MARGIN);
     for(j=0;j<candidates.length;j++){var p=candidates[j];if(edgeClear(sim,p,p,shapes,ROUTE_MARGIN)){p.kind='avoid';nodes.push(p);}}
   }
-  var adj=new Array(nodes.length);for(i=0;i<nodes.length;i++)adj[i]=[];
-  for(i=0;i<nodes.length;i++)for(j=i+1;j<nodes.length;j++){
-    /* Clearance permits outward escape when a start is already inside a buffer. That makes
-       visibility directed: a legal escape edge must never imply a legal reverse entry edge. */
-    var d=dist(nodes[i],nodes[j]);
-    if(edgeClear(sim,nodes[i],nodes[j],shapes,ROUTE_MARGIN))adj[i].push({to:j,cost:d});
-    if(edgeClear(sim,nodes[j],nodes[i],shapes,ROUTE_MARGIN))adj[j].push({to:i,cost:d});
-  }
+  /* Visibility edges are tested when A* expands a node, not for every pair up front: the search
+     usually settles a handful of the ~130 nodes. Clearance permits outward escape when a start is
+     already inside a buffer, so visibility is directed: a legal escape edge must never imply a legal
+     reverse entry edge. Neighbours are visited in index order, as the full graph listed them, and an
+     edge is only tested when it would improve its neighbour's cost. */
   var open=[],g=new Array(nodes.length),prev=new Array(nodes.length),closed=new Array(nodes.length);
   for(i=0;i<g.length;i++)g[i]=Infinity;g[0]=0;heapPush(open,{id:0,f:dist(start,end)});
   while(open.length){
     var cur=heapPop(open),id=cur.id;if(closed[id])continue;closed[id]=1;if(id===1)break;
-    var list=adj[id];for(i=0;i<list.length;i++){var e=list[i],ng=g[id]+e.cost;if(ng+1e-6<g[e.to]){g[e.to]=ng;prev[e.to]=id;heapPush(open,{id:e.to,f:ng+dist(nodes[e.to],end)});}}
+    for(j=0;j<nodes.length;j++){
+      if(j===id)continue;
+      var ng=g[id]+dist(nodes[id],nodes[j]);
+      if(!(ng+1e-6<g[j])||!edgeClear(sim,nodes[id],nodes[j],shapes,ROUTE_MARGIN))continue;
+      g[j]=ng;prev[j]=id;heapPush(open,{id:j,f:ng+dist(nodes[j],end)});
+    }
   }
   var path=[];
   if(isFinite(g[1])){

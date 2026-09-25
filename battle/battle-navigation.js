@@ -34,9 +34,14 @@
     return null;
   }
   function blocked(a,b,mode,ay,by){
-    var segLen=Math.hypot(b.x-a.x,b.z-a.z)||EPS;
+    var segLen=Math.hypot(b.x-a.x,b.z-a.z)||EPS,pad=EPS*segLen,
+      minX=Math.min(a.x,b.x)-pad,maxX=Math.max(a.x,b.x)+pad,minZ=Math.min(a.z,b.z)-pad,maxZ=Math.max(a.z,b.z)+pad;
     for(var i=0;i<walls.length;i++){
-      var w=walls[i],hit=intersection(a,b,w.a,w.b);
+      var w=walls[i];
+      /* intersection() accepts parameters within EPS of each segment, so boxes padded by that much
+         that do not overlap cannot intersect. */
+      if(w.maxX<minX||w.minX>maxX||w.maxZ<minZ||w.minZ>maxZ)continue;
+      var hit=intersection(a,b,w.a,w.b);
       if(!hit)continue;
       if(hit.t*segLen<START_SKIN)continue;
       if(openingAt(w,hit.u,mode))continue;
@@ -80,7 +85,8 @@
     if(!s)return;
     (s.buildings||[]).forEach(function(b){
       ['north','south','east','west'].forEach(function(side){
-        var wd=wallDef(b,side);wd.building=b;wd.side=side;wd.openings=(b.openings||[]).filter(function(o){return o.side===side;});walls.push(wd);
+        var wd=wallDef(b,side),wpad=EPS*Math.hypot(wd.b.x-wd.a.x,wd.b.z-wd.a.z)+1e-9;wd.building=b;wd.side=side;
+        wd.minX=Math.min(wd.a.x,wd.b.x)-wpad;wd.maxX=Math.max(wd.a.x,wd.b.x)+wpad;wd.minZ=Math.min(wd.a.z,wd.b.z)-wpad;wd.maxZ=Math.max(wd.a.z,wd.b.z)+wpad;wd.openings=(b.openings||[]).filter(function(o){return o.side===side;});walls.push(wd);
       });
       var corners=[[-b.w/2,-b.d/2],[b.w/2,-b.d/2],[-b.w/2,b.d/2],[b.w/2,b.d/2]];
       corners.forEach(function(c){addNode(transform(b,c[0]+(c[0]<0?-CORNER_PAD:CORNER_PAD),c[1]+(c[1]<0?-CORNER_PAD:CORNER_PAD)),'corner',{building:b.id});});
