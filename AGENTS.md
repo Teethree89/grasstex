@@ -287,12 +287,25 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
   `claimCollisionsPrevented` counts only real claim-time collisions.
 - Personal-space corrections (~8-10k per battle on the GitHub standard benchmark) are mostly same-squad
   men crossing on the move, not fights: pairs still overlapping 1 s later are rare (5-20 per battle).
-  In order: (1) two men both on formation slots crossing. The rate is ~7× higher in the 6 s after a
-  formation or facing change, because slots are fixed by `slotIndex`, which also fixes fireteam
-  membership. (2) Bounding men walking through men holding. (3) Engagement `hold` endpoints within
-  0.9 m of each other. Hold isn't a physically allocated kind in `51` `DEST_KINDS`. Candidate fix at
-  the owner: the Squad Leader re-deals slots within a fireteam and role by nearest man when the
-  formation or facing changes. That changes movement feel, so it needs a preview branch.
+  In order: (1) two men both on formation slots crossing. 75-83% of those are between different
+  fireteams, and the rate is ~7× higher in the 6 s after a formation or facing change. (2) Bounding men
+  walking through men holding. (3) Engagement `hold` endpoints within 0.9 m of each other. Hold isn't a
+  physically allocated kind in `51` `DEST_KINDS`.
+  - **Fireteam frontage (preview, awaiting a movement-feel review):** branch `work/fireteam-frontage`,
+    https://test.ivandpopov.com/grasstex/preview/fireteam-frontage/battle_sim.php. Team anchors were
+    averages of per-man slots that alternate sides by `slotIndex`, while team membership also comes
+    from `slotIndex`, so every team sat in the middle (alpha and bravo 1.2 m apart in line). The Squad
+    Leader (`16` `desiredAnchor`) now gives each fireteam its own offset in the squad frame; new
+    `fireteam-frontage-check.js` (main fails it). GitHub standard benchmark, main run 17 vs branch
+    run 16: corrections −12% meeting, −2% US-defend, −12% GE-defend; destination conflicts −13 to −44%;
+    wins within noise (meeting US 31 → 25 of 60, p=0.36); median wall 26.7 → 28.6 s; movement stalls
+    40 → 49 (the worst is a straggler stopping in `alert` while catching up, a pattern main also shows).
+    Open the PR if the preview reads right, else revert as a unit.
+  - **Next: spawn men near their formation slots.** Cross-team crossings barely changed with frontage,
+    and about half come in the first minute: men spawn in a random cluster around the lane
+    (`battle-sim.js` `spawnSide`, `modules/10-infantry-squad.js`), ignoring their slot, then cross each
+    other to sort out. Placing each man at his fireteam position at spawn is its own change, and it
+    changes the seeded start, so benchmark it paired on GitHub.
 - Strategic-stall wakes mostly re-pick the same objective, because doctrine has no alternative.
 - Hot path is now navigation replans (~3.3 s) and `sightBlocked` (~3.5 s) per ~13.7 s battle.
 - Movement Progress ignores retreat by design; `movementStopReason` is the observable.
