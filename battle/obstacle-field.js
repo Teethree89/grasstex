@@ -74,6 +74,21 @@
     for(var i=0;i<=steps;i++){var t=i/steps,x=ax+(bx-ax)*t,z=az+(bz-az)*t,c0=colOf(field,x-field.cell),c1=colOf(field,x+field.cell),r0=rowOf(field,z-field.cell),r1=rowOf(field,z+field.cell);for(var c=c0;c<=c1;c++)for(var r=r0;r<=r1;r++)pushBucket(field,c+r*field.cols,out);}
     return out;
   }
+  /* Every obstacle sits in each cell its bounds touch, so the cells a segment crosses already hold
+     every obstacle it can hit: column by column, the rows the segment spans inside that column.
+     gatherSegment's sampled 3x3 blocks find the same obstacles among several times the candidates,
+     in an order sightBlocker's nearest-hit ties depend on, so only the yes/no query uses this. */
+  var GATHER_PAD=1e-6;
+  function gatherCrossed(field,ax,az,bx,bz){
+    var out=beginGather(field),dx=bx-ax,dz=bz-az,minX=Math.min(ax,bx),maxX=Math.max(ax,bx),c0=colOf(field,minX),c1=colOf(field,maxX);
+    for(var c=c0;c<=c1;c++){
+      var x0=c===c0?minX:field.minX+c*field.cell,x1=c===c1?maxX:field.minX+(c+1)*field.cell,z0,z1;
+      if(Math.abs(dx)<1e-9){z0=az;z1=bz;}else{z0=az+dz*(x0-ax)/dx;z1=az+dz*(x1-ax)/dx;}
+      var r0=rowOf(field,Math.min(z0,z1)-GATHER_PAD),r1=rowOf(field,Math.max(z0,z1)+GATHER_PAD);
+      for(var r=r0;r<=r1;r++)pushBucket(field,c+r*field.cols,out);
+    }
+    return out;
+  }
 
   function closestParam(ax,az,bx,bz,px,pz){var dx=bx-ax,dz=bz-az,l2=dx*dx+dz*dz;if(l2<1e-8)return 0;return clamp(((px-ax)*dx+(pz-az)*dz)/l2,0,1);}
   function obbInterval(ob,a,b){
@@ -110,7 +125,17 @@
     }
     return best||false;
   }
-  function sightBlocked(obstacles,a,b){return !!sightBlocker(obstacles,a,b);}
+  /* Blocked or not needs any hit, not the nearest one: stop at the first. */
+  function sightBlocked(obstacles,a,b){
+    var field=fieldFor(obstacles);if(!field)return false;
+    var candidates=gatherCrossed(field,a.x,a.z,b.x,b.z);
+    for(var i=0;i<candidates.length;i++){
+      var ob=candidates[i];if(sightHitT(ob,a,b)==null)continue;
+      if(legacyCircularHedgeEndpoint(ob,a)||legacyCircularHedgeEndpoint(ob,b))continue;
+      return true;
+    }
+    return false;
+  }
 
   function coverAt(obstacles,x,z,stance){
     var field=fieldFor(obstacles);if(!field)return 1;
