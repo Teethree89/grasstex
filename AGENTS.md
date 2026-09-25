@@ -24,9 +24,11 @@ original docs (roadmaps, lab notes, measurements) are in git history at `1a5b0cf
 | Grass renderer | `game.html`, `grass-api.js`, `grass-streaming.js`, `grass-realism.js`, `grass-effects.js`, `terrain-demo.js`, `terrain-baked.js` | Ported to `ww2fps`; grass is **off** unless `?grass=1` or `window.GRASS_SIM_ENABLED=true`. |
 | Terrain bake | `tools/terrain-bake/` | Prototype. |
 | Learning/telemetry backend | `battle_learning.php`, `battle_policy.php`, `battle_log*.php`, `battle_metrics.php` ("What We Learned" page) | Active. |
-| FBX Motion Lab | `fbx-animation-lab.html`, in-page **Motion Lab** button | Previews every soldier clip. |
+| FBX Motion Lab | `labs/fbx-animation-lab.html` (calibration workbench), in-page **Motion Lab** button | Previews clips; measures hand/weapon contacts and saves per-model sidecars the game loads. |
 
-In the page: **Start Battle** unpauses and unlocks audio (iOS needs the gesture).
+In the page: a load overlay (`BattleLoading`, in `battle_sim.html`) shows each boot phase (runtime
+scripts, scenario, terrain, soldiers/weapons/clips, cover, navigation and squads); the FBX backend
+reports per-file progress to it. **Start Battle** unpauses and unlocks audio (iOS needs the gesture).
 `window.__battle__` is the live `BattleSim`. HUD buttons: World Debug, AI Graph, Motion Lab.
 URL flags: `?seed=`, `?defender=us|ge`, `?soldiers=rifleman`, `?smooth=0`.
 
@@ -120,7 +122,7 @@ bash scripts/normalize_audio.sh Assets/audio && git diff --quiet -- Assets/audio
 | `battle-benchmark-standard.yml` | tag `standard-benchmark-*` or dispatch | 10 workers × 10 = **100 battles**: the routine 60 meeting / 20 US-defend / 20 GE-defend checkpoint |
 | `battle-benchmark.yml` | tag `benchmark-*` or dispatch (source must be on main) | 30 workers × 10 = **300 battles**, 100 per type. Major milestones only. |
 | `battle-hotpath-profile.yml` | dispatch (type/seed/seconds) | Hot-path profile on one seed |
-| `tripo-model-sync.yml` | dispatch | Tripo FBX export. **Broken:** calls `scripts/tripo_models.py`, which doesn't exist. |
+| `tripo-model-sync.yml` | dispatch | Tripo FBX export via `scripts/tripo_models.py` (needs the `TRIP_API` secret) |
 
 Benchmark battles are 600 simulated seconds at a fixed 0.15 s step. Results go to the
 `benchmark-results` branch.
@@ -297,13 +299,29 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
 ## Soldiers, weapons, animation
 
 AI requests semantic tags and the backend renders them. The tags are `locomotion.idle|walk|crouch-walk|prone-crawl`,
-`combat.aim|fire|reload`, `stance.stand|crouch|prone` and `death.front|back|side`, and
+`combat.aim|fire|reload|hit`, `stance.stand|crouch|prone` and `death.front|back|side`, and
 `BattleSoldierModel.TAGS` is the source of truth. The backend (`modules/53-fbx-soldier-backend.js`)
 never decides tactics, ammo, hits or paths.
 
-- Models: `Assets/soldiers/{us,ge}-paratrooper.fbx` (default) and `-rifleman-rigged.fbx`.
-  Clips: `Assets/animations/*.fbx`, Mixamo, same rig, keyed in `CLIPS`. Weapons: `Assets/weapons/`,
-  registered in `WEAPON_MODELS` and `WEAPON_POINTS`. Babylon is pinned to `babylonjs@9.27.1`.
+- Models, one per class (`MODEL_SETS` in the backend, keyed by role): `Assets/soldiers/{us,ge}-captain.fbx`
+  (sergeant; the file keeps its old name), `-scout`, `-gunner`, `-engineer`, and `-paratrooper` for
+  riflemen and any role without a model. `?soldiers=rifleman` shows the older `-rifleman-rigged.fbx`.
+- Clips: `Assets/animations/*.fbx` (Mixamo rig with fingers, named `<description> - <clip name>`),
+  keyed in `CLIPS`, `FAMILIES` (8-way) and `FOUR_WAY` in `modules/53-fbx-clip-table.js`
+  (`BattleFbxClips`, data only). The battle fetches only those files, and the lab loads the same table
+  for its **Show all animation clips** toggle (off: only in-game clips; on: all, in-game marked ●).
+  Bone names are canonicalised at load, so `mixamorig:` and older rigs bind the same clips.
+- Weapons (`WEAPON_MODELS`, dealt per role, a list in turn): rifle Garand / Kar98k, LMG M1919A6 /
+  MG42 (folded-bipod carry variants), scouts M1 Carbine + Thompson / FG42 + MP40, sergeants
+  M1911A1 / P38. Babylon is pinned to `babylonjs@9.27.1`.
+- **Weapon seats and sidecars.** Hand contacts and weapon points default to `SOLDIER_CONTACTS`,
+  `WEAPON_POINTS` and `WEAPON_MODEL_POINTS`. A per-model sidecar `Assets/soldiers/<model>.fbx.json`
+  (contacts, one slot per weapon: grip / fore-near / fore-far, pistol arm and wrist dials) overrides
+  them; the backend fetches it on load (`BattleFbxSoldier.sidecars()` lists what loaded). Measure in
+  `labs/fbx-animation-lab.html` (pick model, clip and weapon, click the contact vertices, **Seat
+  weapon**, then **Per-model sidecar** → Save), which posts to `labs/save-calibration.php` (validated
+  numbers, existing soldier FBX names only). Sidecars are server-owned: never committed, never
+  deployed or deleted.
 - Clips are retargeted at load (rest pose, units, hip height). Looping clips have hip drift removed,
   and that drift becomes their natural ground speed. Playback rate is ground speed ÷ clip speed.
   The upper-body overlay (aim/fire/reload) sits on the lower locomotion layer. The weapon grip snaps
@@ -311,8 +329,9 @@ never decides tactics, ammo, hits or paths.
 - Fallback: the procedural rig in `battle/soldier.js` is used while the FBX loads (25 s cap), and the
   trainer and headless benchmark always use it (`setImportedEnabled(scene,false)`). Such soldiers have
   `rig===null`.
-- Unused clips worth wiring, in order: turn-in-place (standing, crouch, prone), extra death variants,
-  prone roll right (a left roll needs mirroring), and the kneel set. Jump clips need a nav vault edge.
+- Wired beyond the basics: turn-in-place (standing, crouch, prone), death pools, hit reactions
+  (`combat.hit`), idle variants and suppression flinches. Still unused: prone roll right (a left roll
+  needs mirroring) and the kneel set. Jump clips need a nav vault edge.
   Not in the pack: sideways crawl, grenade throw, melee, limp, climb, window lean.
 
 **Asset pipeline.** Use the Blender app bundle `/Applications/Blender.app/Contents/MacOS/Blender`, not the
@@ -327,10 +346,17 @@ python3 tools/prepare-muzzle-flashes.py --input pack.zip --output Assets/effects
 Soldier FBX requirements: one skinned mesh, the shared bone names (`Hips`, `Spine02/01/Spine`, `neck`,
 `Head`, `Left/Right Shoulder/Arm/ForeArm/Hand/UpLeg/Leg/Foot/ToeBase`), no normal maps, and a unique
 embedded albedo name. Weapon layout: barrel on +Z, butt 0.40 m behind the grip, barrel top +0.03 m.
-Lengths: Garand 1.107, Kar98k 1.11, MG42 1.224, M1919A6 1.346. Before committing, verify in a
-posed lineup (idle, aim, walk, run, crouch, prone, reload, deaths): lit, no holes, factions
-textured differently, weapon on the hands. Keep source `.zip` packs next to the `.fbx`; only
-the `.fbx` deploys.
+Lengths: Garand 1.107, Kar98k 1.11, MG42 1.224, M1919A6 1.346, M1 Carbine 0.904, FG42 0.975,
+Thompson 0.857, MP40 0.833, M1911A1 0.216, P38 0.216 (pistols add `--butt 0.06`). A generator
+character in an A-pose must be moved to the library's T-pose rest first (`tools/match-rest-pose.py
+--rest-from <library clip>`, refuses above 1°); an unrigged one borrows a rigged twin's weights
+(`tools/rig-soldier-model.py`). `tools/blender-presets/` holds the matching manual FBX export presets.
+
+Before committing, run the lineup: `node scripts/fbx-soldier-lineup.cjs` against the local server
+checks every faction/role model + weapon pair and the two-hand hold, and writes close-ups to
+`$FBX_OUT` (`FBX_CHROME` picks a browser; visual PASS is still a human judgement: lit, no holes,
+factions textured differently, weapon on the hands). Keep weapon source `.zip` packs next to the
+`.fbx`; new generator packs in `Assets/soldiers/new/` are gitignored. Only the `.fbx` deploys.
 
 ## Audio
 
@@ -373,14 +399,17 @@ the `.fbx` deploys.
   `battle_sim.php` (a GitHub-mirroring loader that writes git-tracked `Assets/` to the host and
   never deletes) is not deployed.
 - `scripts/prepare_incremental_deploy.py` uploads by content hash: `.fbx` from soldiers,
-  animations and weapons, muzzle-flash `.png`, and audio. `scripts/build_version.py stamp|show|tag`
+  animations and weapons, muzzle-flash `.png`, audio, and the Motion Lab's own files
+  (`MANAGED_LAB`: `labs/fbx-animation-lab.html`, its two `.js`, `asset-list.php`,
+  `save-calibration.php`). `scripts/build_version.py stamp|show|tag`
   derives the version from `build-v<N>` tags.
 - **The deploy never deletes or overwrites server files the repo does not manage.** Hand-placed
   sidecar JSON (clip/model/lab metadata beside the FBX assets), the live FBX soldier-animation lab
   files and everything else unmanaged stay put. The planner may delete only a
   `battle/modules/*.js` it deployed itself that has left the repo; any JSON other than
   `battle/build-version.json` and `Assets/audio/manifest.json`, and any path containing `lab` or
-  `sidecar`, can never be deleted or uploaded over; more than 8 deletes in one run aborts the
+  `sidecar`, can never be deleted or uploaded over, except the exact `MANAGED_LAB` paths, which
+  are uploaded but never deleted; more than 8 deletes in one run aborts the
   deploy (`DEPLOY_MAX_DELETES` to override an intended bulk retirement). `check_deploy_safety.py`
   proves this in CI and again inside the deploy before anything is uploaded. Keep it that way:
   don't add `mirror --delete` or broaden the delete rule for production.

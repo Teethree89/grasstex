@@ -1,0 +1,1308 @@
+{
+  "version": 1,
+  "base": "Assets/audio/",
+  "format": "mp3",
+  "status": "plan: no file exists yet; replaces the Sonniss/Freesound weapon pools and weaponFoley",
+  "roster": "battle/modules/53-fbx-soldier-backend.js WEAPON_MODELS: every weapon model listed there must have an entry here",
+  "rules": {
+    "singleShot": "Every clip with singleShot:true holds exactly one discharge: one onset, attack within the first 10 ms, no second transient above peak-18 dB. Automatic fire is built at runtime by retriggering fire at cyclicRpm with round-robin and no immediate repeat. Recorded bursts are rejected.",
+    "tail": "fireTail clips carry the reverb/echo tail only, with no transient. They play once at burst end so short single shots can stay dry.",
+    "loudness": "Shots and flybys level on the loudest 100 ms window per MASTERING.md; foley uses the foley target.",
+    "keying": "Runtime keys by weapon model (faction + model), not by sim kind, so a Thompson and an M1 Carbine sound different.",
+    "voices": "Voice pool per weapon >= ceil(cyclicRpm/60 * maxDurationS) + 2 so a fast MG never steals a playing round.",
+    "format": "48 kHz mono source masters kept outside the repo; ship mono MP3, 128 kbps, no leading silence."
+  },
+  "weapons": {
+    "m1-garand": {
+      "faction": "us",
+      "simKind": "rifle",
+      "model": "m1-garand.fbx",
+      "label": "M1 Garand",
+      "action": ".30-06 semi-auto, 8-rd en bloc",
+      "cyclicRpm": null,
+      "clips": {
+        "fire": {
+          "priority": "P0",
+          "variations": 6,
+          "trigger": "every round discharged (one play per round, even in automatic fire)",
+          "maxDurationS": 0.9,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/m1-garand/fire-01.mp3",
+            "weapons/m1-garand/fire-02.mp3",
+            "weapons/m1-garand/fire-03.mp3",
+            "weapons/m1-garand/fire-04.mp3",
+            "weapons/m1-garand/fire-05.mp3",
+            "weapons/m1-garand/fire-06.mp3"
+          ]
+        },
+        "fireDistant": {
+          "priority": "P1",
+          "variations": 4,
+          "trigger": "every round, listener beyond 150 m (replaces fire; crossfade 100-200 m)",
+          "maxDurationS": 1.5,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/m1-garand/fireDistant-01.mp3",
+            "weapons/m1-garand/fireDistant-02.mp3",
+            "weapons/m1-garand/fireDistant-03.mp3",
+            "weapons/m1-garand/fireDistant-04.mp3"
+          ]
+        },
+        "clipPing": {
+          "priority": "P0",
+          "variations": 3,
+          "trigger": "last round of the clip fired (ammo reaches 0): en bloc ejects",
+          "maxDurationS": 0.8,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1-garand/clipPing-01.mp3",
+            "weapons/m1-garand/clipPing-02.mp3",
+            "weapons/m1-garand/clipPing-03.mp3"
+          ]
+        },
+        "reloadClipInsert": {
+          "priority": "P0",
+          "variations": 3,
+          "trigger": "reload cycle (2.6s sim reloadTime); stages placed on the reload animation timeline: clip thumbed into the receiver",
+          "maxDurationS": 1.2,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1-garand/reloadClipInsert-01.mp3",
+            "weapons/m1-garand/reloadClipInsert-02.mp3",
+            "weapons/m1-garand/reloadClipInsert-03.mp3"
+          ]
+        },
+        "reloadBoltRelease": {
+          "priority": "P0",
+          "variations": 3,
+          "trigger": "end of reload: operating rod slams home",
+          "maxDurationS": 1.2,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1-garand/reloadBoltRelease-01.mp3",
+            "weapons/m1-garand/reloadBoltRelease-02.mp3",
+            "weapons/m1-garand/reloadBoltRelease-03.mp3"
+          ]
+        },
+        "stoppageClick": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage starts (startStoppage): hammer/striker falls, no bang",
+          "maxDurationS": 0.4,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1-garand/stoppageClick-01.mp3",
+            "weapons/m1-garand/stoppageClick-02.mp3"
+          ]
+        },
+        "stoppageClear": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage cleared (finishStoppage): op-rod racked",
+          "maxDurationS": 1.2,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1-garand/stoppageClear-01.mp3",
+            "weapons/m1-garand/stoppageClear-02.mp3"
+          ]
+        }
+      }
+    },
+    "kar98k": {
+      "faction": "ge",
+      "simKind": "rifle",
+      "model": "kar98k.fbx",
+      "label": "Karabiner 98k",
+      "action": "7.92 bolt-action, 5-rd stripper clip",
+      "cyclicRpm": null,
+      "clips": {
+        "fire": {
+          "priority": "P0",
+          "variations": 6,
+          "trigger": "every round discharged (one play per round, even in automatic fire)",
+          "maxDurationS": 0.9,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/kar98k/fire-01.mp3",
+            "weapons/kar98k/fire-02.mp3",
+            "weapons/kar98k/fire-03.mp3",
+            "weapons/kar98k/fire-04.mp3",
+            "weapons/kar98k/fire-05.mp3",
+            "weapons/kar98k/fire-06.mp3"
+          ]
+        },
+        "fireDistant": {
+          "priority": "P1",
+          "variations": 4,
+          "trigger": "every round, listener beyond 150 m (replaces fire; crossfade 100-200 m)",
+          "maxDurationS": 1.5,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/kar98k/fireDistant-01.mp3",
+            "weapons/kar98k/fireDistant-02.mp3",
+            "weapons/kar98k/fireDistant-03.mp3",
+            "weapons/kar98k/fireDistant-04.mp3"
+          ]
+        },
+        "boltCycle": {
+          "priority": "P0",
+          "variations": 4,
+          "trigger": "after every shot that leaves ammo > 0, ~0.35 s after fire: bolt up-back-forward-down",
+          "maxDurationS": 1.0,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/kar98k/boltCycle-01.mp3",
+            "weapons/kar98k/boltCycle-02.mp3",
+            "weapons/kar98k/boltCycle-03.mp3",
+            "weapons/kar98k/boltCycle-04.mp3"
+          ]
+        },
+        "reloadBoltOpen": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "reload cycle (2.6s sim reloadTime); stages placed on the reload animation timeline: bolt up and back",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/kar98k/reloadBoltOpen-01.mp3",
+            "weapons/kar98k/reloadBoltOpen-02.mp3"
+          ]
+        },
+        "reloadStripperClip": {
+          "priority": "P0",
+          "variations": 3,
+          "trigger": "stripper clip seated and 5 rounds thumbed down",
+          "maxDurationS": 1.5,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/kar98k/reloadStripperClip-01.mp3",
+            "weapons/kar98k/reloadStripperClip-02.mp3",
+            "weapons/kar98k/reloadStripperClip-03.mp3"
+          ]
+        },
+        "reloadBoltClose": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "end of reload: bolt forward/down, clip flicks out",
+          "maxDurationS": 0.8,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/kar98k/reloadBoltClose-01.mp3",
+            "weapons/kar98k/reloadBoltClose-02.mp3"
+          ]
+        },
+        "stoppageClick": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage starts (startStoppage): hammer/striker falls, no bang",
+          "maxDurationS": 0.4,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/kar98k/stoppageClick-01.mp3",
+            "weapons/kar98k/stoppageClick-02.mp3"
+          ]
+        },
+        "stoppageClear": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage cleared: bolt worked hard (may reuse a slower boltCycle take)",
+          "maxDurationS": 1.2,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/kar98k/stoppageClear-01.mp3",
+            "weapons/kar98k/stoppageClear-02.mp3"
+          ]
+        }
+      }
+    },
+    "m1-carbine": {
+      "faction": "us",
+      "simKind": "carbine",
+      "model": "m1-carbine.fbx",
+      "label": "M1 Carbine",
+      "action": ".30 Carbine semi-auto, 15-rd box",
+      "cyclicRpm": null,
+      "clips": {
+        "fire": {
+          "priority": "P0",
+          "variations": 6,
+          "trigger": "every round discharged (one play per round, even in automatic fire)",
+          "maxDurationS": 0.9,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/m1-carbine/fire-01.mp3",
+            "weapons/m1-carbine/fire-02.mp3",
+            "weapons/m1-carbine/fire-03.mp3",
+            "weapons/m1-carbine/fire-04.mp3",
+            "weapons/m1-carbine/fire-05.mp3",
+            "weapons/m1-carbine/fire-06.mp3"
+          ]
+        },
+        "fireDistant": {
+          "priority": "P1",
+          "variations": 4,
+          "trigger": "every round, listener beyond 150 m (replaces fire; crossfade 100-200 m)",
+          "maxDurationS": 1.5,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/m1-carbine/fireDistant-01.mp3",
+            "weapons/m1-carbine/fireDistant-02.mp3",
+            "weapons/m1-carbine/fireDistant-03.mp3",
+            "weapons/m1-carbine/fireDistant-04.mp3"
+          ]
+        },
+        "reloadMagOut": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "reload cycle (2.25s sim reloadTime); stages placed on the reload animation timeline: mag release + mag out",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1-carbine/reloadMagOut-01.mp3",
+            "weapons/m1-carbine/reloadMagOut-02.mp3"
+          ]
+        },
+        "reloadMagIn": {
+          "priority": "P0",
+          "variations": 3,
+          "trigger": "new magazine seated",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1-carbine/reloadMagIn-01.mp3",
+            "weapons/m1-carbine/reloadMagIn-02.mp3",
+            "weapons/m1-carbine/reloadMagIn-03.mp3"
+          ]
+        },
+        "reloadCharge": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "end of reload: operating slide pulled and released",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1-carbine/reloadCharge-01.mp3",
+            "weapons/m1-carbine/reloadCharge-02.mp3"
+          ]
+        },
+        "stoppageClick": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage starts (startStoppage): hammer/striker falls, no bang",
+          "maxDurationS": 0.4,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1-carbine/stoppageClick-01.mp3",
+            "weapons/m1-carbine/stoppageClick-02.mp3"
+          ]
+        },
+        "stoppageClear": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage cleared: slide racked",
+          "maxDurationS": 1.2,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1-carbine/stoppageClear-01.mp3",
+            "weapons/m1-carbine/stoppageClear-02.mp3"
+          ]
+        }
+      }
+    },
+    "thompson": {
+      "faction": "us",
+      "simKind": "carbine",
+      "model": "thompson.fbx",
+      "label": "Thompson M1A1",
+      "action": ".45 ACP SMG, 20/30-rd box, open bolt",
+      "cyclicRpm": 700,
+      "clips": {
+        "fire": {
+          "priority": "P0",
+          "variations": 8,
+          "trigger": "every round discharged (one play per round, even in automatic fire)",
+          "maxDurationS": 0.9,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/thompson/fire-01.mp3",
+            "weapons/thompson/fire-02.mp3",
+            "weapons/thompson/fire-03.mp3",
+            "weapons/thompson/fire-04.mp3",
+            "weapons/thompson/fire-05.mp3",
+            "weapons/thompson/fire-06.mp3",
+            "weapons/thompson/fire-07.mp3",
+            "weapons/thompson/fire-08.mp3"
+          ]
+        },
+        "fireDistant": {
+          "priority": "P1",
+          "variations": 4,
+          "trigger": "every round, listener beyond 150 m (replaces fire; crossfade 100-200 m)",
+          "maxDurationS": 1.5,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/thompson/fireDistant-01.mp3",
+            "weapons/thompson/fireDistant-02.mp3",
+            "weapons/thompson/fireDistant-03.mp3",
+            "weapons/thompson/fireDistant-04.mp3"
+          ]
+        },
+        "fireTail": {
+          "priority": "P1",
+          "variations": 3,
+          "trigger": "once when a burst ends (no new round for 1 cyclic interval)",
+          "maxDurationS": 2.5,
+          "role": "tail",
+          "singleShot": false,
+          "noTransient": true,
+          "files": [
+            "weapons/thompson/fireTail-01.mp3",
+            "weapons/thompson/fireTail-02.mp3",
+            "weapons/thompson/fireTail-03.mp3"
+          ]
+        },
+        "reloadMagOut": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "reload cycle (2.25s sim reloadTime); stages placed on the reload animation timeline: mag release + stick mag out",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/thompson/reloadMagOut-01.mp3",
+            "weapons/thompson/reloadMagOut-02.mp3"
+          ]
+        },
+        "reloadMagIn": {
+          "priority": "P0",
+          "variations": 3,
+          "trigger": "stick magazine seated",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/thompson/reloadMagIn-01.mp3",
+            "weapons/thompson/reloadMagIn-02.mp3",
+            "weapons/thompson/reloadMagIn-03.mp3"
+          ]
+        },
+        "reloadCharge": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "end of reload: cocking knob pulled back",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/thompson/reloadCharge-01.mp3",
+            "weapons/thompson/reloadCharge-02.mp3"
+          ]
+        },
+        "stoppageClick": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage starts (startStoppage): hammer/striker falls, no bang",
+          "maxDurationS": 0.4,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/thompson/stoppageClick-01.mp3",
+            "weapons/thompson/stoppageClick-02.mp3"
+          ]
+        },
+        "stoppageClear": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage cleared: bolt pulled back",
+          "maxDurationS": 1.2,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/thompson/stoppageClear-01.mp3",
+            "weapons/thompson/stoppageClear-02.mp3"
+          ]
+        }
+      }
+    },
+    "fg42": {
+      "faction": "ge",
+      "simKind": "carbine",
+      "model": "fg42.fbx",
+      "label": "FG 42",
+      "action": "7.92 select-fire, 20-rd side mag",
+      "cyclicRpm": 750,
+      "clips": {
+        "fire": {
+          "priority": "P0",
+          "variations": 8,
+          "trigger": "every round discharged (one play per round, even in automatic fire)",
+          "maxDurationS": 0.9,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/fg42/fire-01.mp3",
+            "weapons/fg42/fire-02.mp3",
+            "weapons/fg42/fire-03.mp3",
+            "weapons/fg42/fire-04.mp3",
+            "weapons/fg42/fire-05.mp3",
+            "weapons/fg42/fire-06.mp3",
+            "weapons/fg42/fire-07.mp3",
+            "weapons/fg42/fire-08.mp3"
+          ]
+        },
+        "fireDistant": {
+          "priority": "P1",
+          "variations": 4,
+          "trigger": "every round, listener beyond 150 m (replaces fire; crossfade 100-200 m)",
+          "maxDurationS": 1.5,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/fg42/fireDistant-01.mp3",
+            "weapons/fg42/fireDistant-02.mp3",
+            "weapons/fg42/fireDistant-03.mp3",
+            "weapons/fg42/fireDistant-04.mp3"
+          ]
+        },
+        "fireTail": {
+          "priority": "P1",
+          "variations": 3,
+          "trigger": "once when a burst ends (no new round for 1 cyclic interval)",
+          "maxDurationS": 2.5,
+          "role": "tail",
+          "singleShot": false,
+          "noTransient": true,
+          "files": [
+            "weapons/fg42/fireTail-01.mp3",
+            "weapons/fg42/fireTail-02.mp3",
+            "weapons/fg42/fireTail-03.mp3"
+          ]
+        },
+        "reloadMagOut": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "reload cycle (2.25s sim reloadTime); stages placed on the reload animation timeline: side magazine out",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/fg42/reloadMagOut-01.mp3",
+            "weapons/fg42/reloadMagOut-02.mp3"
+          ]
+        },
+        "reloadMagIn": {
+          "priority": "P0",
+          "variations": 3,
+          "trigger": "side magazine seated",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/fg42/reloadMagIn-01.mp3",
+            "weapons/fg42/reloadMagIn-02.mp3",
+            "weapons/fg42/reloadMagIn-03.mp3"
+          ]
+        },
+        "reloadCharge": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "end of reload: charging handle back",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/fg42/reloadCharge-01.mp3",
+            "weapons/fg42/reloadCharge-02.mp3"
+          ]
+        },
+        "stoppageClick": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage starts (startStoppage): hammer/striker falls, no bang",
+          "maxDurationS": 0.4,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/fg42/stoppageClick-01.mp3",
+            "weapons/fg42/stoppageClick-02.mp3"
+          ]
+        },
+        "stoppageClear": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage cleared: bolt pulled back",
+          "maxDurationS": 1.2,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/fg42/stoppageClear-01.mp3",
+            "weapons/fg42/stoppageClear-02.mp3"
+          ]
+        }
+      }
+    },
+    "mp40": {
+      "faction": "ge",
+      "simKind": "carbine",
+      "model": "mp40.fbx",
+      "label": "MP 40",
+      "action": "9 mm SMG, 32-rd stick, open bolt",
+      "cyclicRpm": 550,
+      "clips": {
+        "fire": {
+          "priority": "P0",
+          "variations": 8,
+          "trigger": "every round discharged (one play per round, even in automatic fire)",
+          "maxDurationS": 0.9,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/mp40/fire-01.mp3",
+            "weapons/mp40/fire-02.mp3",
+            "weapons/mp40/fire-03.mp3",
+            "weapons/mp40/fire-04.mp3",
+            "weapons/mp40/fire-05.mp3",
+            "weapons/mp40/fire-06.mp3",
+            "weapons/mp40/fire-07.mp3",
+            "weapons/mp40/fire-08.mp3"
+          ]
+        },
+        "fireDistant": {
+          "priority": "P1",
+          "variations": 4,
+          "trigger": "every round, listener beyond 150 m (replaces fire; crossfade 100-200 m)",
+          "maxDurationS": 1.5,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/mp40/fireDistant-01.mp3",
+            "weapons/mp40/fireDistant-02.mp3",
+            "weapons/mp40/fireDistant-03.mp3",
+            "weapons/mp40/fireDistant-04.mp3"
+          ]
+        },
+        "fireTail": {
+          "priority": "P1",
+          "variations": 3,
+          "trigger": "once when a burst ends (no new round for 1 cyclic interval)",
+          "maxDurationS": 2.5,
+          "role": "tail",
+          "singleShot": false,
+          "noTransient": true,
+          "files": [
+            "weapons/mp40/fireTail-01.mp3",
+            "weapons/mp40/fireTail-02.mp3",
+            "weapons/mp40/fireTail-03.mp3"
+          ]
+        },
+        "reloadMagOut": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "reload cycle (2.25s sim reloadTime); stages placed on the reload animation timeline: stick magazine out",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/mp40/reloadMagOut-01.mp3",
+            "weapons/mp40/reloadMagOut-02.mp3"
+          ]
+        },
+        "reloadMagIn": {
+          "priority": "P0",
+          "variations": 3,
+          "trigger": "stick magazine seated",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/mp40/reloadMagIn-01.mp3",
+            "weapons/mp40/reloadMagIn-02.mp3",
+            "weapons/mp40/reloadMagIn-03.mp3"
+          ]
+        },
+        "reloadCharge": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "end of reload: bolt handle back into safety notch",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/mp40/reloadCharge-01.mp3",
+            "weapons/mp40/reloadCharge-02.mp3"
+          ]
+        },
+        "stoppageClick": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage starts (startStoppage): hammer/striker falls, no bang",
+          "maxDurationS": 0.4,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/mp40/stoppageClick-01.mp3",
+            "weapons/mp40/stoppageClick-02.mp3"
+          ]
+        },
+        "stoppageClear": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage cleared: bolt pulled back",
+          "maxDurationS": 1.2,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/mp40/stoppageClear-01.mp3",
+            "weapons/mp40/stoppageClear-02.mp3"
+          ]
+        }
+      }
+    },
+    "m1919a6": {
+      "faction": "us",
+      "simKind": "lmg",
+      "model": "m1919a6.fbx",
+      "label": "Browning M1919A6",
+      "action": ".30-06 belt-fed LMG, closed bolt",
+      "cyclicRpm": 450,
+      "clips": {
+        "fire": {
+          "priority": "P0",
+          "variations": 10,
+          "trigger": "every round discharged (one play per round, even in automatic fire)",
+          "maxDurationS": 0.9,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/m1919a6/fire-01.mp3",
+            "weapons/m1919a6/fire-02.mp3",
+            "weapons/m1919a6/fire-03.mp3",
+            "weapons/m1919a6/fire-04.mp3",
+            "weapons/m1919a6/fire-05.mp3",
+            "weapons/m1919a6/fire-06.mp3",
+            "weapons/m1919a6/fire-07.mp3",
+            "weapons/m1919a6/fire-08.mp3",
+            "weapons/m1919a6/fire-09.mp3",
+            "weapons/m1919a6/fire-10.mp3"
+          ]
+        },
+        "fireDistant": {
+          "priority": "P1",
+          "variations": 4,
+          "trigger": "every round, listener beyond 150 m (replaces fire; crossfade 100-200 m)",
+          "maxDurationS": 1.5,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/m1919a6/fireDistant-01.mp3",
+            "weapons/m1919a6/fireDistant-02.mp3",
+            "weapons/m1919a6/fireDistant-03.mp3",
+            "weapons/m1919a6/fireDistant-04.mp3"
+          ]
+        },
+        "fireTail": {
+          "priority": "P1",
+          "variations": 3,
+          "trigger": "once when a burst ends (no new round for 1 cyclic interval)",
+          "maxDurationS": 2.5,
+          "role": "tail",
+          "singleShot": false,
+          "noTransient": true,
+          "files": [
+            "weapons/m1919a6/fireTail-01.mp3",
+            "weapons/m1919a6/fireTail-02.mp3",
+            "weapons/m1919a6/fireTail-03.mp3"
+          ]
+        },
+        "reloadCoverOpen": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "reload cycle (4.4s sim reloadTime); stages placed on the reload animation timeline: feed cover opened",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1919a6/reloadCoverOpen-01.mp3",
+            "weapons/m1919a6/reloadCoverOpen-02.mp3"
+          ]
+        },
+        "reloadBeltLay": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "belt laid on the feed tray (links rattle)",
+          "maxDurationS": 1.2,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1919a6/reloadBeltLay-01.mp3",
+            "weapons/m1919a6/reloadBeltLay-02.mp3"
+          ]
+        },
+        "reloadCoverClose": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "feed cover slammed shut",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1919a6/reloadCoverClose-01.mp3",
+            "weapons/m1919a6/reloadCoverClose-02.mp3"
+          ]
+        },
+        "reloadCharge": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "end of reload: charging handle cycled",
+          "maxDurationS": 0.8,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1919a6/reloadCharge-01.mp3",
+            "weapons/m1919a6/reloadCharge-02.mp3"
+          ]
+        },
+        "bipodDeploy": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "gunner settles prone (backend fx.bipod false -> true)",
+          "maxDurationS": 0.8,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1919a6/bipodDeploy-01.mp3",
+            "weapons/m1919a6/bipodDeploy-02.mp3"
+          ]
+        },
+        "bipodFold": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "gunner leaves prone (fx.bipod true -> false)",
+          "maxDurationS": 0.8,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1919a6/bipodFold-01.mp3",
+            "weapons/m1919a6/bipodFold-02.mp3"
+          ]
+        },
+        "stoppageClick": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage starts (startStoppage): hammer/striker falls, no bang",
+          "maxDurationS": 0.4,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1919a6/stoppageClick-01.mp3",
+            "weapons/m1919a6/stoppageClick-02.mp3"
+          ]
+        },
+        "stoppageClear": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage cleared: charging handle yanked",
+          "maxDurationS": 1.2,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1919a6/stoppageClear-01.mp3",
+            "weapons/m1919a6/stoppageClear-02.mp3"
+          ]
+        }
+      }
+    },
+    "mg42": {
+      "faction": "ge",
+      "simKind": "lmg",
+      "model": "mg42.fbx",
+      "label": "MG 42",
+      "action": "7.92 belt-fed GPMG, open bolt",
+      "cyclicRpm": 1200,
+      "clips": {
+        "fire": {
+          "priority": "P0",
+          "variations": 12,
+          "trigger": "every round discharged (one play per round, even in automatic fire)",
+          "maxDurationS": 0.9,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/mg42/fire-01.mp3",
+            "weapons/mg42/fire-02.mp3",
+            "weapons/mg42/fire-03.mp3",
+            "weapons/mg42/fire-04.mp3",
+            "weapons/mg42/fire-05.mp3",
+            "weapons/mg42/fire-06.mp3",
+            "weapons/mg42/fire-07.mp3",
+            "weapons/mg42/fire-08.mp3",
+            "weapons/mg42/fire-09.mp3",
+            "weapons/mg42/fire-10.mp3",
+            "weapons/mg42/fire-11.mp3",
+            "weapons/mg42/fire-12.mp3"
+          ]
+        },
+        "fireDistant": {
+          "priority": "P1",
+          "variations": 4,
+          "trigger": "every round, listener beyond 150 m (replaces fire; crossfade 100-200 m)",
+          "maxDurationS": 1.5,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/mg42/fireDistant-01.mp3",
+            "weapons/mg42/fireDistant-02.mp3",
+            "weapons/mg42/fireDistant-03.mp3",
+            "weapons/mg42/fireDistant-04.mp3"
+          ]
+        },
+        "fireTail": {
+          "priority": "P1",
+          "variations": 3,
+          "trigger": "once when a burst ends (no new round for 1 cyclic interval)",
+          "maxDurationS": 2.5,
+          "role": "tail",
+          "singleShot": false,
+          "noTransient": true,
+          "files": [
+            "weapons/mg42/fireTail-01.mp3",
+            "weapons/mg42/fireTail-02.mp3",
+            "weapons/mg42/fireTail-03.mp3"
+          ]
+        },
+        "reloadCoverOpen": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "reload cycle (4.4s sim reloadTime); stages placed on the reload animation timeline: feed cover opened",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/mg42/reloadCoverOpen-01.mp3",
+            "weapons/mg42/reloadCoverOpen-02.mp3"
+          ]
+        },
+        "reloadBeltLay": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "belt laid on the feed tray (links rattle)",
+          "maxDurationS": 1.2,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/mg42/reloadBeltLay-01.mp3",
+            "weapons/mg42/reloadBeltLay-02.mp3"
+          ]
+        },
+        "reloadCoverClose": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "feed cover slammed shut",
+          "maxDurationS": 0.6,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/mg42/reloadCoverClose-01.mp3",
+            "weapons/mg42/reloadCoverClose-02.mp3"
+          ]
+        },
+        "reloadCharge": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "end of reload: charging handle cycled",
+          "maxDurationS": 0.8,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/mg42/reloadCharge-01.mp3",
+            "weapons/mg42/reloadCharge-02.mp3"
+          ]
+        },
+        "bipodDeploy": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "gunner settles prone (backend fx.bipod false -> true)",
+          "maxDurationS": 0.8,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/mg42/bipodDeploy-01.mp3",
+            "weapons/mg42/bipodDeploy-02.mp3"
+          ]
+        },
+        "bipodFold": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "gunner leaves prone (fx.bipod true -> false)",
+          "maxDurationS": 0.8,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/mg42/bipodFold-01.mp3",
+            "weapons/mg42/bipodFold-02.mp3"
+          ]
+        },
+        "stoppageClick": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage starts (startStoppage): hammer/striker falls, no bang",
+          "maxDurationS": 0.4,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/mg42/stoppageClick-01.mp3",
+            "weapons/mg42/stoppageClick-02.mp3"
+          ]
+        },
+        "stoppageClear": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage cleared: charging handle yanked",
+          "maxDurationS": 1.2,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/mg42/stoppageClear-01.mp3",
+            "weapons/mg42/stoppageClear-02.mp3"
+          ]
+        },
+        "barrelChange": {
+          "priority": "P2",
+          "variations": 2,
+          "trigger": "optional: barrel swap if heat model ever triggers one (not wired today)",
+          "maxDurationS": 2.5,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/mg42/barrelChange-01.mp3",
+            "weapons/mg42/barrelChange-02.mp3"
+          ]
+        }
+      }
+    },
+    "m1911a1": {
+      "faction": "us",
+      "simKind": "pistol",
+      "model": "m1911a1.fbx",
+      "label": "Colt M1911A1",
+      "action": ".45 ACP pistol, 7-rd mag",
+      "cyclicRpm": null,
+      "clips": {
+        "fire": {
+          "priority": "P0",
+          "variations": 6,
+          "trigger": "every round discharged (one play per round, even in automatic fire)",
+          "maxDurationS": 0.9,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/m1911a1/fire-01.mp3",
+            "weapons/m1911a1/fire-02.mp3",
+            "weapons/m1911a1/fire-03.mp3",
+            "weapons/m1911a1/fire-04.mp3",
+            "weapons/m1911a1/fire-05.mp3",
+            "weapons/m1911a1/fire-06.mp3"
+          ]
+        },
+        "fireDistant": {
+          "priority": "P1",
+          "variations": 3,
+          "trigger": "every round, listener beyond 150 m (replaces fire; crossfade 100-200 m)",
+          "maxDurationS": 1.5,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/m1911a1/fireDistant-01.mp3",
+            "weapons/m1911a1/fireDistant-02.mp3",
+            "weapons/m1911a1/fireDistant-03.mp3"
+          ]
+        },
+        "reloadMagOut": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "reload cycle (2.0s sim reloadTime); stages placed on the reload animation timeline: mag release + mag out",
+          "maxDurationS": 0.5,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1911a1/reloadMagOut-01.mp3",
+            "weapons/m1911a1/reloadMagOut-02.mp3"
+          ]
+        },
+        "reloadMagIn": {
+          "priority": "P0",
+          "variations": 3,
+          "trigger": "magazine seated",
+          "maxDurationS": 0.5,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1911a1/reloadMagIn-01.mp3",
+            "weapons/m1911a1/reloadMagIn-02.mp3",
+            "weapons/m1911a1/reloadMagIn-03.mp3"
+          ]
+        },
+        "reloadSlideRelease": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "end of reload: slide drops home",
+          "maxDurationS": 0.5,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1911a1/reloadSlideRelease-01.mp3",
+            "weapons/m1911a1/reloadSlideRelease-02.mp3"
+          ]
+        },
+        "stoppageClick": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage starts (startStoppage): hammer/striker falls, no bang",
+          "maxDurationS": 0.4,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1911a1/stoppageClick-01.mp3",
+            "weapons/m1911a1/stoppageClick-02.mp3"
+          ]
+        },
+        "stoppageClear": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage cleared: slide racked",
+          "maxDurationS": 1.2,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/m1911a1/stoppageClear-01.mp3",
+            "weapons/m1911a1/stoppageClear-02.mp3"
+          ]
+        }
+      }
+    },
+    "p38": {
+      "faction": "ge",
+      "simKind": "pistol",
+      "model": "p38.fbx",
+      "label": "Walther P38",
+      "action": "9 mm pistol, 8-rd mag",
+      "cyclicRpm": null,
+      "clips": {
+        "fire": {
+          "priority": "P0",
+          "variations": 6,
+          "trigger": "every round discharged (one play per round, even in automatic fire)",
+          "maxDurationS": 0.9,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/p38/fire-01.mp3",
+            "weapons/p38/fire-02.mp3",
+            "weapons/p38/fire-03.mp3",
+            "weapons/p38/fire-04.mp3",
+            "weapons/p38/fire-05.mp3",
+            "weapons/p38/fire-06.mp3"
+          ]
+        },
+        "fireDistant": {
+          "priority": "P1",
+          "variations": 3,
+          "trigger": "every round, listener beyond 150 m (replaces fire; crossfade 100-200 m)",
+          "maxDurationS": 1.5,
+          "role": "shot",
+          "singleShot": true,
+          "files": [
+            "weapons/p38/fireDistant-01.mp3",
+            "weapons/p38/fireDistant-02.mp3",
+            "weapons/p38/fireDistant-03.mp3"
+          ]
+        },
+        "reloadMagOut": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "reload cycle (2.0s sim reloadTime); stages placed on the reload animation timeline: mag release + mag out",
+          "maxDurationS": 0.5,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/p38/reloadMagOut-01.mp3",
+            "weapons/p38/reloadMagOut-02.mp3"
+          ]
+        },
+        "reloadMagIn": {
+          "priority": "P0",
+          "variations": 3,
+          "trigger": "magazine seated",
+          "maxDurationS": 0.5,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/p38/reloadMagIn-01.mp3",
+            "weapons/p38/reloadMagIn-02.mp3",
+            "weapons/p38/reloadMagIn-03.mp3"
+          ]
+        },
+        "reloadSlideRelease": {
+          "priority": "P0",
+          "variations": 2,
+          "trigger": "end of reload: slide drops home",
+          "maxDurationS": 0.5,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/p38/reloadSlideRelease-01.mp3",
+            "weapons/p38/reloadSlideRelease-02.mp3"
+          ]
+        },
+        "stoppageClick": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage starts (startStoppage): hammer/striker falls, no bang",
+          "maxDurationS": 0.4,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/p38/stoppageClick-01.mp3",
+            "weapons/p38/stoppageClick-02.mp3"
+          ]
+        },
+        "stoppageClear": {
+          "priority": "P1",
+          "variations": 2,
+          "trigger": "stoppage cleared: slide racked",
+          "maxDurationS": 1.2,
+          "role": "foley",
+          "singleShot": false,
+          "files": [
+            "weapons/p38/stoppageClear-01.mp3",
+            "weapons/p38/stoppageClear-02.mp3"
+          ]
+        }
+      }
+    }
+  },
+  "shared": {
+    "casingRifle": {
+      "priority": "P1",
+      "variations": 4,
+      "trigger": "per round from rifle-calibre weapons within 25 m of listener, 0.3-0.6 s after fire",
+      "maxDurationS": 0.8,
+      "role": "foley",
+      "singleShot": false,
+      "usedBy": [
+        "m1-garand",
+        "kar98k",
+        "fg42"
+      ],
+      "files": [
+        "weapons/shared/casingRifle-01.mp3",
+        "weapons/shared/casingRifle-02.mp3",
+        "weapons/shared/casingRifle-03.mp3",
+        "weapons/shared/casingRifle-04.mp3"
+      ]
+    },
+    "casingPistol": {
+      "priority": "P1",
+      "variations": 4,
+      "trigger": "per round from pistol-calibre weapons within 25 m",
+      "maxDurationS": 0.8,
+      "role": "foley",
+      "singleShot": false,
+      "usedBy": [
+        "m1-carbine",
+        "thompson",
+        "mp40",
+        "m1911a1",
+        "p38"
+      ],
+      "files": [
+        "weapons/shared/casingPistol-01.mp3",
+        "weapons/shared/casingPistol-02.mp3",
+        "weapons/shared/casingPistol-03.mp3",
+        "weapons/shared/casingPistol-04.mp3"
+      ]
+    },
+    "casingBeltLink": {
+      "priority": "P1",
+      "variations": 4,
+      "trigger": "per round from belt-fed weapons within 25 m (brass + link)",
+      "maxDurationS": 0.8,
+      "role": "foley",
+      "singleShot": false,
+      "usedBy": [
+        "m1919a6",
+        "mg42"
+      ],
+      "files": [
+        "weapons/shared/casingBeltLink-01.mp3",
+        "weapons/shared/casingBeltLink-02.mp3",
+        "weapons/shared/casingBeltLink-03.mp3",
+        "weapons/shared/casingBeltLink-04.mp3"
+      ]
+    },
+    "crackSupersonic": {
+      "priority": "P1",
+      "variations": 6,
+      "trigger": "supersonic round passes within 8 m of listener (all rifle-calibre + 9 mm)",
+      "maxDurationS": 0.3,
+      "role": "flyby",
+      "singleShot": true,
+      "files": [
+        "weapons/shared/crackSupersonic-01.mp3",
+        "weapons/shared/crackSupersonic-02.mp3",
+        "weapons/shared/crackSupersonic-03.mp3",
+        "weapons/shared/crackSupersonic-04.mp3",
+        "weapons/shared/crackSupersonic-05.mp3",
+        "weapons/shared/crackSupersonic-06.mp3"
+      ]
+    },
+    "whizSubsonic": {
+      "priority": "P1",
+      "variations": 4,
+      "trigger": ".45 ACP round passes within 5 m of listener",
+      "maxDurationS": 0.4,
+      "role": "flyby",
+      "singleShot": true,
+      "files": [
+        "weapons/shared/whizSubsonic-01.mp3",
+        "weapons/shared/whizSubsonic-02.mp3",
+        "weapons/shared/whizSubsonic-03.mp3",
+        "weapons/shared/whizSubsonic-04.mp3"
+      ]
+    }
+  },
+  "totals": {
+    "byPriority": {
+      "P0": 154,
+      "P1": 123,
+      "P2": 2
+    },
+    "all": 279,
+    "singleShotClips": 124
+  }
+}

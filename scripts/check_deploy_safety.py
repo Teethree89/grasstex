@@ -4,6 +4,7 @@
 Feeds prepare_incremental_deploy.py a remote hash state that lists sidecar JSON, FBX
 soldier-animation lab files, models and a retired module, and asserts that only the retired
 battle module is deleted, that a mass deletion is refused, and that a protected upload is refused.
+The repo's own Motion Lab files (MANAGED_LAB) are the one lab exception: uploaded, never deleted.
 Run from the repo root (CI's deploy-plan job does).
 """
 from __future__ import annotations
@@ -18,6 +19,8 @@ PROTECTED_REMOTE = [
     "fbx-animation-lab.html",
     "fbx-soldier-animation-lab/index.html",
     "fbx-soldier-animation-lab/clips/walk.json",
+    "labs/hand-placed-lab.html",
+    "Assets/soldiers/us-captain.fbx.json",
     "battle/modules/sidecar.json",
     "battle/modules/77-animation-lab.js",
     "state/ai-policy.json",
@@ -64,6 +67,15 @@ def main() -> int:
     for remote in PROTECTED_REMOTE:
         if not P.is_protected(remote):
             failures.append("not protected: " + remote)
+    # The repo's own Motion Lab files are the one lab exception: uploaded, never deleted.
+    code, deletes, out = plan(PROTECTED_REMOTE + [f"labs/{n}" for n in ("gone-lab.php",)])
+    for lab in P.MANAGED_LAB:
+        if P.is_protected(lab):
+            failures.append("repo-owned lab file wrongly protected: " + lab)
+        if not any(remote == lab for _, remote in P.STATIC_FILES):
+            failures.append("repo-owned lab file is not deployed: " + lab)
+    if "labs/" in deletes:
+        failures.append("a lab file was scheduled for deletion")
     for managed in sorted(P.MANAGED_JSON):
         if P.is_protected(managed):
             failures.append("deploy-owned JSON wrongly protected: " + managed)

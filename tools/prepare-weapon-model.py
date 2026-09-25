@@ -36,6 +36,10 @@ def args():
     parser.add_argument("--bore", type=float, default=0.03, help="height of the barrel top at the muzzle")
     parser.add_argument("--fold-bipod", action="store_true",
                         help="fold deployed bipod legs up along the barrel (for carrying and hip fire)")
+    parser.add_argument("--bipod-drop", type=float, default=0.13,
+                        help="legs are the geometry at least this far below the bore line")
+    parser.add_argument("--bipod-ahead", type=float, default=0.20,
+                        help="... and at least this far ahead of the grip origin")
     return parser.parse_args(values)
 
 
@@ -44,15 +48,16 @@ def section_height(verts, axis, lo, hi):
     return (max(zs) - min(zs)) if zs else 0.0
 
 
-def fold_bipod(mesh, bore):
+def fold_bipod(mesh, bore, drop=0.13, ahead=0.20):
     """Fold deployed bipod legs forward along the barrel.
 
     In the prepared layout (muzzle toward -Y, up +Z, grip origin at 0, barrel top at `bore`) the
-    legs are the geometry more than ~13 cm below the bore line and at least 20 cm ahead of the grip
-    (the pistol grip, trigger and stock are behind that). They are rotated -90 degrees about X
+    legs are the geometry more than `drop` below the bore line and at least `ahead` in front of the
+    grip (the pistol grip, trigger and stock are behind that). Legs modelled as long single quads
+    (FG42) need a smaller `drop` so the selection reaches up to the hinge. They are rotated -90 degrees about X
     around their hinge (the top of the legs) so they point at the muzzle instead of the ground.
     """
-    legs = [v for v in mesh.data.vertices if v.co.y < -0.20 and v.co.z < bore - 0.13]
+    legs = [v for v in mesh.data.vertices if v.co.y < -ahead and v.co.z < bore - drop]
     if len(legs) < 8:
         print("FOLD no bipod legs found")
         return
@@ -103,7 +108,7 @@ def main():
     mesh.data.transform(Matrix.Translation((-xmid, o.butt - ymax, o.bore - muzzle_top)))
 
     if o.fold_bipod:
-        fold_bipod(mesh, o.bore)
+        fold_bipod(mesh, o.bore, o.bipod_drop, o.bipod_ahead)
 
     # Albedo only, downscaled and re-embedded under a unique name.
     for slot in mesh.material_slots:
