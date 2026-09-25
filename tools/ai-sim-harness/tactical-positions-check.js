@@ -41,6 +41,15 @@ function fixture({physical=true,inside=false}={}){
 test('one station has one assignee, including soldier id zero and another faction',()=>{
   const f=fixture();assert.equal(f.s.id,0);const t=f.claim();assert.ok(t);f.other.faction='ge';assert.equal(f.claim(f.other),null);assert.equal(f.P.current(f.s),t);assert.equal(f.P.summary(f.sim).claimCollisionsPrevented,1);
 });
+test('selection skips a held window without calling it a collision',()=>{
+  const f=fixture();assert.ok(f.claim());f.P.release(f.other,f.sim,'test');f.other._nextStationClaimAt=0;
+  const before=f.P.summary(f.sim);
+  f.systems['building-hardpoints'].onCommanderTick(f.sim);
+  const after=f.P.summary(f.sim);
+  assert.equal(after.claimCollisionsPrevented,before.claimCollisionsPrevented);
+  assert.ok(after.reservedStationsSkipped>before.reservedStationsSkipped,'the held window was skipped');
+  assert.equal(f.P.current(f.other),null);
+});
 test('personal target loss, target death and a target behind the window retain the same task',()=>{
   const f=fixture();const t=f.claim();f.s.target=null;f.sim.time=15;f.sq.contact=null;
   for(let i=0;i<30;i++)f.tick();assert.equal(f.P.current(f.s),t);

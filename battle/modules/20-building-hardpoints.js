@@ -25,6 +25,7 @@
       releaseReasons: {},
       reassignments: 0,
       claimCollisionsPrevented: 0,
+      reservedStationsSkipped: 0,
       ingressRoutesCreated: 0,
       ingressRoutesInvalidated: 0,
       releasedLifetime: 0,
@@ -276,8 +277,11 @@
         dz = threat.z - st.windowZ,
         len = Math.hypot(dx, dz) || 1;
       if ((dx * st.normalX + dz * st.normalZ) / len < 0.32) return false;
+      /* Passing over a window someone else holds is ordinary selection, not a collision: counting it
+         as one made the collision figure swing 23 to 3,838 with how many men searched near taken
+         windows, while bodies at stations never stacked. */
       if (c.reservations.has(st.id)) {
-        c.stats.claimCollisionsPrevented++;
+        c.stats.reservedStationsSkipped++;
         return false;
       }
       return !N.lineOfSightBlocked(st, threat, 1.08, 1.45);
