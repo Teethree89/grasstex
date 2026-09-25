@@ -26,7 +26,9 @@ original docs (roadmaps, lab notes, measurements) are in git history at `1a5b0cf
 | Learning/telemetry backend | `battle_learning.php`, `battle_policy.php`, `battle_log*.php`, `battle_metrics.php` ("What We Learned" page) | Active. |
 | FBX Motion Lab | `labs/fbx-animation-lab.html` (calibration workbench), in-page **Motion Lab** button | Previews clips; measures hand/weapon contacts and saves per-model sidecars the game loads. |
 
-In the page: **Start Battle** unpauses and unlocks audio (iOS needs the gesture).
+In the page: a load overlay (`BattleLoading`, in `battle_sim.html`) shows each boot phase (runtime
+scripts, scenario, terrain, soldiers/weapons/clips, cover, navigation and squads); the FBX backend
+reports per-file progress to it. **Start Battle** unpauses and unlocks audio (iOS needs the gesture).
 `window.__battle__` is the live `BattleSim`. HUD buttons: World Debug, AI Graph, Motion Lab.
 URL flags: `?seed=`, `?defender=us|ge`, `?soldiers=rifleman`, `?smooth=0`.
 

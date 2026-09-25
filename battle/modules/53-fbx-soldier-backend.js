@@ -550,34 +550,48 @@ function prepareWeapon(container,name,butt){
   mesh.isPickable=false;mesh.refreshBoundingInfo();
   return{name:name,mesh:mesh,muzzle:[0,n?ys/n:0,zmax]};
 }
+/* Per-file progress for the page's load bar (BattleLoading in battle_sim.html). Presentation only;
+   absent in the trainer, benchmark and Motion Lab. */
+function loadProgress(item,done,total,label){var L=root.BattleLoading;if(L&&L.progress)L.progress('soldiers',item,done,total,label);}
 function loadWeapons(scene,st,base){
   st.weapons={};var files={};
   Object.keys(WEAPON_MODELS).forEach(function(f){Object.keys(WEAPON_MODELS[f]).forEach(function(kind){weaponFiles(f,kind).forEach(function(file){
     files[file]=kind==='pistol'?PISTOL_BUTT:WEAPON_BUTT;if(WEAPON_BIPOD[file])files[WEAPON_BIPOD[file]]=WEAPON_BUTT;});});});
+  var total=Object.keys(files).length,done=0;loadProgress('weapons',0,total,'weapons');
   return Promise.all(Object.keys(files).map(function(file){
     return loadContainer(scene,base+'weapons/'+file).then(function(c){st.weapons[file]=prepareWeapon(c,file,files[file]);})
-      .catch(function(e){console.warn('[ANIM] weapon model '+file+' unavailable; box weapon stays',e);});
+      .catch(function(e){console.warn('[ANIM] weapon model '+file+' unavailable; box weapon stays',e);})
+      .then(function(){loadProgress('weapons',++done,total,'weapons');});
   }));
 }
 function loadLibrary(scene){
   var st=sceneState(scene);if(st.loading)return st.loading;
   var base=assetBase(),started=Date.now();
+  /* Each clip file loads once, however many keys use it. */
+  var byFile={};Object.keys(CLIPS).forEach(function(key){(byFile[CLIPS[key][0]]||(byFile[CLIPS[key][0]]=[])).push(key);});
+  var clipTotal=Object.keys(byFile).length,clipsDone=0;
+  var files={};Object.keys(MODELS).forEach(function(f){Object.keys(MODELS[f]).forEach(function(role){files[MODELS[f][role]]=1;});});
+  var modelTotal=Object.keys(files).length,modelsDone=0;
+  loadProgress('models',0,modelTotal,'models');
   st.loading=ensureLoader().then(function(){
-    var files={};Object.keys(MODELS).forEach(function(f){Object.keys(MODELS[f]).forEach(function(role){files[MODELS[f][role]]=1;});});
     return Promise.all(Object.keys(files).map(function(file){
-      return loadContainer(scene,base+'soldiers/'+file).then(function(c){st.libs[file]=prepareModel(c);st.libs[file].file=file;});
+      return loadContainer(scene,base+'soldiers/'+file).then(function(c){st.libs[file]=prepareModel(c);st.libs[file].file=file;loadProgress('models',++modelsDone,modelTotal,'models');});
     }).concat([loadWeapons(scene,st,base)]));
   }).then(function(){
-    /* Each file loads once, however many keys use it. Sidecars (per-model Motion Lab
-       calibrations) load alongside the clips; both must finish before retarget/solve. */
-    var byFile={};Object.keys(CLIPS).forEach(function(key){(byFile[CLIPS[key][0]]||(byFile[CLIPS[key][0]]=[])).push(key);});
+    /* Sidecars (per-model Motion Lab calibrations) load alongside the clips; both must finish
+       before retarget/solve. */
+    loadProgress('clips',0,clipTotal,'clips');
     var clipWork=Promise.all(Object.keys(byFile).map(function(file){
       return loadContainer(scene,base+'animations/'+encodeURIComponent(file)+'.fbx').then(function(c){
-        try{if(!st.src){st.src=sourceRig(c);st.bones=st.src.bones;}return byFile[file].map(function(key){return convertClip(c,key,CLIPS[key],st.bones);});}finally{c.dispose();}
+        try{if(!st.src){st.src=sourceRig(c);st.bones=st.src.bones;}return byFile[file].map(function(key){return convertClip(c,key,CLIPS[key],st.bones);});}finally{c.dispose();loadProgress('clips',++clipsDone,clipTotal,'clips');}
       });
     })).then(function(groups){return[].concat.apply([],groups);});
     var sideWork=loadSidecars(base,Object.keys(st.libs||{})).then(function(){return null;});
     return Promise.all([clipWork,sideWork]).then(function(parts){return parts[0];});
+  }).then(function(list){
+    /* Binding is one synchronous pass: let the load bar paint that it has started. */
+    var L=root.BattleLoading;if(!L||!L.frame)return list;
+    L.note('soldiers','binding clips to models…');return L.frame().then(function(){return list;});
   }).then(function(list){
     st.clips={};list.forEach(function(clip){st.clips[clip.key]=clip;});
     Object.keys(st.libs).forEach(function(f){retargetClips(st.libs[f],st.src,st.clips,st.bones);});
