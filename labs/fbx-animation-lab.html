@@ -2470,6 +2470,8 @@
         };
       }
     }
+    // Pistols are a one-hand hold: fore points carried over from a long gun never ship with them.
+    Object.keys(weapons).forEach(k => { if (labIsPistol(k)) { weapons[k].foreNear = null; weapons[k].foreFar = null; } });
     return {
       model, version: 1,
       contacts: { right: arr(labCalib.contacts.right), left: arr(labCalib.contacts.left) },
