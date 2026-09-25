@@ -395,7 +395,10 @@ factions textured differently, weapon on the hands). Keep weapon source `.zip` p
   animations and weapons, muzzle-flash `.png`, audio, and the Motion Lab's own files
   (`MANAGED_LAB`: `labs/fbx-animation-lab.html`, its two `.js`, `asset-list.php`,
   `save-calibration.php`). `scripts/build_version.py stamp|show|tag`
-  derives the version from `build-v<N>` tags.
+  derives the version from `build-v<N>` tags. Each deploy also lists the host's
+  `Assets/{soldiers,animations,weapons}` and re-uploads any FBX the hash state records but the host
+  no longer has (`prune_missing_remote_assets.py`), so a folder can be cleared on the host and
+  refilled by running the deploy (Actions → Deploy Battle Runtime → Run workflow).
 - **The deploy never deletes or overwrites server files the repo does not manage.** Hand-placed
   sidecar JSON (clip/model/lab metadata beside the FBX assets), the live FBX soldier-animation lab
   files and everything else unmanaged stay put. The planner may delete only a
