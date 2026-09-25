@@ -280,10 +280,19 @@ for controlled pairs, and serve both arms the same way: `battle_sim_local.php` i
   benchmark `regroups`): 9.4 regroups per battle in meeting, 7.3 in US-defend and 5.9 in GE-defend,
   with 15, 2 and 4 timeouts over 60/20/20 battles. Defend scenarios regroup no more often than
   meetings, so there is no defend-specific rise left to chase.
-- Window/ingress crowding: claim collisions swing 23 to 3,838 on the same seed. Reservation
-  and physical occupancy haven't been separated yet.
-- Personal-space corrections rose slightly (15.7k → 17.4k per battle). Find the converging
-  producer first.
+- Window crowding (closed 2026-09-25): bodies at firing stations don't stack. A probe on 6 full standard
+  seeds found 1 sample in ~20k occupied-station samples with two men on one station, and a non-holder
+  on a held window in one battle only. The old "claim collisions 23 → 3,838" swing was `select()`
+  counting every held window it passed over; that is now `reservedStationsSkipped`, and
+  `claimCollisionsPrevented` counts only real claim-time collisions.
+- Personal-space corrections (~8-10k per battle on the GitHub standard benchmark) are mostly same-squad
+  men crossing on the move, not fights: pairs still overlapping 1 s later are rare (5-20 per battle).
+  In order: (1) two men both on formation slots crossing. The rate is ~7× higher in the 6 s after a
+  formation or facing change, because slots are fixed by `slotIndex`, which also fixes fireteam
+  membership. (2) Bounding men walking through men holding. (3) Engagement `hold` endpoints within
+  0.9 m of each other. Hold isn't a physically allocated kind in `51` `DEST_KINDS`. Candidate fix at
+  the owner: the Squad Leader re-deals slots within a fireteam and role by nearest man when the
+  formation or facing changes. That changes movement feel, so it needs a preview branch.
 - Strategic-stall wakes mostly re-pick the same objective, because doctrine has no alternative.
 - Hot path is now navigation replans (~3.3 s) and `sightBlocked` (~3.5 s) per ~13.7 s battle.
 - Movement Progress ignores retreat by design; `movementStopReason` is the observable.
