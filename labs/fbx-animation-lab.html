@@ -147,7 +147,7 @@
       <div class="numgrid" id="shoulderGrid"><span class="nrowlab" data-row="d-shoulder" title="Select row for keyboard nudging">Shoulder°</span><input id="sx" type="number" step="1" aria-label="shoulder x deg" placeholder="0"><input id="sy" type="number" step="1" aria-label="shoulder y deg" placeholder="0"><input id="sz" type="number" step="1" aria-label="shoulder z deg" placeholder="0"></div>
       <div class="numgrid" id="elbowGrid"><span class="nrowlab" data-row="d-elbow" title="Select row for keyboard nudging">Elbow°</span><input id="ex" type="number" step="1" aria-label="elbow x deg" placeholder="0"><input id="ey" type="number" step="1" aria-label="elbow y deg" placeholder="0"><input id="ez" type="number" step="1" aria-label="elbow z deg" placeholder="0"></div>
       <div class="numgrid" id="wristGrid"><span class="nrowlab" data-row="d-wrist" title="Select row for keyboard nudging">Wrist°</span><input id="wx" type="number" step="1" aria-label="wrist x deg" placeholder="0"><input id="wy" type="number" step="1" aria-label="wrist y deg" placeholder="0"><input id="wz" type="number" step="1" aria-label="wrist z deg" placeholder="0"></div>
-      <p class="hint" style="margin-top:8px">Left-arm dials in degrees (pistols): provide the initial shoulder, elbow and wrist pose before the support hand snaps to Left Grip. Set contact B first, then <b>Set Left Grip</b>; the target is stored on the right hand and follows it. The rotation-only solver is cached, rate-limited and smoothly releases on action clips, so bone lengths are never touched.</p>
+      <p class="hint" style="margin-top:8px">Left-arm dials in degrees (pistols): provide the initial shoulder, elbow and wrist pose before the support hand snaps to Left Grip. Set contact B first, then <b>Set Left Grip</b>; the target is stored on the right hand and follows it. A two-bone solve (elbow bend, shoulder swing; the wrist keeps its dialled pose) holds it every frame, and on action clips the hand lets go as the clip starts and returns before it ends. Rotations only, so bone lengths are never touched.</p>
       <div class="numgrid" id="rwristGrid"><span class="nrowlab" data-row="d-right" title="Select row for keyboard nudging">R wrist°</span><input id="rwx" type="number" step="1" aria-label="right wrist x deg" placeholder="0"><input id="rwy" type="number" step="1" aria-label="right wrist y deg" placeholder="0"><input id="rwz" type="number" step="1" aria-label="right wrist z deg" placeholder="0"></div>
       <p class="hint" style="margin-top:8px">Right-wrist dial (all guns, for straight stocks with no pistol grip): rotates the firing hand about the wrist so the finger meets the trigger — play a firing clip and dial against the finger animation. Dial once, then nudge the grip freely — the correction rides along every frame, in the game too.</p>
 
@@ -715,8 +715,8 @@
        weapons already use the game layout, and the mesh transform is baked at
        import, so these drop straight into WEAPON_POINTS.
       - pistol support cup: contact B is captured in right-hand-local space. The
-        Shoulder°/Elbow°/Wrist° dials provide its initial pose, then a temporally
-        smoothed rotation-only CCD keeps the support hand aligned during playback.
+        Shoulder°/Elbow°/Wrist° dials provide its initial pose, then an analytic
+        two-bone solve (elbow, shoulder) keeps the support hand on it during playback.
       The live seat preview mirrors the backend hold (grip on right contact, barrel
       through the left contact); the battle backend stays canonical. */
   const labCalib = {
@@ -1266,7 +1266,7 @@
     if (!labCalib.pistolLeftGrip || !hand || modelAssets.file !== labCalib.modelFile) return null;
     return BABYLON.Vector3.TransformCoordinates(labCalib.pistolLeftGrip, labNodeWorld(hand));
   }
-  // Prefer the live filtered-solver result. Before the first rendered solve, measure
+  // Prefer the live solver result. Before the first rendered solve, measure
   // the dialled pose side-effect-free so the field is still useful while paused.
   function labCupGapCm(){
     if (!labIsPistol(labCalib.weaponFile) || !labCalib.pistolLeftGrip || !labCalib.contacts.left) return null;
@@ -1320,8 +1320,8 @@
   }
   /* Left-arm dials (pistols): degree offsets added onto the animated shoulder, elbow
      and wrist joints, outermost first. They author the initial cup pose before the
-     filtered CCD correction. Reapplied every frame (see the render observers), so
-     the offsets follow the animation. The render observer is the sole owner of these
+     two-bone cup solve, and fade with it on released clips. Reapplied every frame
+     (see the render observers), so the offsets follow the animation. The render observer is the sole owner of these
      temporary offsets, including while paused, so an explicit Seat cannot double them. */
   const LAB_ARM_DIALS = [
     { ids:['sx','sy','sz'], depth:3, label:'shoulder' },
@@ -1345,8 +1345,10 @@
   function labApplyArmDials(){
     if (!labIsPistol(labCalib.weaponFile)) return false;
     let applied = false;
+    const weight = labCupFollow.weight;
+    if (weight <= 0) return false;
     for (const dial of LAB_ARM_DIALS) {
-      const degs = labDialDeg(dial.ids);
+      const degs = labDialDeg(dial.ids).map(d => d * weight);
       if (!degs[0] && !degs[1] && !degs[2]) continue;
       const joint = labArmJoint('left', dial.depth);
       if (!joint || joint.isDisposed()) continue;
@@ -1366,153 +1368,113 @@
     for (let i = 0; i < 3 && node; i++) { joints.push(node); node = node.parent; }
     return joints;
   }
-  function labWorldRotation(node){
-    node.computeWorldMatrix(true);
-    const scale = new BABYLON.Vector3(), rotation = new BABYLON.Quaternion(), translation = new BABYLON.Vector3();
-    node.getWorldMatrix().decompose(scale, rotation, translation);
-    return rotation;
-  }
   function labRefreshArmWorld(joints, hand){
     [...joints].reverse().forEach(node => node.computeWorldMatrix(true));
     hand.computeWorldMatrix(true);
   }
-  const labCupFollow = { corrections:null, signature:'', errorCm:null, mode:'off', maxStepDeg:0 };
+  /* Support cup: an analytic two-bone solve. The elbow bends until the forearm-plus-hand
+     span reaches the Left Grip target, then the shoulder swings it on; the wrist keeps
+     its clip + dial pose. Each frame is solved from that frame's clean pose, so the answer
+     is a continuous function of the clip: no search, no cached correction, no filter.
+     The same rule runs in battle/modules/53-fbx-soldier-backend.js (applyPistolCup).
+     `weight` fades the dials and the cup together: 1 holds the pistol, 0 plays the clip.
+     A clip hand more than reachFull from the target lets go over a 10 cm fade; near full
+     arm length the reach eases off (soft IK) instead of locking the elbow straight. */
+  const LAB_CUP = { reachFull:.20, reachNone:.30, soft:.03, releaseSec:.25, recaptureSec:.30 };
+  const labCupFollow = { errorCm:null, mode:'off', weight:1 };
   function labResetCupFollow(){
-    labCupFollow.corrections = [0,1,2].map(() => BABYLON.Quaternion.Identity());
-    labCupFollow.signature = '';
     labCupFollow.errorCm = null;
     labCupFollow.mode = 'off';
-    labCupFollow.maxStepDeg = 0;
+    labCupFollow.weight = 1;
   }
-  function labQuatAngle(a,b){
-    return 2 * Math.acos(Math.min(1, Math.abs(BABYLON.Quaternion.Dot(a,b))));
-  }
-  function labSlerpLimited(from,to,alpha,maxStep){
-    let goal = to;
-    if (BABYLON.Quaternion.Dot(from,goal) < 0) goal = new BABYLON.Quaternion(-goal.x,-goal.y,-goal.z,-goal.w);
-    const angle = labQuatAngle(from,goal);
-    const t = angle > 1e-7 ? Math.min(alpha, maxStep / angle) : 1;
-    return BABYLON.Quaternion.Slerp(from,goal,t).normalize();
-  }
+  function labSmoothstep(x){ x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }
   function labCupReleased(){
     const clipName = (clipSelect.selectedOptions[0]?.textContent || activeGroup?.name || '').toLowerCase();
     return /reload|death|dying|hit|flinch|pistol whip|strike/.test(clipName);
   }
-  // Rotation-only CCD computes the correction wanted by this frame. Its result is
-  // restored into a clean base pose before a cached, rate-limited correction is
-  // applied; this keeps CCD's firm cup without allowing a one-frame arm flip.
+  // Release is a weight, not a switch. A released clip lets the hand go over its first
+  // releaseSec and takes it back over its last recaptureSec, so a looping hit reaction
+  // previews the game: the hand leaves the grip as the hit lands and returns as it ends.
+  function labCupReleaseWeight(){
+    if (!labCupReleased()) return 1;
+    const anim = activeGroup && activeGroup.animatables && activeGroup.animatables[0];
+    const fps = activeGroup?.targetedAnimations?.[0]?.animation?.framePerSecond || 30;
+    if (!anim || !(activeGroup.to > activeGroup.from)) return 0;
+    const t = (anim.masterFrame - activeGroup.from) / fps, dur = (activeGroup.to - activeGroup.from) / fps;
+    return Math.max(1 - labSmoothstep(t / LAB_CUP.releaseSec), labSmoothstep((t - dur + LAB_CUP.recaptureSec) / LAB_CUP.recaptureSec));
+  }
+  // Turn `joint` so the world direction `from` (about its origin) moves toward `to` by
+  // `weight`. Both are carried into the parent's space first, so mirrored (negative-scale)
+  // or non-uniformly scaled parents in these FBX rigs still land the direction exactly.
+  function labTurnJoint(joint, from, to, weight){
+    if (weight <= 0 || from.lengthSquared() < 1e-12 || to.lengthSquared() < 1e-12) return;
+    let f = from, t = to;
+    if (joint.parent) {
+      const inv = labInvert(joint.parent.getWorldMatrix());
+      f = BABYLON.Vector3.TransformNormal(from, inv);
+      t = BABYLON.Vector3.TransformNormal(to, inv);
+    }
+    const turn = new BABYLON.Quaternion();
+    BABYLON.Quaternion.FromUnitVectorsToRef(f.normalizeToNew(), t.normalizeToNew(), turn);
+    if (weight < 1) BABYLON.Quaternion.SlerpToRef(BABYLON.Quaternion.Identity(), turn, weight, turn);
+    if (!joint.rotationQuaternion) joint.rotationQuaternion = BABYLON.Quaternion.FromEulerVector(joint.rotation);
+    const turnM = new BABYLON.Matrix(), rot = new BABYLON.Matrix();
+    turn.toRotationMatrix(turnM);
+    joint.rotationQuaternion.toRotationMatrix(rot);
+    BABYLON.Quaternion.FromRotationMatrixToRef(rot.multiply(turnM), joint.rotationQuaternion);
+    joint.rotationQuaternion.normalize();
+  }
+  // joints = [hand, forearm, upper arm]; anchor = contact B in hand-local units.
+  function labSolveCup(joints, anchor, target, weight){
+    const [hand, fore, arm] = joints;
+    // Ancestors first (spine bend, clip), top down, so the parent matrices are this frame's.
+    const up = [];
+    for (let n = arm.parent; n; n = n.parent) up.push(n);
+    for (let k = up.length - 1; k >= 0; k--) up[k].computeWorldMatrix(true);
+    const endpoint = () => { labRefreshArmWorld([fore, arm], hand); return BABYLON.Vector3.TransformCoordinates(anchor, labNodeWorld(hand)); };
+    let B = endpoint();
+    const S = arm.getAbsolutePosition().clone(), E = fore.getAbsolutePosition().clone();
+    const upper = E.subtract(S), lower = B.subtract(E), a = upper.length(), b = lower.length();
+    if (a < 1e-6 || b < 1e-6) return;
+    // Elbow: the interior angle whose span |S->B| equals |S->target| (law of cosines),
+    // kept in the plane the clip already bends the arm in. Within `soft` of full length the
+    // span approaches it exponentially, so a straightening arm never snaps (knee pop) and
+    // the hand trails the target by at most ~1 cm there.
+    const full = a + b, knee = full - LAB_CUP.soft;
+    let d = BABYLON.Vector3.Distance(S, target);
+    if (d > knee) d = full - LAB_CUP.soft * Math.exp(-(d - knee) / LAB_CUP.soft);
+    d = Math.max(Math.abs(a - b) + 1e-4, d);
+    const cosE = Math.max(-1, Math.min(1, (a * a + b * b - d * d) / (2 * a * b)));
+    const u = upper.scale(-1 / a); // elbow -> shoulder
+    const side = lower.subtract(u.scale(BABYLON.Vector3.Dot(lower, u)));
+    if (side.lengthSquared() > 1e-10) {
+      side.normalize();
+      const sinE = Math.sqrt(1 - cosE * cosE);
+      labTurnJoint(fore, lower, u.scale(cosE).add(side.scale(sinE)), weight);
+      B = endpoint();
+    }
+    // Shoulder: swing the whole arm so contact B points at the target.
+    labTurnJoint(arm, B.subtract(S), target.subtract(S), weight);
+  }
   function labSnapPistolLeftHand(){
     if (!labIsPistol(labCalib.weaponFile) || !labCalib.contacts.left || !labCalib.pistolLeftGrip) return null;
     const hand = labHandNode('left'), target = labPistolLeftGripWorld();
     if (!hand || !target) return null;
     const joints = [hand, hand.parent, hand.parent && hand.parent.parent].filter(n => n && !n.isDisposed());
     if (joints.length < 3) return null;
-    const signature = [labCalib.modelFile,labCalib.weaponFile,labCalib.pistolLeftGrip.asArray().join(',')].join('|');
-    if (!labCupFollow.corrections || labCupFollow.signature !== signature) {
-      labResetCupFollow();
-      labCupFollow.signature = signature;
-    }
-    const base = joints.map(j => j.rotationQuaternion ? j.rotationQuaternion.clone() : BABYLON.Quaternion.Identity());
     const endpoint = () => {
-      labRefreshArmWorld(joints,hand);
+      labRefreshArmWorld(joints.slice(1),hand);
       return BABYLON.Vector3.TransformCoordinates(labCalib.contacts.left,labNodeWorld(hand));
     };
     const startError = BABYLON.Vector3.Distance(endpoint(),target);
-    const released = labCupReleased();
-    const desired = [0,1,2].map(() => BABYLON.Quaternion.Identity());
-    let guarded = startError > .30;
-    if (!released && !guarded) {
-      const solved = labSolveCupOnce(target,joints);
-      guarded = !solved || solved.guarded;
-      if (!guarded) joints.forEach((j,i) => {
-        let delta = base[i].conjugate().multiply(j.rotationQuaternion).normalize();
-        const limit = [80,110,80][i] * Math.PI / 180;
-        const angle = labQuatAngle(BABYLON.Quaternion.Identity(),delta);
-        if (angle > limit) delta = BABYLON.Quaternion.Slerp(BABYLON.Quaternion.Identity(),delta,limit/angle).normalize();
-        const reachWeight = Math.max(0,Math.min(1,(.30-startError)/.10));
-        desired[i] = BABYLON.Quaternion.Slerp(BABYLON.Quaternion.Identity(),delta,reachWeight).normalize();
-      });
-    }
-    joints.forEach((j,i) => j.rotationQuaternion.copyFrom(base[i]));
-    const dt = Math.max(1/240,Math.min(.05,(engine.getDeltaTime ? engine.getDeltaTime()/1000 : 1/60) || 1/60));
-    const alpha = 1-Math.exp(-(released || guarded ? 10 : 24)*dt), maxStep = 360*Math.PI/180*dt;
-    labCupFollow.maxStepDeg = 0;
-    joints.forEach((j,i) => {
-      const before = labCupFollow.corrections[i];
-      const after = labSlerpLimited(before,desired[i],alpha,maxStep);
-      labCupFollow.maxStepDeg = Math.max(labCupFollow.maxStepDeg,labQuatAngle(before,after)*180/Math.PI);
-      labCupFollow.corrections[i] = after;
-      j.rotationQuaternion.copyFrom(base[i].multiply(after));
-    });
+    const released = labCupFollow.weight;
+    const reach = labSmoothstep((LAB_CUP.reachNone - startError) / (LAB_CUP.reachNone - LAB_CUP.reachFull));
+    const weight = released * reach;
+    if (weight > 0) labSolveCup(joints, labCalib.contacts.left, target, weight);
     const error = BABYLON.Vector3.Distance(endpoint(),target);
     labCupFollow.errorCm = error*100;
-    labCupFollow.mode = released ? 'released' : (guarded ? 'out-of-reach' : 'tracking');
-    return { applied:!released&&!guarded, error, guarded, released };
-  }
-  // Raw CCD solve used only to find this frame's desired local correction. The caller
-  // restores the base pose and applies the filtered correction afterward.
-  function labSolveCupOnce(target, joints){
-    const hand = labHandNode('left');
-    if (!hand || !target || !joints || !joints.length) return null;
-    const anchor = labCalib.contacts.left;
-    if (!anchor) return null;
-    labRefreshArmWorld(joints, hand);
-    let error = BABYLON.Vector3.TransformCoordinates(anchor, labNodeWorld(hand)).subtract(target).length();
-    if (error > .35) return { error, guarded:true };
-    const endpointError = () => {
-      labRefreshArmWorld(joints, hand);
-      return BABYLON.Vector3.TransformCoordinates(anchor, labNodeWorld(hand)).subtract(target).length();
-    };
-    for (let sweep = 0; sweep < 6 && error > .0005; sweep++) {
-      let biggest = 0;
-      for (const joint of joints) {
-        labRefreshArmWorld(joints, hand);
-        const end = BABYLON.Vector3.TransformCoordinates(anchor, labNodeWorld(hand));
-        const pivot = joint.getAbsolutePosition().clone();
-        const from = end.subtract(pivot), to = target.subtract(pivot);
-        if (from.lengthSquared() < 1e-10 || to.lengthSquared() < 1e-10) continue;
-        from.normalize(); to.normalize();
-        const axis = BABYLON.Vector3.Cross(from, to);
-        const sine = axis.length();
-        if (sine < 1e-6) continue;
-        axis.normalize();
-        let angle = Math.asin(Math.max(-1, Math.min(1, sine)));
-        if (BABYLON.Vector3.Dot(from, to) < 0) angle = Math.PI - angle;
-        angle = Math.max(-.30, Math.min(.30, angle));
-        biggest = Math.max(biggest, Math.abs(angle));
-        const deltaWorld = BABYLON.Quaternion.RotationAxis(axis, angle);
-        if (!joint.rotationQuaternion) joint.rotationQuaternion = new BABYLON.Quaternion();
-        const base = joint.rotationQuaternion.clone();
-        let bestQ = base, bestError = endpointError();
-        // These FBX chains contain reflected parent scales. Quaternion decomposition
-        // therefore has two equivalent handedness conventions; try both conjugations,
-        // signs and multiply orders, then retain only a monotonic improvement.
-        const parentWorld = joint.parent ? labWorldRotation(joint.parent) : BABYLON.Quaternion.Identity();
-        const parentInv = parentWorld.conjugate(), deltaInv = deltaWorld.conjugate();
-        const deltas = [
-          parentWorld.multiply(deltaWorld).multiply(parentInv),
-          parentInv.multiply(deltaWorld).multiply(parentWorld),
-          parentWorld.multiply(deltaInv).multiply(parentInv),
-          parentInv.multiply(deltaInv).multiply(parentWorld)
-        ];
-        for (const deltaLocal of deltas) {
-          for (const pre of [true, false]) {
-            joint.rotationQuaternion.copyFrom(base);
-            joint.rotationQuaternion = pre ? deltaLocal.multiply(joint.rotationQuaternion)
-              : joint.rotationQuaternion.multiply(deltaLocal);
-            const candidateError = endpointError();
-            if (candidateError < bestError) { bestError = candidateError; bestQ = joint.rotationQuaternion.clone(); }
-          }
-        }
-        joint.rotationQuaternion.copyFrom(bestQ);
-        error = bestError;
-        if (error <= .0005) break;
-      }
-      if (biggest < 1e-3) break;
-    }
-    labRefreshArmWorld(joints, hand);
-    error = BABYLON.Vector3.TransformCoordinates(anchor, labNodeWorld(hand)).subtract(target).length();
-    return { error, guarded:false };
+    labCupFollow.mode = released < 1 ? (released > 0 ? 'releasing' : 'released') : (reach < 1 ? 'out-of-reach' : 'tracking');
+    return { applied:weight > 0, error, guarded:reach < 1, released:released < 1, weight };
   }
   function labApplyDialsToJoints(joints, dials){
     // joints are the dial joints [hand, parent, grandparent]; names line up 1:1.
@@ -1526,7 +1488,7 @@
     });
   }
   // Capture contact B in right-hand-local space. The dials remain the authored initial
-  // pose; the temporal CCD above maintains this target during playback.
+  // pose; the two-bone solve above maintains this target during playback.
   function labSeatCupFromB(){
     if (!labIsPistol(labCalib.weaponFile)) { setStatus('Set Left Grip is for pistols.', true); return false; }
     const hand = labHandNode('left'), rhand = labHandNode('right');
@@ -1537,7 +1499,7 @@
     labCalib.pistolLeftGrip = BABYLON.Vector3.TransformCoordinates(B, labInvert(labNodeWorld(rhand)));
     labResetCupFollow();
     labRefreshFields(); labRefreshMarkers(); labUpdateSnippet();
-    setStatus('Left Grip set from contact B in right-hand-local space. Arm dials provide the initial pose; the smoothed rotation-only solver keeps the cup aligned.');
+    setStatus('Left Grip set from contact B in right-hand-local space. Arm dials provide the initial pose; the two-bone solve keeps the cup aligned.');
     return true;
   }
   /* Right-wrist dial (all guns): rotates the firing hand about the wrist so the finger
@@ -1668,7 +1630,7 @@
         return 'Pick both fore-end points before seating a long gun.';
       // One-hand hold: capture the seated weapon relative to the right hand. During
       // playback, reuse that fixed local transform so the pistol rotates with the hand.
-      // Pistols additionally take the left-arm dials plus the filtered support-cup
+      // Pistols additionally take the left-arm dials plus the two-bone support-cup
       // correction; both are applied by the render observer every frame.
       if (follow && labCalib.oneHandLocal) {
         labRightSocket(mesh,handWorld);
@@ -2682,6 +2644,7 @@
     }
     if (!labCalib.pendingPick && labIsPistol(labCalib.weaponFile)) {
       if (!stashed) { labStashArm(); stashed = true; }
+      labCupFollow.weight = labCupReleaseWeight();
       labApplyArmDials();
     }
     // Aim test: follow the already-calibrated right-hand socket on the clean pose,
@@ -2698,8 +2661,7 @@
     }
     const leftSnap = !labCalib.pendingPick ? labSnapPistolLeftHand() : null;
     if (leftSnap && $('foreLen')) {
-      const label = leftSnap.released ? 'released' : (leftSnap.guarded ? 'out-of-reach' : 'tracking');
-      $('foreLen').textContent = (leftSnap.error * 100).toFixed(1)+' cm · '+label;
+      $('foreLen').textContent = (leftSnap.error * 100).toFixed(1)+' cm · '+labCupFollow.mode;
     }
     labRefreshMarkers();
     // Hands move under a playing clip, so the aim angle drifts: re-check at ~3 Hz.

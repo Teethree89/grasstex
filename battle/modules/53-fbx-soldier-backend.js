@@ -853,78 +853,65 @@ function showBipod(fx){
 /* Sidecar left-arm dials: degree offsets added onto the animated wrist/elbow/shoulder
    (same nodes + yaw/pitch/roll order as the Motion Lab preview), rotations only. Applied
    inside the pose loop right after the clip pose is written, so every frame starts from
-   the clean clip pose and the offsets never accumulate. */
+   the clean clip pose and the offsets never accumulate. `w` fades them with the cup. */
 var dialQ=new Q();
-function dialQuat(deg){
-  var d=deg||[0,0,0];
-  Q.RotationYawPitchRollToRef((+d[1]||0)*Math.PI/180,(+d[0]||0)*Math.PI/180,(+d[2]||0)*Math.PI/180,dialQ);
+function dialQuat(deg,w){
+  var d=deg||[0,0,0],k=(w==null?1:w)*Math.PI/180;
+  Q.RotationYawPitchRollToRef((+d[1]||0)*k,(+d[0]||0)*k,(+d[2]||0)*k,dialQ);
   return dialQ;
 }
-function cupQuatAngle(a,b){return 2*Math.acos(Math.min(1,Math.abs(Q.Dot(a,b))));}
-function cupSlerpLimited(from,to,alpha,maxStep){
-  var goal=to;
-  if(Q.Dot(from,goal)<0)goal=new Q(-goal.x,-goal.y,-goal.z,-goal.w);
-  var angle=cupQuatAngle(from,goal),t=angle>1e-7?Math.min(alpha,maxStep/angle):1,out=new Q();
-  Q.SlerpToRef(from,goal,t,out);out.normalize();return out;
+/* Pistol support cup, the same rule as the Motion Lab (labSolveCup): an analytic two-bone
+   solve. The elbow bends until the forearm-plus-hand span reaches the right-hand-local target
+   (law of cosines, in the plane the clip bends the arm in), then the shoulder swings it on; the
+   wrist keeps its clip + dial pose. Solved from each frame's clean pose, so the result is a
+   continuous function of the clip: no search, no cached correction, no filter. Near full arm
+   length the span eases off (soft IK) instead of locking the elbow straight. Release is a
+   weight: fx.cupRelease walks to 0 over releaseSec while the support hand is released (reload,
+   hit, flinch, transition, death) and back to 1 over recaptureSec, and a clip hand more than
+   reachFull from the target lets go over a 10 cm fade. */
+var CUP={reachFull:.20,reachNone:.30,soft:.03,releaseSec:.25,recaptureSec:.30};
+function cupSmooth(x){x=Math.max(0,Math.min(1,x));return x*x*(3-2*x);}
+function cupReleaseWeight(fx){
+  var released=!!(fx.death||fx.transition||fx.supportReleased),engine=fx.holder.getScene().getEngine();
+  var dt=Math.max(1/240,Math.min(.05,(engine.getDeltaTime()/1000)||1/60)),r=fx.cupRelease==null?1:fx.cupRelease;
+  fx.cupRelease=released?Math.max(0,r-dt/CUP.releaseSec):Math.min(1,r+dt/CUP.recaptureSec);
+  return cupSmooth(fx.cupRelease);
 }
-/* The dials author a stable initial cup. CCD then finds only the per-frame correction
-   needed to keep contact B on a right-hand-local target. Corrections are cached,
-   shortest-path slerped and angular-rate-limited; released or unreachable poses decay
-   toward the animation instead of dropping a large solve in one frame. */
-function applyPistolCup(fx,targetLocal){
+var cupTurnQ=new Q(),cupTurnM=new MX(),cupRotM=new MX(),cupInvM=new MX();
+/* Turn `joint` so world direction `from` moves toward `to` by `w`. Both are carried into the
+   parent's space first, so mirrored or non-uniformly scaled parents still land the direction. */
+function cupTurn(joint,from,to,w){
+  if(w<=0||from.lengthSquared()<1e-12||to.lengthSquared()<1e-12)return;
+  var f=from,t=to;
+  if(joint.parent){joint.parent.getWorldMatrix().invertToRef(cupInvM);f=V3.TransformNormal(from,cupInvM);t=V3.TransformNormal(to,cupInvM);}
+  Q.FromUnitVectorsToRef(f.normalizeToNew(),t.normalizeToNew(),cupTurnQ);
+  if(w<1)Q.SlerpToRef(Q.Identity(),cupTurnQ,w,cupTurnQ);
+  if(!joint.rotationQuaternion)joint.rotationQuaternion=Q.FromEulerVector(joint.rotation);
+  cupTurnQ.toRotationMatrix(cupTurnM);joint.rotationQuaternion.toRotationMatrix(cupRotM);
+  Q.FromRotationMatrixToRef(cupRotM.multiply(cupTurnM),joint.rotationQuaternion);joint.rotationQuaternion.normalize();
+}
+function applyPistolCup(fx,targetLocal,release){
   var palms=fx.lib.palms,right=fx.path[fx.path.length-1],left=fx.pathL[fx.pathL.length-1];
   var anchor=palms&&palms[BONE.leftHand];if(!targetLocal||!anchor||!right||!left)return null;
-  var joints=[left,left.parent,left.parent&&left.parent.parent].filter(function(n){return!!n;});if(joints.length<3)return null;
-  right.computeWorldMatrix(true);left.computeWorldMatrix(true);
+  var fore=left.parent,arm=fore&&fore.parent;if(!arm)return null;
+  var up=[];for(var n=arm.parent;n;n=n.parent)up.push(n);for(var k=up.length-1;k>=0;k--)up[k].computeWorldMatrix(true);
+  function endpoint(){arm.computeWorldMatrix(true);fore.computeWorldMatrix(true);left.computeWorldMatrix(true);return V3.TransformCoordinates(anchor,left.getWorldMatrix());}
+  right.computeWorldMatrix(true);
   var target=V3.TransformCoordinates(new V3(targetLocal[0],targetLocal[1],targetLocal[2]),right.getWorldMatrix());
-  var base=joints.map(function(j){return j.rotationQuaternion?j.rotationQuaternion.clone():Q.Identity();});
-  function refresh(){for(var r=joints.length-1;r>=0;r--)joints[r].computeWorldMatrix(true);left.computeWorldMatrix(true);}
-  function endpoint(){refresh();return V3.TransformCoordinates(anchor,left.getWorldMatrix());}
-  var startError=V3.Distance(endpoint(),target),released=!!(fx.death||fx.transition||fx.supportReleased),guarded=startError>.30;
-  var desired=[Q.Identity(),Q.Identity(),Q.Identity()];
-  if(!released&&!guarded){
-    var error=startError;
-    for(var sweep=0;sweep<6&&error>.0005;sweep++){
-      var biggest=0;
-      for(var i=0;i<joints.length;i++){
-        var joint=joints[i],end=endpoint(),pivot=joint.getAbsolutePosition().clone();
-        var from=end.subtract(pivot),to=target.subtract(pivot);if(from.lengthSquared()<1e-10||to.lengthSquared()<1e-10)continue;
-        from.normalize();to.normalize();var axis=V3.Cross(from,to),sine=axis.length();if(sine<1e-6)continue;axis.normalize();
-        var angle=Math.asin(Math.max(-1,Math.min(1,sine)));if(V3.Dot(from,to)<0)angle=Math.PI-angle;
-        angle=Math.max(-.30,Math.min(.30,angle));biggest=Math.max(biggest,Math.abs(angle));
-        if(!joint.rotationQuaternion)joint.rotationQuaternion=new Q();
-        var deltaWorld=Q.RotationAxis(axis,angle),localBase=joint.rotationQuaternion.clone(),bestQ=localBase,bestError=V3.Distance(endpoint(),target),pq=Q.Identity();
-        if(joint.parent){joint.parent.computeWorldMatrix(true);var ps=new V3(),pt=new V3();joint.parent.getWorldMatrix().decompose(ps,pq,pt);}
-        var pi=pq.conjugate(),di=deltaWorld.conjugate(),deltas=[pq.multiply(deltaWorld).multiply(pi),pi.multiply(deltaWorld).multiply(pq),pq.multiply(di).multiply(pi),pi.multiply(di).multiply(pq)];
-        for(var d=0;d<deltas.length;d++)for(var pre=0;pre<2;pre++){
-          joint.rotationQuaternion.copyFrom(localBase);
-          joint.rotationQuaternion=pre?deltas[d].multiply(joint.rotationQuaternion):joint.rotationQuaternion.multiply(deltas[d]);
-          var candidate=V3.Distance(endpoint(),target);if(candidate<bestError){bestError=candidate;bestQ=joint.rotationQuaternion.clone();}
-        }
-        joint.rotationQuaternion.copyFrom(bestQ);error=bestError;if(error<=.0005)break;
-      }
-      if(biggest<1e-3)break;
+  var B=endpoint(),startError=V3.Distance(B,target);
+  var reach=cupSmooth((CUP.reachNone-startError)/(CUP.reachNone-CUP.reachFull)),w=release*reach;
+  if(w>0){
+    var S=arm.getAbsolutePosition().clone(),E=fore.getAbsolutePosition().clone(),upper=E.subtract(S),lower=B.subtract(E),a=upper.length(),b=lower.length();
+    if(a>1e-6&&b>1e-6){
+      var knee=a+b-CUP.soft,d=V3.Distance(S,target);if(d>knee)d=a+b-CUP.soft*Math.exp(-(d-knee)/CUP.soft);d=Math.max(Math.abs(a-b)+1e-4,d);
+      var cosE=Math.max(-1,Math.min(1,(a*a+b*b-d*d)/(2*a*b))),u=upper.scale(-1/a),side=lower.subtract(u.scale(V3.Dot(lower,u)));
+      if(side.lengthSquared()>1e-10){side.normalize();cupTurn(fore,lower,u.scale(cosE).add(side.scale(Math.sqrt(1-cosE*cosE))),w);B=endpoint();}
+      cupTurn(arm,B.subtract(S),target.subtract(S),w);
     }
-    var reachWeight=Math.max(0,Math.min(1,(.30-startError)/.10)),limits=[80,110,80];
-    joints.forEach(function(j,i){
-      var delta=base[i].conjugate().multiply(j.rotationQuaternion);delta.normalize();
-      var limit=limits[i]*Math.PI/180,a=cupQuatAngle(Q.Identity(),delta),limited=new Q();
-      if(a>limit){Q.SlerpToRef(Q.Identity(),delta,limit/a,limited);delta=limited;}
-      var weighted=new Q();Q.SlerpToRef(Q.Identity(),delta,reachWeight,weighted);weighted.normalize();desired[i]=weighted;
-    });
   }
-  joints.forEach(function(j,i){j.rotationQuaternion.copyFrom(base[i]);});
-  var signature=fx.lib.file+'|'+(fx.weaponModel||fx.weaponKind)+'|'+targetLocal.join(',');
-  if(!fx.cupQ||fx.cupSignature!==signature){fx.cupQ=[Q.Identity(),Q.Identity(),Q.Identity()];fx.cupSignature=signature;}
-  var engine=fx.holder.getScene().getEngine(),dt=Math.max(1/240,Math.min(.05,(engine.getDeltaTime()/1000)||1/60));
-  var alpha=1-Math.exp(-(released||guarded?10:24)*dt),maxStep=360*Math.PI/180*dt;fx.cupCorrectionStepDeg=0;
-  joints.forEach(function(j,i){
-    var before=fx.cupQ[i],after=cupSlerpLimited(before,desired[i],alpha,maxStep);
-    fx.cupCorrectionStepDeg=Math.max(fx.cupCorrectionStepDeg,cupQuatAngle(before,after)*180/Math.PI);fx.cupQ[i]=after;
-    j.rotationQuaternion.copyFrom(base[i].multiply(after));
-  });
-  var finalError=V3.Distance(endpoint(),target);fx.cupMode=released?'released':(guarded?'out-of-reach':'tracking');
-  return{error:finalError,guarded:guarded,released:released};
+  var finalError=V3.Distance(endpoint(),target);
+  fx.cupMode=release<1?(release>0?'releasing':'released'):(reach<1?'out-of-reach':'tracking');
+  return{error:finalError,guarded:reach<1,released:release<1,weight:w};
 }
 function applyPose(fx){
   showBipod(fx);
@@ -935,6 +922,7 @@ function applyPose(fx){
   var dialPistol=dialKey==='pistol'||/m1911a1|p38/i.test(dialKey||'');
   var dials=dialPistol?armDegFor(fx.lib.file,dialKey):null;
   var leftGrip=dialPistol?leftGripFor(fx.lib.file,dialKey):null;
+  var cupW=dials||leftGrip?cupReleaseWeight(fx):1;
   var wrDial=wristRFor(fx.lib.file,dialKey),wrNode=null;
   if(wrDial){
     var ri=st.bones?st.bones.indexOf(BONE.rightHand):-1;
@@ -974,7 +962,7 @@ function applyPose(fx){
       else if(node===shoulderNode)dd=dials.shoulder;
       if(dd&&(dd[0]||dd[1]||dd[2])){
         if(!node.rotationQuaternion)node.rotationQuaternion=new Q();
-        node.rotationQuaternion.multiplyInPlace(dialQuat(dd));
+        node.rotationQuaternion.multiplyInPlace(dialQuat(dd,cupW));
       }
     }
     /* Right-wrist dial for straight stocks: same yaw/pitch/roll order as the lab's
@@ -997,7 +985,7 @@ function applyPose(fx){
   if(fx.aim>.01&&fx.spineAt>0&&aimSpine(fx)){
     handChain(fx.path,fx.chain,fx.spineAt);if(fx.chainL.length&&fx.spineAtL>0)handChain(fx.pathL,fx.chainL,fx.spineAtL);holdWeapon(fx,grip,points);
   }
-  var leftSnap=leftGrip?applyPistolCup(fx,leftGrip):null;
+  var leftSnap=leftGrip?applyPistolCup(fx,leftGrip,cupW):null;
   if(leftSnap){
     fx.leftGripErrorCm=leftSnap.error*100;
     if(fx.chainL.length)handChain(fx.pathL,fx.chainL,fx.spineAtL>0?fx.spineAtL:0);
