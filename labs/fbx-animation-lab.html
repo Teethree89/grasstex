@@ -1345,9 +1345,10 @@
   function labApplyArmDials(){
     if (!labIsPistol(labCalib.weaponFile)) return false;
     let applied = false;
-    const weight = labCupFollow.weight;
-    if (weight <= 0) return false;
+    // The wrist dial shapes the cupped hand and stays on; only the shoulder and
+    // elbow dials fade with the cup, so a released hand keeps its grip shape.
     for (const dial of LAB_ARM_DIALS) {
+      const weight = dial.label === 'wrist' ? 1 : labCupFollow.weight;
       const degs = labDialDeg(dial.ids).map(d => d * weight);
       if (!degs[0] && !degs[1] && !degs[2]) continue;
       const joint = labArmJoint('left', dial.depth);
@@ -1377,31 +1378,81 @@
      its clip + dial pose. Each frame is solved from that frame's clean pose, so the answer
      is a continuous function of the clip: no search, no cached correction, no filter.
      The same rule runs in battle/modules/53-fbx-soldier-backend.js (applyPistolCup).
-     `weight` fades the dials and the cup together: 1 holds the pistol, 0 plays the clip.
-     A clip hand more than reachFull from the target lets go over a 10 cm fade; near full
-     arm length the reach eases off (soft IK) instead of locking the elbow straight. */
-  const LAB_CUP = { reachFull:.20, reachNone:.30, soft:.03, releaseSec:.25, recaptureSec:.30 };
-  const labCupFollow = { errorCm:null, mode:'off', weight:1 };
+     `weight` fades the shoulder and elbow dials and the cup together: 1 holds the
+     pistol, 0 plays the clip (the wrist dial always stays on).
+     A clip hand more than reachFull from the target lets go over a 10 cm fade, eased so
+     it takes at least reachOutSec (back in over reachInSec); near full arm length the
+     reach eases off (soft IK) instead of locking the elbow straight. */
+  const LAB_CUP = { reachFull:.20, reachNone:.30, soft:.03, releaseSec:.25, recaptureSec:.30,
+    reachOutSec:.15, reachInSec:.30, sampleFps:30, speedOn:.75, lag:.06 };
+  const labCupFollow = { errorCm:null, mode:'off', weight:1, reach:1 };
   function labResetCupFollow(){
     labCupFollow.errorCm = null;
     labCupFollow.mode = 'off';
     labCupFollow.weight = 1;
+    labCupFollow.reach = 1;
   }
   function labSmoothstep(x){ x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }
   function labCupReleased(){
     const clipName = (clipSelect.selectedOptions[0]?.textContent || activeGroup?.name || '').toLowerCase();
     return /reload|death|dying|hit|flinch|pistol whip|strike/.test(clipName);
   }
-  // Release is a weight, not a switch. A released clip lets the hand go over its first
-  // releaseSec and takes it back over its last recaptureSec, so a looping hit reaction
-  // previews the game: the hand leaves the grip as the hit lands and returns as it ends.
+  // Release is a weight, not a switch, and the clip sets its timing. A released clip
+  // is scanned once for the support hand's big motion: the speed of contact B in the
+  // right hand's frame (how fast the clip pulls the hands apart). The cup lets go
+  // `lag` after that speed first passes `speedOn` (the hit lands, then the hand goes)
+  // and takes the hand back `lag` after it last does (the body has settled), finishing
+  // by the clip's end so a loop is seamless. A released clip whose hands never move
+  // apart keeps the cup. Same rule as the game (cupEnvelope in the backend).
+  const labCupEnvelopes = new WeakMap();
+  function labChainWorld(node){
+    const up = [];
+    for (let n = node; n; n = n.parent) up.push(n);
+    for (let k = up.length - 1; k >= 0; k--) up[k].computeWorldMatrix(true);
+  }
+  function labCupEnvelope(group){
+    if (labCupEnvelopes.has(group)) return labCupEnvelopes.get(group);
+    const left = labHandNode('left'), right = labHandNode('right'), anchor = labCalib.contacts.left;
+    const anim = group.animatables && group.animatables[0];
+    const fps = group.targetedAnimations?.[0]?.animation?.framePerSecond || 30;
+    if (!left || !right || !anchor || !anim || !(group.to > group.from)) return null;
+    const resume = anim.masterFrame, rel = [];
+    const step = fps / LAB_CUP.sampleFps;
+    for (let f = group.from; f <= group.to + 1e-6; f += step) {
+      group.goToFrame(f);
+      labChainWorld(left); labChainWorld(right);
+      const B = BABYLON.Vector3.TransformCoordinates(anchor, left.getWorldMatrix());
+      const inv = labInvert(right.getWorldMatrix());
+      // Right-hand-local, rescaled to world units so the speed is in metres per second.
+      const scale = BABYLON.Vector3.TransformNormal(BABYLON.Vector3.Right(), right.getWorldMatrix()).length();
+      rel.push(BABYLON.Vector3.TransformCoordinates(B, inv).scale(scale));
+    }
+    group.goToFrame(resume);
+    const env = labCupEnvelopeFrom(rel, LAB_CUP.sampleFps);
+    labCupEnvelopes.set(group, env);
+    return env;
+  }
+  function labCupEnvelopeFrom(rel, sampleFps){
+    const speed = rel.map((p, i) => i ? BABYLON.Vector3.Distance(p, rel[i - 1]) * sampleFps : 0);
+    let onset = -1, settle = -1;
+    speed.forEach((v, i) => { if (v > LAB_CUP.speedOn) { if (onset < 0) onset = i; settle = i; } });
+    const duration = (rel.length - 1) / sampleFps;
+    return { duration, speed, peak: Math.max(...speed), onset: onset < 0 ? null : onset / sampleFps, settle: settle < 0 ? null : settle / sampleFps };
+  }
+  function labCupEnvelopeWeight(env, t){
+    if (!env || env.onset === null) return 1;
+    const off = env.onset + LAB_CUP.lag;
+    const back = Math.min(env.settle + LAB_CUP.lag, env.duration - LAB_CUP.recaptureSec);
+    const release = 1 - labSmoothstep((t - off) / LAB_CUP.releaseSec);
+    return t < back ? release : Math.max(release, labSmoothstep((t - back) / LAB_CUP.recaptureSec));
+  }
   function labCupReleaseWeight(){
-    if (!labCupReleased()) return 1;
-    const anim = activeGroup && activeGroup.animatables && activeGroup.animatables[0];
-    const fps = activeGroup?.targetedAnimations?.[0]?.animation?.framePerSecond || 30;
-    if (!anim || !(activeGroup.to > activeGroup.from)) return 0;
-    const t = (anim.masterFrame - activeGroup.from) / fps, dur = (activeGroup.to - activeGroup.from) / fps;
-    return Math.max(1 - labSmoothstep(t / LAB_CUP.releaseSec), labSmoothstep((t - dur + LAB_CUP.recaptureSec) / LAB_CUP.recaptureSec));
+    if (!labCupReleased() || !activeGroup) return 1;
+    const anim = activeGroup.animatables && activeGroup.animatables[0];
+    const fps = activeGroup.targetedAnimations?.[0]?.animation?.framePerSecond || 30;
+    if (!anim) return 1;
+    const env = labCupEnvelope(activeGroup);
+    return labCupEnvelopeWeight(env, (anim.masterFrame - activeGroup.from) / fps);
   }
   // Turn `joint` so the world direction `from` (about its origin) moves toward `to` by
   // `weight`. Both are carried into the parent's space first, so mirrored (negative-scale)
@@ -1468,7 +1519,13 @@
     };
     const startError = BABYLON.Vector3.Distance(endpoint(),target);
     const released = labCupFollow.weight;
-    const reach = labSmoothstep((LAB_CUP.reachNone - startError) / (LAB_CUP.reachNone - LAB_CUP.reachFull));
+    // The reach fade is eased in time: a hit can carry the clip's hand 20 cm in three
+    // frames, and a purely distance-based fade would drop the cup in one.
+    const dt = Math.max(1/240, Math.min(.05, (engine.getDeltaTime ? engine.getDeltaTime()/1000 : 1/60) || 1/60));
+    const reachGoal = labSmoothstep((LAB_CUP.reachNone - startError) / (LAB_CUP.reachNone - LAB_CUP.reachFull));
+    const reach = labCupFollow.reach = reachGoal < labCupFollow.reach
+      ? Math.max(reachGoal, labCupFollow.reach - dt / LAB_CUP.reachOutSec)
+      : Math.min(reachGoal, labCupFollow.reach + dt / LAB_CUP.reachInSec);
     const weight = released * reach;
     if (weight > 0) labSolveCup(joints, labCalib.contacts.left, target, weight);
     const error = BABYLON.Vector3.Distance(endpoint(),target);
@@ -2644,7 +2701,10 @@
     }
     if (!labCalib.pendingPick && labIsPistol(labCalib.weaponFile)) {
       if (!stashed) { labStashArm(); stashed = true; }
-      labCupFollow.weight = labCupReleaseWeight();
+      // Eased at twice the release/recapture rates, only so a clip switch cannot jump.
+      const dt = Math.max(1/240, Math.min(.05, (engine.getDeltaTime ? engine.getDeltaTime()/1000 : 1/60) || 1/60));
+      const goal = labCupReleaseWeight(), w = labCupFollow.weight;
+      labCupFollow.weight = goal < w ? Math.max(goal, w - dt / (LAB_CUP.releaseSec / 2)) : Math.min(goal, w + dt / (LAB_CUP.recaptureSec / 2));
       labApplyArmDials();
     }
     // Aim test: follow the already-calibrated right-hand socket on the clean pose,

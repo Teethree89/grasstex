@@ -9,6 +9,8 @@
  *              rotation (angle between consecutive frame-to-frame rotations);
  *              the raw column is the clip's own jerk, so solved - raw is what we add
  *   posJerk    cm/frame² of contact B relative to the target (glued hand: ~0)
+ *   envelope   released clips: when the clip's support hand starts and stops moving apart
+ *              from the firing hand (s), and its peak speed (m/s)
  *   rightHand / targetJerkCm  the same for the firing hand and the target it carries
  *
  * Run (serve the repo first, see AGENTS.md "Browser smoke"):
@@ -115,6 +117,7 @@ const SERIES = process.env.CUP_SERIES === '1';
         handJerkDeg: { raw: stats(jerkOf(r.map(x => x.rawWorld))), solved: stats(jerkOf(r.map(x => x.world))), rightHand: stats(jerkOf(r.map(x => x.right))) },
         targetJerkCm: stats(r.slice(2).map((x, i) => x.T && r[i].T && r[i + 1].T ? x.T.subtract(r[i + 1].T.scale(2)).add(r[i].T).length() * 100 : NaN)),
         posJerkCm: stats(posJerk),
+        envelope: (() => { const e = typeof labCupEnvelopes !== 'undefined' && labCupEnvelopes.get(group); return e ? { onset: e.onset, settle: e.settle, duration: +e.duration.toFixed(2), peakMs: +e.peak.toFixed(2), speed: SERIES ? e.speed.map(v => +v.toFixed(2)) : undefined } : null; })(),
         series: SERIES ? { gap: r.map(x => x.gap == null ? null : +x.gap.toFixed(1)), jerk: jerkOf(r.map(x => x.world)).map(v => +v.toFixed(2)), rjerk: jerkOf(r.map(x => x.right)).map(v => +v.toFixed(2)), mode: r.map(x => x.mode[0]).join(''), weight: r.map(x => +(+x.weight).toFixed(2)) } : undefined
       });
     }

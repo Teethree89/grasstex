@@ -815,6 +815,10 @@ function update(soldier,state,dt){
   else restart=false;
   if(over){setClip(fx.upper,clips[over],orate,.16,restart,false);fx.overlayTarget=1;}else fx.overlayTarget=0;
   fx.supportReleased=!!(soldier.reloading||fx.hitHold>0||fx.flinchHold>0);
+  /* The pistol cup times a hit or flinch release from that clip's own motion (cupEnvelope). */
+  if(fx.hitHold>0){fx.cupClipKey=fx.hitKey;fx.cupClipT=clips[fx.hitKey].duration-fx.hitHold*HIT_RATE[fx.hitKey];}
+  else if(over&&over===fx.flinchKey){fx.cupClipKey=over;fx.cupClipT=clips[over].duration-fx.flinchHold*FLINCH_RATE;}
+  else fx.cupClipKey=null;
   var t=soldier.target&&soldier.target.root&&soldier.target.root.position;
   fx.aimWanted=!soldier.reloading&&(!!t||fx.fireHold>0);fx.aimAt=t||null;
   advance(fx,dt);
@@ -853,7 +857,8 @@ function showBipod(fx){
 /* Sidecar left-arm dials: degree offsets added onto the animated wrist/elbow/shoulder
    (same nodes + yaw/pitch/roll order as the Motion Lab preview), rotations only. Applied
    inside the pose loop right after the clip pose is written, so every frame starts from
-   the clean clip pose and the offsets never accumulate. `w` fades them with the cup. */
+   the clean clip pose and the offsets never accumulate. `w` fades them with the cup (the
+   pose loop passes 1 for the wrist, which stays on). */
 var dialQ=new Q();
 function dialQuat(deg,w){
   var d=deg||[0,0,0],k=(w==null?1:w)*Math.PI/180;
@@ -865,17 +870,55 @@ function dialQuat(deg,w){
    (law of cosines, in the plane the clip bends the arm in), then the shoulder swings it on; the
    wrist keeps its clip + dial pose. Solved from each frame's clean pose, so the result is a
    continuous function of the clip: no search, no cached correction, no filter. Near full arm
-   length the span eases off (soft IK) instead of locking the elbow straight. Release is a
-   weight: fx.cupRelease walks to 0 over releaseSec while the support hand is released (reload,
-   hit, flinch, transition, death) and back to 1 over recaptureSec, and a clip hand more than
-   reachFull from the target lets go over a 10 cm fade. */
-var CUP={reachFull:.20,reachNone:.30,soft:.03,releaseSec:.25,recaptureSec:.30};
+   length the span eases off (soft IK) instead of locking the elbow straight.
+   Release is a weight (fx.cupW) that fades the cup and the shoulder/elbow dials; the wrist dial
+   stays on. A hit or flinch sets its own timing from the clip (cupEnvelope): the cup lets go
+   `lag` after the clip first pulls the hands apart faster than speedOn and comes back `lag`
+   after it last does, done by the clip's end; a clip that never pulls them apart keeps the cup.
+   Reload, stance transitions and death let go over releaseSec and return over recaptureSec. A
+   clip hand more than reachFull from the target lets go over a 10 cm fade, eased so it takes
+   at least reachOutSec. */
+var CUP={reachFull:.20,reachNone:.30,soft:.03,releaseSec:.25,recaptureSec:.30,reachOutSec:.15,reachInSec:.30,speedOn:.75,lag:.06};
 function cupSmooth(x){x=Math.max(0,Math.min(1,x));return x*x*(3-2*x);}
+function cupEase(cur,goal,dt,outSec,inSec){return goal<cur?Math.max(goal,cur-dt/outSec):Math.min(goal,cur+dt/inSec);}
+function cupDt(fx){var engine=fx.holder.getScene().getEngine();return Math.max(1/240,Math.min(.05,(engine.getDeltaTime()/1000)||1/60));}
+function cupChainWorld(node){var up=[];for(var n=node;n;n=n.parent)up.push(n);for(var k=up.length-1;k>=0;k--)up[k].computeWorldMatrix(true);}
+/* Once per model and clip: pose the library skeleton at every clip frame and record how fast
+   contact B moves in the right hand's frame (metres per second). */
+function cupEnvelope(fx,key){
+  var lib=fx.lib,cache=lib.cupEnv||(lib.cupEnv={});if(Object.prototype.hasOwnProperty.call(cache,key))return cache[key];
+  var clip=lib.clips[key],bones=fx.st.bones,nodes=lib.nodes,anchor=lib.palms&&lib.palms[BONE.leftHand];
+  var L=nodes[BONE.leftHand],R=nodes[BONE.rightHand];if(!clip||!bones||!anchor||!L||!R)return cache[key]=null;
+  var saved=[];
+  bones.forEach(function(name,i){var n=nodes[name];if(n&&clip.channels[i])saved.push([n,n.position.clone(),n.rotationQuaternion?n.rotationQuaternion.clone():null,clip.channels[i]]);});
+  var rel=[],inv=new MX();
+  for(var f=0;f<clip.frames;f++){
+    saved.forEach(function(e){
+      var n=e[0],ch=e[3];
+      if(ch.rot){if(!n.rotationQuaternion)n.rotationQuaternion=new Q();n.rotationQuaternion.set(ch.rot[f*4],ch.rot[f*4+1],ch.rot[f*4+2],ch.rot[f*4+3]);}
+      if(ch.pos)n.position.set(ch.pos[f*3],ch.pos[f*3+1],ch.pos[f*3+2]);
+    });
+    cupChainWorld(L);cupChainWorld(R);R.getWorldMatrix().invertToRef(inv);
+    var scale=V3.TransformNormal(V3.Right(),R.getWorldMatrix()).length()*lib.scale;
+    rel.push(V3.TransformCoordinates(V3.TransformCoordinates(anchor,L.getWorldMatrix()),inv).scale(scale));
+  }
+  saved.forEach(function(e){e[0].position.copyFrom(e[1]);if(e[2])e[0].rotationQuaternion.copyFrom(e[2]);});
+  cupChainWorld(L);cupChainWorld(R);
+  var onset=-1,settle=-1;
+  for(var i=1;i<rel.length;i++)if(V3.Distance(rel[i],rel[i-1])*FPS>CUP.speedOn){if(onset<0)onset=i;settle=i;}
+  return cache[key]={duration:(rel.length-1)/FPS,onset:onset<0?null:onset/FPS,settle:settle<0?null:settle/FPS};
+}
+function cupEnvelopeWeight(env,t){
+  if(!env||env.onset===null)return 1;
+  var off=env.onset+CUP.lag,back=Math.min(env.settle+CUP.lag,env.duration-CUP.recaptureSec),release=1-cupSmooth((t-off)/CUP.releaseSec);
+  return t<back?release:Math.max(release,cupSmooth((t-back)/CUP.recaptureSec));
+}
 function cupReleaseWeight(fx){
-  var released=!!(fx.death||fx.transition||fx.supportReleased),engine=fx.holder.getScene().getEngine();
-  var dt=Math.max(1/240,Math.min(.05,(engine.getDeltaTime()/1000)||1/60)),r=fx.cupRelease==null?1:fx.cupRelease;
-  fx.cupRelease=released?Math.max(0,r-dt/CUP.releaseSec):Math.min(1,r+dt/CUP.recaptureSec);
-  return cupSmooth(fx.cupRelease);
+  var dt=cupDt(fx),held=fx.cupClipKey?cupEnvelopeWeight(cupEnvelope(fx,fx.cupClipKey),fx.cupClipT):1;
+  var ramp=!!(fx.death||fx.transition||(fx.supportReleased&&!fx.cupClipKey));
+  fx.cupRamp=cupEase(fx.cupRamp==null?1:fx.cupRamp,ramp?0:1,dt,CUP.releaseSec,CUP.recaptureSec);
+  /* Eased at twice the ramp rates, only so a clip restarting mid-release cannot jump. */
+  return fx.cupW=cupEase(fx.cupW==null?1:fx.cupW,Math.min(cupSmooth(fx.cupRamp),held),dt,CUP.releaseSec/2,CUP.recaptureSec/2);
 }
 var cupTurnQ=new Q(),cupTurnM=new MX(),cupRotM=new MX(),cupInvM=new MX();
 /* Turn `joint` so world direction `from` moves toward `to` by `w`. Both are carried into the
@@ -899,7 +942,7 @@ function applyPistolCup(fx,targetLocal,release){
   right.computeWorldMatrix(true);
   var target=V3.TransformCoordinates(new V3(targetLocal[0],targetLocal[1],targetLocal[2]),right.getWorldMatrix());
   var B=endpoint(),startError=V3.Distance(B,target);
-  var reach=cupSmooth((CUP.reachNone-startError)/(CUP.reachNone-CUP.reachFull)),w=release*reach;
+  var reach=fx.cupReach=cupEase(fx.cupReach==null?1:fx.cupReach,cupSmooth((CUP.reachNone-startError)/(CUP.reachNone-CUP.reachFull)),cupDt(fx),CUP.reachOutSec,CUP.reachInSec),w=release*reach;
   if(w>0){
     var S=arm.getAbsolutePosition().clone(),E=fore.getAbsolutePosition().clone(),upper=E.subtract(S),lower=B.subtract(E),a=upper.length(),b=lower.length();
     if(a>1e-6&&b>1e-6){
@@ -962,7 +1005,7 @@ function applyPose(fx){
       else if(node===shoulderNode)dd=dials.shoulder;
       if(dd&&(dd[0]||dd[1]||dd[2])){
         if(!node.rotationQuaternion)node.rotationQuaternion=new Q();
-        node.rotationQuaternion.multiplyInPlace(dialQuat(dd,cupW));
+        node.rotationQuaternion.multiplyInPlace(dialQuat(dd,node===wristNode?1:cupW));
       }
     }
     /* Right-wrist dial for straight stocks: same yaw/pitch/roll order as the lab's
