@@ -153,6 +153,21 @@ In a cloud sandbox Chromium sees the proxy's CA, so launch with `--ignore-certif
 | `scripts/probe_gait_clips.cjs` | Which FBX locomotion family (walk/run/sprint/crouch/crouchRun) each sim gait actually plays, at what rate, plus each model's natural clip speeds (in-place clips: foot stride). `GAIT_URL` (default production), `GAIT_SEED`, `GAIT_SECONDS`, `GAIT_OUT`. |
 | `scripts/run_probe.cjs` + `scripts/probes/*.js` | Observe-only probes on full benchmark battles (0.15 s step, procedural rig). `PROBE=<name>[,<name>]`, `PROBE_BATTLES=<type>:<seed>,…` (default one standard seed per type), `PROBE_SECONDS`, `PROBE_OUTPUT`, `PROBE_CONTROL=1` (also runs each battle without probes and fails if the end state differs). Serve with `PHP_CLI_SERVER_WORKERS=4 php -S …` or page loads stall. Probes: `station-occupancy` (bodies vs reservations at firing stations), `close-pairs` (who the <0.9 m pairs are, and the rate after formation/facing changes), `regroup-episodes` (every `regroup` lease: end reason, order anchor and destinations vs the rally point), `stall-wakes` (each strategic-stall wake: repeat, and whether another objective was open), `damage` (rounds by weapon, wounds by zone and outcome, and of body hits the share that went through, struck a second man or flew on). |
 
+**ww2fps bridge** (`tools/ww2fps-bridge/`, not in CI: it needs a sibling ww2fps checkout with
+`npm ci` done). The merge split is: ww2fps owns the world (terrain, buildings, hedges, walls, roads,
+objectives, defensive works), this repo owns soldiers, weapons, movement and AI. `world-adapter.js`
+is the one seam: it turns a ww2fps world export (`scripts/export-world.mjs` there: schema 2.0.0,
+scene_3d 1.0.0, plus `building_plans`) into the scenario, obstacles, physical footprints and
+`heightAt` the runtime already consumes, in a frame rotated by 90° steps so the attacker plays `us`
+on -z. It renames geometry only; it never decides tactics. `probe.js` installs that world into the
+shipping navigation, physicality, perception, engagement, squad command and wound model and reports
+conversion, door passability, spawn-to-objective walks and a 180 s firefight per seed. Add to the
+adapter rather than teaching a battle module about ww2fps.
+
+```bash
+WW2FPS_ROOT=../ww2fps node tools/ww2fps-bridge/probe.js   # BRIDGE_SEEDS=seed:theme,..  BRIDGE_OUT=report.json
+```
+
 **Preview launcher:** `python3 scripts/check-preview-launcher.py` runs offline with PHP/cURL and a concurrent local HTTP fixture. Checks runtime reuse, the rolling download queue, integrity failures and publication. `preview.json` records `runtimeReused` and `runtimeDownloaded`; only changed runtime files download, with matching copies taken from production or earlier launcher previews.
 
 **Repo-wide checks** (match CI):
