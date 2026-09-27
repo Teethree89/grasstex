@@ -16,6 +16,8 @@ original docs (roadmaps, lab notes, measurements) are in git history at `1a5b0cf
   `closeup_battle.cjs` for one in a fight), never leave it in `/tmp`.
 - **Stay in scope.** Don't touch audio, assets or animation unless asked. Unnamed uploads: ask
   what they are and where they belong.
+- **Write for the ww2fps merge.** Every battle change must still work on a ww2fps world; follow
+  "Merging into ww2fps" below and run the bridge probe when a change touches the world contract.
 - `main` deploys to production on every push. Put anything visual on a `work/**` or `preview/**`
   branch first (that publishes a preview; see Deploy), or open any branch in the live preview
   launcher (`https://test.ivandpopov.com/grasstex/preview.php?ref=<branch|PR#>`).
@@ -35,6 +37,94 @@ scripts, scenario, terrain, soldiers/weapons/clips, cover, navigation and squads
 reports per-file progress to it. **Start Battle** unpauses and unlocks audio (iOS needs the gesture).
 `window.__battle__` is the live `BattleSim`. HUD buttons: World Debug, AI Graph, Motion Lab.
 URL flags: `?seed=`, `?defender=us|ge`, `?soldiers=rifleman`, `?smooth=0`.
+
+## Merging into ww2fps
+
+The battle runtime is moving onto ww2fps worlds. **ww2fps owns the world** (terrain, buildings,
+hedges, walls, woods, roads, rivers, bridges, objectives, defensive works); **this repo owns the
+soldiers** (weapons, wounds, movement, navigation over the world, squad and force AI, their FX and
+audio). `tools/ww2fps-bridge/world-adapter.js` is the only code that knows ww2fps exists. Measured
+on 4 seeds on 2026-09-27; the rules follow from what broke.
+
+**The world contract.** Battle code reads the world only through:
+
+- `sim.heightAt(x, z)`: absolute metres. ww2fps ground is 20-180 m with 40-110 m of relief, so
+  never assume y ≈ 0 or clamp heights.
+- `sim.obstacles` and `sim.obstacles.__physicalFootprints`: the circle/OBB records of
+  `obstacle-field.js` (`type`, `shape`, `cover`, `height`, `y0`/`y1`).
+- `scene.metadata.battleScenario`: the v20 descriptor (`map`, `buildings`, `roads`, `objectives`,
+  `spawnZones`, `center`, `radius`). Read the field size from `scenario.map`, not `FIELD_W`/`FIELD_D`.
+- `BattleNavigation` (walls, door portals, firing stations, paths).
+
+AI, command and movement code must not call `BattleScenarioGenerator`, `BattleTerrainFeatures` or
+`BattleTownObjectives`: those are this repo's own world generators and will be retired. A new fact
+about the world (a new obstacle kind, water, floors, a gate) is added to the scenario or obstacle
+schema, filled by the adapter from the ww2fps export, and then read like everything else. If
+ww2fps doesn't export it yet, ask for it there rather than generating it here.
+
+**Don't assume this repo's own maps.** ww2fps worlds break these assumptions, so new code must not
+make them:
+
+- Buildings: any `rot` (not just 0 or 90°); doors 0.95-2.6 m wide (not 1.35); usually one door
+  per building; `h` 3.4-18 m; up to 3 storeys. An opening has a `level`, and upper-floor windows
+  are in `building.upperOpenings`. Interior walls exist but aren't imported yet.
+- Scale: 64-235 buildings, 250-950 walls and up to ~2,100 wall/fence footprints on a 1,200 x
+  2,000 m field (this repo's maps have 12-28 buildings). Nothing called per soldier per tick may
+  loop over every wall or obstacle; go through a spatial index (`BattleObstacleField` has one).
+  Known debt: `BattleNavigation` `blocked()` still scans every wall and dominates the profile on
+  large maps.
+- Settlements have yard walls and fences, with gates as the way through. Walled yards trap routes
+  today, because the global graph only has building nodes.
+- Objectives come from ww2fps sectors. The adapter clamps their radius to 28-40 m and keeps the
+  sector size as `sectorRadiusM`.
+
+**Sides and direction.** ww2fps sides are nations (us, ger, brit, sov) with a role (attacker or
+defender). Here the attacker plays `us` on -z and the defender plays `ge`
+(`Ww2fpsWorldAdapter.SIDE_FOR_ROLE`). Don't add new code that takes a direction or a doctrine from
+`faction === 'us'`: take direction from `scenario.spawnZones`, and when a rule depends on the side,
+make it depend on its role or nation. Known debt: `battle-sim.js` `spawnSide`, `commander-routes.js`
+`dir`, `modules/00-battle-sides.js` and `modules/10-infantry-squad.js`.
+
+**Babylon.** Simulation and AI files stay Babylon-free, as the Node harnesses require. That covers
+`squad-ai.js`, `engagement.js`, `movement-resolver.js`, `obstacle-field.js`, the commander files
+and the non-visual modules. Keep rendering in presentation code: `battle-sim.js` FX, `soldier.js`,
+`weapons.js` meshes and the `13`, `15` and `53` modules. The two repos must share one Babylon in
+the merged game (this repo pins UMD `babylonjs@9.27.1` from the CDN; ww2fps uses ES-module
+`@babylonjs/core` 9.21.2). So don't add new Babylon APIs that only exist in the newer version, and
+don't use the `BABYLON` global anywhere new except through `root.BABYLON` in a presentation module.
+
+**Globals and assets.** Name new globals `Battle*` and put them only on `root`. ww2fps loads
+classic scripts with top-level names such as `M`, `MAPW` and `clamp`, so nothing here may declare
+bare top-level names. Build asset URLs from `BATTLE_ASSET_BASE`, `BATTLE_AUDIO_BASE` or
+`BATTLE_SOLDIER_ASSET_BASE`, never by writing the host into the code. Known debt: `test.ivandpopov.com`
+is hard-coded as a fallback in `acoustics.js`, `battle-sim.js` and voice modules `09` and `11`.
+
+**Frame.** Metres, y up, +z is the direction `us` advances. The ww2fps frame (origin at the corner,
+X east, Z south) exists only inside the adapter; use `adapted.frame.toWorld`/`toBattle` to cross it.
+
+**Proving a change.** Run the bridge probe (see Test harnesses) before and after any change to
+navigation, the obstacle or scenario schema, building or opening handling, spawns, or the adapter.
+State the per-seed numbers in the PR. Don't let doors passable, objectives reached or nav build
+time get worse. Baseline (2026-09-27; bocage, ardennes, italian, urban):
+
+| | doors passable | objectives reached | nav build |
+| --- | --- | --- | --- |
+| normandy_07 (bocage) | 58/64 | 11/12 | 46 ms |
+| validation-2 (ardennes) | 196/205 | 8/12 | 487 ms |
+| validation-3 (italian) | 68/78 | 12/12 | 47 ms |
+| validation-4 (urban) | 221/235 | 10/12 | 832 ms |
+
+When the ww2fps export changes schema (`schema_version`, `scene_3d.schemaVersion`), update
+`world-adapter.js` (`SCHEMA`/`SCENE_SCHEMA`) in the same change.
+
+**Open decisions** (don't settle them silently in a feature change):
+
+- Hedge size: the frozen 2.2 x 2.2 m volume, or ww2fps's per-hedge 2.0-3.8 m width and 2.2-4.2 m
+  height (the adapter uses ww2fps's).
+- Who places defensive works: ww2fps plans 23-37 per map, which the adapter drops today, and this
+  repo has `00-defense-plan` and `21-defender-engineers`.
+- Whether sides become roles in the runtime.
+- Which Babylon build the merged game ships.
 
 ## Test harnesses
 
