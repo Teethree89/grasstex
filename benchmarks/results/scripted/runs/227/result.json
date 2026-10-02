@@ -1,0 +1,307 @@
+{
+  "meta": {
+    "mode": "seeds",
+    "run": "227",
+    "runId": "36943398539",
+    "repo": "APPARANYX/grasstex",
+    "ref": "claude/project-thread-1msen6",
+    "sha": "c1a490281e944c4ab850e2b0091b09c55cdd3123",
+    "runUrl": "https://github.com/APPARANYX/grasstex/actions/runs/36943398539",
+    "seed": "ai-layers-b-20260929",
+    "seeds": 100,
+    "windows": "contact+480",
+    "battleType": "meeting",
+    "queryOff": "rageLock=1&rageGuard=1",
+    "queryOn": "rageLock=1&rageGuard=1&rageTrance=1",
+    "build": "v29-dev"
+  },
+  "verdict": {
+    "kind": "weak",
+    "headline": "WEAK: 41 of 100 pairs changed (median first part 293.025 s); 2 of 18 counters under p 0.05 (about 0.9 by chance); casualties +0.6% (p 0.8642)",
+    "lines": [
+      "Under 0.05 only: fire.hits 11442 to 11818 (+3.3%, p 0.0095); stallOutcomes.wakes 434 to 405 (-6.7%, p 0.049)."
+    ]
+  },
+  "compare": {
+    "pairs": 100,
+    "unpaired": {
+      "a": 0,
+      "b": 0
+    },
+    "identicalBattles": 59,
+    "winners": {
+      "a": {
+        "us": 12,
+        "ge": 29
+      },
+      "b": {
+        "us": 13,
+        "ge": 30
+      },
+      "flips": 7,
+      "mcnemarUsWon": {
+        "aOnly": 2,
+        "bOnly": 3,
+        "discordant": 5,
+        "p": 1
+      }
+    },
+    "timeLimit": {
+      "a": 3,
+      "b": 3,
+      "mcnemar": {
+        "aOnly": 0,
+        "bOnly": 0,
+        "discordant": 0,
+        "p": 1
+      }
+    },
+    "noCapture": {
+      "a": 0,
+      "b": 0,
+      "mcnemar": {
+        "aOnly": 0,
+        "bOnly": 0,
+        "discordant": 0,
+        "p": 1
+      }
+    },
+    "captures": {
+      "a": 5.32,
+      "b": 5.39
+    },
+    "movementStalls": {
+      "a": 49,
+      "b": 54
+    },
+    "runtimeErrors": {
+      "a": 0,
+      "b": 0
+    },
+    "wallSeconds": {
+      "medianA": 11.985,
+      "medianB": 12.2515,
+      "ratio": 1.022,
+      "gate": 1.25
+    },
+    "counters": {
+      "casualties": {
+        "a": 5904,
+        "b": 5940,
+        "meanDiff": 0.36,
+        "battlesChanged": 34,
+        "more": 18,
+        "fewer": 16,
+        "signP": 0.8642
+      },
+      "usKills": {
+        "a": 2805,
+        "b": 2864,
+        "meanDiff": 0.59,
+        "battlesChanged": 35,
+        "more": 20,
+        "fewer": 15,
+        "signP": 0.4996
+      },
+      "geKills": {
+        "a": 3099,
+        "b": 3076,
+        "meanDiff": -0.23,
+        "battlesChanged": 35,
+        "more": 16,
+        "fewer": 19,
+        "signP": 0.7359
+      },
+      "fire.total": {
+        "a": 48691,
+        "b": 49621,
+        "meanDiff": 9.3,
+        "battlesChanged": 39,
+        "more": 26,
+        "fewer": 13,
+        "signP": 0.0533
+      },
+      "fire.hits": {
+        "a": 11442,
+        "b": 11818,
+        "meanDiff": 3.76,
+        "battlesChanged": 39,
+        "more": 28,
+        "fewer": 11,
+        "signP": 0.0095
+      },
+      "retreatSamples": {
+        "a": 116330,
+        "b": 117787,
+        "meanDiff": 14.57,
+        "battlesChanged": 39,
+        "more": 25,
+        "fewer": 14,
+        "signP": 0.1081
+      },
+      "movementResolver.changes": {
+        "a": 447075,
+        "b": 445990,
+        "meanDiff": -10.85,
+        "battlesChanged": 40,
+        "more": 22,
+        "fewer": 18,
+        "signP": 0.6358
+      },
+      "movementStalls.length": {
+        "a": 49,
+        "b": 54,
+        "meanDiff": 0.05,
+        "battlesChanged": 2,
+        "more": 2,
+        "fewer": 0,
+        "signP": 0.5
+      },
+      "routeStalls.length": {
+        "a": 0,
+        "b": 0,
+        "meanDiff": 0,
+        "battlesChanged": 0,
+        "more": 0,
+        "fewer": 0,
+        "signP": 1
+      },
+      "targetlessStalls.length": {
+        "a": 0,
+        "b": 0,
+        "meanDiff": 0,
+        "battlesChanged": 0,
+        "more": 0,
+        "fewer": 0,
+        "signP": 1
+      },
+      "vacantObjectiveStalls.length": {
+        "a": 270,
+        "b": 276,
+        "meanDiff": 0.06,
+        "battlesChanged": 33,
+        "more": 20,
+        "fewer": 13,
+        "signP": 0.2962
+      },
+      "loopAlerts.length": {
+        "a": 827,
+        "b": 850,
+        "meanDiff": 0.23,
+        "battlesChanged": 32,
+        "more": 17,
+        "fewer": 15,
+        "signP": 0.8601
+      },
+      "writerConflicts": {
+        "a": 0,
+        "b": 0,
+        "meanDiff": 0,
+        "battlesChanged": 0,
+        "more": 0,
+        "fewer": 0,
+        "signP": 1
+      },
+      "regroups.entries": {
+        "a": 721,
+        "b": 732,
+        "meanDiff": 0.11,
+        "battlesChanged": 27,
+        "more": 15,
+        "fewer": 12,
+        "signP": 0.7011
+      },
+      "stallOutcomes.wakes": {
+        "a": 434,
+        "b": 405,
+        "meanDiff": -0.29,
+        "battlesChanged": 17,
+        "more": 4,
+        "fewer": 13,
+        "signP": 0.049
+      },
+      "stallOutcomes.repeats": {
+        "a": 116,
+        "b": 103,
+        "meanDiff": -0.13,
+        "battlesChanged": 11,
+        "more": 4,
+        "fewer": 7,
+        "signP": 0.5488
+      },
+      "timeline.stalledOnsets": {
+        "a": 61,
+        "b": 66,
+        "meanDiff": 0.05,
+        "battlesChanged": 2,
+        "more": 2,
+        "fewer": 0,
+        "signP": 0.5
+      },
+      "timeline.stalledSamples": {
+        "a": 2063,
+        "b": 1919,
+        "meanDiff": -1.44,
+        "battlesChanged": 2,
+        "more": 1,
+        "fewer": 1,
+        "signP": 1
+      }
+    },
+    "firstDivergence": {
+      "battles": 40,
+      "min": 127.05,
+      "p10": 192,
+      "median": 293.025,
+      "p90": 390,
+      "max": 466.05
+    },
+    "pass": true
+  },
+  "viewer": {
+    "url": "https://test.ivandpopov.com/grasstex/ai_flow_live.html?bench=227&view=brain3d",
+    "previewUrl": null,
+    "seeds": [
+      {
+        "seed": "ai-layers-b-20260929-0035",
+        "firstDivergence": 127.05,
+        "what": "timeline"
+      },
+      {
+        "seed": "ai-layers-b-20260929-0066",
+        "firstDivergence": 145.05,
+        "what": "timeline"
+      },
+      {
+        "seed": "ai-layers-b-20260929-0015",
+        "firstDivergence": 180,
+        "what": "timeline"
+      },
+      {
+        "seed": "ai-layers-b-20260929-0048",
+        "firstDivergence": 192,
+        "what": "timeline"
+      },
+      {
+        "seed": "ai-layers-b-20260929-0022",
+        "firstDivergence": 223.05,
+        "what": "timeline"
+      },
+      {
+        "seed": "ai-layers-b-20260929-0099",
+        "firstDivergence": 223.05,
+        "what": "timeline"
+      },
+      {
+        "seed": "ai-layers-b-20260929-0028",
+        "firstDivergence": 226.05,
+        "what": "timeline"
+      },
+      {
+        "seed": "ai-layers-b-20260929-0041",
+        "firstDivergence": 229.05,
+        "what": "timeline"
+      }
+    ]
+  }
+}
