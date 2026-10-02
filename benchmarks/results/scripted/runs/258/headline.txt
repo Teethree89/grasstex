@@ -1,0 +1,1 @@
+INERT: all 1 pairs identical in every field
