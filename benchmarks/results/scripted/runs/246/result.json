@@ -1,15 +1,15 @@
 {
   "meta": {
-    "mode": "seeds",
-    "run": "213",
-    "runId": "36934811108",
+    "mode": "single",
+    "run": "246",
+    "runId": "36996220567",
     "repo": "APPARANYX/grasstex",
-    "ref": "claude/project-thread-s8qgm5",
-    "sha": "73c20d89ebcd059451f5d620792cc17ac49b59d2",
-    "runUrl": "https://github.com/APPARANYX/grasstex/actions/runs/36934811108",
-    "seed": "ai-layers-20260929",
-    "seeds": 100,
-    "windows": "contact+120",
+    "ref": "bench/lfp-fix-deep6-20261002",
+    "sha": "58f46ba8a91427e4682ee9821de30730cddc1990",
+    "runUrl": "https://github.com/APPARANYX/grasstex/actions/runs/36996220567",
+    "seed": "lfp-sweep-20261002-0004",
+    "seeds": 1,
+    "windows": "contact+60,every60",
     "battleType": "meeting",
     "queryOff": "",
     "queryOn": "",
@@ -17,23 +17,23 @@
   },
   "verdict": {
     "kind": "inert",
-    "headline": "INERT: all 100 pairs identical in every field",
+    "headline": "INERT: all 4 pairs identical in every field",
     "lines": []
   },
   "compare": {
-    "pairs": 100,
+    "pairs": 4,
     "unpaired": {
       "a": 0,
       "b": 0
     },
-    "identicalBattles": 100,
+    "identicalBattles": 4,
     "winners": {
       "a": {
-        "us": 0,
+        "us": 1,
         "ge": 0
       },
       "b": {
-        "us": 0,
+        "us": 1,
         "ge": 0
       },
       "flips": 0,
@@ -55,8 +55,8 @@
       }
     },
     "noCapture": {
-      "a": 6,
-      "b": 6,
+      "a": 0,
+      "b": 0,
       "mcnemar": {
         "aOnly": 0,
         "bOnly": 0,
@@ -65,27 +65,27 @@
       }
     },
     "captures": {
-      "a": 2.41,
-      "b": 2.41
+      "a": 2.75,
+      "b": 2.75
     },
     "movementStalls": {
-      "a": 4,
-      "b": 4
+      "a": 0,
+      "b": 0
     },
     "runtimeErrors": {
       "a": 0,
       "b": 0
     },
     "wallSeconds": {
-      "medianA": 6.1025,
-      "medianB": 5.967499999999999,
-      "ratio": 0.978,
+      "medianA": 8.6445,
+      "medianB": 8.1015,
+      "ratio": 0.937,
       "gate": 1.25
     },
     "counters": {
       "casualties": {
-        "a": 1600,
-        "b": 1600,
+        "a": 90,
+        "b": 90,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -93,8 +93,8 @@
         "signP": 1
       },
       "usKills": {
-        "a": 730,
-        "b": 730,
+        "a": 57,
+        "b": 57,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -102,8 +102,8 @@
         "signP": 1
       },
       "geKills": {
-        "a": 870,
-        "b": 870,
+        "a": 33,
+        "b": 33,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -111,8 +111,8 @@
         "signP": 1
       },
       "fire.total": {
-        "a": 13428,
-        "b": 13428,
+        "a": 300,
+        "b": 300,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -120,8 +120,8 @@
         "signP": 1
       },
       "fire.hits": {
-        "a": 3016,
-        "b": 3016,
+        "a": 85,
+        "b": 85,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -129,8 +129,8 @@
         "signP": 1
       },
       "retreatSamples": {
-        "a": 4382,
-        "b": 4382,
+        "a": 227,
+        "b": 227,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -138,8 +138,8 @@
         "signP": 1
       },
       "movementResolver.changes": {
-        "a": 201907,
-        "b": 201907,
+        "a": 7406,
+        "b": 7406,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -147,8 +147,8 @@
         "signP": 1
       },
       "movementStalls.length": {
-        "a": 4,
-        "b": 4,
+        "a": 0,
+        "b": 0,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -174,8 +174,8 @@
         "signP": 1
       },
       "vacantObjectiveStalls.length": {
-        "a": 11,
-        "b": 11,
+        "a": 0,
+        "b": 0,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -183,8 +183,8 @@
         "signP": 1
       },
       "loopAlerts.length": {
-        "a": 224,
-        "b": 224,
+        "a": 2,
+        "b": 2,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -201,8 +201,8 @@
         "signP": 1
       },
       "regroups.entries": {
-        "a": 310,
-        "b": 310,
+        "a": 14,
+        "b": 14,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -210,8 +210,8 @@
         "signP": 1
       },
       "stallOutcomes.wakes": {
-        "a": 246,
-        "b": 246,
+        "a": 0,
+        "b": 0,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -219,8 +219,8 @@
         "signP": 1
       },
       "stallOutcomes.repeats": {
-        "a": 63,
-        "b": 63,
+        "a": 0,
+        "b": 0,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -228,8 +228,8 @@
         "signP": 1
       },
       "timeline.stalledOnsets": {
-        "a": 7,
-        "b": 7,
+        "a": 0,
+        "b": 0,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -237,8 +237,8 @@
         "signP": 1
       },
       "timeline.stalledSamples": {
-        "a": 43,
-        "b": 43,
+        "a": 0,
+        "b": 0,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -249,46 +249,11 @@
     "pass": true
   },
   "viewer": {
-    "url": "https://test.ivandpopov.com/grasstex/ai_flow_live.html?bench=213&view=brain3d",
+    "url": "https://test.ivandpopov.com/grasstex/ai_flow_live.html?bench=246&pick=-end&view=brain3d",
     "previewUrl": null,
     "seeds": [
       {
-        "seed": "ai-layers-20260929-0001",
-        "firstDivergence": null,
-        "what": null
-      },
-      {
-        "seed": "ai-layers-20260929-0002",
-        "firstDivergence": null,
-        "what": null
-      },
-      {
-        "seed": "ai-layers-20260929-0003",
-        "firstDivergence": null,
-        "what": null
-      },
-      {
-        "seed": "ai-layers-20260929-0004",
-        "firstDivergence": null,
-        "what": null
-      },
-      {
-        "seed": "ai-layers-20260929-0005",
-        "firstDivergence": null,
-        "what": null
-      },
-      {
-        "seed": "ai-layers-20260929-0006",
-        "firstDivergence": null,
-        "what": null
-      },
-      {
-        "seed": "ai-layers-20260929-0007",
-        "firstDivergence": null,
-        "what": null
-      },
-      {
-        "seed": "ai-layers-20260929-0008",
+        "seed": "lfp-sweep-20261002-0004",
         "firstDivergence": null,
         "what": null
       }
