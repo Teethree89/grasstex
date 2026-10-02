@@ -1,13 +1,13 @@
 {
   "meta": {
     "mode": "single",
-    "run": "239",
-    "runId": "36966992155",
+    "run": "269",
+    "runId": "37004947757",
     "repo": "APPARANYX/grasstex",
-    "ref": "bench/stance-churn-pr172-20261002",
-    "sha": "33043337cf47bfdc4773fe678b0c3d5fa518e1de",
-    "runUrl": "https://github.com/APPARANYX/grasstex/actions/runs/36966992155",
-    "seed": "stance-loop-probe-0002",
+    "ref": "bench/shared-stance-fix-0002-20261002",
+    "sha": "2e4dc0c78fe375eda40c126aaeeaa1ace25bc002",
+    "runUrl": "https://github.com/APPARANYX/grasstex/actions/runs/37004947757",
+    "seed": "lfp-sweep-20261002-0002",
     "seeds": 1,
     "windows": "contact+60,every60",
     "battleType": "meeting",
@@ -17,16 +17,16 @@
   },
   "verdict": {
     "kind": "inert",
-    "headline": "INERT: all 8 pairs identical in every field",
+    "headline": "INERT: all 7 pairs identical in every field",
     "lines": []
   },
   "compare": {
-    "pairs": 8,
+    "pairs": 7,
     "unpaired": {
       "a": 0,
       "b": 0
     },
-    "identicalBattles": 8,
+    "identicalBattles": 7,
     "winners": {
       "a": {
         "us": 0,
@@ -65,8 +65,8 @@
       }
     },
     "captures": {
-      "a": 3.625,
-      "b": 3.625
+      "a": 5.429,
+      "b": 5.429
     },
     "movementStalls": {
       "a": 0,
@@ -77,15 +77,15 @@
       "b": 0
     },
     "wallSeconds": {
-      "medianA": 14.774000000000001,
-      "medianB": 14.171,
-      "ratio": 0.959,
+      "medianA": 13.095,
+      "medianB": 13.141,
+      "ratio": 1.004,
       "gate": 1.25
     },
     "counters": {
       "casualties": {
-        "a": 319,
-        "b": 319,
+        "a": 221,
+        "b": 221,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -93,8 +93,8 @@
         "signP": 1
       },
       "usKills": {
-        "a": 102,
-        "b": 102,
+        "a": 44,
+        "b": 44,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -102,8 +102,8 @@
         "signP": 1
       },
       "geKills": {
-        "a": 217,
-        "b": 217,
+        "a": 177,
+        "b": 177,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -111,8 +111,8 @@
         "signP": 1
       },
       "fire.total": {
-        "a": 419,
-        "b": 419,
+        "a": 329,
+        "b": 329,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -120,8 +120,8 @@
         "signP": 1
       },
       "fire.hits": {
-        "a": 117,
-        "b": 117,
+        "a": 105,
+        "b": 105,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -129,8 +129,8 @@
         "signP": 1
       },
       "retreatSamples": {
-        "a": 1085,
-        "b": 1085,
+        "a": 942,
+        "b": 942,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -138,8 +138,8 @@
         "signP": 1
       },
       "movementResolver.changes": {
-        "a": 28679,
-        "b": 28679,
+        "a": 17324,
+        "b": 17324,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -174,8 +174,8 @@
         "signP": 1
       },
       "vacantObjectiveStalls.length": {
-        "a": 5,
-        "b": 5,
+        "a": 1,
+        "b": 1,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -183,8 +183,8 @@
         "signP": 1
       },
       "loopAlerts.length": {
-        "a": 59,
-        "b": 59,
+        "a": 6,
+        "b": 6,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -201,8 +201,8 @@
         "signP": 1
       },
       "regroups.entries": {
-        "a": 51,
-        "b": 51,
+        "a": 28,
+        "b": 28,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -210,8 +210,8 @@
         "signP": 1
       },
       "stallOutcomes.wakes": {
-        "a": 72,
-        "b": 72,
+        "a": 0,
+        "b": 0,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -219,8 +219,8 @@
         "signP": 1
       },
       "stallOutcomes.repeats": {
-        "a": 16,
-        "b": 16,
+        "a": 0,
+        "b": 0,
         "meanDiff": 0,
         "battlesChanged": 0,
         "more": 0,
@@ -249,11 +249,11 @@
     "pass": true
   },
   "viewer": {
-    "url": "https://test.ivandpopov.com/grasstex/ai_flow_live.html?bench=239&pick=-end&view=brain3d",
+    "url": "https://test.ivandpopov.com/grasstex/ai_flow_live.html?bench=269&pick=-end&view=brain3d",
     "previewUrl": null,
     "seeds": [
       {
-        "seed": "stance-loop-probe-0002",
+        "seed": "lfp-sweep-20261002-0002",
         "firstDivergence": null,
         "what": null
       }
