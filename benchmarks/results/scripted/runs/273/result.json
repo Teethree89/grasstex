@@ -1,0 +1,408 @@
+{
+  "meta": {
+    "mode": "seeds",
+    "run": "273",
+    "runId": "37080528089",
+    "repo": "APPARANYX/grasstex",
+    "ref": "work/soldier-beliefs",
+    "sha": "a5d4cbf1c4f19428f067795e8513da620816fb01",
+    "runUrl": "https://github.com/APPARANYX/grasstex/actions/runs/37080528089",
+    "seed": "soldier-beliefs",
+    "seeds": 100,
+    "windows": "contact+120",
+    "battleType": "meeting",
+    "queryOff": "soldierBeliefs=0&callouts=1",
+    "queryOn": "soldierBeliefs=1&callouts=1",
+    "build": "v29-dev"
+  },
+  "verdict": {
+    "kind": "moved",
+    "headline": "MOVED: 100 of 100 pairs changed (median first part 20.1 s); 13 of 29 counters under p 0.05 (about 1.5 by chance), 12 under 0.0017; casualties -10.5% (p 0.4657)",
+    "lines": [
+      "Clears the Bonferroni line (p < 0.0017): movementResolver.changes 155070 to 174810 (+12.7%, p 0); regroups.entries 385 to 1221 (+217.1%, p 0); stallOutcomes.wakes 480 to 712 (+48.3%, p 0); soldierBeliefs.updates 0 to 569396 (new, p 0); soldierBeliefs.seen 0 to 496371 (new, p 0); soldierBeliefs.told 0 to 68167 (new, p 0); soldierBeliefs.heard 0 to 4858 (new, p 0); soldierBeliefs.expired 0 to 41697 (new, p 0); soldierBeliefs.unknownMen 0 to 2847 (new, p 0); soldierBeliefs.activeBySource.seen 0 to 1976 (new, p 0); soldierBeliefs.activeBySource.told 0 to 4384 (new, p 0); fire.total 8290 to 12803 (+54.4%, p 0.0008).",
+      "Under 0.05 only: soldierBeliefs.activeBySource.heard 0 to 40 (new, p 0.0078).",
+      "Wall time on/off x1.36 is over the 1.25 gate."
+    ]
+  },
+  "compare": {
+    "pairs": 100,
+    "unpaired": {
+      "a": 0,
+      "b": 0
+    },
+    "identicalBattles": 0,
+    "winners": {
+      "a": {
+        "us": 0,
+        "ge": 0
+      },
+      "b": {
+        "us": 1,
+        "ge": 0
+      },
+      "flips": 1,
+      "mcnemarUsWon": {
+        "aOnly": 0,
+        "bOnly": 1,
+        "discordant": 1,
+        "p": 1
+      }
+    },
+    "timeLimit": {
+      "a": 0,
+      "b": 0,
+      "mcnemar": {
+        "aOnly": 0,
+        "bOnly": 0,
+        "discordant": 0,
+        "p": 1
+      }
+    },
+    "noCapture": {
+      "a": 16,
+      "b": 30,
+      "mcnemar": {
+        "aOnly": 7,
+        "bOnly": 21,
+        "discordant": 28,
+        "p": 0.0125
+      }
+    },
+    "captures": {
+      "a": 1.95,
+      "b": 1.46
+    },
+    "movementStalls": {
+      "a": 15,
+      "b": 4
+    },
+    "runtimeErrors": {
+      "a": 0,
+      "b": 0
+    },
+    "wallSeconds": {
+      "medianA": 7.197,
+      "medianB": 9.787500000000001,
+      "ratio": 1.36,
+      "gate": 1.25
+    },
+    "counters": {
+      "casualties": {
+        "a": 841,
+        "b": 753,
+        "meanDiff": -0.88,
+        "battlesChanged": 92,
+        "more": 42,
+        "fewer": 50,
+        "signP": 0.4657
+      },
+      "usKills": {
+        "a": 394,
+        "b": 349,
+        "meanDiff": -0.45,
+        "battlesChanged": 77,
+        "more": 33,
+        "fewer": 44,
+        "signP": 0.2543
+      },
+      "geKills": {
+        "a": 447,
+        "b": 404,
+        "meanDiff": -0.43,
+        "battlesChanged": 86,
+        "more": 48,
+        "fewer": 38,
+        "signP": 0.3318
+      },
+      "fire.total": {
+        "a": 8290,
+        "b": 12803,
+        "meanDiff": 45.13,
+        "battlesChanged": 98,
+        "more": 66,
+        "fewer": 32,
+        "signP": 0.0008
+      },
+      "fire.hits": {
+        "a": 1687,
+        "b": 1441,
+        "meanDiff": -2.46,
+        "battlesChanged": 95,
+        "more": 45,
+        "fewer": 50,
+        "signP": 0.6817
+      },
+      "retreatSamples": {
+        "a": 2252,
+        "b": 1791,
+        "meanDiff": -4.61,
+        "battlesChanged": 74,
+        "more": 32,
+        "fewer": 42,
+        "signP": 0.2954
+      },
+      "movementResolver.changes": {
+        "a": 155070,
+        "b": 174810,
+        "meanDiff": 197.4,
+        "battlesChanged": 100,
+        "more": 72,
+        "fewer": 28,
+        "signP": 0
+      },
+      "movementStalls.length": {
+        "a": 15,
+        "b": 4,
+        "meanDiff": -0.11,
+        "battlesChanged": 7,
+        "more": 2,
+        "fewer": 5,
+        "signP": 0.4531
+      },
+      "routeStalls.length": {
+        "a": 0,
+        "b": 0,
+        "meanDiff": 0,
+        "battlesChanged": 0,
+        "more": 0,
+        "fewer": 0,
+        "signP": 1
+      },
+      "targetlessStalls.length": {
+        "a": 0,
+        "b": 0,
+        "meanDiff": 0,
+        "battlesChanged": 0,
+        "more": 0,
+        "fewer": 0,
+        "signP": 1
+      },
+      "vacantObjectiveStalls.length": {
+        "a": 1,
+        "b": 0,
+        "meanDiff": -0.01,
+        "battlesChanged": 1,
+        "more": 0,
+        "fewer": 1,
+        "signP": 1
+      },
+      "loopAlerts.length": {
+        "a": 25,
+        "b": 29,
+        "meanDiff": 0.04,
+        "battlesChanged": 29,
+        "more": 12,
+        "fewer": 17,
+        "signP": 0.4583
+      },
+      "writerConflicts": {
+        "a": 0,
+        "b": 0,
+        "meanDiff": 0,
+        "battlesChanged": 0,
+        "more": 0,
+        "fewer": 0,
+        "signP": 1
+      },
+      "regroups.entries": {
+        "a": 385,
+        "b": 1221,
+        "meanDiff": 8.36,
+        "battlesChanged": 88,
+        "more": 80,
+        "fewer": 8,
+        "signP": 0
+      },
+      "stallOutcomes.wakes": {
+        "a": 480,
+        "b": 712,
+        "meanDiff": 2.32,
+        "battlesChanged": 31,
+        "more": 30,
+        "fewer": 1,
+        "signP": 0
+      },
+      "stallOutcomes.repeats": {
+        "a": 95,
+        "b": 95,
+        "meanDiff": 0,
+        "battlesChanged": 10,
+        "more": 5,
+        "fewer": 5,
+        "signP": 1
+      },
+      "timeline.stalledOnsets": {
+        "a": 14,
+        "b": 10,
+        "meanDiff": -0.04,
+        "battlesChanged": 10,
+        "more": 4,
+        "fewer": 6,
+        "signP": 0.7539
+      },
+      "timeline.stalledSamples": {
+        "a": 105,
+        "b": 394,
+        "meanDiff": 2.89,
+        "battlesChanged": 11,
+        "more": 5,
+        "fewer": 6,
+        "signP": 1
+      },
+      "acquisitions.total": {
+        "a": 21778,
+        "b": 18238,
+        "meanDiff": -35.4,
+        "battlesChanged": 100,
+        "more": 43,
+        "fewer": 57,
+        "signP": 0.1933
+      },
+      "acquisitions.reacquired": {
+        "a": 17330,
+        "b": 14385,
+        "meanDiff": -29.45,
+        "battlesChanged": 100,
+        "more": 44,
+        "fewer": 56,
+        "signP": 0.2713
+      },
+      "soldierBeliefs.updates": {
+        "a": 0,
+        "b": 569396,
+        "meanDiff": 5693.96,
+        "battlesChanged": 100,
+        "more": 100,
+        "fewer": 0,
+        "signP": 0
+      },
+      "soldierBeliefs.seen": {
+        "a": 0,
+        "b": 496371,
+        "meanDiff": 4963.71,
+        "battlesChanged": 89,
+        "more": 89,
+        "fewer": 0,
+        "signP": 0
+      },
+      "soldierBeliefs.told": {
+        "a": 0,
+        "b": 68167,
+        "meanDiff": 681.67,
+        "battlesChanged": 100,
+        "more": 100,
+        "fewer": 0,
+        "signP": 0
+      },
+      "soldierBeliefs.heard": {
+        "a": 0,
+        "b": 4858,
+        "meanDiff": 48.58,
+        "battlesChanged": 20,
+        "more": 20,
+        "fewer": 0,
+        "signP": 0
+      },
+      "soldierBeliefs.expired": {
+        "a": 0,
+        "b": 41697,
+        "meanDiff": 416.97,
+        "battlesChanged": 97,
+        "more": 97,
+        "fewer": 0,
+        "signP": 0
+      },
+      "soldierBeliefs.unknownMen": {
+        "a": 0,
+        "b": 2847,
+        "meanDiff": 28.47,
+        "battlesChanged": 97,
+        "more": 97,
+        "fewer": 0,
+        "signP": 0
+      },
+      "soldierBeliefs.activeBySource.seen": {
+        "a": 0,
+        "b": 1976,
+        "meanDiff": 19.76,
+        "battlesChanged": 84,
+        "more": 84,
+        "fewer": 0,
+        "signP": 0
+      },
+      "soldierBeliefs.activeBySource.told": {
+        "a": 0,
+        "b": 4384,
+        "meanDiff": 43.84,
+        "battlesChanged": 98,
+        "more": 98,
+        "fewer": 0,
+        "signP": 0
+      },
+      "soldierBeliefs.activeBySource.heard": {
+        "a": 0,
+        "b": 40,
+        "meanDiff": 0.4,
+        "battlesChanged": 8,
+        "more": 8,
+        "fewer": 0,
+        "signP": 0.0078
+      }
+    },
+    "firstDivergence": {
+      "battles": 100,
+      "min": 1.05,
+      "p10": 4.05,
+      "median": 20.1,
+      "p90": 71.1,
+      "max": 109.05
+    },
+    "pass": false
+  },
+  "viewer": {
+    "url": "https://test.ivandpopov.com/grasstex/ai_flow_live.html?bench=273&view=brain3d",
+    "previewUrl": "https://test.ivandpopov.com/grasstex/preview/soldier-beliefs/ai_flow_live.html?bench=273&view=brain3d",
+    "seeds": [
+      {
+        "seed": "soldier-beliefs-0015",
+        "firstDivergence": 1.05,
+        "what": "timeline"
+      },
+      {
+        "seed": "soldier-beliefs-0002",
+        "firstDivergence": 2.1,
+        "what": "timeline"
+      },
+      {
+        "seed": "soldier-beliefs-0063",
+        "firstDivergence": 2.1,
+        "what": "timeline"
+      },
+      {
+        "seed": "soldier-beliefs-0012",
+        "firstDivergence": 3,
+        "what": "timeline"
+      },
+      {
+        "seed": "soldier-beliefs-0044",
+        "firstDivergence": 3,
+        "what": "timeline"
+      },
+      {
+        "seed": "soldier-beliefs-0050",
+        "firstDivergence": 3,
+        "what": "timeline"
+      },
+      {
+        "seed": "soldier-beliefs-0057",
+        "firstDivergence": 3,
+        "what": "timeline"
+      },
+      {
+        "seed": "soldier-beliefs-0089",
+        "firstDivergence": 3,
+        "what": "timeline"
+      }
+    ]
+  }
+}
